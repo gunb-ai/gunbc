@@ -11,14 +11,13 @@ import gunbc.floor_materialization {
   floor_index_build_materialization_without_provider,
   floor_index_build_reader_count,
   floor_typecheck_store_identity,
-  floor_typecheck_store_share_provider_id,
-  floor_typecheck_store_materialization,
-  floor_typecheck_store_materialization_without_provider,
-  floor_typecheck_store_reader_count
+  floor_typecheck_store_persist_verdicts_without_provider
 }
 import std.materialization_ladder {
+  LadderVerdict,
   value_verdict_is_shared_by_reference,
-  value_verdict_is_refused_needing_reference
+  value_verdict_is_refused_needing_reference,
+  verdict_is_refused_no_provider
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -32,7 +31,7 @@ fn live_floor_witnesses() -> List<ScheduleWitnessEntry> {
   project_ci_floor_witness_entries(roster: commit_gate_roster)
 }
 
-data floor_materialization_witness_note: String = "The value-tier ladder run against the LIVE floor consumer roster (spec gates + witness entries projected from commit_gate_roster, plus the fixed prelude), enrolled on the CI surface. Proves the in-process index-build share (process_shared_index) discharges the plural readonly reads as ValueSharedByReference — green because the share is DECLARED and covers every consumer, not because nothing looked. RED control removes the ReferenceTier provider and demands ValueRefusedNoCarrierProvider, so the witness discriminates. S2a increment C adds the process-scoped typecheck store share (process_shared_typecheck_store) with the same ladder pattern. Backing evidence, CORRECTED 2026-08-11 (gunbc#8146, review 51209) - it read 'green-by-execution (cited, run under rust_tests nextest)', which was false twice over: nextest was removed from CI 2026-07-11, and the src/v1/tests/src module below was deleted by the v1 Rust test-suite cutover. The claim_executor.rs pair is unaffected. WITHDRAWN for the deleted module, dissolve-on: re-establish the union-resolve receipts as floor witnesses. Original citation: memo_deduplicates_resolve_count + memo_warm_cold_results_are_identical (claim_executor.rs), union_view_result_equals_private_resolve_in_every_order + union_resolve_typechecks_each_node_once + cross_worker_shared_typecheck_cache_process_once_per_node + cross_worker_shared_typecheck_cache_purity (src/v1/tests/src/union_resolve_receipts_test.rs - DELETED)."
+data floor_materialization_witness_note: String = "The value-tier ladder run against the LIVE floor consumer roster (spec gates + witness entries projected from commit_gate_roster, plus the fixed prelude), enrolled on the CI surface. Proves the in-process index-build share (process_shared_index) discharges the plural readonly reads as ValueSharedByReference — green because the share is DECLARED and covers every consumer, not because nothing looked. RED control removes the ReferenceTier provider and demands ValueRefusedNoCarrierProvider, so the witness discriminates. The process-scoped typecheck store share (C2) was deleted with the discovery-corpus width machinery, its only consumer sites. Backing evidence, CORRECTED 2026-08-11 (gunbc#8146, review 51209) - it read 'green-by-execution (cited, run under rust_tests nextest)', which was false twice over: nextest was removed from CI 2026-07-11, and the src/v1/tests/src module below was deleted by the v1 Rust test-suite cutover. The claim_executor.rs pair is unaffected. WITHDRAWN for the deleted module, dissolve-on: re-establish the union-resolve receipts as floor witnesses. Original citation: memo_deduplicates_resolve_count + memo_warm_cold_results_are_identical (claim_executor.rs), union_view_result_equals_private_resolve_in_every_order + union_resolve_typechecks_each_node_once + cross_worker_shared_typecheck_cache_process_once_per_node + cross_worker_shared_typecheck_cache_purity (src/v1/tests/src/union_resolve_receipts_test.rs - DELETED)."
 
 test fn floor_index_build_share_is_shared_by_reference() -> Bool {
   let gates = live_floor_gates()
@@ -56,22 +55,21 @@ test fn floor_index_build_reds_without_reference_provider() -> Bool {
   )
 }
 
-test fn floor_typecheck_store_share_is_shared_by_reference() -> Bool {
-  value_verdict_is_shared_by_reference(
-    v: floor_typecheck_store_materialization(),
-    identity: floor_typecheck_store_identity,
-    provider_id: floor_typecheck_store_share_provider_id,
-    reader_count: floor_typecheck_store_reader_count()
-  )
+// C3 — the cross-process demand set: two sibling PROCESSES over one corpus under one built binary
+// (the witness fold and the generated-artifact drift gate), whose obligation LCA is the runner
+// host. Only a store tier can discharge it, and since 2026-10-03 none does: the host-persisted
+// provider was deleted after measurement (see gunbc.floor_materialization). The live verdict is
+// therefore the no-provider refusal below. The provider's discharge claim and its three per-
+// obligation reds were deleted with it; the replacement store re-adds all four.
+
+fn first_persist_verdict(vs: List<LadderVerdict>) -> LadderVerdict? {
+  vs.first()
 }
 
-test fn floor_typecheck_store_has_plural_readers() -> Bool {
-  floor_typecheck_store_reader_count() >= 2
-}
-
-test fn floor_typecheck_store_reds_without_reference_provider() -> Bool {
-  value_verdict_is_refused_needing_reference(
-    v: floor_typecheck_store_materialization_without_provider(),
-    identity: floor_typecheck_store_identity
-  )
+test fn floor_typecheck_store_persist_reds_without_any_provider() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts_without_provider()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_refused_no_provider(v: v, identity: floor_typecheck_store_identity)
+  }
 }

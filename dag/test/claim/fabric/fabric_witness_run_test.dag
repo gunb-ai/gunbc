@@ -5,7 +5,42 @@ module test.claim.fabric_witness_run
 // looser path, so adding a Nat-typed parameter passed locally and refused in CI.
 import test.claim.fabric.provider_use_fixture { fixture_route }
 import std.nat { Nat }
-import std.measure { Second, second, money_amount_micro_count }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
+import std.measure {
+  Second, second, money_amount_micro_count,
+  MoneyAmountMicro, money_amount_micro, HardwareThreadCount, hardware_thread_count, MoneyRate,
+}
+import extdeps.currency.currency { CurrencyCode, Usd, Eur }
+import extdeps.exec.command { argv_words, shell_command_render }
+import std.types { NonEmptyStr }
+// A file with ONE import line has the loader's bare channel off for every name in it, so each name
+// below that was called without being imported resolved through the census while its declaring
+// module stayed out of the compiled closure -- and `claim_batch --entry` refused every claim here
+// with `effect summary incomplete ... names no registry row`. The subject module itself was among
+// the unimported ones.
+import gunbc.fabric_witness_run {
+  build_lane_run_command, witnesses_lane_run_command,
+  required_ci_lane_build, required_ci_lane_witnesses,
+  floor_admission_terms, floor_buy_terms, floor_inputs_manifest_ref,
+  floor_offer_affordability, floor_offer_fungibility,
+  floor_satisfaction_requirement, floor_work_contract,
+}
+import gunbc.witness_floor_workflow { witness_floor_run_script }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.isolation { current_runner_slot_profile }
+import product.fabric.work {
+  Shape, HardRequirements, SourceManifestRef, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.supply {
+  SupplierOffer, ObservedSupply,
+  OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant,
+  OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
+  IsolationNotProvided, ShapeAxesNotCovered,
+  DemandOfferAffordability, Affordable, AffordableUnderEstimate,
+  QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch, QuoteNotPriceableWithoutDuration,
+  ExactGrantDuration, UnobservedGrantDuration,
+  offer_affordability_for,
+}
 
 // The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
 // separate coproducts, so every witness here is a refusal on ONE of them or one
@@ -34,7 +69,7 @@ fn t_offer(
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
     route: fixture_route(),
-    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: caps,
     trust_domain: trust,
     isolation: current_runner_slot_profile(),
@@ -57,7 +92,7 @@ fn t_offer_with_quantum(
     id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
     executor: "gunbc",
     route: fixture_route(),
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: current_runner_slot_profile(),

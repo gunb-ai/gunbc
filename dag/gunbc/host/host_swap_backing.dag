@@ -6,10 +6,10 @@ import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, I
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.tools.free { SwapStats }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, proc_swaps_read_probe }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // THE host swap-BACKING axis, and it exists because the corpus already converges a swap CAP over a
 // resource whose existence nothing models. gunbc.runner_slot_allocation declares memory_swap_max =
@@ -50,7 +50,7 @@ fn host_swap_backing_requirement() -> SwapBackingRequirement {
     SwapBackingRequired {
       min_total: cap,
       requiring_declaration: DeclarationRef {
-        module_path: "gunbc.runner_slot_allocation",
+        module_path: "gunbc.runner_slot_desired",
         decl_name: "gunbc_runner_slot_desired",
         field: WholeDeclaration,
       },

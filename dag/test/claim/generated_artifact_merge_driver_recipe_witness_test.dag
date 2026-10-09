@@ -3,8 +3,8 @@ module test.claim.generated_artifact_merge_driver_recipe
 import std.logic { Bool }
 import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.ci_spec { ci_heal_author_commit_regen_command }
-import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
+import gunbc.ci_spec { generated_artifact_author_regen_command }
+import gunbc.generated_artifact_registry { heal_regenerated_after_provisional_merge_paths }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
 import std.dissolution { dissolution_description }
@@ -20,7 +20,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 //   - the author-regeneration arm's LAST command ended `claim_executor --required-regen-fixed-point`
 //     with no --source-root, and claim_executor's argument guard exits 2 on exactly that. The author
-//     reaches it after two builds and two regen passes, so the cost is paid before the refusal.
+//     reached it after two builds and two regen passes, so the cost was paid before the refusal.
+//     That mode is deleted (operator ruling 2026-10-04); the property is held for the calls left.
 //   - the heal arm's set-difference command is written between backticks, and the driver echoes its
 //     lines inside DOUBLE quotes, so bash ran the capture group as a command substitution and printed
 //     the instruction with the capture group deleted. The pasted result extracts no rows, and the
@@ -35,20 +36,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emitted_driver_script() -> String {
   expected_generated_artifact_merge_driver_sh(
-    regen_command: ci_heal_author_commit_regen_command,
+    regen_command: generated_artifact_author_regen_command,
     heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
   )
 }
 
 // claim_executor refuses every mode below its argument guard with `provide at least one
-// --source-root`, and the fixed-point call is below it. The RED is the recipe as it stood.
+// --source-root`. The recipe's surviving call must carry the roots, and must not name the deleted
+// fixed-point mode, which no longer parses as a flag. RED: the recipe as it stood before
+// 2026-10-04, whose last command was that mode.
 test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool {
   let script = emitted_driver_script()
   string_contains(
     s: script,
-    pattern: "--required-regen-fixed-point --source-root dag --source-root src/v2"
+    pattern: "target/release/claim_executor --required-regen --source-root dag --source-root src/v2"
   )
-    && string_contains(s: script, pattern: "--required-regen-fixed-point\" >&2") == false
+    && string_contains(s: script, pattern: "--required-regen\" >&2") == false
+    && string_contains(s: script, pattern: "--required-regen-fixed-point") == false
 }
 
 // The backtick must reach the reader as a backtick, which inside the emitted double quotes means

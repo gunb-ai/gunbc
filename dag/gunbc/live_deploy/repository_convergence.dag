@@ -12,7 +12,8 @@ module gunbc.live_deploy.repository_convergence
 // standing risks in the tree -- and that ordering is the reason they may be declared rather than
 // fixed here, not an excuse for having declared them.
 
-import std.types { String, Bool, Int, List, FilePath }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import extdeps.git { git_local_fetch_source_grant, git_local_fetch_upload_pack_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.repository { gunbc_repository }
 import std.algebra { trim }
@@ -291,13 +292,15 @@ fn convergence_worktree_identity_matches(left: GitWorktreeIdentity, right: GitWo
     && match left.checkout {
       GitWorktreeOnBranch { head: lh, branch: _ } => match right.checkout {
         GitWorktreeOnBranch { head: rh, branch: _ } => git_object_id_eq(left: lh, right: rh)
-        _ => false
+        GitWorktreeDetachedAt { head: _ } => false
+        GitWorktreeBare => false
       }
       GitWorktreeDetachedAt { head: lh } => match right.checkout {
         GitWorktreeDetachedAt { head: rh } => git_object_id_eq(left: lh, right: rh)
-        _ => false
+        GitWorktreeOnBranch { head: _, branch: _ } => false
+        GitWorktreeBare => false
       }
-      GitWorktreeBare => match right.checkout { GitWorktreeBare => true _ => false }
+      GitWorktreeBare => match right.checkout { GitWorktreeBare => true GitWorktreeOnBranch { head: _, branch: _ } => false GitWorktreeDetachedAt { head: _ } => false }
     }
     && left.locked == right.locked
     && left.prunable == right.prunable
@@ -578,7 +581,7 @@ fn convergence_coherence_fault(coherence: RepositoryCoherenceObservation) -> Rep
 }
 
 fn convergence_coherence_is_clean(coherence: RepositoryCoherenceObservation) -> Bool {
-  match convergence_coherence_fault(coherence: coherence) { Absent => true _ => false }
+  match convergence_coherence_fault(coherence: coherence) { Absent => true Present { value: _ } => false }
 }
 
 // THE NON-NOOP LAW IS ABOUT THE NEWEST ENTRY, NOT ABOUT THE TEXT CHANGING. An earlier cut proved
@@ -1023,7 +1026,8 @@ fn repository_root_emptiness_of(success: Bool, entries: String, error: String) -
       init: RepositoryRootEmpty,
       f: (acc, e) => match acc {
         RepositoryRootEmpty => RepositoryRootNotEmpty { first_entry: trim(s: e) }
-        _ => acc
+        RepositoryRootNotEmpty { first_entry: _ } => acc
+        RepositoryRootEmptinessUnobservable { detail: _ } => acc
       },
     )
   }
@@ -1066,7 +1070,7 @@ fn repository_bootstrap_wet(
   if !inited.success {
     convergence_exit(outcome: ConvergenceBootstrapInitRefused { repo: repo, stderr: inited.stderr })
   } else {
-    let fetched = git.Core.FetchForcedRefInRepo(repo: repo as FilePath, remote: remote, refspec: candidate)
+    let fetched = git.Core.FetchForcedRefInRepoTrustingSource(repo: repo as FilePath, remote: remote, refspec: candidate, upload_pack: convergence_fetch_upload_pack(remote: remote))
     if fetched.exit_code != 0 {
       convergence_exit(outcome: ConvergenceBootstrapObjectImportRefused {
         candidate: candidate,
@@ -1115,12 +1119,30 @@ fn repository_bootstrap_wet(
   }
 }
 
+// THE OBJECT SOURCE IS FETCHED AS A TRUSTED DIRECTORY, FOR ONE INVOCATION. The source is the runner
+// checkout, owned by the runner principal, and this runs as the service user, so git refuses it as
+// dubious ownership (srv1 journal for fleet-converge run 36032847731). The trust is carried INSIDE
+// --upload-pack, because the local transport scrubs GIT_CONFIG_PARAMETERS before spawning
+// upload-pack, so a `-c` on the fetch never reaches it (srv1 dashboard_deploy run 36100865330;
+// extdeps.git git_local_fetch_upload_pack_command). upload-pack compares the source's GIT DIR, not
+// its worktree, so the trusted path is derived from the operand by extdeps.git
+// git_local_fetch_source_grant -- persisted nowhere, never `*`. Here and in the bootstrap fetch alike.
+//
 // THE PRE-STATE FAULT IS NOT RELAXED; ONE OF ITS CAUSES IS ROUTED. A repository that cannot be
 // observed still refuses with the identical typed cause it always did -- both non-empty and
 // unobservable roots return `fault` unchanged. What changed is that an EMPTY root, which the old
 // arm also called unobservable, now reaches the bootstrap that can make it observable. The stall
 // this closes rules out relaxing the refusal, and this does not: it separates two states the
 // refusal had collapsed.
+// The one upload-pack command both convergence fetches pass, trusting the object source's git dir, derived by
+// extdeps.git git_local_fetch_source_grant. Contrast #12242's deployed-tree reads, which run
+// INSIDE /opt/gunbc/gunbc through `-C` and so are trusted at its worktree (git_in_trusted_repository_args):
+// setup_git_directory compares the worktree for a repository git operates in, upload-pack the git
+// dir of a repository it serves.
+fn convergence_fetch_upload_pack(remote: String) -> String {
+  git_local_fetch_upload_pack_command(grant: git_local_fetch_source_grant(source: remote as NonEmptyStr))
+}
+
 fn repository_converge_wet(
   repo: String,
   remote: String,
@@ -1143,10 +1165,11 @@ fn repository_converge_wet(
       Absent => convergence_exit(outcome: ConvergencePreStateUnobservable { detail: convergence_ref_observation_detail(observation: before.refs) })
       Present { value: refs_before } => {
       let expected_old = convergence_ref_hex_at(refs: refs_before, refname: base_ref)
-      let fetched = git.Core.FetchForcedRefInRepo(
+      let fetched = git.Core.FetchForcedRefInRepoTrustingSource(
         repo: repo as FilePath,
         remote: remote,
         refspec: candidate,
+        upload_pack: convergence_fetch_upload_pack(remote: remote),
       )
       if fetched.exit_code != 0 {
         convergence_exit(outcome: ConvergenceObjectImportRefused {

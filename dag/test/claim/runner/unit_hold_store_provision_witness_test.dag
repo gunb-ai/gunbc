@@ -1,0 +1,51 @@
+module test.claim.unit_hold_store_provision_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.fleet_converge_plan { host_wide_grant_apply_lines }
+import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_converge_command }
+import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import product.host_identity { HostIdentity }
+
+// The full-host apply script is the route that executes: host_wide_grant_apply_lines renders every
+// runner_host_wide_refused_operations row through executor_privileged_operation_converge_command.
+fn apply_lines_mention_store(host: NonEmptyStr) -> Bool {
+  fold(host_wide_grant_apply_lines(host: host), init: false, f: (acc, l) =>
+    acc || string_contains(s: l, pattern: unit_hold_store_root as String))
+}
+
+// THE STORE ROOT IS CONVERGED ON EVERY STORE HOST, OWNED BY THAT HOST'S JOB USER: the apply script
+// carries exactly the converge command of the job-user-owned EnsureOwnedDirectory, so dropping the
+// row, retargeting the path or changing the owner reddens here. The store hosts are the ones the
+// managed rows' hold decisions name (gunbc.managed_host_unit_hold unit_hold_store_hosts); an empty
+// set would make the claim vacuous, so it is required to be inhabited.
+fn store_root_is_converged_on(host: NonEmptyStr) -> Bool {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => false
+    RunnerHostSpecFound { spec: spec } => {
+      let expected = executor_privileged_operation_converge_command(op: EnsureOwnedDirectory {
+        path: unit_hold_store_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: "755" as NonEmptyStr,
+      })
+      fold(host_wide_grant_apply_lines(host: host), init: false, f: (acc, l) =>
+        acc || l == expected)
+    }
+  }
+}
+
+test fn unit_hold_store_root_is_converged_on_its_store_host() -> Bool {
+  let stores = unit_hold_store_hosts()
+  count(stores) >= 1 && stores |> all(h => store_root_is_converged_on(host: h))
+}
+
+// ONLY ON A STORE HOST: a runner host no managed host's hold names gets no store root.
+test fn unit_hold_store_root_is_absent_on_other_runner_hosts() -> Bool {
+  let stores = unit_hold_store_hosts()
+  !any(stores, h => (h as String) == (operator_host_srv3 as String))
+    && !apply_lines_mention_store(host: operator_host_srv3 as NonEmptyStr)
+    && count(stores) >= 1
+    && stores |> all(h => apply_lines_mention_store(host: h))
+}

@@ -17,8 +17,7 @@ import v2.std.dependency {
   DependencyView,
   GeneratedFrom
 }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Holds, Witness }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
@@ -31,7 +30,7 @@ data unused_parameters_non_use_child: Node = claim_atom_node(s: ^unused_paramete
 data unused_parameters_non_use_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^unused_parameters_non_use_root_symbol } },
   children: [
-    Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
+    Edge { label: Authored { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -107,7 +106,7 @@ fn unused_parameters_non_use_edges_claim_holds() -> Bool {
   match unused_parameters_non_use_edges_claim.actual {
     Holds { value: actual } =>
       use_classification_fact_eq(a: actual, b: unused_parameters_non_use_edges_claim.expected)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

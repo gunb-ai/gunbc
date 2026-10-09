@@ -1,10 +1,10 @@
 module extdeps.llm.cli
+import std.resources { Network }
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.algebra { trim }
 
 import std.types { List, Int, Bool, NonEmptyStr, RenderedTerminalText, Unit }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
@@ -450,7 +450,7 @@ fn shape_codex_exec_argv_for_program(
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
-    env_program: env_path_resolved_program as String,
+    env_program: env_path_resolved_program().invocation as String,
     program: program,
     codex_home: codex_home,
     cwd: cwd,
@@ -525,6 +525,7 @@ fn shape_codex_exec_argv(
 
 service llm.Codex {
   operation Review {
+    requires opaque
     input {
       prompt: String
       cwd: String
@@ -555,6 +556,7 @@ service llm.Codex {
 
 service claude.Invoke {
   operation Run {
+    requires opaque
     input {
       session_id: String
       node_id: String
@@ -589,6 +591,7 @@ service claude.Invoke {
 
 service llm.Gemini {
   operation CliPrompt {
+    requires Network
     input {
       prompt: String
     }

@@ -1,7 +1,7 @@
 module test.claim.effectful_item_kind_collapse_witness_test
 
 import std.types { String, Bool, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 
@@ -35,8 +35,8 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // fabricated-plausible-output failure of DESIGN section 5, and it was unreachable by any refusal
 // keyed on the registry, because the registry said every effectful item was non-recursive.
 // `EffectfulSelfRecursionUnrealized` is now raised at the Rust emitter boundary from the SAME
-// registry read the pure path's TCO decision consumes. Both the tail and the non-tail shape are
-// refused: the effectful path realizes neither. MUTATION BAR: restore `is_self_recursive: false`
+// registry read the pure path's TCO decision consumes. The tail control now emits a loop; the non-tail shape remains
+// refused because that realization is still absent. MUTATION BAR: restore `is_self_recursive: false`
 // in build_item_info (in v1_compiler_infer.rs -- these fixtures are compiled by the SEED BINARY,
 // so the mutation must be made in the mirror, exactly as
 // generic_effectful_declaration_wall_witness_test records) and both refusal arms go RED while the
@@ -83,8 +83,9 @@ test fn a_zero_parameter_effectful_declaration_emits_its_resource_parameter() ->
   compile_dag_rust_emit_check(zpe_reads_resource_source, "src/zpe_reads_resource.rs", ["net: &"], [])
 }
 
-test fn an_effectful_tail_self_call_is_refused_at_the_rust_emitter() -> Bool {
-  eik_blocking_count(source: efr_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
+test fn an_effectful_tail_self_call_is_lowered_to_a_loop() -> Bool {
+  eik_total_blocking(source: efr_tail_source) == 0
+    && compile_dag_rust_emit_check(efr_tail_source, "src/efr_tail.rs", ["Ok(loop", "continue;", "net: &"], [".await"])
 }
 
 test fn an_effectful_non_tail_self_call_is_refused_at_the_rust_emitter() -> Bool {
@@ -94,4 +95,20 @@ test fn an_effectful_non_tail_self_call_is_refused_at_the_rust_emitter() -> Bool
 test fn an_effectful_declaration_calling_a_pure_recursive_helper_is_admitted() -> Bool {
   eik_total_blocking(source: efr_control_source) == 0
     && compile_dag_rust_emit_check(efr_control_source, "src/efr_control.rs", ["net: &"], ["compile_error!"])
+}
+
+// Derived service demand and an authored uses row select the same async realization and
+// must reach the same recursion admission. Neither fixture reads a file in this test:
+// the measured subject is the compiler's verdict and emitted loop, not interpretation.
+data efr_derived_tail_source: String = "module efr_derived_tail\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n"
+
+data efr_derived_non_tail_source: String = "module efr_derived_non_tail\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n"
+
+test fn derived_effectful_tail_calls_share_the_loop_realization() -> Bool {
+  eik_total_blocking(source: efr_derived_tail_source) == 0
+    && compile_dag_rust_emit_check(efr_derived_tail_source, "src/efr_derived_tail.rs", ["Ok(loop", "continue;", "filesystem: &"], ["compile_error!"])
+}
+
+test fn derived_effectful_non_tail_recursion_cannot_bypass_admission() -> Bool {
+  eik_blocking_count(source: efr_derived_non_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
 }

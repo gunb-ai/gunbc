@@ -1,6 +1,8 @@
 module v2.test.long.add_arrow_eval_by_execution
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { declared_signature }
 import v2.compiler.ingested_fixture_arrows {
   ingested_add_module_source
 }
@@ -32,12 +34,11 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -47,7 +48,7 @@ import v2.std.optional {
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.cardinality {
-  RankingDimension,
+  RankingComponent,
   TerminationProof,
   termination_proof_witness_for_node
 }
@@ -80,14 +81,17 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name, binder_edge }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -305,7 +309,7 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
               bind_outcome(
                 o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
-                  outcome_accepted(value: add_arrow_eval_admitted_tree(root: resolved))
+                  outcome_accepted(value: add_arrow_eval_admitted_tree(root: resolved.root))
                 }
               )
             }
@@ -389,8 +393,8 @@ fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^add_arrow_eval_actual }, target: call },
-      Edge { label: Named { name: ^add_arrow_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^add_arrow_eval_actual }, target: call },
+      Edge { label: Authored { name: ^add_arrow_eval_expected }, target: expected }
     ]
   }
 }
@@ -520,29 +524,39 @@ fn add_arrow_swapped_operand_body() -> Node {
   }
 }
 
+// The red controls below share the declared (x: Int, y: Int) signature, so each is red for its own
+// defect -- the body or the extra parameter -- and not for a signature shape no producer emits.
+fn add_arrow_xy_params() -> List<Edge> {
+  [
+    binder_edge(name: ^dag_binding_param_x, type_node: add_arrow_eval_atom(s: ^dag_binding_type_int)),
+    binder_edge(name: ^dag_binding_param_y, type_node: add_arrow_eval_atom(s: ^dag_binding_type_int))
+  ]
+}
+
 fn add_arrow_swapped_add_arrow() -> Node {
+  let signature = declared_signature(params: add_arrow_xy_params(), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
     children: [
+      signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_swapped_operand_body() }
     ]
   }
 }
 
 fn add_arrow_excess_signature_arrow() -> Node {
+  let signature = declared_signature(params: concat(add_arrow_xy_params(), [binder_edge(name: pattern_wildcard_name(), type_node: add_arrow_eval_atom(s: ^dag_binding_type_int))]), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
     children: [
+      signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_eval_canonical_body() }
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_eval_canonical_body() }
     ]
   }
 }
@@ -560,14 +574,15 @@ fn add_arrow_eval_canonical_body() -> Node {
 }
 
 fn add_arrow_excess_body_arrow() -> Node {
+  let signature = declared_signature(params: add_arrow_xy_params(), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
     children: [
+      signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_excess_body() }
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_excess_body() }
     ]
   }
 }
@@ -827,7 +842,7 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal)
       }
     ]
@@ -848,7 +863,7 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
                 descent: Holds {
                   value: v2.std.cardinality.TerminationProof {
                     non_increasing: [],
-                    strict: v2.std.cardinality.RankingDimension {
+                    strict: v2.std.cardinality.RankingComponent {
                       measured: ^add_arrow_eval_loop_measure_literal
                     }
                   }

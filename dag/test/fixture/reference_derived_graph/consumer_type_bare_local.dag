@@ -1,0 +1,9 @@
+module test.fixture.reference_derived_graph.consumer_type_bare_local
+
+import std.types { Int }
+
+type LocalMarker
+
+fn uses(x: LocalMarker) -> Int {
+  1
+}

@@ -59,6 +59,11 @@ ureq = { version = "2", features = ["json"] }
 # burns CPU and is caught). Already present transitively; declared direct for this use.
 libc = "0.2"
 
+
+[build-dependencies]
+# The recursive-Value-walker census in build.rs parses the crate's sources (a grep would be
+# satisfiable by a comment); syn is already in the lockfile through the derive crates.
+syn = { version = "2", features = ["full", "visit"] }
 [[bin]]
 name = "gunbc"
 path = "src/main.rs"
@@ -86,6 +91,12 @@ path = "src/bin/claim_executor.rs"
 [[bin]]
 name = "carrier_realization_census"
 path = "src/bin/carrier_realization_census.rs"
+
+# Transport for v1.tests.claim.generic_identity_census, the derived-node-identity step-2 instrument
+# (docs/plans/derived-node-identity-design.md section 7).
+[[bin]]
+name = "generic_identity_census"
+path = "src/bin/generic_identity_census.rs"
 
 # XL-0T-CUTOVER census: over the complete production TypeOccurrence population, what the
 # module-wide bare-name TypeEnv path (X, as repaired by #9813) binds versus what the exact

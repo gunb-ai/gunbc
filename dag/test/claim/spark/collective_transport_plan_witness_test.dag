@@ -100,12 +100,3 @@ test fn w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not() -> Bool {
     && all(hca, e => e.value == (fx_rdma_device as String))
     && all(ucx, e => e.value == join([fx_rdma_device as String, ":1"], ""))
 }
-
-test fn w_all_collective_transport_plan_claims_hold() -> Bool {
-  w_a_socket_plan_projects_no_device_no_capability_no_lock()
-    && w_a_roce_plan_projects_the_device_the_capability_and_the_lock()
-    && w_both_arms_project_the_interface_env()
-    && w_the_roce_arm_projects_more_env_than_the_socket_arm()
-    && w_only_the_roce_arm_projects_the_endpoint_env()
-    && w_the_ucx_name_carries_a_port_and_the_nccl_name_does_not()
-}

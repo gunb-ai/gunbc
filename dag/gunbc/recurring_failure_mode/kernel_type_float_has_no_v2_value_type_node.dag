@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.kernel_type_float_has_no_v2_value_type_node
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data kernel_type_float_has_no_v2_value_type_node: RecurringFailureMode = RecurringFailureMode {
+  identity: "kernel_type_float_has_no_v2_value_type_node" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a value is judged at a position declared Float on the v2 resolve-to-infer route and the judgment cannot be decided, because nothing says what Float denotes. Float is a kernel type (std.types kernel_type_set) with no value-type node in any v2 std authority, so it has no row in v2.extdeps.languages.dag dag_kernel_value_type_roster: no canonical binding, no spelling row, and no denotation.",
+    "STATE OF THE SOURCES, read 2026-09-30: v2.std.float declares `type Float = Binary64` and dag/std/float `type Float = Float64`; neither module declares a value-type node. v2 sources outside tests spell Float in a type position twice.",
+    "WHAT HAPPENS TODAY: a declared Float resolves to whatever declaration its spelling reaches, and v2.compiler.infer's declared-type judge (infer_judge_declared_position) either counts the obligation UndecidableFormalUnresolved or compares a declaration reference by identity. It is counted, not silent, and it is never refused for a value of the wrong kernel type.",
+    "HARM: 'values inhabit declared types' (DESIGN section 4b, the floor) does not hold for Float-declared positions on this route. The harm is bounded by the count: the obligation is an advisory on an Accepted program.",
+    "RUNG FOUND AT: below the floor, counted. CEILING: structurally guaranteed, the rung Int and Bool hold through the roster: a decidable class waiting on its single authority (DESIGN section 5, a wall after grounding).",
+    "NEXT-RUNG TRIGGER, naming the capability: v2.std.float owns a value-type NODE for Float, the way v2.std.integer owns integer_int_type_node and v2.std.logic owns bool_node, and dag_kernel_value_type_roster carries a row pointing at it. Sufficient for: a Float-declared return and record field holding a value of another kernel type refusing on the resolve-to-infer route. NOT satisfied by a spelling row alone, nor by a node minted in the language model: the roster points at authorities and mints nothing. Whether Float's authored spelling binds to the kernel atom is a second decision the row's author makes with the declaration's owner, as it was left open for Symbol and Char.",
+    "FILED BY the change that introduced the roster, which enumerated every kernel type and found value-type nodes for Int, Bool, Symbol and Char only. One row per missing node, so each can be retired by its own trigger."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_kernel_value_type_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.types", decl_name: "kernel_type_set", field: WholeDeclaration },
+  ],
+}

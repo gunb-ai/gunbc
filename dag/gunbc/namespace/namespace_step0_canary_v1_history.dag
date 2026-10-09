@@ -8,7 +8,7 @@ import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 // retired command truthfully observed at its own revision; it has no classifier, command, producer,
 // or transition policy and therefore cannot delay Step 0 or score later work.
 type NamespaceStep0CanaryV1HistoricalStanding
-  = HistoricalStep0SubjectNotEntered
+  = | HistoricalStep0SubjectNotEntered
 
 type NamespaceStep0CanaryV1HistoricalReceipt {
   contract_identity: NonEmptyStr

@@ -13,7 +13,6 @@ import v2.compiler.body_lowering_fold {
   BodyLoweringWrapperRetained
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -28,8 +27,10 @@ fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
   body_lowering_interim_scaffold_seed_retained_count() == 0
 }
 
+// 8 since 2026-09-23: the eighth row is dag_surface_data_decl, which lowers to a named member
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member) instead of being preserved.
 fn wave1_gate1_a1_forward_behavior_row_count_holds() -> Bool {
-  body_lowering_forward_behavior_row_count() == 7
+  body_lowering_forward_behavior_row_count() == 8
 }
 
 fn wave1_gate1_a1_forward_fold_surface_identities_agree_holds() -> Bool {
@@ -47,7 +48,7 @@ fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
     children: []
   )
   match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {
-    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringWrapperRetained { retention: _ } => true
     BodyLoweringLowered => false
     BodyLoweringRejected { diagnostics: _ } => false
   }

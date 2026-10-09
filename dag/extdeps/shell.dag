@@ -1,10 +1,10 @@
 module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr, Secret, List, Unit }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -51,10 +51,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
 // rather than accepting it -- so the producing stage's status is captured directly and the rows
 // travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
-data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
+data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN [C7 producer-status-pipeline] (an extdeps shell transport cannot declare a producer-then-consumer argv pair whose realization reports the PRODUCING stage's exit status; dash has no pipefail) lands and these operations declare that argv pair in place of an sh -c program.")
 
 service shell.Find {
   operation ListDirs {
+    requires none
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> from "stdout_lines" }
     readonly
@@ -66,6 +67,7 @@ service shell.Find {
   }
 
   operation FilesAndSymlinksWithMode {
+    requires none
     input { root: FilePath }
     output {
       success: Bool from "exit_success"
@@ -76,7 +78,7 @@ service shell.Find {
     transport shell {
       argv: [
         "sh", "-c",
-        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\t%s\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
         "sh", "{root}",
       ]
     }
@@ -87,6 +89,7 @@ service shell.Find {
   }
 
   operation Files {
+    requires none
     input { workdir: FilePath, root: FilePath, name_glob: String }
     output {
       success: Bool from "exit_success"
@@ -102,6 +105,7 @@ service shell.Find {
   }
 
   operation SocketInodeHolders {
+    requires none
     input { inode: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -119,6 +123,7 @@ service shell.Find {
   }
 
   operation FilesByNameSorted {
+    requires none
     input { root: FilePath, name_glob: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -142,6 +147,7 @@ service shell.Find {
 
 service shell.Env {
   operation Get {
+    requires none
     input { name: NonEmptyStr }
     output { value: String? from "stdout" }
     readonly
@@ -180,6 +186,7 @@ service shell.Env {
 
 service shell.PosixCommandV {
   operation Check {
+    requires none
     input { command: NonEmptyStr }
     output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
     readonly
@@ -195,8 +202,15 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
+// IsSticky IS POSIX `test -k`, AND ITS RATIONALE SITS HERE because only module-item grain is
+// modeled (DESIGN section 4c) -- an operation lives inside this service's body, so the reason for
+// one attaches to the declaration that contains it. On a directory the sticky bit is the rule that
+// stops a principal renaming or removing an entry it does not own, which is the whole reason a
+// shared temporary directory is safe to allocate in at all. It is a different question from the
+// mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
   operation IsExecutable {
+    requires none
     input { path: FilePath }
     output { executable: Bool from "exit_success" }
     readonly
@@ -208,6 +222,7 @@ service shell.Test {
   }
 
   operation IsNonEmpty {
+    requires none
     input { path: FilePath }
     output { nonempty: Bool from "exit_success" }
     readonly
@@ -219,6 +234,7 @@ service shell.Test {
   }
 
   operation IsFile {
+    requires none
     input { path: FilePath }
     output { is_file: Bool from "exit_success" }
     readonly
@@ -230,6 +246,7 @@ service shell.Test {
   }
 
   operation IsDirectory {
+    requires none
     input { path: FilePath }
     output { is_directory: Bool from "exit_success" }
     readonly
@@ -240,7 +257,20 @@ service shell.Test {
     }
   }
 
+  operation IsSticky {
+    requires none
+    input { path: FilePath }
+    output { is_sticky: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-k", "{path}"] }
+    exit {
+      0 => Unit "The sticky bit is set on the path"
+      1 => Unit "The path is missing or its sticky bit is not set"
+    }
+  }
+
   operation IsWritable {
+    requires none
     input { path: FilePath }
     output { writable: Bool from "exit_success" }
     readonly
@@ -256,8 +286,68 @@ fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
   ["test", "-x", path as String]
 }
 
+// `id -un` names the principal this process runs as. It is a separate service from Stat because it
+// is a fact about the PROCESS rather than about a path, and the two are joined by the consumer
+// deciding whether a path's owner is trusted; folding the process identity into a path observation
+// would make one operation answer two questions.
+// Canonical resolves every symlink and `..` ONCE, so a consumer that then uses only the canonical
+// spelling never re-traverses an alias somebody else owns -- which is what lets a caller establish
+// that the location it named is the location it got.
+service shell.Path {
+  operation Canonical {
+    requires none
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["realpath", "-e", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its canonical spelling is on stdout"
+      nonzero => String "realpath could not resolve the path"
+    }
+  }
+}
+
+service shell.Id {
+  operation UserId {
+    requires none
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-u"] }
+    exit {
+      0 => Unit "the effective numeric user id is on stdout"
+      nonzero => String "id could not name the effective user id"
+    }
+  }
+
+  operation UserName {
+    requires none
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-un"] }
+    exit {
+      0 => Unit "the effective user name is on stdout"
+      nonzero => String "id could not name the effective user"
+    }
+  }
+}
+
 service shell.Uname {
   operation KernelName {
+    requires none
     input {}
     output { name: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["uname", "-s"] }
@@ -268,6 +358,7 @@ service shell.Uname {
   }
 
   operation Machine {
+    requires none
     input {}
     output { machine: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["uname", "-m"] }
@@ -280,6 +371,7 @@ service shell.Uname {
 
 service shell.Mktemp {
   operation FileInDirectory {
+    requires none
     input { dir: FilePath }
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-p", "{dir}"] }
@@ -290,6 +382,7 @@ service shell.Mktemp {
   }
 
   operation Dir {
+    requires none
     input {}
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d"] }
@@ -300,6 +393,7 @@ service shell.Mktemp {
   }
 
   operation DirWithTemplate {
+    requires none
     input { template: FilePath }
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d", "{template}"] }
@@ -310,8 +404,26 @@ service shell.Mktemp {
   }
 }
 
+// NewOwnerOnly FAILS WHEN THE NAME ALREADY EXISTS -- including when it exists as a symlink -- and
+// its rationale sits here for the module-item-grain reason the Test service records. That failure
+// is the point rather than an inconvenience: a caller that must know whether it CREATED a directory
+// cannot learn it from `mkdir -p`, which succeeds either way, and adopting an existing directory at
+// a predictable name is how a squatted path gets reused. The mode is applied AT CREATION, so the
+// name never exists at a wider one and no second pathname operation is needed to narrow it.
 service shell.Mkdir {
+  operation NewOwnerOnly {
+    requires none
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
+    exit {
+      0 => Unit "Directory created AT 0700; fails if the name exists at all, so success is proof this process created it"
+      nonzero => String "mkdir -m 0700 failed"
+    }
+  }
+
   operation Parents {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mkdir", "-p", "{path}"] }
@@ -324,6 +436,7 @@ service shell.Mkdir {
 
 service shell.Link {
   operation Hard {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["ln", "{source}", "{destination}"] }
@@ -334,20 +447,9 @@ service shell.Link {
   }
 }
 
-service shell.Symlink {
-  operation AtomicReplace {
-    input { target: FilePath, link: FilePath }
-    output { success: Bool from "exit_success" }
-    transport shell { argv: ["ln", "-sfnT", "{target}", "{link}"] }
-    exit {
-      0 => Unit "Symlink published; -T treats link as a normal file (no nest into existing dir); -f replaces existing link"
-      nonzero => String "ln -sfnT failed"
-    }
-  }
-}
-
 service shell.Remove {
   operation FileForce {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-f", "{path}"] }
@@ -358,6 +460,7 @@ service shell.Remove {
   }
 
   operation RecursiveForce {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-rf", "{path}"] }
@@ -368,6 +471,7 @@ service shell.Remove {
   }
 
   operation EmptyDirectory {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rmdir", "{path}"] }
@@ -387,8 +491,30 @@ service shell.Remove {
 // WHY IT IS `readonly` AND WHY THAT IS TRUE. It opens nothing for write and creates nothing; unlike
 // git.Inspect.ReadTreeIntoIndex, which was declared readonly while writing the file GIT_INDEX_FILE
 // names, this one genuinely only reads inode metadata.
+// ModeOf RETURNS THE OCTAL PERMISSION DIGITS AS `stat` RENDERS THEM -- "700", "1777" -- and its
+// rationale sits above the service for the module-item-grain reason the Test service records. The
+// consumer compares the WHOLE STRING against declared spellings; nothing extracts a digit, because
+// the substrate has no string indexing and a hand-rolled scan would be a parser standing where a
+// comparison was available.
 service shell.Stat {
+  operation ModeOf {
+    requires none
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its octal mode is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
   operation OwnerOf {
+    requires none
     input { path: FilePath }
     output {
       success: Bool from "exit_success"
@@ -406,6 +532,7 @@ service shell.Stat {
 
 service shell.Move {
   operation File {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "{source}", "{destination}"] }
@@ -416,6 +543,7 @@ service shell.Move {
   }
 
   operation NoReplaceDirectory {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "-T", "{source}", "{destination}"] }
@@ -428,6 +556,7 @@ service shell.Move {
 
 service shell.Chmod {
   operation OwnerOnlyDirectory {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0700", "{path}"] }
@@ -437,7 +566,19 @@ service shell.Chmod {
     }
   }
 
+  operation WorldWritableDirectory {
+    requires none
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0777", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0777 failed"
+    }
+  }
+
   operation OwnerReadWriteFile {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0600", "{path}"] }
@@ -448,6 +589,7 @@ service shell.Chmod {
   }
 
   operation RecursiveWritable {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
@@ -458,6 +600,7 @@ service shell.Chmod {
   }
 
   operation RecursiveReadOnly {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
@@ -470,6 +613,7 @@ service shell.Chmod {
 
 service shell.Copy {
   operation File {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "{source}", "{destination}"] }
@@ -480,6 +624,7 @@ service shell.Copy {
   }
 
   operation Recursive {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }
@@ -492,6 +637,7 @@ service shell.Copy {
 
 service shell.GCloud {
   operation AuthPrintAccessToken {
+    requires Network
     input {}
     output {
       access_token: Secret from "stdout"

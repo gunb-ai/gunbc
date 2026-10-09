@@ -1,6 +1,7 @@
 module std.effect_grant
 
 import std.types { Bool, String, List }
+import v2.std.algebra { filter }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 import std.access {
@@ -100,9 +101,14 @@ fn position_under(target: NamespacePosition, root: NamespacePosition) -> Bool {
     && path_is_prefix(prefix: root.path, path: target.path)
 }
 
+// ModeledRealization names an operation realization (v2.std.operation_realization) active in the
+// enclosing witness frame: the covered operations are answered by that model's handlers at their
+// transport observation, never by a real transport, a recorded fixture or a published mock. It is
+// the dry arm only, and a frame carrying one is admitted only under Hermetic execution.
 type HandlerBinding
   = RealTransport
   | Replay { fixture_store: String }
+  | ModeledRealization { realization: String }
 
 type LifecycleGrade
   = LifecycleByConstruction
@@ -185,15 +191,15 @@ fn grant_coverage_fold<T>(
 // fail-closed.
 
 fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
-  if grants.count() == 0 {
-    GrantNotCovered { verb: verb, target: target }
-  } else {
-    let g = grants.first()
-    if grant_covers(grant: g, verb: verb, target: target) {
-      GrantCoveredBy { grant: g }
-    } else {
-      grant_coverage_go(grants: grants.skip(n: 1), verb: verb, target: target)
-    }
+  match grants.first() {
+    Absent =>
+      GrantNotCovered { verb: verb, target: target }
+    Present { value: g } =>
+      if grant_covers(grant: g, verb: verb, target: target) {
+        GrantCoveredBy { grant: g }
+      } else {
+        grant_coverage_go(grants: grants.skip(n: 1), verb: verb, target: target)
+      }
   }
 }
 
@@ -234,8 +240,32 @@ fn namespace_tree_label(tree: NamespaceTree) -> String {
     FilesystemPathTree => "filesystem"
     UriTree => "uri"
     ProcTree => "proc"
-    ServiceOpTree { service: svc } => concat("service:", svc)
+    ServiceOpTree { service: svc } => concat(service_tree_label_prefix, svc)
     CodeNameTree => "code-name"
+  }
+}
+
+// THE LABELS' INVERSES, DERIVED FROM THE LABELS (review 72135): each inverse searches the closed
+// value set through the forward label function, so a label is spelled once, where it is written, and
+// a reader cannot drift from the writer. A service tree naming no service is refused rather than read
+// as some default service; its prefix is the one the writer uses.
+data effect_verb_values: List<Verb> = [Read, Write, Execute]
+
+fn verb_of_label(label: String) -> Verb? {
+  (filter(effect_verb_values, v => effect_verb_label(verb: v) == label)).first()
+}
+
+data service_tree_label_prefix: String = "service:"
+
+data namespace_trees_without_parameters: List<NamespaceTree> = [FilesystemPathTree, UriTree, ProcTree, CodeNameTree]
+
+fn namespace_tree_of_label(label: String) -> NamespaceTree? {
+  match (filter(namespace_trees_without_parameters, t => namespace_tree_label(tree: t) == label)).first() {
+    Present { value: t } => Present { value: t }
+    Absent =>
+      if starts_with(s: label, prefix: service_tree_label_prefix) && string_length(s: label) > string_length(s: service_tree_label_prefix) {
+        Present { value: ServiceOpTree { service: substring(s: label, start: string_length(s: service_tree_label_prefix), end: string_length(s: label)) } }
+      } else { none }
   }
 }
 
@@ -282,22 +312,22 @@ fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessD
 }
 
 fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
-  if parent_grants.count() == 0 {
-    false
-  } else {
-    let pg = parent_grants.first()
-    (verb_eq(a: grant_verb(g: pg), b: grant_verb(g: child_grant)) && position_under(target: grant_root(g: child_grant), root: grant_root(g: pg)))
-      || parent_covers_grant(parent_grants: parent_grants.skip(n: 1), child_grant: child_grant)
+  match parent_grants.first() {
+    Absent =>
+      false
+    Present { value: pg } =>
+      (verb_eq(a: grant_verb(g: pg), b: grant_verb(g: child_grant)) && position_under(target: grant_root(g: child_grant), root: grant_root(g: pg)))
+        || parent_covers_grant(parent_grants: parent_grants.skip(n: 1), child_grant: child_grant)
   }
 }
 
 fn all_child_grants_bounded(child_grants: List<Grant>, parent_grants: List<Grant>) -> Bool {
-  if child_grants.count() == 0 {
-    true
-  } else {
-    let cg = child_grants.first()
-    parent_covers_grant(parent_grants: parent_grants, child_grant: cg)
-      && all_child_grants_bounded(child_grants: child_grants.skip(n: 1), parent_grants: parent_grants)
+  match child_grants.first() {
+    Absent =>
+      true
+    Present { value: cg } =>
+      parent_covers_grant(parent_grants: parent_grants, child_grant: cg)
+        && all_child_grants_bounded(child_grants: child_grants.skip(n: 1), parent_grants: parent_grants)
   }
 }
 

@@ -1,0 +1,103 @@
+module test.claim.census_app_acquisition_refusal_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED ACQUISITION, ENROLLED AS EXECUTED REDS. gunbc.github_app_acquisition's claim is that a
+// caller cannot obtain a CensusAppAcquired over evidence it authored -- not by writing the receipt,
+// and not by calling the exported mint with standings of its own -- and on the source-to-.dag
+// acceptance path that claim is STRUCTURAL: the mint has no parameter a standing could occupy.
+// DESIGN section 4b rules that this does not excuse the check. A state unrepresentable in the
+// accepted corpus is still representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and the
+// compiler refusing it is the enrollable evidence. So test.probe.census_app_acquisition_forged_probe
+// spells both routes, this witness hands that source to the compiler through the diagnostic-census
+// harness the other forged-record probes use, and requires a BLOCKING row of the NAMED CLASS at
+// the NAMED SUBJECT for each. Neither a nonzero exit nor a total is asserted: a fixture importing a
+// production module never reads zero blocking rows, so a total would be a check with no RED.
+//
+// WHY THE ROUTE CLAIM IS THE ONE THAT MATTERS. The record-literal probe existed before this witness
+// and proved only that an outside module cannot WRITE the receipt; it did not prove an outside
+// module cannot CALL the mint with an authentic installation and invented registration and custody,
+// which is what the fourth round of review found (side-chat, 2026-09-21). The route claim below is
+// the control for that gap: the source spells the exported signature that round was against, three
+// standings into the mint, and the compiler refuses it at the mint's own name because the mint no
+// longer accepts evidence from anyone.
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// THE CONTROL IS THE SAME CLASS AND SUBJECT OVER A SOURCE THAT ONLY NAMES THE MODULE: it imports
+// the mint and the receipt type without forging either, and reads zero rows at both keys. Paired
+// with the two probe claims this is a differential on one axis -- mentioning the module versus
+// forging against it -- which is what makes the probe's refusals attributable to the forgeries.
+data harness_control_source: String = "module probe_census_app_acquisition_harness_control\nimport std.types { String }\nimport gunbc.github_app_acquisition { CensusAppAcquisitionReceipt, census_app_acquisition_standing, census_app_custody_handoff_directory }\nfn dir() -> String { census_app_custody_handoff_directory }\n"
+
+test fn a_source_that_only_names_the_acquisition_module_forges_no_receipt() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: harness_control_source),
+    wanted: "SoleConstructorViolation", subject: "CensusAppAcquisitionReceipt",
+  ) == 0
+}
+
+fn standings_refused_at(c: CompileDiagnosticCensus) -> Bool {
+  (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "registration") >= 1)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "installation") >= 1)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "custody") >= 1)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallPositionalDeficit", subject: "record") >= 1)
+}
+
+fn no_standing_is_refused_in(c: CompileDiagnosticCensus) -> Bool {
+  (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "registration") == 0)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "installation") == 0)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallArgumentNameUnknown", subject: "custody") == 0)
+    && (blocking_count_for_class_and_subject(c: c, wanted: "CallPositionalDeficit", subject: "record") == 0)
+}
+
+test fn a_source_that_only_names_the_acquisition_module_is_not_refused_at_the_mint() -> Bool {
+  no_standing_is_refused_in(c: census_of(source: harness_control_source))
+}
+
+// (a) THE RECORD HAS NO CONSTRUCTOR OUTSIDE THE MODULE. A hand-built receipt over an authored slug
+// and an authored custody path refuses at the literal.
+test fn a_forged_acquisition_receipt_cannot_be_authored_outside_the_module() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "census_app_acquisition_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "CensusAppAcquisitionReceipt",
+  ) >= 1
+}
+
+// (b) THE MINT CANNOT BE CALLED WITH STANDINGS. This is the route, not the record: an established
+// registration, an admissible installation and a custody-at-handoff, all authored, handed to the
+// exported mint. The mint's only parameter is the record that addresses its reads, so the call is
+// refused at resolution: each of the three standings is an argument the mint declares no parameter
+// for (CallArgumentNameUnknown, keyed by the census on the ARGUMENT name), and the record the mint
+// does require is unsupplied (CallPositionalDeficit at `record`). All four are asserted, and all
+// four read zero over the control above, so the refusal is attributable to spelling the old route
+// and not to naming the mint. No arm of the mint is reachable by an authored standing, and no
+// comparison inside it is what stands between this call and a receipt.
+test fn the_mint_cannot_be_called_with_authored_standings() -> Bool {
+  standings_refused_at(c: census_of(source: probe_source(name: "census_app_acquisition_forged_probe")))
+}

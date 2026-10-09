@@ -23,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE INSTANTIATION, and the whole point of the split. extdeps.pin owns the pinning DIMENSION as
 // Pin<Subject>; this module binds that dimension to ONE subject, CliTool, and owns only what is
 // genuinely subject-specific: how to project an identity out of a CliTool, and what ingesting the
-// existing roster means. Adding a second pinnable subject — SccacheBinaryArtifact, ActionRef, a
+// existing roster means. Adding a second pinnable subject — SccacheBinaryArtifact, an action tag coordinate, a
 // container image, a GitHub release — is a new sibling instantiation, NOT an edit to extdeps.pin
 // and NOT a second pin type (DESIGN section 2 horizontal: one concept, every breadth; the
 // Vendor<Domain> shape). If a future change to extdeps.pin is needed to admit a new subject, that
@@ -33,14 +33,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // The subject is carried BY VALUE, which is the defect the operator caught in the first shape
 // (2026-07-29). That version declared tool_name: NonEmptyStr and joined to the tool through string
 // equality — the single site in extdeps.tools doing so, against that module's own established
-// convention: resolve(tool: CliTool), ResolvedTool { tool: CliTool }, NotFound { tool: CliTool }
-// all pass the modeled row. A string foreign key into a type that is sitting right there is the
+// convention of passing the modeled row (then resolve(tool: CliTool), ResolvedTool and NotFound,
+// since deleted as dead; today apt_package_of(tool: CliTool) and apt_binary_path_of(tool: CliTool)). A string foreign key into a type that is sitting right there is the
 // anemic-leaf failure of DESIGN section 2, and it put tool identity in two places. Pin<CliTool>
-// carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the name from the row rather than
+// carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the program invocation from the row rather than
 // trusting a copy of it.
 
 fn cli_tool_pin_key_of(pin: Pin<CliTool>) -> NonEmptyStr {
-  pin.subject.name
+  pin.subject.program.invocation
 }
 
 // CORRECTING MY OWN OVERCLAIM, stated so it is not silently carried forward. When proposing this

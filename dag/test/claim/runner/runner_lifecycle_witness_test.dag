@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { list_length, NonEmptyStr }
 import std.measure { byte_size, byte_size_count }
 import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.runner_slot_allocation { srv3_fabric_first_slot, srv4_fabric_first_slot }
 import gunbc.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
@@ -35,9 +36,11 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_srv3,
   gunbc_runner_slot_allocation_srv4,
-  gunbc_runner_slots_per_host,
+  HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
@@ -88,15 +91,29 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
     }
 }
 
-// RENAMED 2026-08-23: the width is 21, not six. The two hosts still agree with each other and with
-// gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
-// per-host allocation rows and the function that derives width have not drifted apart. Naming the
-// number in the test's own identity meant the name went stale the moment the fleet's memory did.
+// THE LITERAL IS GONE AND THE ROW ASSERTS THE AGREEMENT IT IS NAMED FOR. It pinned 21 on all four
+// conjuncts; the 26/25 GiB row took the managed hosts to 17, so every conjunct was false and the
+// row had stopped being a check of anything -- its own comment says the width was renamed off six
+// for exactly this reason one width earlier, which is the tell that the LITERAL was the defect and
+// not its value (DESIGN 6: name the instrument, never transcribe its output).
+//
+// What this row actually checks is that the materialized per-host allocation rows and the function
+// that derives width have not drifted apart. That is a relation and it is asserted as one, so it
+// holds at any width and reds if the row and the derivation ever disagree.
+fn standing_width_agrees(standing: HostRunnerSlotAllocationStanding, host: HostIdentity) -> Bool {
+  match standing {
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
+    HostSlotAllocationAdmitted { allocation: a } =>
+      match gunbc_runner_committed_width(host: host) {
+        RunnerWidthUnresolved { cause: _ } => false
+        RunnerWidthDerived { slots: n } => a.slots_per_host == n && (a.host as String) == (host as String)
+      }
+  }
+}
+
 test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+  standing_width_agrees(standing: gunbc_runner_slot_allocation_srv3, host: operator_host_srv3)
+    && standing_width_agrees(standing: gunbc_runner_slot_allocation_srv4, host: operator_host_srv4)
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
@@ -155,13 +172,25 @@ fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
 // them registrable.
 //
 // BOTH DIRECTIONS ARE ASSERTED BECAUSE ONLY ONE OF THEM IS THE SAFETY CLAIM AND ONLY THE OTHER
-// PROVES THE GATE IS NOT VACUOUS. A gate that refused everything would satisfy the fabric row
-// alone; srv4-06 is the control -- the same slot index on a host of the same committed width --
-// and it must still receive the full twelve-step GitHub sequence.
+// PROVES THE GATE IS NOT VACUOUS. A gate that refused everything would satisfy the fabric rows
+// alone, so each fabric member is paired with a control on ITS OWN HOST: the slot one below it.
+//
+// BOTH SIDES ARE READ FROM THE MEMBERSHIP AUTHORITY, NOT TYPED AS SLOT LITERALS. The previous
+// control was srv4-06, chosen as "the same index on a host of the same width" when srv4 carried
+// no fabric member; gunbc.runner_slot_allocation srv4_fabric_first_slot made srv4-06 a fabric
+// slot on 2026-09-18, the control became a second fabric row, and the claim went red for a reason
+// it had nothing to say about. Deriving the subjects from srv3_fabric_first_slot and
+// srv4_fabric_first_slot means a moved fabric member moves the claim with it; the control below
+// each is a GitHub member by construction of the carve (the second fabric member sits ABOVE the
+// first, gunbc.runner_slot_allocation fabric_second_slot_index).
+fn fabric_member_refuses_and_its_neighbour_registers(fabric: RunnerSlotIdentity) -> Bool {
+  !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index))
+    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index - 1))
+}
+
 test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bool {
-  !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
-    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
-    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 5))
+  fabric_member_refuses_and_its_neighbour_registers(fabric: srv3_fabric_first_slot())
+    && fabric_member_refuses_and_its_neighbour_registers(fabric: srv4_fabric_first_slot())
 }
 
 // THE COLLISION ROW. Before the suffix fork was dissolved, runner_incarnation enumerated indices 1
@@ -195,3 +224,4 @@ test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool {
     && runner_slot_index_suffix(index: 5) == "05"
     && runner_slot_index_suffix(index: 6) == "06"
 }
+

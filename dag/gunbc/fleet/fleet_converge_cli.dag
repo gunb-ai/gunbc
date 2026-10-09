@@ -33,7 +33,7 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob, HostConverge }
 import gunbc.host_effect {
   HostOs,
   ProvisionCodexRuntime,
@@ -42,7 +42,7 @@ import gunbc.host_effect {
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ci_runner_placement {
   HostRunnerDeploymentRefusal,
   HostRunnerDeploymentRefused, HostRunnerDeploymentDerived,
@@ -50,14 +50,8 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   host_deployment_refusal_text,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-  operator_host_srv5,
-  operator_host_srv6,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import std.types { FilePath }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
@@ -128,7 +122,17 @@ fn absent_converge_target_cause(host: String) -> ConvergeCliRefusalCause {
     HostRunnerDeploymentRefused { refusal: r } =>
       match r.cause {
         HostNotEnrolledInFleet => UnknownHost { host: host }
-        _ => HostDeploymentRefused { host: host, cause: r.cause }
+        PrimaryCpuUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        UsableRamUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        SessionReservationUnestablished { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        FixedOverheadUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        CompilePoolUnavailable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostAllocationOversubscribedOnHost { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostAllocationUnchargeableOnHost { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        ZeroRunnerWidth => HostDeploymentRefused { host: host, cause: r.cause }
+        CommittedWidthUnresolved { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        JobserverCitationAbsent { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
+        HostCpuAllocationUnchargeable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
       }
     HostRunnerDeploymentDerived { deployment: _ } =>
       ConvergeTargetMissingForDerivedHost { host: host }
@@ -210,7 +214,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
           host: host,
           applied: 0,
           drifted: 0,
-          verdict: Absent,
+          verdict: VerdictAbsent,
           reason: Present {
             value: KnobFrontier {
               reason: concat(
@@ -247,7 +251,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
                 host: host,
                 applied: 0,
                 drifted: 0,
-                verdict: Absent,
+                verdict: VerdictAbsent,
                 reason: Present { value: KnobFrontier { reason: why } },
               }
           }
@@ -374,7 +378,7 @@ fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
       host: operator_host_srv3 as String,
       applied: host_converge_slice1_host_result_applied_count(result: result),
       drifted: 0,
-      verdict: Absent,
+      verdict: VerdictAbsent,
       reason: Present {
         value: KnobFrontier {
           reason: match host_converge_slice1_host_result_refusal_reason(result: result) {
@@ -411,7 +415,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           host: operator_host_srv1 as String,
           applied: 0,
           drifted: 0,
-          verdict: Absent,
+          verdict: VerdictAbsent,
           reason: Present {
             value: KnobFrontier {
               reason: "host_converge_slice1: receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
@@ -433,7 +437,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           host: operator_host_srv1 as String,
           applied: 0,
           drifted: 0,
-          verdict: Absent,
+          verdict: VerdictAbsent,
           reason: Present {
             value: KnobFrontier {
               reason: "host_converge_slice1: tasks receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
@@ -446,7 +450,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
         host: operator_host_srv1 as String,
         applied: 0,
         drifted: 0,
-        verdict: Absent,
+        verdict: VerdictAbsent,
         reason: Present { value: KnobFrontier { reason: why } },
       }
   }
@@ -469,7 +473,7 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
             host: host_converge.identity as String,
             applied: 0,
             drifted: 0,
-            verdict: Absent,
+            verdict: VerdictAbsent,
             reason: Present { value: KnobFrontier { reason: why } },
           }
       }
@@ -478,7 +482,7 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
         host: host_converge.identity as String,
         applied: 0,
         drifted: 0,
-        verdict: Absent,
+        verdict: VerdictAbsent,
         reason: Present { value: ComputeInventoryAbsent { host: host_converge.identity as String } },
       }
   }
@@ -505,7 +509,7 @@ fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemor
         host: host,
         applied: 0,
         drifted: 0,
-        verdict: Absent,
+        verdict: VerdictAbsent,
         reason: Present { value: KnobFrontier { reason: why } },
       }
   }
@@ -529,7 +533,7 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
       host: host,
       applied: 0,
       drifted: 0,
-      verdict: Absent,
+      verdict: VerdictAbsent,
       reason: Present {
         value: KnobFrontier {
           reason: concat(
@@ -646,10 +650,10 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // narrow §5): the self route is where a host READS the desired ref, and the knob receipt
 // alone cannot claim convergence while the deployed tree is not at the admitted revision.
 // converge_cli_receipt_join_revision MEETS the knob verdict with the revision standing on
-// the ConvergeVerdict lattice (converge_verdict_meet, Absent < Drifted < VerdictConverged)
+// the ConvergeVerdict lattice (converge_verdict_meet, VerdictAbsent < Drifted < VerdictConverged)
 // BEFORE the receipt line is rendered, so verdict=converged on the published converge-receipt
 // line is only constructable when the revision was observed AND matched. RevisionUnobserved
-// pulls the joint to Absent — an applied=0/drifted=0 knob run that never observed the desired
+// pulls the joint to VerdictAbsent — an applied=0/drifted=0 knob run that never observed the desired
 // revision can no longer render "converged" (bottom-as-ignorance is no longer written as
 // bottom-as-answer). The collector (join 5, fleet_receipt_collector parse_converge_receipt_line)
 // reads THIS one joint verdict off the converge-receipt line; converge_cli_revision_line
@@ -664,7 +668,7 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // arm carries both operands.)
 // The repo path is the ONE host_layout convention row.
 // DECLARED IMPRECISION, next-rung item (review, 2026-08-10). RevisionUnobserved maps to
-// Absent, but converge_verdict (host_converge) already mints Absent for "subject not present
+// VerdictAbsent, but converge_verdict (host_converge) already mints VerdictAbsent for "subject not present
 // on the host". So the isolated verdict=absent TOKEN conflates two states with OPPOSITE
 // remedies — install/converge the subject, vs fix the desired-ref observation (the srv1 b1
 // git-credential defect — different lane). This is the sentinel review 50817 warned about on
@@ -683,7 +687,7 @@ fn converge_cli_revision_verdict(standing: FleetRevisionStanding) -> ConvergeVer
   match standing {
     RevisionConverged { revision: _ } => VerdictConverged
     RevisionDrifted { desired: _, local: _ } => Drifted
-    RevisionUnobserved { cause: _ } => Absent
+    RevisionUnobserved { cause: _ } => VerdictAbsent
   }
 }
 
@@ -827,6 +831,20 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
+fn converge_cli_receipt_for_listed_host(hosts: List<HostConverge>, host: String) -> ConvergeCliReceipt {
+  match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+    Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+    Absent =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: VerdictAbsent,
+        reason: Present { value: absent_converge_target_cause(host: host) },
+      }
+  }
+}
+
 fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
@@ -834,7 +852,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
         host: host,
         applied: 0,
         drifted: 0,
-        verdict: Absent,
+        verdict: VerdictAbsent,
         reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
@@ -845,7 +863,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
-            verdict: Absent,
+            verdict: VerdictAbsent,
             reason: Present { value: SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } },
           }
         ConvergeSparkRoute { access: SparkManagedAccessAbsent { cause: _ } } =>
@@ -853,7 +871,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
-            verdict: Absent,
+            verdict: VerdictAbsent,
             reason: Present { value: SparkPreEnrollment { host: host } },
           }
         ConvergeSparkRoute { access: SparkManagedAccessGrounded } =>
@@ -864,22 +882,12 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
                 host: host,
                 applied: 0,
                 drifted: 0,
-                verdict: Absent,
+                verdict: VerdictAbsent,
                 reason: Present { value: SparkPreEnrollment { host: host } },
               }
           }
-        _ =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-          Absent =>
-            ConvergeCliReceipt {
-              host: host,
-              applied: 0,
-              drifted: 0,
-              verdict: Absent,
-              reason: Present { value: absent_converge_target_cause(host: host) },
-            }
-          }
+        ConvergeKnobFrontier => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
+        ConvergeOutsideFleet => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
       }
   }
 }

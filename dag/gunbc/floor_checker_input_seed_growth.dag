@@ -1,0 +1,36 @@
+module gunbc.floor_checker_input_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed growth for the required floor's checker-input observation. The RULE is .dag
+// (v2.workflow.floor_subject_seed checker_subject_rule). What is hand-authored here is the host
+// observation the rule reads: the path of the running executable, cargo's dep-info file beside
+// it, and the build manifests above each file it lists. The substrate cannot read its own
+// executable's path, and the rule has to judge the binary that is actually running.
+data floor_checker_input_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "CHECKER_SUBJECT_AUTHORITY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "CheckerSubjectApplication", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "parse_dep_info_prerequisites", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "find_rule_colon", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "checker_input_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "observe_checker_input_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "checker_inputs_from_record", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "checker_subject_application", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "evaluate_application", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "checker_subject_application_when_applied", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "decoded_string_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency", decl_name: "checker_module_seeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "dep_info_prerequisites_unescape_spaces_and_join_continuations", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "every_workspace_file_the_record_lists_is_a_checker_input", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "a_per_crate_record_that_omits_the_infer_crate_is_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "a_cargo_record_is_admitted_only_with_its_anchor", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "tempdir_with_manifest", field: WholeDeclaration },
+  ],
+  reason: "WHY RUST IS STILL NEEDED: which binary runs the floor, and which files cargo compiled it from, are facts about the running process and the build tool's output directory. No .dag primitive exposes the current executable's path. Reading the dep-info through a filesystem handler would still need that path, and a path supplied by the workflow would name a binary the floor never checked it is running. Decoding the CheckerSubjectApplication arm by variant is the usual host wire for a frame call, and an arm the host does not know refuses. The decision itself stays in .dag.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "A .dag process-identity effect returns the running executable's path, and the dep-info read, the manifest walk and the decode are expressed as a .dag fold over the filesystem handler. That is sufficient when all nineteen declarations in this row can be deleted and required_floor_runner calls one .dag producer for the observation and the decision together.",
+  current_boundary: "src/v1/stage0/src/cli_run/checker_dependency.rs observation -> v2.workflow.floor_subject_seed checker_subject_application_from_host -> src/v1/stage0/src/cli_run/required_floor_runner.rs run_required_floor seed list"
+}

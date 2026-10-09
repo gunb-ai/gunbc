@@ -1,8 +1,8 @@
 module gunbc.fabric_cell_observation_admission
 
 import std.types { String, List, Bool, list_length }
-import std.disposition { Disposition, SingleAuthority }
-import product.placement_supply { HostIdentity }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_cell_converge {
   FabricCellMember,
   FabricCellObservedMembers,
@@ -204,4 +204,4 @@ fn fabric_cell_observation_unobserved(host: HostIdentity) -> FabricCellObservati
   }
 }
 
-data module_disposition: Disposition = SingleAuthority
+data module_disposition: ConstructionMechanism = SingleAuthority

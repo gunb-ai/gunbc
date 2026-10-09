@@ -3,15 +3,16 @@ module gunbc.ledger_row_coherence
 import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
-  GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact,
+  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
+  GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
-  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
-  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
-  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
@@ -115,8 +116,13 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     WitnessFloorYamlArtifact => []
     FleetConvergeYamlArtifact => []
     FleetDesiredAdmissionYamlArtifact => []
+    MicrovmShakedownYamlArtifact => []
+    InstrumentDispatchYamlArtifact => []
+    HealWorkflowYamlArtifact => []
+    HealPublisherWorkflowYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
+    CargoConfigArtifact => []
     RoadmapArtifact => []
     DesignArtifact => []
     GithooksPrePushArtifact => []
@@ -127,13 +133,20 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     Stage0CrateLayoutGeneratedRsArtifact => []
     Stage0CratePartitionGeneratedDagArtifact => []
     Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    Stage0LinkedPartitionCratesArtifact => []
     SeedRetentionFrontierGeneratedRsArtifact => []
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
     Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []
     WholeCorpusCompileMeasuredRootDemandsArtifact => []
+    ApprovalDeviceVectorsArtifact => []
+    ApproveIosProjectYmlArtifact => []
+    ApproveIosProtocolSwiftArtifact => []
+    ApproveIosWireSwiftArtifact => []
+    ApproveIosProtocolVectorTestsSwiftArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
     PlanArtifact { plan: _ } => []

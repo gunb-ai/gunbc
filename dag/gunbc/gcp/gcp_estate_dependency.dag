@@ -1,7 +1,7 @@
 module gunbc.gcp_estate_dependency
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.gcp_estate_observation {
   GcpEstateCensus,
@@ -103,15 +103,23 @@ fn binding_pool_edge_from_numbers(
 
 fn edge_is_cross_project(edge: GcpEstateEdge) -> Bool {
   match edge {
+    ProjectHostsPool { project_number: _, pool_id: _ } => false
+    PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => false
+    BindingDependsOnAccount { account: _, role: _, member: _ } => false
+    BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => false
     BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => true
-    _ => false
+    BindingPrincipalSetUnparsed { account: _, member: _ } => false
   }
 }
 
 fn edge_is_unparsed_principal_set(edge: GcpEstateEdge) -> Bool {
   match edge {
+    ProjectHostsPool { project_number: _, pool_id: _ } => false
+    PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => false
+    BindingDependsOnAccount { account: _, role: _, member: _ } => false
+    BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => false
+    BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => false
     BindingPrincipalSetUnparsed { account: _, member: _ } => true
-    _ => false
   }
 }
 
@@ -208,7 +216,11 @@ fn census_has_cross_project_binding_for_account(
           pool_project_number: _,
           member: _,
         } => acc || a == account
-        _ => acc
+        ProjectHostsPool { project_number: _, pool_id: _ } => acc
+        PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => acc
+        BindingDependsOnAccount { account: _, role: _, member: _ } => acc
+        BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => acc
+        BindingPrincipalSetUnparsed { account: _, member: _ } => acc
       }
     },
   )
@@ -228,7 +240,11 @@ fn census_has_same_project_pool_binding_for_account(
           pool_project_number: _,
           member: _,
         } => acc || a == account
-        _ => acc
+        ProjectHostsPool { project_number: _, pool_id: _ } => acc
+        PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => acc
+        BindingDependsOnAccount { account: _, role: _, member: _ } => acc
+        BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => acc
+        BindingPrincipalSetUnparsed { account: _, member: _ } => acc
       }
     },
   )
@@ -257,7 +273,11 @@ fn census_cross_project_account_project_number(
               } else {
                 none
               }
-            _ => none
+            ProjectHostsPool { project_number: _, pool_id: _ } => none
+            PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => none
+            BindingDependsOnAccount { account: _, role: _, member: _ } => none
+            BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => none
+            BindingPrincipalSetUnparsed { account: _, member: _ } => none
           }
       }
     },

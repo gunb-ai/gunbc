@@ -10,13 +10,16 @@ import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect }
 import std.effects { ExecuteEffect }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_posix_accounts {
   GroundedPosixPrincipal,
   PosixSudoGrant,
   DeployRunnerPrincipal,
   FleetAccountCiRunner,
   FleetAccountOperator,
+  ci_runner_sudoers_install_binaries,
+  ci_runner_sudo_binary_path,
+  ci_runner_sudo_binary_probe,
   srv1_ci_deploy_runner_principal,
   fleet_posix_principal,
   fleet_deploy_job_principal,
@@ -110,6 +113,29 @@ fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
 
 fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { grant: g }
+}
+
+// THE PRE-INSTALL SCOPE OF A DEPLOY WHOSE SCRIPT INSTALLS THE DROP-IN FIRST. The principal, host and
+// transport are unchanged; only the demanded commands narrow, to exactly what the install spends
+// (gunbc.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
+// rather than filtered from the principal's roster, so a principal whose roster lacks visudo or
+// install still has them demanded and still refuses before mutation -- a filter would have answered
+// an empty demand, and an empty demand is a permit.
+fn deploy_access_sudoers_install_scope(access: DeployAccess) -> DeployAccess {
+  DeployAccess {
+    principal: access.principal,
+    host: access.host,
+    transport: access.transport,
+    privileged_commands: map(
+      ci_runner_sudoers_install_binaries,
+      b => PrivilegedCommand {
+        grant: PosixSudoGrant {
+          command_path: ci_runner_sudo_binary_path(b: b),
+          probe: ci_runner_sudo_binary_probe(b: b),
+        }
+      }
+    ),
+  }
 }
 
 fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
@@ -310,14 +336,14 @@ fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
 }
 
 fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
-  let sample = access.privileged_commands.first()
-  concat(
-    concat(
-      concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
-      concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
-    ),
-    deploy_access_sudoers_line(access: access, cmd: sample)
+  let head = concat(
+    concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
+    concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
   )
+  match access.privileged_commands.first() {
+    Absent => head
+    Present { value: sample } => concat(head, deploy_access_sudoers_line(access: access, cmd: sample))
+  }
 }
 
 fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {

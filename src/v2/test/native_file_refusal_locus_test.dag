@@ -1,0 +1,73 @@
+module v2.test.native_file_refusal_locus
+
+import v2.compiler.compile { native_test_file_refusal }
+import v2.compiler.native_test_vocabulary {
+  NativeTestFileRefusal, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtInvariant,
+  native_test_file_refusal_fatal_reason
+}
+import v2.std.diagnostic {
+  Diagnostic, NonEmptyDiagnostics, Textual, ByteRange, Unavailable, ExternalContractUnknown,
+  invariant_port_locus
+}
+import std.algebra { Cons, Empty }
+import v2.std.integer { Int }
+import v2.std.provenance { span_index_empty }
+import std.optional { optional_absent }
+import v2.std.node { Symbol }
+
+fn at_text(file: Symbol, start: Int) -> Diagnostic {
+  Diagnostic {
+    reason: ^native_file_refusal_locus_fatal,
+    at: Textual { file: file, extent: ByteRange { start: start, end: start + 1 } },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn residue_head() -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_choice_overlap_residue,
+    at: invariant_port_locus(port: ^native_file_refusal_locus_port, invariant: ^grammar_choice_overlap),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE ROW THE NATIVE ROUTE WRITES, WITH ITS CHAIN. The advisory head (an invariant port, unpositioned
+// by construction) and the fatal at byte 4 of a text whose first character is two UTF-8 bytes and
+// whose first line ends at byte 2: line 2, byte column 2. Before the chain the row carried three
+// symbols and no position at all; a character-indexed conversion would answer column 3.
+fn located_row() -> NativeTestFileRefusal {
+  native_test_file_refusal(
+    path: ^native_file_refusal_locus_fixture,
+    module: optional_absent(),
+    d: NonEmptyDiagnostics { head: residue_head(), tail: [at_text(file: ^native_file_refusal_locus_fixture, start: 4)] },
+    spans: span_index_empty(),
+    text: "\u{00e9}\u{000a}ab"
+  )
+}
+
+test fn the_fatal_link_is_positioned_at_its_line_and_byte_column() -> Bool {
+  let row = located_row()
+  match row.chain.tail {
+    Cons { head: f, tail: Empty } =>
+      (match row.chain.head.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
+        && (match f.at { FileRefusalAtLine { line: l, byte_column: c } => l == 2 && c.value == 2 _ => false })
+        && native_test_file_refusal_fatal_reason(fr: row) == ^native_file_refusal_locus_fatal
+    _ => false
+  }
+}
+
+// A locus in ANOTHER file is not positioned against this file's text: its byte offset would land on
+// an unrelated line here, a confident wrong answer.
+test fn a_locus_in_another_file_is_not_positioned_against_this_one() -> Bool {
+  let row = native_test_file_refusal(
+    path: ^native_file_refusal_locus_fixture,
+    module: optional_absent(),
+    d: NonEmptyDiagnostics { head: at_text(file: ^native_file_refusal_locus_elsewhere, start: 4), tail: [] },
+    spans: span_index_empty(),
+    text: "\u{00e9}\u{000a}ab"
+  )
+  match row.chain.tail {
+    Empty => match row.chain.head.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => false }
+    _ => false
+  }
+}

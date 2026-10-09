@@ -1,11 +1,10 @@
 module v2.compiler.self_host.seed_retention_frontier
 
+import std.types { List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.algebra { any, filter, length, list_map }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // The third sibling of the two self-host frontiers already in tree
@@ -71,7 +70,6 @@ import v2.std.text { String }
 
 type SeedRetentionCause
   = SeedRetainedIntrinsicSource
-  | QuarantineScaffoldSource
   | WetActuatorGeneratedSource
   | EmitterProducedDivergentSource
   | SupportDirectoryMemberSource
@@ -171,37 +169,19 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/coproduct_reflection.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/data_initializer_identity.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "data_initializer_identity_seed_retained_note"),
   retained_reason_elsewhere(path: "src/declaration_index.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.declaration_index_seed_growth", decl_name: "declaration_index_seed_growth_note"),
-  retained_reason_elsewhere(path: "src/namespace_wave_admission.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.namespace_wave_admission", decl_name: "namespace_wave_admission_note"),
-  retained_reason_undeclared(path: "src/resolved_graph_cache.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/shared_typecheck_store.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_elsewhere(path: "src/namespace_baseline.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.namespace_baseline_seed_growth", decl_name: "namespace_baseline_seed_growth_note"),
+  retained_reason_undeclared(path: "src/closure_identity.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/recorded_fixture.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/phase_profile.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/pre_push.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/census_exclude_derive.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/derived_realization_schedule.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_body_producer.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_normalize.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_target_carriers.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_discovery_enumeration.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_parse_engine_hooks.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_use_site_verdict.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/cssl_seed_linked_closure_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/evaluation_budget_consequence_falsifier_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/process_group.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/behavioral_receipt_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.target_invocation_seed_growth", decl_name: "target_invocation_seed_growth_justification"),
-  retained_reason_elsewhere(path: "src/v2_compiler_compile.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_program_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_source_authority.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/std_logic.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "std_logic_seed_oracle_retention_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_algebra.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_collection.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_node.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_resolve.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_program_partition.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_tokenize.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_infer.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_stage0_crate_layout_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_seed_retention_frontier_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/v1_interpreter_dispatch_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "v1_interpreter_dispatch_generated_family_note"),

@@ -7,8 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, Int, List }
 import v2.std.algebra { any, length, fold_list }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -168,18 +167,24 @@ fn floor_discovery_line_has_wire_contract_decl(line: String) -> Bool {
   }
 }
 
+// A wire-contract declaration names one of its two types, so content naming neither has none;
+// the native substring test is implied by the per-line rule and skips the interpreted split.
 fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
-  fold_list(
-    xs: split(s: content, delimiter: "\n"),
-    empty: false,
-    cons: fn(found, line) {
-      if found {
-        true
-      } else {
-        floor_discovery_line_has_wire_contract_decl(line: line)
+  if !string_contains(s: content, pattern: "CoproductWireContract") && !string_contains(s: content, pattern: "VariantEncoding") {
+    false
+  } else {
+    fold_list(
+      xs: split(s: content, delimiter: "\n"),
+      empty: false,
+      cons: fn(found, line) {
+        if found {
+          true
+        } else {
+          floor_discovery_line_has_wire_contract_decl(line: line)
+        }
       }
-    }
-  )
+    )
+  }
 }
 
 fn floor_discovery_line_is_disposition_row(line: String) -> Bool {
@@ -350,26 +355,33 @@ type FloorDiscoveryEntryLiveTreeOutcome
   = EntryLiveTreeResolved { disposition: LiveTreeDisposition }
   | EntryLiveTreeDispositionRefused { reason: String }
 
+// A disposition row is a line starting `data live_tree_disposition`, so content without that name
+// carries no row and resolves to the undeclared default, exactly as the fold would; the native
+// substring test skips splitting every such file into lines.
 fn floor_discovery_resolve_entry_live_tree(
   entry_path: String,
   content: String
 ) -> FloorDiscoveryEntryLiveTreeOutcome {
-  let folded = fold(
-    split(s: content, delimiter: "\n"),
-    init: floor_discovery_disposition_fold_zero(),
-    f: fn(acc, line) {
-      floor_discovery_disposition_fold_line(
-        state: acc,
-        entry_path: entry_path,
-        line: line
-      )
-    }
-  )
-  match folded.refusal {
-    Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
-    Absent => match folded.disposition {
-      Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
-      Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
+  if !string_contains(s: content, pattern: "live_tree_disposition") {
+    EntryLiveTreeResolved { disposition: ReadsLiveTree }
+  } else {
+    let folded = fold(
+      split(s: content, delimiter: "\n"),
+      init: floor_discovery_disposition_fold_zero(),
+      f: fn(acc, line) {
+        floor_discovery_disposition_fold_line(
+          state: acc,
+          entry_path: entry_path,
+          line: line
+        )
+      }
+    )
+    match folded.refusal {
+      Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
+      Absent => match folded.disposition {
+        Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
+        Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
+      }
     }
   }
 }

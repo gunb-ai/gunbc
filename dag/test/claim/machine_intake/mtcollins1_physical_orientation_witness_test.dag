@@ -1,0 +1,580 @@
+module test.claim.machine_intake.mtcollins1_physical_orientation_witness
+
+import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.nat { Nat }
+import std.measure { millivolt }
+import extdeps.ampere.smpro_register { SmproBootProgressRead, SmproBootProgressRefused }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsDimmPopulationRow, mt_collins_channel_connector_pairs, mt_collins_population_8_dimms, mt_collins_population_16_dimms,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigureBank, dimm_figure_banks, memory_connector_layout_figure, RightOfProcessor,
+}
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.managed_host {
+  ManagedHostFound, ManagedHostNotManaged, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  managed_host_binding_for,
+}
+import gunbc.machine_intake_mtcollins1_dimm_connector_observation { mtcollins1_blue_connector_observation }
+import gunbc.machine_intake_dimm_physical_orientation {
+  DimmOrientedHost, HostDimmOriented, HostDimmBoardUnmodeled, host_dimm_orientation, host_dimm_slot_map, host_damaged_candidates,
+}
+import gunbc.machine_intake_dimm_row_orientation {
+  DimmPlacementAnchor, DimmViewHypothesis, DimmSlotMap, DimmTrainedSlot, DimmDamagedConnectorReport,
+  ChassisViewpoint, ChassisEnd, FirmwareTrainedFact, OperatorByEyeReport, VendorFigureFact, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
+  IntendedAtPhysicalConnectors,
+  FigureOrder, FullMirror, SocketHalvesSwapped,
+  AnchorContradicted, AnchorConsistent, AnchorUnevaluable, AnchorFrameUnreported,
+  OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported, OrientationAnchorFramesDisagree,
+  DamagedCandidates, DamagedCandidatesRefused, DamageFrameUnreported,
+  PopulationAvoidsDamage, PopulationUsesDamaged, PopulationDamageUndetermined,
+  SlotMapRendered, SlotMapRefused, SlotMapOrientationUnresolved, SlotMapDamageUnresolved, SlotMapPopulationUsesDamaged,
+  SlotMapPopulationUnresolved, SlotMapConnectorUnresolved,
+  ViewpointAgreesWithFigureBet, ViewpointDisagreesWithFigureBet,
+  SlotDamaged, SlotPopulated, SlotEmpty,
+  PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable,
+  anchor_verdict, resolve_orientation, damaged_connector_candidates, population_damage_standing,
+  expected_firmware_readback, trained_sets_equal,
+}
+import gunbc.machine_intake_mtcollins1_physical_orientation {
+  mtcollins1_three_stick_anchor, mtcollins1_two_stick_anchor, mtcollins1_placement_anchors, mtcollins1_damaged_connector_report,
+  Socket1TrainedNothing, Socket1TrainedIn, MaskMatchedTrainedControllers, MaskDiverged,
+  socket1_standing, mask_correlation, placement_readbacks, history_block, installed_connectors,
+  hypothesis_text, stick_swap_verdict, StickCleared, StickNotCleared, date_text, socket_damage_text,
+}
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1Socket1InvestigationBoot,
+  mtcollins1_operator_front_report, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
+  MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
+  MtCollins1SocketDamageReport, mtcollins1_socket1_pin_damage_report,
+  MtCollins1SecondaryJoinReading, secondary_join_outcome, SecondaryJoined, SecondaryJoinTimeout, SecondaryJoinUnclassified,
+  mtcollins1_secondary_join_reading_two_cpus, mtcollins1_cpu0_fingerprint_comparison, MtCollins1CpuFingerprintComparison, MtCollins1SocketFingerprint,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BOUND MTCOLLINS1 HOST'S ORIENTATION OVER `anchors`: the real managed-host row, its real binding,
+// and the figure of the baseboard its controller reported. Absent is every arm that is not a bound
+// host on a modeled board, so a claim built on it is false rather than vacuously true.
+fn mtcollins1_oriented(anchors: List<DimmPlacementAnchor>) -> DimmOrientedHost? {
+  match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    ManagedHostNotManaged { host: _ } => Absent
+    ManagedHostFound { standing: s } => match s {
+      ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+        HostDimmOriented { oriented: o } => Present { value: o }
+        HostDimmBoardUnmodeled { host: _, board: _ } => Absent
+      }
+      ManagedHostAccessUnobserved { endpoint: _ } => Absent
+      ManagedHostNotSecured { cause: _ } => Absent
+      ManagedHostEndpointMismatch { observed: _, secured: _ } => Absent
+    }
+  }
+}
+
+data blue_connectors: List<Nat> = mtcollins1_blue_connector_observation.colour_population.connectors
+
+fn slot_map_for(anchors: List<DimmPlacementAnchor>, tech_end: ChassisEnd, with_history: Bool, population: MtCollinsDimmPopulationRow, installed: List<Nat>, report: DimmDamagedConnectorReport) -> DimmSlotMap? {
+  match mtcollins1_oriented(anchors: anchors) {
+    Absent => Absent
+    Present { value: o } => Present { value: host_dimm_slot_map(oriented: o, tech_end: tech_end, history: if with_history { history_block(history: mtcollins1_socket1_investigation_boots, oriented: o) } else { [] }, population: population, installed: installed, report: report, blue_connectors: blue_connectors) }
+  }
+}
+
+fn same_nats(a: List<Nat>, b: List<Nat>) -> Bool {
+  list_length(items: a) == list_length(items: b)
+    && fold(a, init: true, f: (acc, x) => acc && fold(b, init: false, f: (o, y) => o || x == y))
+}
+
+// A controlled fixture for the discriminating boot: only the drawing-'J25' stick removed.
+// Not an observation; the real roster lands as a production anchor row.
+fn two_stick_fixture(controller: Nat) -> DimmPlacementAnchor {
+  DimmPlacementAnchor {
+    evidence: FirmwareTrainedFact { run_id: 1, artifact: "controlled fixture", roster_lines: ["fixture"] },
+    frame: front_fixture,
+    placed_at_drawing_labels: [1, 17],
+    trained: [DimmTrainedSlot { socket: 0, controller: controller, slot: 0 }],
+    live_sockets: [0],
+  }
+}
+
+data rear_fixture: ChassisViewpoint = ViewpointReported { end: RearEnd, report: OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
+} }
+
+data front_fixture: ChassisViewpoint = ViewpointReported { end: FrontEnd, report: OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
+} }
+
+fn resolves_to(anchors: List<DimmPlacementAnchor>, banks: List<MtCollinsDimmFigureBank>, want: DimmViewHypothesis) -> Bool {
+  match resolve_orientation(anchors: anchors, banks: banks, pairs: mt_collins_channel_connector_pairs) {
+    OrientationResolved { hypothesis: h, order: _ } => h == want
+    OrientationAmbiguous { surviving: _ } => false
+    OrientationContradicted => false
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
+  }
+}
+
+// THE CHECK THAT WOULD HAVE CAUGHT 2026-09-23. Reading the operator's view as Figure 9's
+// order predicts only SK0 MC0 S0 from the three-stick boot (drawing J17 and J25 on the absent
+// socket), and the firmware trained SK0 MC0 S0 and SK0 MC4 S0.
+test fn w_unmirrored_figure_order_contradicts_firmware() -> Bool {
+  match anchor_verdict(anchor: mtcollins1_three_stick_anchor, hypothesis: FigureOrder, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    AnchorContradicted { predicted: p } => list_length(items: p) == 1 && p.first().socket == 0 && p.first().controller == 0
+    AnchorConsistent => false
+    AnchorUnevaluable { unresolved_key: _ } => false
+    AnchorFrameUnreported => false
+  }
+}
+
+// The three-stick boot alone cannot say whether the view is a full mirror or a socket swap:
+// both put the two trained sticks on SK0 MC0 and SK0 MC4. With only that anchor the damaged
+// connector stays a candidate set {J5, J13}, every candidate is excluded from population
+// choice, and the slot map refuses rather than naming J numbers.
+test fn w_three_stick_anchor_alone_leaves_the_orientation_ambiguous() -> Bool {
+  let o = resolve_orientation(anchors: [mtcollins1_three_stick_anchor], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  let ambiguous = match o {
+    OrientationAmbiguous { surviving: s } => s == [FullMirror, SocketHalvesSwapped]
+    OrientationResolved { hypothesis: _, order: _ } => false
+    OrientationContradicted => false
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
+  }
+  let candidates = damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: o, banks: dimm_figure_banks)
+  let both = match candidates {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5, 13])
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let sixteen = match population_damage_standing(population: mt_collins_population_16_dimms, candidates: candidates) {
+    PopulationUsesDamaged { population: _, connectors: cs } => same_nats(a: cs, b: [5, 13])
+    PopulationAvoidsDamage { population: _ } => false
+    PopulationDamageUndetermined { candidates: _ } => false
+  }
+  let refused = match slot_map_for(anchors: [mtcollins1_three_stick_anchor], tech_end: RearEnd, with_history: false, population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report) { Absent => false  Present { value: m } => match m {
+    SlotMapRefused { refusal: r } => match r {
+      SlotMapOrientationUnresolved { orientation: _ } => true
+      SlotMapDamageUnresolved { candidates: _ } => false
+      SlotMapPopulationUsesDamaged { connectors: _ } => false
+      SlotMapPopulationUnresolved { identity: _ } => false
+      SlotMapConnectorUnresolved { connector: _ } => false
+    }
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: _ } => false
+  } }
+  ambiguous && both && sixteen && refused
+}
+
+// The production anchors (runs 35805796492 and 35808203121) resolve the full mirror, the
+// damaged connector to J5, and the population consequence: the 16-DIMM row uses J5, the
+// 8-DIMM Table 11 row avoids it. A damage report with no frame refuses the whole plan.
+test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
+  let today = mtcollins1_oriented(anchors: mtcollins1_placement_anchors)
+  let resolved = match match today { Present { value: t } => Present { value: t.outcome }  Absent => Absent } { Absent => false  Present { value: outcome } => match outcome {
+    OrientationResolved { hypothesis: h, order: _ } => h == FullMirror
+    OrientationAmbiguous { surviving: _ } => false
+    OrientationContradicted => false
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
+  } }
+  let candidates = match today { Present { value: t } => host_damaged_candidates(oriented: t, report: mtcollins1_damaged_connector_report)  Absent => DamageFrameUnreported }
+  let j5 = match candidates {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5])
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let sixteen = match population_damage_standing(population: mt_collins_population_16_dimms, candidates: candidates) {
+    PopulationUsesDamaged { population: _, connectors: cs } => same_nats(a: cs, b: [5])
+    PopulationAvoidsDamage { population: _ } => false
+    PopulationDamageUndetermined { candidates: _ } => false
+  }
+  let eight = match population_damage_standing(population: mt_collins_population_8_dimms, candidates: candidates) {
+    PopulationAvoidsDamage { population: p } => p.dimm_count == 8
+    PopulationUsesDamaged { population: _, connectors: _ } => false
+    PopulationDamageUndetermined { candidates: _ } => false
+  }
+  let gated = match slot_map_for(anchors: mtcollins1_placement_anchors, tech_end: FrontEnd, with_history: false, population: mt_collins_population_8_dimms, installed: [25, 9], report: damage_report_in(frame: ViewpointNotYetReported { asked: "controlled fixture" })) { Absent => false  Present { value: m } => match m {
+    SlotMapRefused { refusal: r } => match r {
+      SlotMapDamageUnresolved { candidates: _ } => true
+      SlotMapPopulationUsesDamaged { connectors: _ } => false
+      SlotMapOrientationUnresolved { orientation: _ } => false
+      SlotMapPopulationUnresolved { identity: _ } => false
+      SlotMapConnectorUnresolved { connector: _ } => false
+    }
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: _ } => false
+  } }
+  let undetermined = match population_damage_standing(population: mt_collins_population_8_dimms, candidates: DamagedCandidatesRefused { orientation: OrientationContradicted }) {
+    PopulationDamageUndetermined { candidates: _ } => true
+    PopulationAvoidsDamage { population: _ } => false
+    PopulationUsesDamaged { population: _, connectors: _ } => false
+  }
+  resolved && j5 && sixteen && eight && gated && undetermined
+}
+
+// The discriminating boot resolves each way, and the damaged connector follows: MC4 surviving
+// means the full mirror and J5; MC0 surviving means the socket swap and J13.
+test fn w_discriminating_anchor_resolves_the_damaged_connector() -> Bool {
+  let mirror = [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 4)]
+  let swapped = [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 0)]
+  let j5 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: mirror, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5])
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let j13 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: swapped, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [13])
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  resolves_to(anchors: mirror, banks: dimm_figure_banks, want: FullMirror)
+    && resolves_to(anchors: swapped, banks: dimm_figure_banks, want: SocketHalvesSwapped)
+    && j5 && j13
+}
+
+// MUTATIONS. (1) The anchor: had the firmware trained only SK0 MC0, the figure order would
+// survive alone. (2) The vendor bank order: with CPU0's right bank read ascending (J9..J16
+// instead of J16..J9), the socket swap now predicts J9's neighbours differently and the
+// damaged candidate moves, so the candidate is a function of Figure 9, not a literal.
+test fn w_mutations_move_the_verdict() -> Bool {
+  let only_mc0 = DimmPlacementAnchor {
+    evidence: mtcollins1_three_stick_anchor.evidence,
+    frame: mtcollins1_three_stick_anchor.frame,
+    placed_at_drawing_labels: mtcollins1_three_stick_anchor.placed_at_drawing_labels,
+    trained: [DimmTrainedSlot { socket: 0, controller: 0, slot: 0 }],
+    live_sockets: [0],
+  }
+  let ascending = map(dimm_figure_banks, b => if b.processor_socket == 0 && b.side == RightOfProcessor {
+    MtCollinsDimmFigureBank { figure: b.figure, processor_socket: 0, processor_figure_label: b.processor_figure_label, side: b.side, connectors_left_to_right: [9, 10, 11, 12, 13, 14, 15, 16] }
+  } else { b })
+  let moved = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: [mtcollins1_three_stick_anchor], banks: ascending, pairs: mt_collins_channel_connector_pairs), banks: ascending) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => !same_nats(a: cs, b: [5, 13])
+    DamagedCandidatesRefused { orientation: _ } => true
+    DamageFrameUnreported => false
+  }
+  resolves_to(anchors: [only_mc0], banks: dimm_figure_banks, want: FigureOrder) && moved
+}
+
+// THE RENDERED MAP FOR TODAY, entirely on production rows: both firmware anchors, the operator's
+// reported front frame on both anchors and on the damage report, and the 8-DIMM population.
+fn sixteen_today() -> DimmSlotMap? {
+  match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) {
+    Absent => Absent
+    Present { value: o } => slot_map_for(anchors: mtcollins1_placement_anchors, tech_end: FrontEnd, with_history: true, population: mt_collins_population_16_dimms, installed: installed_connectors(history: mtcollins1_socket1_investigation_boots, oriented: o), report: mtcollins1_damaged_connector_report)
+  }
+}
+
+fn rendered_today() -> DimmSlotMap? {
+  match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) {
+    Absent => Absent
+    Present { value: o } => slot_map_for(anchors: mtcollins1_placement_anchors, tech_end: FrontEnd, with_history: true, population: mt_collins_population_8_dimms, installed: installed_connectors(history: mtcollins1_socket1_investigation_boots, oriented: o), report: mtcollins1_damaged_connector_report)
+  }
+}
+
+test fn w_slot_map_renders_left_to_right_for_a_tech() -> Bool {
+  match rendered_today() { Absent => false  Present { value: m } => match m {
+    SlotMapRendered { end: _, readback: rb, lines: ls, damage: _, agreement: a, text: t } =>
+      list_length(items: ls) == 32
+      && fold(ls, init: true, f: (ok, l) => ok && ((l.connector == 5) == (l.state == SlotDamaged)) && ((l.connector == 1 || l.connector == 17) == (l.state == SlotPopulated)))
+      && match a { ViewpointAgreesWithFigureBet { bet: _ } => true  ViewpointDisagreesWithFigureBet { expected: _, bet: _ } => false }
+      && string_contains(s: t, pattern: "Cross-check: the firmware-resolved front view agrees with reading Figure 9 in Figure 10's frame. That reading is uncited: ")
+      && string_contains(s: t, pattern: "Standing at the FRONT (NVMe backplane and six fans (front)), from LEFT edge to RIGHT edge:\n1. blue  J25  SK1 MC4  empty\n")
+      && string_contains(s: t, pattern: "\n16. blue  J17  SK1 MC0  populated\n17. blue  J9  SK0 MC4  empty\n")
+      && string_contains(s: t, pattern: "\n28. blue  J5  SK0 MC2  DAMAGED - do not use\n")
+      && string_contains(s: t, pattern: "\n32. blue  J1  SK0 MC0  populated\n")
+      && string_contains(s: t, pattern: "Population of 8 DIMMs avoids the damaged connector.")
+      && list_length(items: rb) == 8
+      && string_contains(s: t, pattern: "\nInstall at (position from the LEFT edge, J number): 1 (J25), 3 (J27), 14 (J19), 16 (J17), 17 (J9), 19 (J11), 30 (J3), 32 (J1)\n")
+      && string_contains(s: t, pattern: "Expected firmware roster for this population: SK0 MC0 S0, SK0 MC1 S0, SK0 MC4 S0, SK0 MC5 S0, SK1 MC0 S0, SK1 MC1 S0, SK1 MC4 S0, SK1 MC5 S0\n")
+      && string_contains(s: t, pattern: "\nrun 35808203121: drawing 'J1','J17' = physical J25, J9 -> trained SK0 MC4 S0; DRAM 16 GiB; mcu_enable_mask = 00000010 [default: 000000ff]\n")
+      && string_contains(s: t, pattern: "\nrun 35805796492: drawing 'J1','J17','J25' = physical J25, J9, J1 -> trained SK0 MC0 S0, SK0 MC4 S0; DRAM 32 GiB;")
+      && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 6 boots, including the J9+J25 placement (run 35805796492, run 35808203121).\n")
+    SlotMapRefused { refusal: _ } => false
+  } }
+}
+
+// THE PLAN'S SUCCESS CRITERION SPANS THE BOARD. An 8-DIMM plan expects 8 roster lines across
+// both sockets although this unit's socket 1 trains nothing: the expected readback is what a
+// correct install reads back. Mutation: filtering by today's live sockets drops SK1's four.
+test fn w_eight_dimm_plan_expects_both_sockets() -> Bool {
+  let plan = match rendered_today() { Absent => false  Present { value: m } => match m {
+    SlotMapRendered { end: _, readback: rb, lines: _, damage: _, agreement: _, text: _ } =>
+      list_length(items: rb) == 8 && list_length(items: filter(rb, t => t.socket == 1)) == 4
+    SlotMapRefused { refusal: _ } => false
+  } }
+  let live_filtered = expected_firmware_readback(connectors: mt_collins_population_8_dimms.connectors, live_sockets: mtcollins1_two_stick_anchor.live_sockets, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  plan && list_length(items: live_filtered.predicted) == 4
+}
+
+fn damage_report_in(frame: ChassisViewpoint) -> DimmDamagedConnectorReport {
+  let r = mtcollins1_damaged_connector_report
+  DimmDamagedConnectorReport { frame: frame, counted_from: r.counted_from, ordinal: r.ordinal, damage: r.damage, report: r.report, supersedes: r.supersedes }
+}
+
+// THE DAMAGE REPORT CARRIES ITS OWN FRAME. The same "5th from the right edge" names J5 from
+// the front and J29 from the rear, so without a reported end it must not mint any J.
+test fn w_damage_report_resolves_only_in_its_own_frame() -> Bool {
+  let o = match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) { Present { value: t } => t.outcome  Absent => OrientationContradicted }
+  let front = match damaged_connector_candidates(report: damage_report_in(frame: front_fixture), orientation: o, banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => cs == [5]
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let rear = match damaged_connector_candidates(report: damage_report_in(frame: rear_fixture), orientation: o, banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => cs == [29]
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let unframed = match damaged_connector_candidates(report: damage_report_in(frame: ViewpointNotYetReported { asked: "controlled fixture" }), orientation: o, banks: dimm_figure_banks) {
+    DamageFrameUnreported => true
+    DamagedCandidates { connectors: _, hypotheses: _ } => false
+    DamagedCandidatesRefused { orientation: _ } => false
+  }
+  front && rear && unframed
+}
+
+// The same physical row seen from the other end: left and right reverse, and every
+// connector keeps its J number, socket and controller.
+test fn w_other_end_reverses_left_right_but_not_identity() -> Bool {
+  let anchors = [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 4)]
+  let rear_map = slot_map_for(anchors: anchors, tech_end: RearEnd, with_history: false, population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report)
+  let front_map = slot_map_for(anchors: anchors, tech_end: FrontEnd, with_history: false, population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report)
+  match rear_map { Absent => false  Present { value: rear } => match front_map { Absent => false  Present { value: front } =>
+  match rear {
+    SlotMapRendered { end: _, readback: _, lines: r, damage: _, agreement: _, text: _ } => match front {
+      SlotMapRendered { end: _, readback: _, lines: f, damage: _, agreement: _, text: _ } =>
+        r.first().connector == f.last().connector && r.last().connector == f.first().connector
+        && fold(r, init: true, f: (ok, a) => ok && fold(f, init: false, f: (hit, b) => hit || (a.connector == b.connector && a.socket == b.socket && a.controller == b.controller && a.state == b.state && a.from_left + b.from_left == 31)))
+      SlotMapRefused { refusal: _ } => false
+    }
+    SlotMapRefused { refusal: _ } => false
+  } } }
+}
+
+// A commanded J1 + J17 install reads back SK0 MC0 S0 and SK1 MC0 S0 on a two-socket board;
+// today's SK0 MC0 + SK0 MC4 roster is not that readback, which is a placement mismatch.
+test fn w_commanded_install_carries_its_expected_readback() -> Bool {
+  let expected = expected_firmware_readback(connectors: [1, 17], live_sockets: [0, 1], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  list_length(items: expected.unresolved) == 0
+  && trained_sets_equal(a: expected.predicted, b: [DimmTrainedSlot { socket: 0, controller: 0, slot: 0 }, DimmTrainedSlot { socket: 1, controller: 0, slot: 0 }])
+  && !trained_sets_equal(a: expected_firmware_readback(connectors: [1, 17, 25], live_sockets: [0], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs).predicted, b: mtcollins1_three_stick_anchor.trained)
+}
+
+// Socket 1's silence and the mask correlation are computed from the receipts, and each has a
+// red: a boot that trained SK1, or a boot whose printed mask is not its controller bitmap.
+test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
+  match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) { Absent => false  Present { value: o } => {
+  let silent = match socket1_standing(boots: mtcollins1_socket1_investigation_boots, oriented: o) {
+    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => list_length(items: rs) == 6 && sy == [35805796492, 35808203121]
+    Socket1TrainedIn { runs: _ } => false
+  }
+  let correlated = match mask_correlation(boots: mtcollins1_socket1_investigation_boots) {
+    MaskMatchedTrainedControllers { runs: rs, not_printed: np } => rs == [35801475989, 35805796492, 35808203121, 35810323032, 35871654468] && np == [35793279839]
+    MaskDiverged { run_id: _, mask: _, bitmap: _ } => false
+  }
+  let b = mtcollins1_socket1_boot_two_sticks
+  let sk1 = MtCollins1Socket1InvestigationBoot { run_id: b.run_id, capture_sha256: b.capture_sha256, intended: b.intended, operator_frame: b.operator_frame, roster_lines: b.roster_lines,
+    trained: concat(b.trained, [DimmTrainedSlot { socket: 1, controller: 4, slot: 0 }]), dram_total: b.dram_total,
+    mcu_enable_mask: Present { value: 1 }, mcu_enable_mask_line: b.mcu_enable_mask_line, host: b.host, live_sockets: b.live_sockets, findings: b.findings }
+  let red_socket = match socket1_standing(boots: [sk1], oriented: o) {
+    Socket1TrainedIn { runs: rs } => rs == [35808203121]
+    Socket1TrainedNothing { runs: _, since: _, symmetric_mc4_runs: _ } => false
+  }
+  let red_mask = match mask_correlation(boots: [sk1]) {
+    MaskDiverged { run_id: _, mask: m, bitmap: bm } => m == 1 && bm == 16
+    MaskMatchedTrainedControllers { runs: _, not_printed: _ } => false
+  }
+  let readback = match placement_readbacks(boots: mtcollins1_socket1_investigation_boots, oriented: o).first() {
+    Present { value: r } => match r {
+      PlacementReadbackDiffers { run_id: i, expected: e } => i == 35810323032 && trained_sets_equal(a: e, b: [DimmTrainedSlot { socket: 0, controller: 0, slot: 0 }, DimmTrainedSlot { socket: 1, controller: 0, slot: 0 }])
+      PlacementReadbackMatches { run_id: _ } => false
+      PlacementReadbackUnevaluable { run_id: _ } => false
+    }
+    Absent => false
+  } && list_length(items: placement_readbacks(boots: mtcollins1_socket1_investigation_boots, oriented: o)) == 2
+  let readback_red = match placement_readbacks(boots: [MtCollins1Socket1InvestigationBoot { run_id: 7, capture_sha256: b.capture_sha256, intended: IntendedAtPhysicalConnectors { connectors: [5] }, operator_frame: b.operator_frame, roster_lines: b.roster_lines,
+    trained: b.trained, dram_total: b.dram_total, mcu_enable_mask: b.mcu_enable_mask, mcu_enable_mask_line: b.mcu_enable_mask_line, host: b.host, live_sockets: b.live_sockets, findings: b.findings }], oriented: o).first() {
+    Present { value: r } => match r { PlacementReadbackDiffers { run_id: i, expected: _ } => i == 7  PlacementReadbackMatches { run_id: _ } => false  PlacementReadbackUnevaluable { run_id: _ } => false }
+    Absent => false
+  }
+  silent && correlated && red_socket && red_mask && readback && readback_red
+  } }
+}
+
+fn anchor_in(anchor: DimmPlacementAnchor, frame: ChassisViewpoint) -> DimmPlacementAnchor {
+  DimmPlacementAnchor { evidence: anchor.evidence, frame: frame, placed_at_drawing_labels: anchor.placed_at_drawing_labels, trained: anchor.trained, live_sockets: anchor.live_sockets }
+}
+
+// THE ANCHORS CARRY THEIR FRAME and are normalised into the canonical (front) frame. The same
+// labels and readback observed from the rear resolve to the opposite canonical reading, so a
+// rear anchor can never be read as a front one. An unframed anchor refuses, and a population
+// from mixed ends REFUSES: with run 35808203121 mis-framed as rear, normalisation alone would
+// resolve SocketHalvesSwapped without any contradiction.
+test fn w_anchors_resolve_only_in_their_own_frame() -> Bool {
+  let three = mtcollins1_three_stick_anchor
+  let two = mtcollins1_two_stick_anchor
+  let front = resolves_to(anchors: [three, two], banks: dimm_figure_banks, want: FullMirror)
+  let rear = resolves_to(anchors: [anchor_in(anchor: three, frame: rear_fixture), anchor_in(anchor: two, frame: rear_fixture)], banks: dimm_figure_banks, want: FigureOrder)
+  let unframed = match resolve_orientation(anchors: [three, anchor_in(anchor: two, frame: ViewpointNotYetReported { asked: "controlled fixture" })], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    OrientationAnchorFrameUnreported { run_id: r } => r == 35808203121
+    OrientationResolved { hypothesis: _, order: _ } => false
+    OrientationAmbiguous { surviving: _ } => false
+    OrientationContradicted => false
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
+  }
+  let mixed = match resolve_orientation(anchors: [three, anchor_in(anchor: two, frame: rear_fixture)], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    OrientationAnchorFramesDisagree { run_ids: rs } => rs == [35805796492, 35808203121]
+    OrientationResolved { hypothesis: _, order: _ } => false
+    OrientationAmbiguous { surviving: _ } => false
+    OrientationContradicted => false
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFrameUnreported { run_id: _ } => false
+  }
+  front && rear && unframed && mixed
+}
+
+// NO INSTALL LINE WITHOUT A LOCATED, AVOIDED DAMAGE. An unframed damage report and the 16-DIMM
+// row that uses J5 both refuse the plan; the production 8-DIMM row renders map and plan.
+test fn w_no_install_plan_beside_unresolved_or_used_damage() -> Bool {
+  let unframed = match slot_map_for(anchors: mtcollins1_placement_anchors, tech_end: FrontEnd, with_history: false, population: mt_collins_population_8_dimms, installed: [], report: damage_report_in(frame: ViewpointNotYetReported { asked: "controlled fixture" })) { Absent => false  Present { value: m } => match m {
+    SlotMapRefused { refusal: r } => match r {
+      SlotMapDamageUnresolved { candidates: _ } => true
+      SlotMapPopulationUsesDamaged { connectors: _ } => false
+      SlotMapOrientationUnresolved { orientation: _ } => false
+      SlotMapPopulationUnresolved { identity: _ } => false
+      SlotMapConnectorUnresolved { connector: _ } => false
+    }
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: _ } => false
+  } }
+  let sixteen = match sixteen_today() { Absent => false  Present { value: m } => match m {
+    SlotMapRefused { refusal: r } => match r {
+      SlotMapPopulationUsesDamaged { connectors: cs } => cs == [5]
+      SlotMapDamageUnresolved { candidates: _ } => false
+      SlotMapOrientationUnresolved { orientation: _ } => false
+      SlotMapPopulationUnresolved { identity: _ } => false
+      SlotMapConnectorUnresolved { connector: _ } => false
+    }
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: _ } => false
+  } }
+  let eight = match rendered_today() { Absent => false  Present { value: m } => match m {
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: t } => string_contains(s: t, pattern: "\nInstall at (position from the LEFT edge, J number): ")
+    SlotMapRefused { refusal: _ } => false
+  } }
+  unframed && sixteen && eight
+}
+
+// The map carries today's standing: the firmware socket count, the CPU reports, the operator's
+// boot quote without a socket count, six open layer bets plus the open CPU-pairing bet, and
+// the stick refutation DERIVED from the swap report joined to the receipts. Reds: with no
+// exchange (the same stick in J17 both runs) or a run with no receipt, nothing is cleared.
+test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
+  match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) { Absent => false  Present { value: o } => {
+  let shown = match rendered_today() { Absent => false  Present { value: m } => match m {
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: t } =>
+      string_contains(s: t, pattern: "\nEstablished (run 35871654468): SCP reports 'Number of active sockets    : 1' of the board's sockets - firmware does not expose them all.")
+      && !string_contains(s: t, pattern: "Socket[1] block")
+      && string_contains(s: t, pattern: "\nCPU0 (socket 0): engineering sample - ")
+      && string_contains(s: t, pattern: "\nCPU1 (socket 1): production part - The machine's original production CPU.\n")
+      && string_contains(s: t, pattern: "\nOperator: \"the machine has booted since i swapped the CPU - so it's probably not that\" (a boot since the swap, no socket count and no date given).\n")
+      && string_contains(s: t, pattern: "\nSpares on hand: about 45 Ampere Altra processors (operator report).\n")
+      && !string_contains(s: t, pattern: "Leading")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Physical presence: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Power and rails: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Reset and firmware-ready: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): SCP/SMpro boot stage: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): DDR init and training: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
+      && string_contains(s: t, pattern: "\nWeakened hypothesis (not refuted): The engineering-sample CPU0 with the production CPU1")
+      && string_contains(s: t, pattern: "matching characteristics, not a unique CPU identity.")
+      && string_contains(s: t, pattern: concat(concat("\nSocket 1 pin damage (operator report, ", date_text(d: damage_date())), "): "))
+      && string_contains(s: t, pattern: "Gate: Socket 1 evidence after ")
+      && string_contains(s: t, pattern: "SecondaryJoinTimeout { secondary_last_stage: inconsistent SMpro pair (current: PMpro firmware booting; reported: DDR initialization, reported stage ahead of current), socket 0 continued alone, inter_socket_links_reported: false }")
+      && string_contains(s: t, pattern: "SecondaryJoined { inter_socket_links_reported: true }")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
+      && string_contains(s: t, pattern: "\nrun 35871654468: placed by the resolved mapping = physical J1, J17 -> trained SK0 MC0 S0; DRAM 16 GiB; mcu_enable_mask = 00000001")
+    SlotMapRefused { refusal: _ } => false
+  } }
+  let sw = mtcollins1_j1_j17_stick_swap
+  let no_exchange = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick B", connector: 17 },
+  ], report: sw.report }
+  let unreceipted = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 7, stick: "stick B", connector: 1 },
+  ], report: sw.report }
+  let red_no_exchange = match stick_swap_verdict(swap: no_exchange, history: mtcollins1_socket1_investigation_boots, oriented: o) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let red_unreceipted = match stick_swap_verdict(swap: unreceipted, history: mtcollins1_socket1_investigation_boots, oriented: o) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let unheld = hypothesis_text(h: MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedByStickSwap { swap: no_exchange } }, history: mtcollins1_socket1_investigation_boots, oriented: o)
+  shown && red_no_exchange && red_unreceipted && string_contains(s: unheld, pattern: "unverified") && !string_contains(s: unheld, pattern: "Refuted hypothesis")
+  } }
+}
+
+// The join outcome is derived from the reading. Reds: the observed CUR/BOOTSTAGE pair (PMpro beside
+// DDR initialization) is an INCONSISTENT stage, not a last stage; a consistent pair is carried as
+// consistent; a boot whose pair was not read is unclassified; a CPU0 whose characteristics differ
+// weakens nothing.
+test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
+  match mtcollins1_oriented(anchors: mtcollins1_placement_anchors) { Absent => false  Present { value: o } => {
+  let bad = mtcollins1_secondary_join_reading_two_cpus
+  let inconsistent = match secondary_join_outcome(reading: bad) {
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l } => !l && match st {
+      SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => c == 1 && r == 1023
+      SmproBootProgressRead { current: _, reported: _ } => false
+    }
+    SecondaryJoined { inter_socket_links_reported: _ } => false
+    SecondaryJoinUnclassified { reason: _ } => false
+  }
+  let ordered = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Present { value: 258 } }
+  let red_consistent = match secondary_join_outcome(reading: ordered) {
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: _ } => match st {
+      SmproBootProgressRead { current: _, reported: _ } => true
+      SmproBootProgressRefused { cur_bootstage_word: _, bootstage_word: _ } => false
+    }
+    SecondaryJoined { inter_socket_links_reported: _ } => false
+    SecondaryJoinUnclassified { reason: _ } => false
+  }
+  let unread = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Absent }
+  let red_unread = match secondary_join_outcome(reading: unread) {
+    SecondaryJoinUnclassified { reason: _ } => true
+    SecondaryJoined { inter_socket_links_reported: _ } => false
+    SecondaryJoinTimeout { secondary_last_stage: _, inter_socket_links_reported: _ } => false
+  }
+  let c = mtcollins1_cpu0_fingerprint_comparison
+  let other_cpu = MtCollins1CpuFingerprintComparison { reference: c.reference, reference_fingerprint: c.reference_fingerprint, current: c.current, current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1035), avs_voltage: millivolt(count: 996), warranty: 1 } }
+  let pairing = MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisWeakenedByMatchingCpu0Characteristics { comparison: other_cpu } }
+  let rendered = hypothesis_text(h: pairing, history: mtcollins1_socket1_investigation_boots, oriented: o)
+  let red_pairing = string_contains(s: rendered, pattern: "unverified") && !string_contains(s: rendered, pattern: "Weakened hypothesis")
+  inconsistent && red_consistent && red_unread && red_pairing
+  } }
+}
+
+fn damage_date() -> SpecificationDocumentDate {
+  match mtcollins1_socket1_pin_damage_report.report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => d
+    VendorFigureFact { figure: _, standing: _ } => SpecificationDocumentDate { year: 0, month: 0, day: 0 }
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => SpecificationDocumentDate { year: 0, month: 0, day: 0 }
+  }
+}
+
+// The damage line renders the report's own date, and the gate follows it: a report dated otherwise
+// renders that date, not 2026-10-03 (red against a hand-typed label).
+test fn w_socket_damage_date_and_gate_are_derived_from_the_report() -> Bool {
+  let r = mtcollins1_socket1_pin_damage_report
+  let moved = MtCollins1SocketDamageReport { socket: r.socket, account: r.account, report: OperatorByEyeReport { observed_on: SpecificationDocumentDate { year: 2027, month: 1, day: 9 }, relay: "fixture", method: "fixture" } }
+  let t = socket_damage_text(damage: moved)
+  string_contains(s: t, pattern: "(operator report, 2027-01-09)") && string_contains(s: t, pattern: "evidence after 2027-01-09") && !string_contains(s: t, pattern: "2026-10-03")
+}

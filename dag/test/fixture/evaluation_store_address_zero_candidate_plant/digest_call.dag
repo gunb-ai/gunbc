@@ -1,0 +1,5 @@
+module test.fixture.evaluation_store_address_zero_candidate_plant.digest_call
+
+fn planted_digest_call() -> Int {
+  test.fixture.evaluation_store_address_zero_candidate_plant_home.digest.evaluation_store_address_digest()
+}

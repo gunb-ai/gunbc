@@ -1,6 +1,9 @@
 module gunbc.host_effect_realize
 
-import std.algebra { trim }
+import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
+
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim }
+import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -25,8 +28,11 @@ import gunbc.host_effect {
   HostIdentityShortHostnameRead,
   LiveDeployApply,
   LiveDeployRetract,
+  LiveDeployApprovalBrokerDarkInstall,
+  LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeployServeRoute,
   DeployAccessPreflight,
   EnsureActionsRunnerRelease,
   EnsureRunnerSlotDirectory,
@@ -43,7 +49,7 @@ import gunbc.host_effect {
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
   ToolchainHomeInterferenceDiscriminated,
   HostEffectTransport, LocalShell, SshShell, FleetSsh,
-  EmitArtifactThenThinRun, BootstrapFragment,
+  EmitArtifactThenThinRun, BootstrapFragment, bootstrap_fragment_carries_hand_script,
   host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
 import extdeps.dns.domain_name { DnsLabel }
@@ -62,13 +68,13 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item, list_append, list_map }
+import v2.std.algebra { fold_list, list_map }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
-import extdeps.tools.chown { chown_argv }
+import extdeps.tools.chown { chown_argv, ChownOwnerIds }
 import extdeps.tools.chmod { chmod_add_executable_argv }
 import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 import extdeps.posix.path_ownership {
@@ -94,7 +100,7 @@ import extdeps.posix.path_ownership {
   path_ownership_verdict,
 }
 import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
-import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
+import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -103,6 +109,7 @@ import gunbc.retained_shell_script {
 import extdeps.ssh.session { ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
+  typed_argv_exec_over_ssh_with_stdin,
   typed_argv_exec_over_fleet_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -111,7 +118,7 @@ import gunbc.typed_argv_exec {
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import extdeps.gunbc
@@ -121,9 +128,9 @@ import extdeps.apt {
   package_socat,
   package_xorriso,
   apt_get_binary_path,
-  apt_installed_bin_path,
 }
-import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools { CliTool, apt_binary_path_of }
+import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -155,6 +162,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
 import gunbc.runner_host_deploy {
@@ -166,19 +174,32 @@ import gunbc.runner_host_deploy {
 import gunbc.runner_slot_population_census {
   SlotCensus,
   slot_census_from_command_outcome,
+  slot_census_from_typed_argv_outcome,
   surplus_observation,
 }
 import gunbc.runner_slot_retirement {
   transition_required_retiring,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
   observe_retirement_standings,
   surplus_observation_from_census_and_retirement,
 }
-import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv }
+import extdeps.systemd.systemctl {
+  systemctl_list_all_service_units_command,
+  systemctl_list_all_service_units_argv,
+  systemctl_daemon_reload_command,
+  systemctl_start_command,
+}
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
+  deployment_serve_route_script,
+  approval_broker_dark_install_script,
+  microvm_controller_install_script,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
 }
 import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
@@ -300,13 +321,15 @@ import gunbc.build_cache_endpoint_path {
   stale_socket_unlink_command,
 }
 import gunbc.live_deploy.operations {
-  deploy_stage_dir_var,
-  deploy_stage_write_command,
-  deploy_stage_install_command,
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
-  systemctl_start_command,
+}
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, rm_force_command }
+import v2.std.compilers.cli_surface {
+  cli_surface_of_literal_words,
+  process_argv_expansion,
+  ProcessArgvExpansion,
 }
 import extdeps.jobserver { jobserver_config }
 import gunbc.host_layout {
@@ -345,18 +368,18 @@ import gunbc.srv3_boot_once_cd {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
 }
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
-import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_reconcile,
-  InstallMediaRemasterAlreadyPresent,
-  InstallMediaRemasterRemastered,
-  InstallMediaRemasterRefused,
+import gunbc.seeded_install_media_publish {
+  SeededImagePublished,
+  SeededImageAlreadyPublished,
+  SeededImagePublicationRefused,
+  SeededImagePublishedRecordNotWritten,
 }
 import gunbc.hostname_read {
   hostname_short_read,
@@ -396,7 +419,6 @@ import gunbc.host_effect_codex_supervised_turn {
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
-  bmcweb_session_login_curl_args,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 
@@ -432,8 +454,11 @@ type ResolvedHostEffectCell =
   | SudoNopasswdGrantListProbeOnHost { node: ComputeHost, probe: SudoNopasswdGrantListProbeShape }
   | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeployApprovalBrokerDarkInstallOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
+  | LiveDeployServeRouteOnHost { node: ComputeHost, endpoint: TailscaleServeEndpoint, enabled: Bool }
   | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
   | EnsureRunnerSlotDirectoryOnHost {
       node: ComputeHost,
@@ -468,12 +493,213 @@ fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverg
   )
 }
 
+fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEffect) -> ResolvedHostEffectCell {
+  match effect {
+    RedfishAction { action: _ } =>
+      IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
+    ConvergePlan { policy: p } =>
+      if n.identity != p.identity {
+        IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
+      } else {
+        ConvergeOnHost { node: n, host_converge: p }
+      }
+    OsInstallActuatorToolchainEnsure {} =>
+      OsInstallActuatorToolchainOnHost { node: n }
+    EnsureBuildCacheInstance { desired: d } =>
+      ProvisionBuildCacheOnHost { node: n, desired: d }
+    ProvisionCodexRuntime {} =>
+      ProvisionCodexRuntimeOnHost { node: n }
+    EnsureCompilePoolSlice {} =>
+      EnsureCompilePoolSliceOnHost { node: n }
+    Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
+    Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
+    Srv3SeededInstallMediaToolchainEnsure =>
+      SeededInstallMediaToolchainOnHost { node: n }
+    Srv3BmcwebSessionLogin =>
+      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebTokenExtract =>
+      BmcwebTokenExtractOnHost { node: n }
+    Srv3BootOnceReadBackSleep =>
+      BootOnceReadBackSleepOnHost { node: n }
+    Srv3ReceiptEmit { lines: lines } =>
+      ReceiptEmitOnHost { node: n, lines: lines }
+    SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
+      HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
+    ReadEffectivePosixPrincipal { read: r } =>
+      EffectivePrincipalReadOnHost { node: n, read: r }
+    SudoNopasswdExecuteProbe { probe: p } =>
+      SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
+    SudoNopasswdGrantListProbe { probe: p } =>
+      SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
+    CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
+      CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
+    HostIdentityShortHostnameRead =>
+      HostnameReadOnHost { node: n }
+    LiveDeployApply { spec: s, candidate: c, plan: p } =>
+      LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
+    LiveDeployRetract { spec: s } =>
+      LiveDeployRetractOnHost { node: n, spec: s }
+    LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
+      LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
+    LiveDeployMicrovmControllerInstall { candidate: c } =>
+      LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
+    LiveDeployEnsureDependency { dep: d } =>
+      LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+    LiveDeployDigestReadback { port: p } =>
+      LiveDeployDigestReadbackOnHost { node: n, port: p }
+    LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
+      LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
+    EnsureActionsRunnerRelease { runner_release: r } =>
+      EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
+    EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
+      EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
+    EnsureRunnerJitWrapper { host_label: l } =>
+      EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
+    EnsureRunnerSystemdTemplate { host_label: l } =>
+      EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
+    EnsureRunnerMemoryCaps { slot: s } =>
+      EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
+    ActivateRunnerSlot { slot: s } =>
+      ActivateRunnerSlotOnHost { node: n, slot: s }
+    ReplaceRunnerIncarnation { from: inc, cause: c } =>
+      ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
+    ObserveRunnerLocalState { slot: s } =>
+      ObserveRunnerLocalStateOnHost { node: n, slot: s }
+    ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
+      ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
+    ProbeToolchainHomeInterference {} =>
+      IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
+    DeployAccessPreflight {} =>
+      IncompatibleCell {
+        reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
+      }
+  }
+}
+
+fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEffect) -> ResolvedHostEffectCell {
+  match effect {
+    RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+    ConvergePlan { policy: _ } =>
+      IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    OsInstallActuatorToolchainEnsure {} =>
+      IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureBuildCacheInstance { desired: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ProvisionCodexRuntime {} =>
+      IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureCompilePoolSlice {} =>
+      IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3InstallMediaFetch =>
+      IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3SeededInstallMediaRemaster =>
+      IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3SeededInstallMediaToolchainEnsure =>
+      IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BmcwebSessionLogin =>
+      IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BmcwebTokenExtract =>
+      IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3NbdProxyServe { intent: _, lease_key: _ } =>
+      IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
+      IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BootOnceReadBackSleep =>
+      IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3ReceiptEmit { lines: _ } =>
+      IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
+      IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ReadEffectivePosixPrincipal { read: _ } =>
+      IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SudoNopasswdExecuteProbe { probe: _ } =>
+      IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SudoNopasswdGrantListProbe { probe: _ } =>
+      IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    HostIdentityShortHostnameRead =>
+      IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployApply { spec: _, candidate: _, plan: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployRetract { spec: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployApprovalBrokerDarkInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployMicrovmControllerInstall { candidate: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployMicrovmControllerInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployEnsureDependency { dep: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployDigestReadback { port: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployServeRoute { endpoint: _, enabled: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployServeRoute is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureActionsRunnerRelease { runner_release: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerJitWrapper { host_label: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerSystemdTemplate { host_label: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerMemoryCaps { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ActivateRunnerSlot { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ReplaceRunnerIncarnation { from: _, cause: _ } =>
+      IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ObserveRunnerLocalState { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
+      IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ProbeToolchainHomeInterference {} =>
+      IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is an in-band concurrent filesystem/tool-execution probe and cannot target BmcController; target HostOs instead." }
+    DeployAccessPreflight {} =>
+      IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
+  }
+}
+
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
     RunnerLocalHost =>
       match effect {
         ProbeToolchainHomeInterference {} => ToolchainHomeInterferenceProbeOnHost
-        _ => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        RedfishAction { action: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ConvergePlan { policy: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        OsInstallActuatorToolchainEnsure {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureBuildCacheInstance { desired: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ProvisionCodexRuntime {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureCompilePoolSlice {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ReadEffectivePosixPrincipal { read: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SudoNopasswdExecuteProbe { probe: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SudoNopasswdGrantListProbe { probe: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3ReceiptEmit { lines: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        HostIdentityShortHostnameRead => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployApply { spec: _, candidate: _, plan: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployRetract { spec: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployMicrovmControllerInstall { candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployEnsureDependency { dep: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployDigestReadback { port: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployServeRoute { endpoint: _, enabled: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerJitWrapper { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ReplaceRunnerIncarnation { from: _, cause: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ObserveRunnerLocalState { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
       }
     HostOs { node: n } =>
       match effect {
@@ -499,89 +725,39 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
         LiveDeployRetract { spec: s } =>
           LiveDeployRetractOnHost { node: n, spec: s }
+        LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
+          LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
+        LiveDeployMicrovmControllerInstall { candidate: c } =>
+          LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
         LiveDeployEnsureDependency { dep: d } =>
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p } =>
           LiveDeployDigestReadbackOnHost { node: n, port: p }
+        LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
+          LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
         ProbeToolchainHomeInterference {} =>
           IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
-        _ =>
-          match effect {
-            RedfishAction { action: _ } =>
-              IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-            ConvergePlan { policy: p } =>
-              if n.identity != p.identity {
-                IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
-              } else {
-                ConvergeOnHost { node: n, host_converge: p }
-              }
-            OsInstallActuatorToolchainEnsure {} =>
-              OsInstallActuatorToolchainOnHost { node: n }
-            EnsureBuildCacheInstance { desired: d } =>
-              ProvisionBuildCacheOnHost { node: n, desired: d }
-            ProvisionCodexRuntime {} =>
-              ProvisionCodexRuntimeOnHost { node: n }
-            EnsureCompilePoolSlice {} =>
-              EnsureCompilePoolSliceOnHost { node: n }
-            Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
-            Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
-            Srv3SeededInstallMediaToolchainEnsure =>
-              SeededInstallMediaToolchainOnHost { node: n }
-            Srv3BmcwebSessionLogin =>
-              BmcwebSessionLoginOnHost { node: n }
-            Srv3BmcwebTokenExtract =>
-              BmcwebTokenExtractOnHost { node: n }
-            Srv3BootOnceReadBackSleep =>
-              BootOnceReadBackSleepOnHost { node: n }
-            Srv3ReceiptEmit { lines: lines } =>
-              ReceiptEmitOnHost { node: n, lines: lines }
-            SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
-              HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
-            ReadEffectivePosixPrincipal { read: r } =>
-              EffectivePrincipalReadOnHost { node: n, read: r }
-            SudoNopasswdExecuteProbe { probe: p } =>
-              SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
-            SudoNopasswdGrantListProbe { probe: p } =>
-              SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
-            Srv3NbdProxyServe { intent: i, lease_key: k } =>
-              NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
-            CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
-              CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
-            HostIdentityShortHostnameRead =>
-              HostnameReadOnHost { node: n }
-            LiveDeployApply { spec: s, candidate: c, plan: p } =>
-              LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
-            LiveDeployRetract { spec: s } =>
-              LiveDeployRetractOnHost { node: n, spec: s }
-            LiveDeployEnsureDependency { dep: d } =>
-              LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-            LiveDeployDigestReadback { port: p } =>
-              LiveDeployDigestReadbackOnHost { node: n, port: p }
-            EnsureActionsRunnerRelease { runner_release: r } =>
-              EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
-            EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
-              EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-            EnsureRunnerJitWrapper { host_label: l } =>
-              EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
-            EnsureRunnerSystemdTemplate { host_label: l } =>
-              EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
-            EnsureRunnerMemoryCaps { slot: s } =>
-              EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
-            ActivateRunnerSlot { slot: s } =>
-              ActivateRunnerSlotOnHost { node: n, slot: s }
-            ReplaceRunnerIncarnation { from: inc, cause: c } =>
-              ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
-            ObserveRunnerLocalState { slot: s } =>
-              ObserveRunnerLocalStateOnHost { node: n, slot: s }
-            ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
-              ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
-            ProbeToolchainHomeInterference {} =>
-              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
-            DeployAccessPreflight {} =>
-              IncompatibleCell {
-                reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
-              }
-          }
+        RedfishAction { action: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ConvergePlan { policy: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReadEffectivePosixPrincipal { read: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdExecuteProbe { probe: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdGrantListProbe { probe: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3InstallMediaFetch => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaRemaster => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3NbdProxyServe { intent: _, lease_key: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        HostIdentityShortHostnameRead => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        DeployAccessPreflight {} => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureActionsRunnerRelease { runner_release: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerJitWrapper { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveRunnerLocalState { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
       }
     BmcController { node: n } =>
       match effect {
@@ -597,78 +773,38 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        _ =>
-          match effect {
-            RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
-            ConvergePlan { policy: _ } =>
-              IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            OsInstallActuatorToolchainEnsure {} =>
-              IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureBuildCacheInstance { desired: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProvisionCodexRuntime {} =>
-              IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureCompilePoolSlice {} =>
-              IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3InstallMediaFetch =>
-              IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaRemaster =>
-              IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaToolchainEnsure =>
-              IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebSessionLogin =>
-              IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebTokenExtract =>
-              IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3NbdProxyServe { intent: _, lease_key: _ } =>
-              IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
-              IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BootOnceReadBackSleep =>
-              IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3ReceiptEmit { lines: _ } =>
-              IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
-              IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReadEffectivePosixPrincipal { read: _ } =>
-              IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdExecuteProbe { probe: _ } =>
-              IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdGrantListProbe { probe: _ } =>
-              IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            HostIdentityShortHostnameRead =>
-              IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployApply { spec: _, candidate: _, plan: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployRetract { spec: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployEnsureDependency { dep: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployDigestReadback { port: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureActionsRunnerRelease { runner_release: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerJitWrapper { host_label: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSystemdTemplate { host_label: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerMemoryCaps { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ActivateRunnerSlot { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReplaceRunnerIncarnation { from: _, cause: _ } =>
-              IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveRunnerLocalState { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
-              IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProbeToolchainHomeInterference {} =>
-              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is an in-band concurrent filesystem/tool-execution probe and cannot target BmcController; target HostOs instead." }
-            DeployAccessPreflight {} =>
-              IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
-          }
+        RedfishAction { action: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ConvergePlan { policy: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReadEffectivePosixPrincipal { read: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdExecuteProbe { probe: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdGrantListProbe { probe: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        HostIdentityShortHostnameRead => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployApply { spec: _, candidate: _, plan: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployRetract { spec: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployMicrovmControllerInstall { candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployEnsureDependency { dep: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployDigestReadback { port: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployServeRoute { endpoint: _, enabled: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerJitWrapper { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveRunnerLocalState { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ProbeToolchainHomeInterference {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
       }
   }
 }
@@ -751,7 +887,7 @@ fn realize_boot_once_read_back_sleep_body(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
   match srv3_run_tool_by_name(
-    tool_name: sleep_cli_tool.name,
+    tool: sleep_cli_tool,
     args: [seconds],
     transport: transport,
   ) {
@@ -804,7 +940,7 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
   concat(
     concat("InstallMediaRemasterToolchainReceipt: outcome=", outcome as String),
     concat(
-      concat(" tool=", xorriso_cli_tool.name as String),
+      concat(" tool=", xorriso_cli_tool.program.invocation as String),
       concat(" package=", package_xorriso as String),
     ),
   )
@@ -812,7 +948,7 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
   let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_xorriso))
-  elevated.bin_path == sudo_binary_path as String &&
+  elevated.bin_path == sudo_program().invocation as String &&
     elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
@@ -834,7 +970,7 @@ fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match srv3_probe_present_then_version(tool_name: xorriso_cli_tool.name, transport: transport) {
+  match srv3_probe_present_then_version(tool: xorriso_cli_tool, transport: transport) {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
@@ -864,7 +1000,7 @@ fn srv3_seeded_install_media_toolchain_ensure_after_pre(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match srv3_ensure_apt_tool(
-    tool_name: xorriso_cli_tool.name,
+    tool: xorriso_cli_tool,
     package: package_xorriso,
     require_version_probe: true,
     transport: transport,
@@ -933,18 +1069,22 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
   }
 }
 
+// The login is a described curl command minted at extdeps.tools.curl (the tool's own module);
+// this site supplies only the paths its materialization bracket owns and runs the FLAGS through
+// srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
+// builder's identity carries.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_args = bmcweb_session_login_curl_args(
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
-    tool_name: curl_cli_tool.name,
-    args: curl_args,
+    tool: curl_cli_tool,
+    args: login.arguments,
     transport: transport,
   ) {
     Srv3PredicateUnobserved { reason: why } =>
@@ -1043,7 +1183,7 @@ fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> Bmcwe
 fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
+  match srv3_tool_bin_path(tool: jq_cli_tool, transport: LocalShell) {
     Srv3TokenObserved { value: jq_path } => {
       let jq_run = gunbc.WitnessBin.Run(
         workdir: "/",
@@ -1436,6 +1576,15 @@ fn realize_provision_codex_runtime_body(
   }
 }
 
+fn realize_provision_codex_runtime_wrong_effect(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
+    applied: effect_intent,
+  }
+}
+
 fn realize_provision_codex_runtime(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -1463,11 +1612,43 @@ fn realize_provision_codex_runtime(
             applied: effect_intent,
           }
       }
-    _ =>
-      NotConverged {
-        reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
-        applied: effect_intent,
-      }
+    RedfishAction { action: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ConvergePlan { policy: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    OsInstallActuatorToolchainEnsure {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureBuildCacheInstance { desired: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureCompilePoolSlice {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ReadEffectivePosixPrincipal { read: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdExecuteProbe { probe: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdGrantListProbe { probe: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3ReceiptEmit { lines: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    HostIdentityShortHostnameRead => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployRetract { spec: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployEnsureDependency { dep: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ObserveRunnerLocalState { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ProbeToolchainHomeInterference {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
   }
 }
 
@@ -1645,11 +1826,11 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
 // TRANSPORT-CONDITIONED PRESENCE, not a silent fork of one question. LocalShell and SshShell keep
 // posix_command_v_check_argv / shell.PosixCommandV.Check: PRESENT ON PATH. FleetSsh cannot carry that
 // argv -- the -c payload is not a PortableRemoteWord (spaces, quotes, `$`) -- so it answers a
-// different, named question: shell.Test.IsExecutable over extdeps.apt apt_installed_bin_path,
-// PRESENT AT THIS PATH (`apt_bin_dir` + binary). A tool installed outside apt_bin_dir (diverted
-// path, /usr/sbin, a local build) now reads absent and the ensure takes the install arm; apt then
-// no-ops if the package is already recorded, so the host is not harmed, but the receipt can say
-// the install ran for a host that already had the binary elsewhere.
+// different, named question: shell.Test.IsExecutable over extdeps.tools apt_binary_path_of,
+// PRESENT AT THE PATH THE TOOL'S SourceApt ROW DECLARES (its bin_dir + binary). Before bin_dir was
+// on the row this was a single /usr/bin constant, so an sbin tool (nfct) read absent even after
+// apt installed it and the ensure refused on its own readback. A row declaring the wrong
+// directory still reads absent -- that is the readback doing its job, not a case to paper over.
 //
 // Path-presence is the right question for an apt-acquired tool: the installer places the binary
 // at that FHS path, and the password-session exec is that argv0. PATH search would accept a
@@ -1658,23 +1839,35 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
 // ensure uses ci_deploy_srv1_access (LocalShell). Neither production caller uses FleetSsh; both
 // still rely on PATH presence. The realize entry gate admits FleetSsh so a later caller would
 // inherit this path-presence arm -- that is the caveat, not a current production change.
-fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+// A TOOL WITH NO DECLARED APT PATH IS NOT PROBED AT A GUESSED ONE. Over FleetSsh presence is a
+// readback of the path the tool's own SourceApt row declares (extdeps.tools apt_binary_path_of).
+// A tool declaring no apt source has no such path, so the probe refuses by name instead of testing
+// /usr/bin/<name>, searching PATH, or trying a second directory.
+fn srv3_undeclared_apt_path_reason(tool: CliTool) -> String {
+  concat(
+    tool.program.invocation as String,
+    " declares no apt source, so it has no declared install path for a FleetSsh readback to test",
+  )
+}
+
+fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
-      if shell.PosixCommandV.Check(command: tool_name).exists {
+      if shell.PosixCommandV.Check(command: tool.program.invocation).exists {
         Srv3PredicateHolds
       } else {
         Srv3PredicateFails
       }
     SshShell { ssh_host: h } =>
       srv3_predicate_from_typed_argv(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
     FleetSsh { target: _, context: _ } =>
-      srv3_transport_test_executable(
-        path: apt_installed_bin_path(binary: tool_name) as String,
-        transport: transport,
-      )
+      match apt_binary_path_of(tool: tool) {
+        Present { value: declared } =>
+          srv3_transport_test_executable(path: declared as String, transport: transport)
+        Absent => Srv3PredicateUnobserved { reason: srv3_undeclared_apt_path_reason(tool: tool) }
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can probe tool presence",
@@ -1683,15 +1876,15 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
 }
 
 // FleetSsh resolved path is the same question as srv3_apt_tool_present: executable at
-// apt_installed_bin_path (FHS /usr/bin/<binary>), not PATH stdout from command -v. LocalShell and
+// the declared apt_binary_path_of path, not PATH stdout from command -v. LocalShell and
 // SshShell still resolve via command -v. This arm is in scope because srv3_apt_tool_version_ok
 // (and srv3_run_tool_by_name) read the path from here; leaving FleetSsh on posix_command_v_check_argv
 // would make version_ok Unobserved after a successful path-presence probe -- the install arm would
 // never be able to prove the version on FleetSsh. A binary only elsewhere still reads absent.
-fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
+fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
-      let found = shell.PosixCommandV.Check(command: tool_name)
+      let found = shell.PosixCommandV.Check(command: tool.program.invocation)
       if found.exists {
         match found.path {
           Present { value: tool_path } => Srv3TokenObserved { value: tool_path as String }
@@ -1703,17 +1896,17 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
     }
     SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
     FleetSsh { target: _, context: _ } =>
-      match srv3_transport_test_executable(
-        path: apt_installed_bin_path(binary: tool_name) as String,
-        transport: transport,
-      ) {
-        Srv3PredicateHolds =>
-          Srv3TokenObserved { value: apt_installed_bin_path(binary: tool_name) as String }
-        Srv3PredicateFails => Srv3TokenAbsent
-        Srv3PredicateUnobserved { reason: why } => Srv3TokenUnobserved { reason: why }
+      match apt_binary_path_of(tool: tool) {
+        Absent => Srv3TokenUnobserved { reason: srv3_undeclared_apt_path_reason(tool: tool) }
+        Present { value: declared } =>
+          match srv3_transport_test_executable(path: declared as String, transport: transport) {
+            Srv3PredicateHolds => Srv3TokenObserved { value: declared as String }
+            Srv3PredicateFails => Srv3TokenAbsent
+            Srv3PredicateUnobserved { reason: why } => Srv3TokenUnobserved { reason: why }
+          }
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
@@ -1725,11 +1918,11 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
 // One place where "resolve the tool, then run it" is written, so the three states survive the
 // composition instead of being flattened once per call site.
 fn srv3_run_tool_by_name(
-  tool_name: NonEmptyStr,
+  tool: CliTool,
   args: List<String>,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
+  match srv3_tool_bin_path(tool: tool, transport: transport) {
     Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3TokenAbsent => Srv3PredicateFails
     Srv3TokenObserved { value: resolved } =>
@@ -1742,8 +1935,8 @@ fn srv3_run_tool_by_name(
   }
 }
 
-fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
-  match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
+fn srv3_apt_tool_version_ok(tool: CliTool, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match srv3_tool_bin_path(tool: tool, transport: transport) {
     Srv3TokenObserved { value: tool_path } =>
       srv3_transport_witness_bin_success(
         transport: transport,
@@ -2013,7 +2206,7 @@ fn srv3_chown_then_read_back(
   let attempt = srv3_chown_attempt(
     outcome: srv3_elevated_witness_bin_success(
       transport: transport,
-      command: chown_argv(owner: desired, path: path),
+      command: chown_argv(owner: ChownOwnerIds { spec: desired }, path: path),
     ),
   )
   srv3_readback_after_attempt(
@@ -2177,7 +2370,7 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
   let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_curl))
-  elevated.bin_path == sudo_binary_path as String &&
+  elevated.bin_path == sudo_program().invocation as String &&
     elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 
@@ -2207,23 +2400,98 @@ fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_names
 // install out of a branch and into a parameter while every type stayed identical. A match arm is a
 // branch, so only the selected arm evaluates.
 fn srv3_ensure_apt_tool(
-  tool_name: NonEmptyStr,
+  tool: CliTool,
   package: NonEmptyStr,
   require_version_probe: Bool,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+  srv3_ensure_apt(
+    subject: AptBinaryOnPath { tool: tool },
+    package: package,
+    require_version_probe: require_version_probe,
+    transport: transport,
+  )
+}
+
+// WHAT AN APT ENSURE ASKS IS PRESENT. A tool is asked for by its binary (the password-session
+// roster's sshpass); a shared library has no binary to probe, so it is asked for by the package
+// itself, read from the dpkg database (the browser toolchain's install-deps set). Both go through
+// the ONE fold below -- the probe-before-install, install-in-a-branch and re-probe discipline is
+// written once, and a subject kind is an arm here rather than a second ensure.
+type AptPresenceSubject
+  = AptBinaryOnPath { tool: CliTool }
+  | AptPackageInstalled { package: NonEmptyStr }
+
+fn srv3_apt_subject_present(subject: AptPresenceSubject, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match subject {
+    AptBinaryOnPath { tool: t } => srv3_apt_tool_present(tool: t, transport: transport)
+    AptPackageInstalled { package: p } => srv3_dpkg_package_installed(package: p, transport: transport)
+  }
+}
+
+// A PACKAGE SUBJECT HAS NO VERSION PROBE, and asking for one is refused rather than answered: the
+// dpkg status read says installed or not, and inventing a version comparison for it would assert a
+// constraint nothing declared.
+fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match subject {
+    AptBinaryOnPath { tool: t } => srv3_apt_tool_version_ok(tool: t, transport: transport)
+    AptPackageInstalled { package: p } =>
+      Srv3PredicateUnobserved {
+        reason: concat("a version probe was requested for apt package subject ", concat(p as String, ", which declares no version to read")),
+      }
+  }
+}
+
+// THE PACKAGE READ KEEPS THE QUERY'S WHOLE OUTCOME (side-chat reviews of gunbc#12500). `dpkg -s`
+// exits zero for a package removed with its configuration kept, and a token read collapses every
+// unsuccessful query into "absent" -- either way an unanswered question could authorize an apt
+// install. So the read runs dpkg-query -s over the transport's typed exec, keeping exit code, stdout
+// and stderr, and extdeps.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
+// not-installed state or a package unknown to dpkg fails (the ensure may install); anything
+// undecidable is Unobserved, which the ensure fold refuses rather than installing on.
+//
+// The transport dispatch is TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal):
+// LocalShell reaches no srv3 host and EmitArtifactThenThinRun does not run on the target, so both
+// read as unobserved -- each variant named, so a fifth transport is a decision here, not silence.
+fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  let argv = dpkg_query_status_argv(package: package)
+  let outcome = match transport {
+    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
+    LocalShell => none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
+  }
+  match outcome {
+    Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
+    Present { value: TypedArgvExecConverged { result: r } } =>
+      match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+        DpkgPackageInstalled => Srv3PredicateHolds
+        DpkgPackageNotInstalled { status: _ } => Srv3PredicateFails
+        DpkgPackageUnknown => Srv3PredicateFails
+        DpkgQueryUndecidable { reason: why } => Srv3PredicateUnobserved { reason: concat(concat(package as String, ": "), why) }
+      }
+  }
+}
+
+fn srv3_ensure_apt(
+  subject: AptPresenceSubject,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_apt_subject_present(subject: subject, transport: transport) {
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateHolds =>
       if require_version_probe == false {
         Srv3PredicateHolds
       } else {
-        match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+        match srv3_apt_subject_version_ok(subject: subject, transport: transport) {
           Srv3PredicateHolds => Srv3PredicateHolds
           Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
           Srv3PredicateFails =>
             srv3_apt_install_then_reprobe(
-              tool_name: tool_name,
+              subject: subject,
               package: package,
               require_version_probe: require_version_probe,
               transport: transport,
@@ -2232,7 +2500,7 @@ fn srv3_ensure_apt_tool(
       }
     Srv3PredicateFails =>
       srv3_apt_install_then_reprobe(
-        tool_name: tool_name,
+        subject: subject,
         package: package,
         require_version_probe: require_version_probe,
         transport: transport,
@@ -2241,14 +2509,14 @@ fn srv3_ensure_apt_tool(
 }
 
 fn srv3_probe_present_then_version(
-  tool_name: NonEmptyStr,
+  tool: CliTool,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+  match srv3_apt_tool_present(tool: tool, transport: transport) {
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateFails => Srv3PredicateFails
     Srv3PredicateHolds =>
-      match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+      match srv3_apt_tool_version_ok(tool: tool, transport: transport) {
         Srv3PredicateHolds => Srv3PredicateHolds
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
         Srv3PredicateFails => Srv3PredicateFails
@@ -2257,7 +2525,7 @@ fn srv3_probe_present_then_version(
 }
 
 fn srv3_apt_install_then_reprobe(
-  tool_name: NonEmptyStr,
+  subject: AptPresenceSubject,
   package: NonEmptyStr,
   require_version_probe: Bool,
   transport: HostEffectTransport,
@@ -2266,14 +2534,14 @@ fn srv3_apt_install_then_reprobe(
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateFails => Srv3PredicateFails
     Srv3PredicateHolds =>
-      match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+      match srv3_apt_subject_present(subject: subject, transport: transport) {
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
         Srv3PredicateFails => Srv3PredicateFails
         Srv3PredicateHolds =>
           if require_version_probe == false {
             Srv3PredicateHolds
           } else {
-            match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+            match srv3_apt_subject_version_ok(subject: subject, transport: transport) {
               Srv3PredicateHolds => Srv3PredicateHolds
               Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
               Srv3PredicateFails => Srv3PredicateFails
@@ -2475,7 +2743,7 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
       match websocat_edge_admits(actual: n, expected: ResolveCurl) {
         false => websocat_edge_disagreement(actual: n, expected: ResolveCurl)
         true =>
-          match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+          match srv3_tool_bin_path(tool: curl_cli_tool, transport: transport) {
             Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
             Srv3TokenAbsent => Srv3PredicateFails
             Srv3TokenObserved { value: curl_path } =>
@@ -2641,6 +2909,14 @@ fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
 // cannot sequence anything, because by the time a list reaches it every element has been
 // evaluated. Reading it as "run these in order, stopping on failure" is what let the websocat
 // path run four mutations unconditionally. Sequencing lives in websocat_after and nowhere else.
+fn srv3_combine_observed_accumulator_with_step(acc: Srv3HostPredicate, step: Srv3HostPredicate) -> Srv3HostPredicate {
+  match step {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails => Srv3PredicateFails
+    Srv3PredicateHolds => acc
+  }
+}
+
 fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Srv3HostPredicate {
   fold_list(
     xs: steps,
@@ -2648,12 +2924,8 @@ fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Sr
     cons: fn(acc, step) {
       match acc {
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        _ =>
-          match step {
-            Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-            Srv3PredicateFails => Srv3PredicateFails
-            Srv3PredicateHolds => acc
-          }
+        Srv3PredicateFails => srv3_combine_observed_accumulator_with_step(acc: acc, step: step)
+        Srv3PredicateHolds => srv3_combine_observed_accumulator_with_step(acc: acc, step: step)
       }
     },
   )
@@ -2691,7 +2963,7 @@ type Srv3ToolAcquisition
   | AcquireViaWebsocatRelease
 
 type Srv3ToolRow {
-  tool_name: NonEmptyStr
+  tool: CliTool
   acquisition: Srv3ToolAcquisition
 }
 
@@ -2701,7 +2973,7 @@ fn srv3_ensure_tool(row: Srv3ToolRow, transport: HostEffectTransport) -> Srv3Hos
   match row.acquisition {
     AcquireViaAptPackage { package: p, require_version_probe: needs_version } =>
       srv3_ensure_apt_tool(
-        tool_name: row.tool_name,
+        tool: row.tool,
         package: p,
         require_version_probe: needs_version,
         transport: transport,
@@ -2713,19 +2985,19 @@ fn srv3_ensure_tool(row: Srv3ToolRow, transport: HostEffectTransport) -> Srv3Hos
 fn srv3_toolchain_rows() -> List<Srv3ToolRow> {
   [
     Srv3ToolRow {
-      tool_name: curl_cli_tool.name,
+      tool: curl_cli_tool,
       acquisition: AcquireViaAptPackage { package: package_curl, require_version_probe: true },
     },
     Srv3ToolRow {
-      tool_name: nbdkit_cli_tool.name,
+      tool: nbdkit_cli_tool,
       acquisition: AcquireViaAptPackage { package: package_nbdkit, require_version_probe: true },
     },
     Srv3ToolRow {
-      tool_name: socat_cli_tool.name,
+      tool: socat_cli_tool,
       acquisition: AcquireViaAptPackage { package: package_socat, require_version_probe: false },
     },
     Srv3ToolRow {
-      tool_name: websocat_cli_tool.name,
+      tool: websocat_cli_tool,
       acquisition: AcquireViaWebsocatRelease,
     },
   ]
@@ -2760,7 +3032,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     xs: srv3_toolchain_rows(),
     f: fn(row) {
       Srv3ToolObservation {
-        tool_name: row.tool_name,
+        tool_name: row.tool.program.invocation,
         verdict: srv3_ensure_tool(row: row, transport: transport),
       }
     },
@@ -2928,7 +3200,7 @@ fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonE
     join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
     concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
     join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
-    systemctl_daemon_reload_command(privileged: true),
+    gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true),
     systemctl_enable_command(unit: instance.intended_unit, privileged: true),
     systemctl_restart_command(unit: instance.intended_unit, privileged: true),
     "",
@@ -2967,7 +3239,7 @@ fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: 
   )
 }
 
-data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN bash-emit (#5828) realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
+data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
 
 data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -3119,6 +3391,15 @@ fn realize_provision_build_cache_body(
   }
 }
 
+fn realize_provision_build_cache_wrong_effect(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: "host_effect_apply: realize_provision_build_cache requires EnsureBuildCacheInstance effect",
+    applied: effect_intent,
+  }
+}
+
 fn realize_provision_build_cache(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -3154,11 +3435,43 @@ fn realize_provision_build_cache(
               }
           }
       }
-    _ =>
-      NotConverged {
-        reason: "host_effect_apply: realize_provision_build_cache requires EnsureBuildCacheInstance effect",
-        applied: effect_intent,
-      }
+    RedfishAction { action: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ConvergePlan { policy: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    OsInstallActuatorToolchainEnsure {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ProvisionCodexRuntime {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureCompilePoolSlice {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ReadEffectivePosixPrincipal { read: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdExecuteProbe { probe: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdGrantListProbe { probe: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3ReceiptEmit { lines: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    HostIdentityShortHostnameRead => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployRetract { spec: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployEnsureDependency { dep: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ObserveRunnerLocalState { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ProbeToolchainHomeInterference {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
   }
 }
 
@@ -3265,6 +3578,181 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
   }
 }
 
+// WHAT A TRANSPORT RUNNER BROUGHT BACK, AS A COPRODUCT (DESIGN 5: the refusal must stay typed). Two
+// shapes, kept apart so no caller can read a before-execution refusal as a process result:
+// RunArgvTransportObserved carries a ShellExecObserved -- the leg RAN and this is what it returned,
+// exit status included; RunArgvTransportRefused carries the portable-word wall's admission text --
+// NO LEG RAN, so there is no exit code to report and any "exited N" line about this leg would be
+// fabricated. The first draft of this seam folded the refusal into ShellExecObserved{exit_code: 1},
+// which made the install fold report that an operation "exited 1" that never started. Callers match
+// the arms, so each says which of the two happened.
+type RunArgvTransportOutcome
+  = RunArgvTransportObserved { observed: ShellExecObserved }
+  | RunArgvTransportRefused { reason: String }
+
+// ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
+// run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
+// outcome becomes is the same for both: the wall's refusal becomes the REFUSED arm, carrying the
+// admission's own text (plus this edge's "before any ssh leg" marker, so the red names the broken
+// wall rather than a connection error), and a converged result becomes the OBSERVED arm -- the
+// process's real exit status and streams. The mapping is where the admission's verdict and the
+// transport's carrier meet, and it is written once so the two arms cannot drift.
+fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
+  match typed {
+    TypedArgvExecRefused { reason: why } =>
+      RunArgvTransportRefused {
+        reason: join(
+          [
+            "the portable-word wall refused the typed argv before any ssh leg: ",
+            why,
+          ],
+          "",
+        ),
+      }
+    TypedArgvExecConverged { result: result } =>
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+      }
+  }
+}
+
+// THE LOCALSHELL DECOMPOSITION, AS A PURE FUNCTION (DESIGN 3: the witness discriminates at this
+// interface, and the values are supplied -- no process, no exec). An ArgvCommand is one typed value;
+// shell.Exec.RunArgv / RunArgvStdin take the program and its arguments as DISTINCT parameters, and
+// the split is where the program can be doubled: argv_words(command) already starts with the
+// program, so passing it as the argument words hands the op the program twice (the double-sudo shape
+// the side chat measured on this very fold). Both wet LocalShell arms delegate here, and the
+// witness supplies commands and pins the discriminating property -- the program is the `program`
+// parameter and does NOT appear among the argument words. The argument field carries the
+// ProcessArgvExpansion the op consumes (the computed-surface carrier, not a raw list: a bare
+// List<String> at an argv position is exactly the ambiguity the carrier exists to close); the
+// witness projects the words out through process_argv_expansion_surface and cli_surface_arguments
+// to check membership. The printf receipts that used to exec printf locally are gone: the floor
+// runs changed witnesses hermetically and never reaches an exec, so a receipt that needs a real
+// process is not a floor claim.
+type RunArgvParameters {
+  program: String
+  arguments: ProcessArgvExpansion
+}
+
+fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
+  RunArgvParameters {
+    program: command.program.invocation,
+    arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
+  }
+}
+
+// THE HOST-EFFECT TRANSPORT TAKES TYPED ARGV. This is run_shell_transport's typed sibling: an
+// ArgvCommand already built by cited extdeps builders, run over the same HostEffectTransport arms.
+// LocalShell runs shell.Exec.RunArgv -- the program word and the argument words as DISTINCT
+// parameters, the state-space collapse the RunArgv op exists to close. The split is factored into
+// run_argv_parameters_of (both LocalShell arms delegate), because that split is where the program
+// can be doubled: the argument words are command.arguments, NOT argv_words(command) -- argv_words
+// re-prepends the program, and passing it here would hand RunArgv the program twice (execve with
+// argv[1] = the program path, the double-sudo shape) -- and the witness discriminates at the pure
+// function, not at an exec. SshShell routes through typed_argv_exec_over_ssh, which owns both the
+// shaping (shape_ssh_shell_exec: host, `--`, words -- the one arm where argv_words is correct,
+// because the remote vector starts with the program) and the portable-word wall, so a word the
+// remote shell would re-parse refuses here before any ssh leg; there is no empty-script refusal
+// arm because there is no script -- an ArgvCommand structurally always names a program (the
+// sole_constructor wall's own note at extdeps.exec.command). RunArgv's output carries no success
+// field (the no-success-field discipline recorded at extdeps.shell.exec), so success derives from
+// the exit status here, where the ShellExecObserved carrier requires it -- the same derivation
+// every RunArgv caller makes.
+//
+// FleetSsh and EmitArtifactThenThinRun refuse where run_shell_transport refuses them, but the
+// REFUSAL TEXT changes with the carrier and says so: the old text blamed the script body's shape (a
+// command string where the fleet path admits portable words); a typed argv has no such shape
+// problem, so what remains is the transport's own authority -- the fleet seam executes through its
+// own session type and trust policy, and admitting shape_fleet_ssh_exec as a host-effect transport
+// arm is its own change with its own analysis, not a rider on this conversion.
+fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  match transport {
+    LocalShell => {
+      let params = run_argv_parameters_of(command: command)
+      let result = shell.Exec.RunArgv(program: params.program, arguments: params.arguments)
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+      }
+    }
+    SshShell { ssh_host: h } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: _ } =>
+      RunArgvTransportRefused {
+        reason: join([
+          "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
+          t.endpoint as String,
+          ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
+          " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
+          " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
+          " as a host-effect transport arm is its own change with its own analysis. Fail-closed until that",
+          " change names itself.",
+        ], ""),
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
+      }
+  }
+}
+
+// THE STDIN SIBLING, for the one op in a fold whose payload is DATA rather than words: unit-file
+// bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
+// unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
+// it contains. Same arms, same refusal posture, same exit-status derivation.
+fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  match transport {
+    LocalShell => {
+      let params = run_argv_parameters_of(command: command)
+      let result = shell.Exec.RunArgvStdin(
+        program: params.program,
+        arguments: params.arguments,
+        stdin_payload: stdin_payload,
+      )
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+      }
+    }
+    SshShell { ssh_host: h } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh_with_stdin(
+        host: h,
+        argv: argv_words(command: command),
+        stdin_payload: stdin_payload,
+      ))
+    FleetSsh { target: t, context: _ } =>
+      RunArgvTransportRefused {
+        reason: join([
+          "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
+          t.endpoint as String,
+          ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
+          " body where the fleet path admits portable words) does not apply; what remains is the",
+          " transport's own authority: the fleet seam executes through its own session type and trust",
+          " policy, and admitting the portable-words-with-stdin op as a host-effect transport arm is its",
+          " own change with its own analysis. Fail-closed until that change names itself.",
+        ], ""),
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
+      }
+  }
+}
+
 // CONVERGE DOES NOT APPLY KNOBS ON THE OPERATOR PRINCIPAL, AND THE ABSENCE OF THE CODE PATH IS
 // WHAT ENFORCES THAT. The 2026-08-13 operator privilege hold says drop-in authoring,
 // daemon-reload, set-property and revert for the per-slot memory-cap axis belong to the deploy
@@ -3299,12 +3787,16 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
 
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    EmitArtifactThenThinRun { bootstrap: b, invocation: _ } =>
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
-          NotConverged {
-            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
-            applied: intent,
+          if bootstrap_fragment_carries_hand_script(f: b) {
+            NotConverged {
+              reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
+              applied: intent,
+            }
+          } else {
+            realize_converge_in_process(host_converge: host_converge, intent: intent)
           }
         ExistingHostQuiescentReload =>
           realize_converge_in_process(host_converge: host_converge, intent: intent)
@@ -3354,31 +3846,51 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
 }
 
 fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
-    InstallMediaRemasterAlreadyPresent { path: p } =>
+  match srv3_seeded_install_media_publish() {
+    SeededImageAlreadyPublished { built: b, path: p } =>
       reconcile_grounded(
         apply_effect: intent,
         show_read: ReadObserved { value: p as String },
         grounding: Grounds {
           evidence: ConvergePlanApplied {
             exit_code: 0,
-            stdout: concat("install-media-remaster: already present at ", p as String),
+            stdout: concat("install-media-remaster: already published at ", p as String, " sha256 ", b.output_digest as String),
           }
         }
       )
-    InstallMediaRemasterRemastered { path: p } =>
-      reconcile_grounded(
-        apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
-            exit_code: 0,
-            stdout: concat("install-media-remaster: remastered at ", p as String),
-          }
+    SeededImagePublished { built: b, path: p, work: w, staging_residue: residue } =>
+      if !scratch_removed(o: w) || match residue { Absent => false Present { value: _ } => true } {
+        NotConverged {
+          reason: concat(
+            "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+            " but residue remains: ", render_scratch_outcome(label: "work", prefix: "", o: w),
+            match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+          ),
+          applied: intent,
         }
-      )
-    InstallMediaRemasterRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
+      } else {
+        reconcile_grounded(
+          apply_effect: intent,
+          show_read: ReadObserved { value: p as String },
+          grounding: Grounds {
+            evidence: ConvergePlanApplied {
+              exit_code: 0,
+              stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
+            }
+          }
+        )
+      }
+    SeededImagePublishedRecordNotWritten { built: b, path: p, work: w, staging_residue: residue, record: rec } =>
+      NotConverged {
+        reason: concat(
+          "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+          " but its derivation record ", host_file_write_text(w: rec), "; ", render_scratch_outcome(label: "work", prefix: "", o: w),
+          match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+        ),
+        applied: intent,
+      }
+    SeededImagePublicationRefused { reason: why, work: w } =>
+      NotConverged { reason: concat("install-media-remaster: ", why, "; ", render_scratch_outcome(label: "work", prefix: "", o: w)), applied: intent }
   }
 }
 
@@ -3832,37 +4344,94 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 
 // THE CENSUS, TAKEN OVER THE TRANSPORT THE REALIZER ALREADY HOLDS.
 //
-// `gunbc.runner_slot_population_census` owns the JUDGMENT and names no transport: it classifies a
-// `systemctl list-units` outcome into a `SlotCensus`. This is the second binding of that one
-// judgment -- the first is `observe_slot_population_over_ssh` over the fleet SSH edge -- and it exists
-// because the realizer's subject is reached through `HostEffectTransport`, not through a fleet
-// `SshTarget`. Two transports, one classifier, per DESIGN section 2's horizontal rule; the alternative
-// was a second place deciding what a nonzero exit means about a host's slot population, and one of
-// two such places rendering an unreadable host as an empty one is the narrow that raises caps on a
-// host nobody read.
+// `gunbc.runner_slot_population_census` owns the JUDGMENT: what a `systemctl list-units` outcome
+// says about a host's slots, and what an unreadable host means (a refused census, never an empty
+// population). The typed-argv decode lives THERE -- slot_census_from_typed_argv_outcome, the one
+// decode the census module's own fleet reader (observe_slot_population_over_ssh) and every remote
+// arm below share; this fn adds no census judgment of its own and exists because the realizer's
+// subject is reached through `HostEffectTransport`, not through a fleet `SshTarget`, so the
+// transports the realizer already holds are bound to reads here.
 //
-// THE DIRECTION OF THE IMPORT IS WHY THE CLASSIFIER TAKES LOOSE FIELDS. `ShellExecObserved` is
-// declared in THIS module, so a classifier that accepted it would have to be imported from here --
-// and the census module is already imported BY here. Handing it the outcome fields keeps the edge
-// one-way and leaves the census module able to serve any further transport without knowing of it.
+// THE LOCAL FLATTEN STAYS BESIDE THE FN THAT HOLDS THE SEAM. The census module decodes the records
+// it already imports; the local seam's `ProcessOutcome` is flattened into the classifier's loose
+// fields here, where run_shell_command_capture's success convention (output present == exited
+// zero) is known. THE RENDERED PROBE BRIDGE IS GONE; THIS IS ITS RETIREMENT RECEIPT.
+//
+// EVERY NON-LOCAL TRANSPORT RIDES THE ONE TYPED DISPATCH: SshShell and FleetSsh execute the words
+// as argv; EmitArtifactThenThinRun is refused by the dispatch, and a refused leg decodes (in the
+// census module's one adapter) as a refused census -- unobserved, never an empty population. The
+// census's refusal names the transport itself, not the fleet edge: SshShell and FleetSsh share this
+// arm, and the refused reason that follows the noun names the concrete endpoint.
+//
+// Until the commit before this one, the census probe's serialization lived here as a named
+// declaration (observe_slot_population_census_script_body) with a std.dissolution
+// DeclarationRetires trigger bound to it -- because a row that no declaration names cannot be
+// retired by name. This commit discharges that obligation: the census probe now reaches every
+// transport as typed argv -- the command spelling lives in extdeps.systemd.systemctl
+// (systemctl_list_all_service_units_command) and the word list is derived from it -- so the
+// rendering and its trigger deleted together, as the trigger's own comment required: a trigger
+// citing an absent declaration is the dead vocabulary this repository removes. What remains is the
+// counted removal itself: one RetainedShellScript row off the section 5.E frontier, and the census
+// the cap flow consumes no longer unreachable over FleetSsh -- the fleet wall refuses a script
+// BODY before any word is examined, but the same words as argv pass it typed.
+//
+// THE LOCAL ADAPTER: the local seam's observation record, flattened into the classifier's fields.
+fn slot_census_from_process_outcome(host: HostIdentity, outcome: ProcessOutcome) -> SlotCensus {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: t, stderr: "")
+    ProcessOutputAbsent =>
+      slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: "", stderr: "")
+    ProcessRefused { exit_code: c, stderr: e } =>
+      slot_census_from_command_outcome(host: host, success: false, exit_code: c, stdout: "", stderr: e)
+  }
+}
+
+// TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): the typed-argv probe runs the same
+// way on every non-local transport -- run_typed_argv_transport dispatches per variant internally --
+// but the census must DECIDE each new transport here; the wildcard's silence would have admitted
+// one unexamined.
 fn observe_slot_population_over_host_effect_transport(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> SlotCensus {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv()),
-      reason: "runner slot population census (systemctl list-units)",
-    ),
-    transport: transport,
-  )
-  slot_census_from_command_outcome(
-    host: host,
-    success: observed.success,
-    exit_code: observed.exit_code,
-    stdout: observed.stdout,
-    stderr: observed.stderr,
-  )
+  match transport {
+    LocalShell =>
+      slot_census_from_process_outcome(
+        host: host,
+        outcome: run_shell_command_capture(
+          command: systemctl_list_all_service_units_command(),
+          transport: LocalExec,
+        ),
+      )
+    SshShell { ssh_host: _ } =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+    FleetSsh { target: _, context: _ } =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+  }
 }
 
 // THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
@@ -3914,7 +4483,7 @@ fn realize_live_deploy_apply_on_host(
     let census = surplus_observation(
       census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
     )
-    let required = transition_required_retiring(host: host)
+    let required_standing = transition_required_retiring(host: host)
     let admission = runner_host_deploy_for(host: host)
     realize_shell_on_host(
       script: retained_srvn(
@@ -3931,14 +4500,21 @@ fn realize_live_deploy_apply_on_host(
                 cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
               }
             RunnerHostDeployFound { deploy: _ } =>
-              cap_converge_decision(
-                host: host,
-                required_retiring: required,
-                observation: surplus_observation_from_census_and_retirement(
-                  census: census,
-                  standings: observe_retirement_standings(transport: transport, units: required),
-                ),
-              )
+              match required_standing {
+                RetireesUnresolved { host: uh, cause: rc } =>
+                  CapConvergeWithheld {
+                    cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+                  }
+                RetireesKnown { units: required } =>
+                  cap_converge_decision(
+                    host: host,
+                    required_retiring: required,
+                    observation: surplus_observation_from_census_and_retirement(
+                      census: census,
+                      standings: observe_retirement_standings(transport: transport, units: required),
+                    ),
+                  )
+              }
           },
         ),
         reason: "live_deploy apply (unit install + start)",
@@ -3964,6 +4540,46 @@ fn realize_live_deploy_retract_on_host(
   )
 }
 
+// THE DARK INSTALL'S SCRIPT IS THE SAME UNIT VALUE THE BYTE ORACLES PIN, projected to shell by
+// gunbc.live_deploy.emit approval_broker_dark_install_script. It writes the broker's slice and unit
+// and touches gunbc-roadmap.service in no way: a daemon-reload does not restart running units, so
+// the roadmap keeps its PID and its incarnation across this stage.
+fn realize_approval_broker_dark_install_on_host(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: approval_broker_dark_install_script(
+        spec: spec,
+        revision: RevisionBoundAtEmission { revision: candidate.revision },
+      ),
+      reason: "approval broker dark install (additive; does not restart the roadmap unit)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_microvm_controller_install_on_host(
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: microvm_controller_install_script(
+        revision: RevisionBoundAtEmission { revision: candidate.revision },
+      ),
+      reason: "microVM slot controller install (additive locus + template unit; starts no instance)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn realize_live_deploy_ensure_dependency_on_host(
   dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
@@ -3973,6 +4589,24 @@ fn realize_live_deploy_ensure_dependency_on_host(
     script: retained_srvn(
       body: deployment_ensure_dependency_script(dep: dep),
       reason: "live_deploy ensure dependency",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+// One serve route written or turned off, as its own gated effect: the tailnet door cutover applies
+// the re-point and its restore one at a time, between observations, never inside the bulk apply.
+fn realize_live_deploy_serve_route_on_host(
+  endpoint: TailscaleServeEndpoint,
+  enabled: Bool,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: deployment_serve_route_script(endpoint: endpoint, enabled: enabled),
+      reason: "live_deploy serve route",
     ),
     transport: transport,
     intent: intent,
@@ -4042,10 +4676,16 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
     LiveDeployRetractOnHost { node: _, spec: s } =>
       realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
+      realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+    LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
+      realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
       realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+    LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
+      realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
     EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
       runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
     EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
@@ -4241,10 +4881,16 @@ fn host_effect_apply_gated(
           realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
         LiveDeployRetractOnHost { node: _, spec: s } =>
           realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
+          realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+        LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
+          realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
           realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+        LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
+          realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
         EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
           runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
         EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
@@ -4322,8 +4968,11 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             SudoNopasswdGrantListProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployApplyOnHost { node: _, spec: _, candidate: _, plan: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -4371,12 +5020,13 @@ type BuildCacheReadResult
 // EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
 // is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink
 // and must not grow, so an observation added as a concat-built bash body would have grown precisely
-// the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means
+// the surface build_cache_provision_shell_script_dissolution_trigger exists to retire. Routing the reads through the typed argv seam instead means
 // the observation lands in the direction the dissolve-on points, and the remaining concat-shell
 // body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
 // does than it was.
 
-// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason bmc_netboot_run_bmc now does: a
+// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc_netboot_serve's
+// executor does: a
 // List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
 // was doing exactly that ("stat", "-c", "%i", ...). The ssh arms still need the flat vector, which
 // they derive here with argv_words instead of receiving pre-flattened.
@@ -4833,64 +5483,75 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
   concat("/etc/systemd/system/", slice_unit as String)
 }
 
-// THE BYTES INSTALLED ARE THE BYTES THE ADMISSION ADMITTED. EnsureCompilePoolAdmitted already carries the
-// SystemdUnitFile gunbc.build_cache_unit rendered from the derived size, so this serializes THAT value rather
-// than re-rendering from the same inputs. Re-rendering would be a second construction of one artifact, and
-// the failure it admits is not hypothetical: the admission could be granted against one size and the file
-// written from another with nothing between them to notice.
+// THE STAGING FOLD. The install is five typed operations derived entirely before the first one runs,
+// each built by the extdeps builder that owns its tool's flags. EVERY op that touches
+// /etc/systemd/system elevates through /usr/bin/sudo -n, dd and the discard included: the staged
+// sibling lives in that root-owned directory and the invoking principal is not root (the reviewer's
+// catch, review 74182 -- the shape was dry-witnessable and still unrunnable). The unit bytes cross
+// as STDIN DATA to sudo dd (of= truncates and overwrites the staged sibling; status=none keeps dd's statistics line out of
+// the command log; tee is refused for the reason recorded at gunbc.typed_remote_file_write -- it
+// echoes the bytes into their own log); a sudo install -m 0644 moves them into /etc/systemd/system
+// (install(1) rather than mv because owner-at-creation means the wrongly-owned intermediate state has
+// no moment in which to exist, the same reason the gnu_coreutils install section records; the mode
+// rides the install, so there is no separate chmod op); then sudo systemctl daemon-reload and sudo
+// systemctl START -- never restart. Stopping a slice kills every process in it (systemd.slice(5)), so
+// restarting the compile pool would terminate the compilers it exists to hold, which is the opposite
+// of converging it. `start` on an already-active slice re-applies the unit's resource directives and
+// kills nothing. The discard rm -f of the staged sibling runs in BOTH arms -- the idempotent
+// counterpart of the EXIT trap the shell body used to carry, elevated like the write it undoes.
 //
-// Install then daemon-reload then START -- never restart. Stopping a slice kills every process in it
-// (systemd.slice(5)), so restarting the compile pool would terminate the compilers it exists to hold, which
-// is the opposite of converging it. `start` on an already-active slice re-applies the unit's resource
-// directives and kills nothing.
-fn compile_pool_slice_install_body(slice_unit: NonEmptyStr, slice_unit_file: SystemdUnitFile) -> String {
-  join([
-    "set -euo pipefail",
-    compile_pool_stage_directory_line(),
-    compile_pool_stage_trap_line(),
-    deploy_stage_write_command(
-      stage_name: slice_unit as String,
-      content: serialize_systemd_unit_file(file: slice_unit_file),
-    ),
-    deploy_stage_install_command(
-      stage_name: slice_unit as String,
-      mode: compile_pool_slice_file_mode,
-      dest: compile_pool_slice_system_path(slice_unit: slice_unit),
-    ),
-    systemctl_daemon_reload_command(privileged: true),
-    systemctl_start_command(unit: slice_unit, privileged: true),
-    "",
-  ], "\n")
-}
+// THE STAGED PATH IS A SIBLING OF THE DESTINATION, NOT A MKTEMP. `dest ++ .gunbc-stage` makes the
+// whole op list DERIVABLE BEFORE ANYTHING RUNS -- a dry witness can name every argv and the order the
+// fold runs them in, which the mktemp -d the shell body used made structurally impossible (the stage
+// directory existed only once the script was mid-flight, so the witness could only describe the
+// template). It also makes convergence self-repairing: a staged file left by a crashed run is
+// overwritten by the next dd and discarded by the next fold, and the privileged install never crosses
+// a filesystem boundary because the rename stays within /etc/systemd/system.
+//
+// THE BYTES INSTALLED ARE THE BYTES THE ADMISSION ADMITTED. The fold serializes the SystemdUnitFile
+// gunbc.build_cache_unit rendered from the derived size rather than re-rendering from the same
+// inputs. Re-rendering would be a second construction of one artifact, and the failure it admits is
+// not hypothetical: the admission could be granted against one size and the file written from
+// another with nothing between them to notice.
+//
+// THE REFUSAL ARM, AND WHY THE UNIT BODY NEEDS NO REFUSAL OF ITS OWN. A slice unit name carrying '/'
+// would place the unit outside /etc/systemd/system/; systemd unit names never contain one
+// (systemd.unit(5)), so a slash names a malformed unit rather than a path, and the fold refuses at
+// staging -- BEFORE any operation exists to run. The unit FILE's bytes need no refusal arm at all:
+// they cross as stdin data to dd, so no metacharacter in them can change any command's meaning,
+// which is the property the shell body could only approximate by routing every word through
+// bash_build serializers.
+type CompilePoolInstallStaging
+  = CompilePoolInstallReady {
+      stage_write: ArgvCommand
+      install: ArgvCommand
+      daemon_reload: ArgvCommand
+      start: ArgvCommand
+      discard_stage: ArgvCommand
+    }
+  | CompilePoolInstallRefused { reason: String }
 
 data compile_pool_slice_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 
-// THE STAGE-DIRECTORY ASSIGNMENT AND THE TRAP ARE THE ONLY AUTHORED LINES LEFT, AND THEY ARE THE TWO
-// gunbc.live_deploy.emit ALREADY DECLARES AS UNMODELLED. That module's deploy_stage_directory_let_step
-// builds the assignment as a modeled Let over ExprCmdSubst, but it yields a PipelineStep and this
-// realizer's transport takes a script body, so there is no serializer between them to reach for; the
-// trap has no grammar row at all, which that module's apply_intent_from_effects carries as its
-// annotation. Both are spelled here from the
-// same deploy_stage_dir_var authority the staged-path words read, so the variable name is not a second
-// spelling even though the two lines are.
-//
-// EVERYTHING ELSE ROUTES THROUGH THE EXISTING AUTHORITY. The unit bytes reach the host through
-// deploy_stage_write_command and the privileged install through deploy_stage_install_command -- both
-// built from v2.extdeps.languages.bash_build nodes rather than assembled here -- so a slice unit name
-// or a unit body carrying a quote, a space or a metacharacter keeps its word boundary structurally
-// instead of by whatever quoting this module remembered to write. The first draft of this function did
-// assemble them by hand: a `cat >` heredoc for the body and a hand-spelled `sudo -n install`, which was
-// a SECOND authority for staging-and-installing a unit file beside the one live_deploy already owns.
-// Reusing it is the section 3 repair, and it is also what shrinks the residue to the two lines above.
-fn compile_pool_stage_directory_line() -> String {
-  join([deploy_stage_dir_var, "=\"$(mktemp -d)\""], "")
-}
+data compile_pool_slice_stage_suffix: String = ".gunbc-stage"
 
-fn compile_pool_stage_trap_line() -> String {
-  join(["trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT"], "")
+fn compile_pool_slice_install_staging(slice_unit: NonEmptyStr) -> CompilePoolInstallStaging {
+  if string_contains(s: slice_unit as String, pattern: "/") {
+    CompilePoolInstallRefused {
+      reason: "the slice unit name carries '/', which would place the unit outside /etc/systemd/system/; systemd unit names never contain one (systemd.unit(5)), so this is a malformed name rather than a path",
+    }
+  } else {
+    let dest = compile_pool_slice_system_path(slice_unit: slice_unit)
+    let staged = concat(dest, compile_pool_slice_stage_suffix)
+    CompilePoolInstallReady {
+      stage_write: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
+      install: sudo_elevate_command(command: coreutils_install_file_argv(mode: compile_pool_slice_file_mode, source: staged, dest: dest)),
+      daemon_reload: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
+      start: systemctl_start_command(unit: slice_unit),
+      discard_stage: sudo_elevate_command(command: argv_words(command: rm_force_command(path: staged))),
+    }
+  }
 }
-
-data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
 
 fn compile_pool_ensure_admission_for(
   node: ComputeHost,
@@ -4939,6 +5600,11 @@ fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlaceme
 // provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
 // the post-state can differ. Convergence is claimed only when the second admission answers
 // EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+// The write arm is the one arm whose failure can leave PARTIAL state behind: dd receiving unit bytes
+// on stdin can write some bytes and still exit nonzero, and the staged sibling then survives until
+// some later install moves it. So the write-failure arm is not an exception to the discard pair the
+// other failure arms run -- cleanup is attempted before reporting, and the discard's own exit status
+// rides in the reason, so a failed discard is visible rather than silent.
 fn compile_pool_slice_install_step(
   node: ComputeHost,
   slice_unit: NonEmptyStr,
@@ -4947,62 +5613,216 @@ fn compile_pool_slice_install_step(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: shell_exec_via_bash(body: compile_pool_slice_install_body(slice_unit: slice_unit, slice_unit_file: slice_unit_file)),
-      reason: "srvN compile-pool slice install (managed cgroup parent for cache-miss compilers)",
-    ),
-    transport: transport,
-  )
-  if observed.success == false {
-    NotConverged {
-      reason: join(
-        [
-          "host_effect_apply: EnsureCompilePoolSlice ran its install and the shell exited ",
-          to_string(observed.exit_code),
-          ": ",
-          if observed.stderr == "" { observed.stdout } else { observed.stderr },
-        ],
-        "",
-      ),
-      applied: effect_intent,
-    }
-  } else {
-    let after = compile_pool_ensure_admission_for(node: node, transport: transport)
-    if compile_pool_ensure_is_converged(admission: after) {
-      Converged {
-        evidence: ShellEffectApplied {
-          exit_code: observed.exit_code,
-          stdout: join(
-            [
-              "CompilePoolSliceReceipt: converged unit=",
-              slice_unit as String,
-              " memory.max=memory.high=",
-              to_string(byte_size_count(b: sized)),
-              " (re-observed after install; the admission answered already-converged)",
-            ],
-            "",
-          ),
-          stderr: observed.stderr,
-        },
-        applied: effect_intent,
-      }
-    } else {
+  match compile_pool_slice_install_staging(slice_unit: slice_unit) {
+    CompilePoolInstallRefused { reason: r } =>
       NotConverged {
         reason: join(
           [
-            "host_effect_apply: EnsureCompilePoolSlice installed ",
-            slice_unit as String,
-            " and the read-back did not converge -- ",
-            compile_pool_admission_diagnostic(admission: after),
+            "host_effect_apply: EnsureCompilePoolSlice refused at staging before any operation ran -- ",
+            r as String,
           ],
           "",
         ),
         applied: effect_intent,
       }
+    CompilePoolInstallReady { stage_write: write, install: install, daemon_reload: reload, start: start, discard_stage: discard } => {
+      let written = run_argv_stdin_over_host_effect_transport(
+        command: write,
+        stdin_payload: serialize_systemd_unit_file(file: slice_unit_file),
+        transport: transport,
+      )
+      if !run_argv_transport_succeeded(outcome: written) {
+        let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+        compile_pool_install_failed_step_result(
+          failed_step: "stage write",
+          slice_unit: slice_unit,
+          observed: written,
+          discarded: discarded,
+          effect_intent: effect_intent,
+        )
+      } else {
+        let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
+        if !run_argv_transport_succeeded(outcome: installed) {
+          let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+          compile_pool_install_failed_step_result(
+            failed_step: "install",
+            slice_unit: slice_unit,
+            observed: installed,
+            discarded: discarded,
+            effect_intent: effect_intent,
+          )
+        } else {
+          let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
+          if !run_argv_transport_succeeded(outcome: reloaded) {
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            compile_pool_install_failed_step_result(
+              failed_step: "daemon-reload",
+              slice_unit: slice_unit,
+              observed: reloaded,
+              discarded: discarded,
+              effect_intent: effect_intent,
+            )
+          } else {
+            let started = run_argv_over_host_effect_transport(command: start, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            match started {
+              RunArgvTransportRefused { reason: _ } =>
+                compile_pool_install_failed_step_result(
+                  failed_step: "start",
+                  slice_unit: slice_unit,
+                  observed: started,
+                  discarded: discarded,
+                  effect_intent: effect_intent,
+                )
+              RunArgvTransportObserved { observed: s } =>
+                if !s.success {
+                  compile_pool_install_failed_step_result(
+                    failed_step: "start",
+                    slice_unit: slice_unit,
+                    observed: started,
+                    discarded: discarded,
+                    effect_intent: effect_intent,
+                  )
+                } else {
+                  let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+                  if compile_pool_ensure_is_converged(admission: after) {
+                    Converged {
+                      evidence: ShellEffectApplied {
+                        exit_code: s.exit_code,
+                        stdout: join(
+                          [
+                            "CompilePoolSliceReceipt: converged unit=",
+                            slice_unit as String,
+                            " memory.max=memory.high=",
+                            to_string(byte_size_count(b: sized)),
+                            " (re-observed after install; the admission answered already-converged)",
+                          ],
+                          "",
+                        ),
+                        stderr: s.stderr,
+                      },
+                      applied: effect_intent,
+                    }
+                  } else {
+                    NotConverged {
+                      reason: join(
+                        [
+                          "host_effect_apply: EnsureCompilePoolSlice installed ",
+                          slice_unit as String,
+                          " and the read-back did not converge -- ",
+                          compile_pool_admission_diagnostic(admission: after),
+                        ],
+                        "",
+                      ),
+                      applied: effect_intent,
+                    }
+                  }
+                }
+            }
+          }
+        }
+      }
     }
   }
 }
+
+// THE STEP-LEVEL FAILURE LINE, one per op so a failed fold names the op that failed rather than
+// leaving five exit codes to disambiguate. The old text said "the shell exited"; there is no shell
+// on this edge anymore, so the line says the OPERATION exited and which one.
+fn compile_pool_install_stage_failure(step: String, slice_unit: NonEmptyStr, observed: ShellExecObserved) -> String {
+  join(
+    [
+      "host_effect_apply: EnsureCompilePoolSlice ran its ",
+      step,
+      " over ",
+      slice_unit as String,
+      " and the operation exited ",
+      to_string(observed.exit_code),
+      ": ",
+      if observed.stderr == "" { observed.stdout } else { observed.stderr },
+    ],
+    "",
+  )
+}
+
+// THE STEP-LEVEL FAILURE LINE, one per op so a failed fold names the op that failed rather than
+// leaving five exit codes to disambiguate, AND TRUTHFUL ABOUT WHICH FAILURE HAPPENED (review: the
+// SSH refusal must stay typed). A refused outcome never started a process, so its line says the
+// step DID NOT RUN and carries the wall's own admission text; an observed outcome ran, so its line
+// says the OPERATION exited and which one, from the observation's real exit status. The old text
+// said "the shell exited"; there is no shell on this edge anymore.
+fn compile_pool_install_step_failure_line(step: String, slice_unit: NonEmptyStr, outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: why } =>
+      join(
+        [
+          "host_effect_apply: EnsureCompilePoolSlice did not run its ",
+          step,
+          " over ",
+          slice_unit as String,
+          " -- ",
+          why,
+        ],
+        "",
+      )
+    RunArgvTransportObserved { observed: o } =>
+      compile_pool_install_stage_failure(step: step, slice_unit: slice_unit, observed: o)
+  }
+}
+
+// THE DISCARD LEG'S REPORT, same split. An observed discard names its exit status, so a failed
+// cleanup is visible rather than silent; a refused discard says so -- the wall stopped that leg
+// before any ssh connection, and no exit status exists to report.
+fn compile_pool_install_discard_line(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportObserved { observed: o } =>
+      join([" (staged bytes discarded, exit ", to_string(o.exit_code), ")"], "")
+    RunArgvTransportRefused { reason: why } =>
+      join([" (the staged-byte discard did not run either -- ", why, ")"], "")
+  }
+}
+
+// Whether the transport runner's leg did its job: only an OBSERVED outcome with exit status zero
+// counts. A refusal is a failed step for sequencing purposes -- but the failure fold below still
+// says what kind of failure it was, which is the whole point of keeping the coproduct.
+fn run_argv_transport_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } => o.success
+  }
+}
+
+// THE INSTALL SEQUENCE'S FAILURE DECISION, AS A PURE FOLD OVER SUPPLIED OUTCOMES (DESIGN 3: the
+// witness discriminates at this interface, and the values are supplied -- no operation, no ssh, no
+// sudo, no network). compile_pool_slice_install_step runs the staged operations in order and, when
+// one fails, hands THIS fold the failed step's own outcome and the outcome the discard leg brought
+// back. The fold's whole decision is the failure sequence: the cleanup is ATTEMPTED BEFORE the
+// failure is reported -- its outcome is a parameter, so a caller that skipped the second leg could
+// not produce this call -- and the report carries the failed step plus the discard verdict, each
+// routed through its own line so a refused-before-execution leg is never described as a process
+// that ran. The wet step is the only side that can run the operations, so it is the only side that
+// can supply these values; all four failure arms delegate here, which makes this fold the
+// sequence's single decision point -- the witness supplies DESIGNED outcomes (a failed write, a
+// failing cleanup, a wall refusal) and pins the same NotConverged the wet fold returns.
+fn compile_pool_install_failed_step_result(
+  failed_step: String,
+  slice_unit: NonEmptyStr,
+  observed: RunArgvTransportOutcome,
+  discarded: RunArgvTransportOutcome,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: join(
+      [
+        compile_pool_install_step_failure_line(step: failed_step, slice_unit: slice_unit, outcome: observed),
+        compile_pool_install_discard_line(outcome: discarded),
+      ],
+      "",
+    ),
+    applied: effect_intent,
+  }
+}
+
 
 fn compile_pool_admission_diagnostic(admission: EnsureCompilePoolAdmission) -> String {
   match admission {

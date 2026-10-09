@@ -1,0 +1,425 @@
+module test.claim.fabric_memory_grant_witness_test
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure {
+  ByteSize, FiniteByteSize, byte_size, byte_size_count, finite_byte_size, positive_measure_count,
+  finite_byte_size_count, gibibyte_grain,
+}
+import std.checked_arithmetic { int_inclusive_max }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.fabric.envelope { MemoryRequirement }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+import product.fabric.memory_grant {
+  MemoryGrant, MemoryCompatibilityPermit,
+  MemoryGrantProvenance, GrantedAgainstStatedRequirement, GrantedUnderCompatibilityPermit,
+  MemoryGrantIssue, MemoryGranted, MemoryGrantRefused,
+  MemoryGrantRefusal, GrantBelowStatedMinimum, GrantAboveCeiling,
+  MemoryGrantStanding, RequirementCheckedAtOrAbove, NoRequirementStatedCompatibilityDefault,
+  issue_memory_grant, memory_grant_standing, memory_grant_standing_text,
+  memory_grant_required_minimum, memory_grant_bytes,
+}
+import gunbc.fabric_memory_grant_policy {
+  MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy,
+  MemoryGrantSizing, SizingResolved, SizingUnrepresentable,
+  MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable,
+  GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw,
+  microvm_memory_grant_size, microvm_memory_grant, gunbc_microvm_memory_grant_policy,
+  gunbc_microvm_memory_compatibility_permit, gunbc_microvm_memory_compatibility_default,
+}
+import gunbc.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable, gunbc_runner_microvm_guest_cache_allowance }
+
+// THE SUBJECT IS ONE INTERFACE AND ITS INPUTS ARE SUPPLIED (DESIGN 3). Every claim below but the
+// last three constructs its policy, its requirement and its identities rather than deriving them by
+// running gunbc.floor_demand and gunbc.runner_microvm -- those have their own subjects and their
+// own discriminating reds, and re-executing them here would buy no coverage at the price of their
+// whole cost. The pairing obligation is discharged by the last three claims, which execute the REAL
+// allowance producer gunbc.runner_microvm gunbc_runner_microvm_guest_cache_allowance (the floor
+// cache receipt), assemble the fleet policy through the real binding
+// gunbc_microvm_memory_grant_policy exactly as the wiring item's consumer will, and route it
+// through the real issue fold. Deleting any link of that route makes them fail.
+//
+// THESE WITNESSES ARE NOT ON THE REQUIRED GATE. v2.workflow.required_floor required_gate_prefixes
+// and required_gate_authored_modules carry no row admitting test.claim.fabric_* modules, so this
+// module is discovered by the floor and never planned (DeclinedOutsideGateClosure). Its neighbours
+// in this directory sit in the same position. The only execution this evidence gets is a local
+// claim_batch run, and the PR that lands it says so rather than implying a gate.
+
+// THE AUTHORITY TOKEN IS UNCONSTRUCTIBLE HERE, AND THAT IS A COMPILE-TIME FACT RATHER THAN A CLAIM
+// THIS MODULE CAN EXECUTE -- MEASURED, NOT ASSUMED: a function returning `MicroVmMemoryGrantAuthority { }`
+// appended to this file makes claim_batch refuse the whole module at resolve, at the literal's own
+// position, with `sole_constructor type 'MicroVmMemoryGrantAuthority' cannot be constructed outside
+// its defining module` (v1.compiler.infer sole_constructor_construction_diags, whose own witnesses
+// hold that wall), and no claim runs. So no claim here mints one; every grant below is obtained
+// through the policy's fold, which is the whole point of the token.
+
+fn work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "operator", key: "work-1" as WorkKey }
+}
+
+fn attempt_id() -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "operator", key: "attempt-1" as ExecutionAttemptKey }
+}
+
+fn policy_ref() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric_memory_grant_witness_test", decl_name: "fixture_policy")
+}
+
+fn gib() -> Int { 1073741824 }
+
+// A POSITIVE CEILING BY CONSTRUCTION: the fixture goes through PositiveMeasureCount's successor
+// form, so a non-positive fixture value is a defect in this file and not a silent zero.
+fn finite(bytes: Int) -> FiniteByteSize {
+  finite_byte_size(count: positive_measure_count(predecessor: bytes - 1))
+}
+
+fn fixture_permit(default_bytes: Int) -> MemoryCompatibilityPermit {
+  MemoryCompatibilityPermit {
+    default_grant: byte_size(default_bytes),
+    permitted_by: decl_ref(module_path: "test.claim.fabric_memory_grant_witness_test", decl_name: "fixture_permit"),
+    reason: "fixture permit" as NonEmptyStr,
+  }
+}
+
+fn fixture_policy(allowance: Int, ceiling: Int, permit: MemoryCompatibilityPermit?) -> MicroVmMemoryGrantPolicy {
+  MicroVmMemoryGrantPolicy {
+    reference: policy_ref(),
+    allowance: byte_size(allowance),
+    grain: gibibyte_grain(),
+    ceiling: finite(bytes: ceiling),
+    compatibility_permit: permit,
+  }
+}
+
+// THE WITNESS MATCHES THE STANDING ARM ITSELF. A Bool predicate over this coproduct lived on the
+// carrier in an earlier revision and had no consumer but this file (DESIGN 3c: a witness is not a
+// consumer), so it was deleted; every site here has the MemoryGrantStanding in hand and matches it.
+fn standing_is_requirement_checked(s: MemoryGrantStanding) -> Bool {
+  match s {
+    RequirementCheckedAtOrAbove { required: _, granted: _ } => true
+    NoRequirementStatedCompatibilityDefault { permit: _, granted: _ } => false
+  }
+}
+
+fn requirement(bytes: Int) -> MemoryRequirement {
+  MemoryRequirement { min_bytes: byte_size(bytes) }
+}
+
+fn stated(bytes: Int) -> MemoryGrantProvenance {
+  GrantedAgainstStatedRequirement { required: requirement(bytes: bytes) }
+}
+
+// THE CARRIER'S ISSUE FOLD, DRIVEN WITH A TOKEN OF THIS MODULE'S OWN. The carrier is generic over
+// its authority, so the claims about ITS laws supply a fixture authority -- a plain Int -- and
+// establish nothing about who may mint the fleet's grants; that is the policy's token, and it is
+// covered by the compile-time fact stated above and by the policy claims that obtain one through
+// the fold.
+fn carrier_issue(granted: Int, ceiling: Int, provenance: MemoryGrantProvenance) -> MemoryGrantIssue<NonEmptyStr, Int> {
+  issue_memory_grant(
+    work: work_id(), attempt: attempt_id(), granted: byte_size(granted), ceiling: finite(bytes: ceiling),
+    provenance: provenance, policy: policy_ref(), authority: 0,
+  )
+}
+
+fn issued_bytes(issue: MemoryGrantIssue<NonEmptyStr, Int>) -> Int {
+  match issue {
+    MemoryGranted { grant: g } => byte_size_count(b: memory_grant_bytes(g: g))
+    MemoryGrantRefused { refusal: _ } => 0 - 1
+  }
+}
+
+fn refused_below_minimum(issue: MemoryGrantIssue<NonEmptyStr, Int>, required: Int, granted: Int) -> Bool {
+  match issue {
+    MemoryGranted { grant: _ } => false
+    MemoryGrantRefused { refusal: r } =>
+      match r {
+        GrantBelowStatedMinimum { required: q, granted: g } =>
+          byte_size_count(b: q) == required && byte_size_count(b: g) == granted
+        GrantAboveCeiling { granted: _, ceiling: _ } => false
+      }
+  }
+}
+
+fn refused_above_ceiling(issue: MemoryGrantIssue<NonEmptyStr, Int>, granted: Int, ceiling: Int) -> Bool {
+  match issue {
+    MemoryGranted { grant: _ } => false
+    MemoryGrantRefused { refusal: r } =>
+      match r {
+        GrantAboveCeiling { granted: g, ceiling: c } =>
+          byte_size_count(b: g) == granted && finite_byte_size_count(size: c) == ceiling
+        GrantBelowStatedMinimum { required: _, granted: _ } => false
+      }
+  }
+}
+
+// LAW 1: A STATED REQUIREMENT IS A FLOOR. grant >= min_bytes, or the line stops.
+//
+// RED. A grant one byte below the Work's stated minimum is refused, and the refusal carries both
+// figures. A carrier that raised the number to the minimum would return MemoryGranted here.
+test fn a_grant_below_the_stated_minimum_is_refused_with_both_figures() -> Bool {
+  let issue = carrier_issue(granted: 4 * gib() - 1, ceiling: 8 * gib(), provenance: stated(bytes: 4 * gib()))
+  refused_below_minimum(issue: issue, required: 4 * gib(), granted: 4 * gib() - 1)
+}
+
+// THE POSITIVE CONTROL, at the boundary rather than comfortably above it: a grant EQUAL to the
+// minimum is issued, carries the minimum it was checked against, and reports it as checked.
+test fn a_grant_exactly_at_the_stated_minimum_is_issued_and_checked() -> Bool {
+  let issue = carrier_issue(granted: 4 * gib(), ceiling: 8 * gib(), provenance: stated(bytes: 4 * gib()))
+  match issue {
+    MemoryGrantRefused { refusal: _ } => false
+    MemoryGranted { grant: g } =>
+      issued_bytes(issue: issue) == 4 * gib()
+        && standing_is_requirement_checked(s: memory_grant_standing(g: g))
+        && match memory_grant_required_minimum(g: g) {
+             Present { value: r } => byte_size_count(b: r.min_bytes) == 4 * gib()
+             Absent => false
+           }
+  }
+}
+
+// LAW 2: ABOVE THE CEILING IS A REFUSAL AND NEVER A CLAMP.
+//
+// RED, AND IT DISCRIMINATES A CLAMP RATHER THAN TWO SIZES. A clamping carrier would return
+// MemoryGranted carrying the CEILING, a perfectly plausible grant that passes law 1. The assertion
+// is that the refusal reports the figure it DECLINED, not the ceiling it might have substituted.
+test fn a_grant_above_the_ceiling_refuses_and_does_not_clamp() -> Bool {
+  let issue = carrier_issue(granted: 8 * gib() + 1, ceiling: 8 * gib(), provenance: stated(bytes: 4 * gib()))
+  refused_above_ceiling(issue: issue, granted: 8 * gib() + 1, ceiling: 8 * gib())
+    && issued_bytes(issue: issue) != 8 * gib()
+}
+
+// THE POSITIVE CONTROL AT THE CEILING: a grant EXACTLY at the ceiling is admissible, so the refusal
+// above is about exceeding it and not about approaching it.
+test fn a_grant_exactly_at_the_ceiling_is_issued() -> Bool {
+  issued_bytes(issue: carrier_issue(granted: 8 * gib(), ceiling: 8 * gib(), provenance: stated(bytes: 4 * gib()))) == 8 * gib()
+}
+
+// THE CEILING IS DECIDED BEFORE THE MINIMUM: a demand larger than the cell is reported as
+// above-ceiling, which names the remedy (the cell row), and not as below-minimum, which would send
+// the reader to the policy.
+test fn a_demand_larger_than_the_cell_is_reported_against_the_ceiling() -> Bool {
+  let issue = carrier_issue(granted: 9 * gib(), ceiling: 8 * gib(), provenance: stated(bytes: 10 * gib()))
+  refused_above_ceiling(issue: issue, granted: 9 * gib(), ceiling: 8 * gib())
+}
+
+// LAW 3: A DEFAULTED GRANT CANNOT RENDER AS REQUIREMENT-CHECKED.
+//
+// RED, AND IT IS A CLAIM ABOUT WHAT THE GRANT CAN SAY, NOT ABOUT ITS SIZE. Two grants of the same
+// size, one against a stated requirement and one under a permit: the standing of the second is the
+// weak arm, its predicate is false, its derived minimum is absent, and its text names the permit's
+// issuer rather than the checked sentence.
+test fn a_defaulted_grant_does_not_render_as_requirement_checked() -> Bool {
+  let permitted = carrier_issue(granted: 4 * gib(), ceiling: 8 * gib(), provenance: GrantedUnderCompatibilityPermit { permit: fixture_permit(default_bytes: 4 * gib()) })
+  let checked = carrier_issue(granted: 4 * gib(), ceiling: 8 * gib(), provenance: stated(bytes: 4 * gib()))
+  match permitted {
+    MemoryGrantRefused { refusal: _ } => false
+    MemoryGranted { grant: weak } =>
+      match checked {
+        MemoryGrantRefused { refusal: _ } => false
+        MemoryGranted { grant: strong } =>
+          let weak_standing = memory_grant_standing(g: weak)
+          let strong_standing = memory_grant_standing(g: strong)
+          !standing_is_requirement_checked(s: weak_standing)
+            && standing_is_requirement_checked(s: strong_standing)
+            && memory_grant_standing_text(s: weak_standing) != memory_grant_standing_text(s: strong_standing)
+            && string_contains(s: memory_grant_standing_text(s: weak_standing), pattern: "permitted by fixture_permit")
+            && !string_contains(s: memory_grant_standing_text(s: weak_standing), pattern: "memory requirement checked")
+            && match memory_grant_required_minimum(g: weak) {
+                 Absent => true
+                 Present { value: _ } => false
+               }
+            && match weak_standing {
+                 NoRequirementStatedCompatibilityDefault { permit: p, granted: g } =>
+                   byte_size_count(b: g) == 4 * gib() && (p.permitted_by.decl_name as String) == "fixture_permit"
+                 RequirementCheckedAtOrAbove { required: _, granted: _ } => false
+               }
+      }
+  }
+}
+
+// LAW 4: AN UNREPRESENTABLE MINIMUM PLUS ALLOWANCE REFUSES AND NEVER WRAPS -- AND IT IS REPORTED
+// AS UNREPRESENTABLE, NOT AS ABOVE THE CEILING.
+//
+// RED. minimum = the representable bound, allowance = one byte. The sum does not exist. A wrapped
+// sum would be negative, would pass the ceiling law, and would be issued; a policy that bounded
+// this guard by the CEILING instead of the bound would refuse it as above-ceiling, which sends a
+// reader to enlarge a cell forever. The assertion is on the ARM, which is what makes this red
+// authorable: the ceiling here is small and the demand is still reported as not a figure.
+test fn a_minimum_within_one_byte_of_the_bound_refuses_as_unrepresentable() -> Bool {
+  let policy = fixture_policy(allowance: 1, ceiling: 8 * gib(), permit: none)
+  match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: Present { value: requirement(bytes: int_inclusive_max()) }) {
+    GrantRefusedUnrepresentable { sizing: s } =>
+      match s {
+        SizingUnrepresentable { minimum: m, allowance: a, detail: _ } =>
+          byte_size_count(b: m) == int_inclusive_max() && byte_size_count(b: a) == 1
+        SizingResolved { bytes: _ } => false
+      }
+    GrantRefusedByLaw { refusal: _ } => false
+    GrantRefusedUnstatedAxisWithoutPermit => false
+    MemoryGrantIssued { grant: _ } => false
+  }
+}
+
+// THE SECOND ARM OF THE SAME LAW: the sum IS representable and the ROUND-UP TO GRAIN is not. The
+// sum lands one byte under the bound; the bound is not gibibyte-aligned, so the ceiling of that sum
+// would need a pad the machine cannot hold.
+test fn a_sum_within_one_grain_of_the_bound_refuses_on_the_round_up() -> Bool {
+  let policy = fixture_policy(allowance: 1, ceiling: 8 * gib(), permit: none)
+  match microvm_memory_grant_size(policy: policy, minimum: byte_size(int_inclusive_max() - 2)) {
+    SizingUnrepresentable { minimum: m, allowance: _, detail: _ } => byte_size_count(b: m) == int_inclusive_max() - 2
+    SizingResolved { bytes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE SIZING ITSELF, without which both reds above would pass against a
+// policy that refuses everything. round_up(minimum + allowance, grain): 5 GiB + 2 GiB is already
+// grain-aligned and stays 7 GiB; 5 GiB + 1 byte rounds up to 6 GiB.
+test fn the_policy_sizes_a_stated_minimum_as_round_up_of_minimum_plus_allowance() -> Bool {
+  let aligned = microvm_memory_grant_size(policy: fixture_policy(allowance: 2 * gib(), ceiling: 8 * gib(), permit: none), minimum: byte_size(5 * gib()))
+  let padded = microvm_memory_grant_size(policy: fixture_policy(allowance: 1, ceiling: 8 * gib(), permit: none), minimum: byte_size(5 * gib()))
+  sized_bytes(s: aligned) == 7 * gib() && sized_bytes(s: padded) == 6 * gib()
+}
+
+fn sized_bytes(s: MemoryGrantSizing) -> Int {
+  match s {
+    SizingResolved { bytes: b } => byte_size_count(b: b)
+    SizingUnrepresentable { minimum: _, allowance: _, detail: _ } => 0 - 1
+  }
+}
+
+// THE CEILING LAW REACHED THROUGH THE POLICY, because the policy is the producer that will actually
+// face it: a 6 GiB minimum with a 2 GiB allowance sizes to 8 GiB, the cell's ceiling is 7 GiB, and
+// the fold carries the carrier's refusal out with the SIZED figure rather than resizing to fit.
+test fn the_policy_carries_the_ceiling_refusal_out_rather_than_resizing() -> Bool {
+  let policy = fixture_policy(allowance: 2 * gib(), ceiling: 7 * gib(), permit: none)
+  match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: Present { value: requirement(bytes: 6 * gib()) }) {
+    GrantRefusedByLaw { refusal: r } =>
+      match r {
+        GrantAboveCeiling { granted: g, ceiling: c } => byte_size_count(b: g) == 8 * gib() && finite_byte_size_count(size: c) == 7 * gib()
+        GrantBelowStatedMinimum { required: _, granted: _ } => false
+      }
+    GrantRefusedUnrepresentable { sizing: _ } => false
+    GrantRefusedUnstatedAxisWithoutPermit => false
+    MemoryGrantIssued { grant: _ } => false
+  }
+}
+
+// LAW 5: AN ABSENT AXIS WITH NO PERMIT REFUSES.
+//
+// RED. The Work states no memory axis and the policy holds no permit. An unstated axis is a
+// requirement nobody expressed, and there is no authority to invent a number on the Work's behalf.
+test fn an_absent_memory_axis_without_a_permit_is_refused() -> Bool {
+  let policy = fixture_policy(allowance: 2 * gib(), ceiling: 8 * gib(), permit: none)
+  match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: none) {
+    GrantRefusedUnstatedAxisWithoutPermit => true
+    GrantRefusedByLaw { refusal: _ } => false
+    GrantRefusedUnrepresentable { sizing: _ } => false
+    MemoryGrantIssued { grant: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the SAME absent axis and a permit -- and now a grant is issued, at the
+// PERMIT'S default rather than a figure the policy chose, standing on the weak arm.
+test fn an_absent_memory_axis_under_a_permit_is_granted_the_permit_default() -> Bool {
+  let policy = fixture_policy(allowance: 2 * gib(), ceiling: 8 * gib(), permit: Present { value: fixture_permit(default_bytes: 3 * gib()) })
+  match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: none) {
+    MemoryGrantIssued { grant: g } =>
+      byte_size_count(b: memory_grant_bytes(g: g)) == 3 * gib()
+        && !standing_is_requirement_checked(s: memory_grant_standing(g: g))
+    GrantRefusedByLaw { refusal: _ } => false
+    GrantRefusedUnrepresentable { sizing: _ } => false
+    GrantRefusedUnstatedAxisWithoutPermit => false
+  }
+}
+
+// THE PERMIT'S DEFAULT IS STILL UNDER THE CEILING LAW: a permit whose default exceeds the cell is
+// refused there, not issued because a permit said so.
+test fn a_permit_default_above_the_ceiling_is_refused_by_the_ceiling_law() -> Bool {
+  let policy = fixture_policy(allowance: 2 * gib(), ceiling: 2 * gib(), permit: Present { value: fixture_permit(default_bytes: 3 * gib()) })
+  match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: none) {
+    GrantRefusedByLaw { refusal: r } =>
+      match r {
+        GrantAboveCeiling { granted: g, ceiling: _ } => byte_size_count(b: g) == 3 * gib()
+        GrantBelowStatedMinimum { required: _, granted: _ } => false
+      }
+    GrantRefusedUnrepresentable { sizing: _ } => false
+    GrantRefusedUnstatedAxisWithoutPermit => false
+    MemoryGrantIssued { grant: _ } => false
+  }
+}
+
+// INHABITANCE (DESIGN 3): THE REAL PRODUCERS EMIT THE SHAPE THE CLAIMS ABOVE SUPPLY.
+//
+// The fleet policy is assembled the way its production consumer will assemble it: the allowance is
+// READ from gunbc.runner_microvm's real producer over the real floor cache receipt, the ceiling is
+// supplied because its production caller is the wiring item's declared frontier, and the binding is
+// total. An underivable allowance is answered with `none` so every route claim below goes RED on
+// its own arm rather than on a fixture standing in for the refusal.
+fn fleet_policy(ceiling: Int) -> MicroVmMemoryGrantPolicy? {
+  match gunbc_runner_microvm_guest_cache_allowance() {
+    AllowanceUnderivable { cause: _ } => none
+    AllowanceDerived { bytes: allowance } =>
+      Present { value: gunbc_microvm_memory_grant_policy(allowance: allowance, ceiling: finite(bytes: ceiling)) }
+  }
+}
+
+// The binding's shape is asserted as USABLE rather than as a figure: a claim on the exact allowance
+// would be a transcription of gunbc.floor_demand's receipt, which that module's witnesses already
+// hold. The permit's default is compared THROUGH byte_size_count against the ByteSize row that owns
+// it, and against the gibibyte it is derived from, never against a re-minted literal.
+test fn the_fleet_policy_binding_emits_a_usable_policy() -> Bool {
+  match fleet_policy(ceiling: 8 * gib()) {
+    Absent => false
+    Present { value: p } =>
+      byte_size_count(b: p.allowance) > 0
+        && finite_byte_size_count(size: p.ceiling) == 8 * gib()
+        && (p.reference.decl_name as String) == "gunbc_microvm_memory_grant_policy"
+        && match p.compatibility_permit {
+             Present { value: permit } =>
+               byte_size_count(b: permit.default_grant) == byte_size_count(b: gunbc_microvm_memory_compatibility_default)
+                 && byte_size_count(b: permit.default_grant) == 4 * gib()
+             Absent => false
+           }
+  }
+}
+
+// THE SECOND HALF OF THE PAIRING: the real policy routed through the real issue fold produces a
+// grant of the fleet's authority type, at or above a stated minimum, standing on the checked arm.
+// The route is asserted, not only the answer: the grant is a MemoryGrant<_, MicroVmMemoryGrantAuthority>,
+// which nothing in this file can construct, so it can only have come through the policy's fold.
+test fn the_fleet_policy_binding_issues_a_grant_at_or_above_a_stated_minimum() -> Bool {
+  match fleet_policy(ceiling: 64 * gib()) {
+    Absent => false
+    Present { value: p } =>
+      match microvm_memory_grant(policy: p, work: work_id(), attempt: attempt_id(), requirement: Present { value: requirement(bytes: 4 * gib()) }) {
+        MemoryGrantIssued { grant: g } => fleet_grant_is_checked_at_or_above(g: g, minimum: 4 * gib())
+        GrantRefusedByLaw { refusal: _ } => false
+        GrantRefusedUnrepresentable { sizing: _ } => false
+        GrantRefusedUnstatedAxisWithoutPermit => false
+      }
+  }
+}
+
+// THE PERMIT THE FLEET BINDING HOLDS IS REAL, and an unstated axis therefore reaches the weaker
+// standing through the real route rather than a refusal: the grant is the fleet default, standing
+// on the weak arm, and its rendered text names the fleet's own permit row.
+test fn the_fleet_policy_binding_grants_an_unstated_axis_under_its_own_permit() -> Bool {
+  match fleet_policy(ceiling: 8 * gib()) {
+    Absent => false
+    Present { value: p } =>
+      match microvm_memory_grant(policy: p, work: work_id(), attempt: attempt_id(), requirement: none) {
+        MemoryGrantIssued { grant: g } =>
+          byte_size_count(b: memory_grant_bytes(g: g)) == byte_size_count(b: gunbc_microvm_memory_compatibility_default)
+            && !standing_is_requirement_checked(s: memory_grant_standing(g: g))
+            && string_contains(s: memory_grant_standing_text(s: memory_grant_standing(g: g)), pattern: "permitted by gunbc_microvm_memory_compatibility_permit")
+        GrantRefusedByLaw { refusal: _ } => false
+        GrantRefusedUnrepresentable { sizing: _ } => false
+        GrantRefusedUnstatedAxisWithoutPermit => false
+      }
+  }
+}
+
+fn fleet_grant_is_checked_at_or_above(g: MemoryGrant<NonEmptyStr, MicroVmMemoryGrantAuthority>, minimum: Int) -> Bool {
+  byte_size_count(b: memory_grant_bytes(g: g)) >= minimum
+    && standing_is_requirement_checked(s: memory_grant_standing(g: g))
+    && byte_size_count(b: memory_grant_bytes(g: g)) % gib() == 0
+}

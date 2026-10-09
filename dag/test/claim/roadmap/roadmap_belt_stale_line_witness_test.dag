@@ -1,0 +1,200 @@
+module test.claim.roadmap.roadmap_belt_stale_line_witness_test
+
+// A HEAD LINE'S STANDING IS A PURE READ OF TYPED MEMBERS (the BaseAdvance follow-up to gunbc#13111).
+// A candidate minted as the child of the intake commit for its base is on base by construction, so a
+// line integrating it is clean with no attempt observed; the publish base is the deepest intake
+// commit the head's tree contains. The pre-intake population -- srv2's shell-typed-invocation -- is
+// converted in place and corrected by supersession, witnessed by
+// test.claim.roadmap.roadmap_belt_supersession_witness_test. The publication plan claims below are the
+// realizer's pure half, unchanged.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
+import gunbc.scm.repository_envelope { RepositoryEnvelope }
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
+import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message, belt_candidate_commit_subject, CandidateCommitSubject }
+import gunbc.roadmap_belt_actuate {
+  belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
+  belt_line_integrated_sources, LineSourcesRead, LineSourcesUnreadable,
+  belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,
+  belt_publish_plan, belt_publish_apply, belt_publish_tree_of, belt_publish_binds, belt_publish_deletes, PublishBind,
+}
+import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, scm_object_identity, authored_source_object }
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_intake_base, mb_intake_advance }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stale_line_repository_base: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
+data stale_line_captured_base: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"
+
+type PlantedLine {
+  repository: RepositoryEnvelope
+  head: RepositoryCommitRef
+}
+
+// THE TYPED SHAPE NEEDS NO OBSERVATION: a candidate minted as the child of the intake commit for its
+// base is on base whatever the (here deliberately unobservable) attempt record says, and the line
+// integrating it is clean.
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+fn typed_line(r0: IntakeRevision) -> PlantedLine? {
+  let base = mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at the base"), message: "project base", revision: r0)
+  match mb_head(build: base) {
+    Absent => none
+    Present { value: root } =>
+      match mb_commit(build: mb_stage(build: base, path: "src/a.dag", text: "A as the worker left it"), message: "dispatch candidate: n a1") {
+        MbSetupFailed => none
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => none
+            Present { value: source } =>
+              match squash_merge(repository: repository, target: root, source: source, message: "integrate") {
+                SquashMerged { repository: merged, reference } => Present { value: PlantedLine { repository: merged, head: reference } }
+                SquashMergeBaseRefused { refusal: _ } => none
+                SquashMergeConflicted { conflicts: _ } => none
+                SquashMergeRootMissing { side: _, root: _ } => none
+                SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+                SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+                SquashMergeResultLocatorCollision { identity: _ } => none
+                SquashMergeAllocatorInvalid => none
+                SquashMergeSourceUnrecoverable { cause: _ } => none
+              }
+          }
+      }
+  }
+}
+
+test fn a_typed_line_is_on_base_without_observing_any_attempt() -> Bool {
+  match rev(hex: stale_line_repository_base) {
+    Absent => false
+    Present { value: r0 } =>
+      match typed_line(r0: r0) {
+        Absent => false
+        Present { value: line } =>
+          match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
+            LineSourcesUnreadable { detail: _ } => false
+            LineSourcesRead { sources } =>
+              count(sources) == 1
+                && match belt_line_standing(commits: line.repository.commits, head: line.head) {
+                  LineClean => true
+                  IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+                  LineStandingUnderivable { detail: _ } => false
+                }
+          }
+      }
+  }
+}
+
+// THE PUBLISH BASE IS THE DEEPEST INTAKE COMMIT THE HEAD'S TREE CONTAINS. The head is the base line
+// (r0) after integrating a candidate captured on r1, so it holds r1's upstream change: publishing
+// against r0 would ship that change as the work.
+test fn the_publish_base_is_the_deepest_intake_the_heads_tree_contains() -> Bool {
+  match rev(hex: stale_line_repository_base) {
+    Absent => false
+    Present { value: r0 } =>
+      match rev(hex: stale_line_captured_base) {
+        Absent => false
+        Present { value: r1 } => {
+          let base = mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at r0"), message: "project base", revision: r0)
+          match mb_head(build: base) {
+            Absent => false
+            Present { value: root } => {
+              let advanced = mb_intake_advance(build: mb_stage(build: base, path: "src/up.dag", text: "upstream at r1"), message: "advance", from: r0, to: r1)
+              match mb_head(build: advanced) {
+                Absent => false
+                Present { value: advance_ref } =>
+                  match mb_commit(build: mb_stage(build: advanced, path: "src/a.dag", text: "A as the worker left it"), message: "dispatch candidate: n a2") {
+                    MbSetupFailed => false
+                    MbBuilt { repository, at } =>
+                      match at {
+                        Absent => false
+                        Present { value: candidate } =>
+                          match squash_merge(repository: repository, target: root, source: candidate, message: "integrate") {
+                            SquashMerged { repository: merged, reference: head } =>
+                              match belt_publish_base(commits: merged.commits, head: head) {
+                                PublishBaseDerived { base: b } =>
+                                  repository_commit_ref_eq(left: b.commit.reference, right: advance_ref) && b.sha == stale_line_captured_base
+                                PublishBaseUnderivable { detail: _ } => false
+                              }
+                            SquashMergeBaseRefused { refusal: _ } => false
+                            SquashMergeConflicted { conflicts: _ } => false
+                            SquashMergeRootMissing { side: _, root: _ } => false
+                            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+                            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+                            SquashMergeResultLocatorCollision { identity: _ } => false
+                            SquashMergeAllocatorInvalid => false
+                            SquashMergeSourceUnrecoverable { cause: _ } => false
+                          }
+                      }
+                  }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE ATTEMPT IS READ BACK FROM ITS ONE PRODUCER'S MESSAGE, and only that producer's: a message it
+// could not have written names no attempt.
+test fn the_candidate_message_reads_back_its_attempt_and_nothing_else() -> Bool {
+  let round_trip = match belt_candidate_commit_subject(message: belt_candidate_commit_message(node_id: "shell-dag-ci-fmt-gate-line", attempt_key: "2e3b67b4c3e38701") as String) {
+    Present { value: subject } => subject.node_id == "shell-dag-ci-fmt-gate-line" && subject.attempt_key == "2e3b67b4c3e38701"
+    Absent => false
+  }
+  let foreign = match belt_candidate_commit_subject(message: "integrate 2ccf4dc into shell-typed-invocation") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  round_trip && foreign
+}
+
+// PUBLICATION REALIZES THE HEAD'S TREE EXACTLY (ruling on #13111): the base tree with the publish plan
+// applied equals the head's tree for an add, a modify, a delete, a rename (delete + bind) and a
+// delete below a nested directory. The discriminating control applies the binds alone -- the earlier
+// revision's behaviour -- and does NOT reach the head: the deleted and renamed-away paths resurrect.
+fn publish_entry(path: String, text: String) -> CorpusManifestEntry {
+  CorpusManifestEntry {
+    path: path as NonEmptyStr,
+    source: AuthoredSourceTarget { locator: scm_object_identity(object: authored_source_object(text: text)) },
+  }
+}
+
+fn publish_base() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "before"),
+    publish_entry(path: "src/deleted.dag", text: "gone"),
+    publish_entry(path: "src/old_name.dag", text: "moved"),
+    publish_entry(path: "src/deep/nested/leaf.dag", text: "nested"),
+  ]
+}
+
+fn publish_head() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "after"),
+    publish_entry(path: "src/new_name.dag", text: "moved"),
+    publish_entry(path: "src/added.dag", text: "new"),
+  ]
+}
+
+test fn publication_applies_binds_and_deletes_to_reach_the_heads_tree() -> Bool {
+  let plan = belt_publish_plan(head: publish_head(), root: publish_base())
+  belt_publish_apply(base: publish_base(), plan: plan) == belt_publish_tree_of(entries: publish_head())
+    && count(belt_publish_deletes(plan: plan)) == 3
+    && count(belt_publish_binds(plan: plan)) == 3
+}
+
+test fn publication_without_deletes_resurrects_removed_paths() -> Bool {
+  let binds_only = map(belt_publish_binds(plan: belt_publish_plan(head: publish_head(), root: publish_base())), e => PublishBind { entry: e })
+  belt_publish_apply(base: publish_base(), plan: binds_only) != belt_publish_tree_of(entries: publish_head())
+}

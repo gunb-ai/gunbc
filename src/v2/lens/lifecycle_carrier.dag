@@ -1,5 +1,6 @@
 module v2.lens.lifecycle_carrier
 
+import std.types { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -15,17 +16,16 @@ import v2.std.witness { Holds, Witness }
 import v2.std.node {
   ComputationNode,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  symbol_lexeme,
+  StructuralLabel,
 }
-import v2.std.node_query { edge_field_type_name }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.optional {
+import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -114,12 +114,17 @@ fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
 // fields ever reach the walk.
 fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
-    Named { name: nm } =>
-      if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
-        optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
-      } else {
-        optional_absent()
+    Authored { name: nm } =>
+      match member_edge_type_node(e: edge) {
+        Absent => optional_present(value: member_not_a_binder_diagnostic(e: edge))
+        Present { value: t } =>
+          if type_is_bare_string(target: t) && name_is_lifecycle_field(name: nm) {
+            optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
+          } else {
+            optional_absent()
+          }
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }

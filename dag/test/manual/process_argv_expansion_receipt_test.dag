@@ -1,9 +1,9 @@
 module test.manual.process_argv_expansion_receipt
 
-import std.algebra { Cons, Empty }
-import std.types { Bool, Int, String }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List, empty_map }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.types { Bool, Int, String, List }
+import v2.std.algebra { fold_list }
+import v2.std.collection { empty_map }
 import v2.std.compilers.cli_surface {
   CliArgumentSyntax,
   cli_argument_text,
@@ -58,7 +58,8 @@ fn probe_lex() -> ModeledLexRules {
       rules: [
         TokenRule { token_class: ^raw_output_opt, pattern: LiteralPattern { text: "--raw-output" } },
         TokenRule { token_class: ^dot_filter, pattern: LiteralPattern { text: "." } }
-      ]
+      ],
+      modes: []
     }
   }
 }

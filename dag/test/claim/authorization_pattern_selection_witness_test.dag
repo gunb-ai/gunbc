@@ -1,0 +1,422 @@
+module test.claim.authorization_pattern_selection_witness
+
+// THE SELECTION IS THE FACT THAT WAS MISSING, so the selection is what has to execute. Each probe
+// supplies one privileged effect at the interface (§3: a witness discriminates at one interface)
+// and asserts which pattern the fold selects; the census probes at the end run the real roster
+// through the real fold, which is the inhabitance claim the fixtures owe.
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, HumanSurfaceOnly,
+  WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
+  ReversibleByReapply, IrreversibleEffect,
+  BillsExternally, NoBillingConsequence,
+  NoWitnessDischarge,
+  FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
+  PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  AuthorizationPatternSelection,
+  select_authorization_pattern, witness_required,
+}
+import gunbc.auth.privileged_effect_census {
+  privileged_effect_census, census_verdicts, undecidable_sites,
+  unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
+  reasoned_divergences, reasoned_divergences_with_fired_triggers,
+  site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
+  ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
+  RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized,
+}
+import std.human_intervention {
+  HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
+  NoDischargeSiteModeled,
+}
+import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
+import std.types { NonEmptyStr, String, Int, List }
+import std.logic { Bool }
+
+fn recurring_read() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a credential read on every provision" as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn one_off_irreversible_mint() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a one-off token mint whose value is returned once" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "the value" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn one_off_grant_unbindable() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a one-off accessor-cell grant the workload may not perform" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "grant administrator only" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn dashboard_step() -> HumanIntervention {
+  HumanIntervention {
+    identity: "fixture-dashboard-step" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "a checkout-only activation" as NonEmptyStr,
+    instruction: "click the button" as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn dashboard_only() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "an activation no API performs" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: HumanSurfaceOnly { step: dashboard_step() },
+    workload_identity: WorkloadIdentityUnbindable { cause: "no API" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: BillsExternally,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn recurring_but_witnessed() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a per-provision effect that bills externally" as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: BillsExternally,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn selected_approved(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+// (a) A recurring, reversible, bindable read is federated -- zero human actions, and the approval
+// pattern is dominated rather than excluded.
+test fn a_recurring_reversible_bindable_read_is_federated() -> Bool {
+  selected_federated(s: select_authorization_pattern(e: recurring_read()))
+}
+
+// (b) An irreversible one-off is approved per effect, and the federated pattern is NOT selected
+// even though the identity is bindable: no human witnessed it.
+test fn an_irreversible_one_off_is_operator_approved_not_federated() -> Bool {
+  let s = select_authorization_pattern(e: one_off_irreversible_mint())
+  selected_approved(s: s) && !selected_federated(s: s)
+}
+
+// (b) A one-off grant the workload may not perform is approved -- this is what replaces the
+// operator's pasted token for the accessor-cell converges.
+test fn an_unbindable_one_off_grant_is_operator_approved() -> Bool {
+  selected_approved(s: select_authorization_pattern(e: one_off_grant_unbindable()))
+}
+
+// (c) A dashboard-only effect is a typed refusal naming the modeled step.
+test fn a_dashboard_only_effect_names_its_manual_step() -> Bool {
+  match select_authorization_pattern(e: dashboard_only()) {
+    ManualStepRequired { step: st, receipt: _ } => (st.identity as String) == "fixture-dashboard-step"
+    _ => false
+  }
+}
+
+// THE PASTED TOKEN IS NEVER SELECTED, and neither is the operator's own session: across every
+// fixture the selected pattern is one of the three admissible ones.
+fn selection_is_admissible(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: p, receipt: _ } =>
+      match p {
+        PastedOperatorToken => false
+        OperatorOwnSession => false
+        FederatedScopedGrant => true
+        OperatorApprovedCapability => true
+        HumanOnlyStep { step: _ } => true
+      }
+    ManualStepRequired { step: _, receipt: _ } => true
+    NoAdmissiblePattern { causes: _, scope: _ } => true
+    PatternSelectionNeedsEvidence { needs: _ } => false
+    PatternSelectionNeedsPolicy { survivors: _ } => false
+    PatternSelectionRefused { defects: _ } => false
+  }
+}
+
+test fn no_fixture_selects_a_pasted_token_or_an_operator_session() -> Bool {
+  all([recurring_read(), one_off_irreversible_mint(), one_off_grant_unbindable(), dashboard_only(), recurring_but_witnessed()],
+    e => selection_is_admissible(s: select_authorization_pattern(e: e)))
+}
+
+// A RECURRING EFFECT THAT OWES A WITNESS IS A DESIGN CONTRADICTION, and the fold refuses it rather
+// than picking the least bad pattern: the author makes it reversible or makes it one-off.
+test fn a_recurring_effect_that_owes_a_witness_has_no_admissible_pattern() -> Bool {
+  match select_authorization_pattern(e: recurring_but_witnessed()) {
+    NoAdmissiblePattern { causes: cs, scope: _ } => (cs |> count) > 0
+    _ => false
+  }
+}
+
+// THE WITNESS OBLIGATION IS DERIVED, and each of its four grounds fires on its own.
+test fn each_witness_ground_fires_alone() -> Bool {
+  let base = recurring_read()
+  let wide = PrivilegedEffect {
+    subject: base.subject, frequency: FleetOnce, reversibility: ReversibleByReapply, surface: ApiSurface,
+    workload_identity: base.workload_identity, minted_reach: MintsAccountWideCredential, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
+  }
+  let break_glass = PrivilegedEffect {
+    subject: base.subject, frequency: BreakGlassOnly, reversibility: ReversibleByReapply, surface: ApiSurface,
+    workload_identity: base.workload_identity, minted_reach: MintsNoCredential, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
+  }
+  !witness_required(e: base)
+    && witness_required(e: one_off_irreversible_mint())
+    && witness_required(e: wide)
+    && witness_required(e: dashboard_only())
+    && witness_required(e: break_glass)
+}
+
+// THE FABRIC STORE'S PROTECTED-HEAD WRITERS (operator ruling A, 2026-09-27). Each writer's
+// selection is the credential the store door will verify for it; asserting it here is what makes
+// the tap count the operator was told a derived fact. D0's door gates on the approval it selects,
+// but the store does not verify it, so its store write diverges like every other writer's. The recurring host-effect lanes select the workload's own identity -- no human per run -- and the
+// operator's recovery and establishment entries select one approval each; all diverge today under
+// the one stated reason, because the store verifies nothing for any of them.
+// THE ROW'S OWN VERDICT through the real per-row fold (site_verdict), not the whole census folded
+// and then filtered: each claim is about one site, and the census fold is already run by the
+// roster claims above (§3: a witness discriminates at one interface).
+fn fabric_writer_verdict(key: String, want_approval: Bool) -> Bool {
+  any(map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), v =>
+    (if want_approval { selected_approved(s: v.selection) } else { selected_federated(s: v.selection) })
+      && match v.conformance {
+        Conforms => false
+        DivergesWithReason { reason: _ } => true
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+test fn the_d0_door_selects_operator_approval_and_states_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.pair_serving_d0_door::pair_serving_d0_ci_wet", want_approval: true)
+}
+
+// THE D0 RELEASE UNDER THE GROUP A STANDING GRANT IS CLASSIFIED BY THE SELECTION, NOT ASSERTED (review
+// 74624): with the ruling as its witness discharge the one-off irreversible release selects the run's
+// scoped identity, and it diverges with the fabric store's stated reason like every writer of that
+// store. The mutation is the ruling: strip it and the same effect does NOT select federation.
+test fn the_d0_release_under_the_standing_grant_is_classified_by_the_selection() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.pair_serving_d0_door::d0_standing_grant_for", want_approval: false)
+    && any(privileged_effect_census, row =>
+      declaration_ref_display_key(ref: row.site) == "gunbc.spark.pair_serving_d0_door::d0_standing_grant_for"
+        && !selected_federated(s: select_authorization_pattern(e: PrivilegedEffect {
+          subject: row.effect.subject, frequency: row.effect.frequency, reversibility: row.effect.reversibility,
+          surface: row.effect.surface, workload_identity: row.effect.workload_identity,
+          minted_reach: row.effect.minted_reach, billing: row.effect.billing, witness_discharge: NoWitnessDischarge,
+        })))
+}
+
+test fn the_host_effect_lanes_select_workload_identity_and_state_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.host_commitment::claim_host_effect_live", want_approval: false)
+    && fabric_writer_verdict(key: "gunbc.spark.host_commitment::settle_host_effect_live_over", want_approval: false)
+}
+
+test fn the_fabric_operator_entries_select_one_approval_each_and_state_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.host_commitment::host_effect_recover_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::pair_serving_authority_establish_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::host_placement_finalize_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::host_placement_abort_wet", want_approval: true)
+}
+
+// ── The census, run through the real fold ────────────────────────────────────────────────────
+test fn every_census_site_is_decidable() -> Bool {
+  (undecidable_sites() |> count) == 0
+}
+
+// THE FOLLOW-UP ROSTER IS AN IDENTITY JOIN IN BOTH DIRECTIONS: an unrostered unreasoned divergence
+// is undeclared debt; a rostered site that now conforms is a paid debt whose row must be retired.
+test fn unreasoned_divergences_join_the_follow_up_roster_exactly() -> Bool {
+  (unrostered_unreasoned_divergences() |> count) == 0 && (rostered_but_not_diverging() |> count) == 0
+}
+
+// THE TRIGGER'S ANSWER: the R2 mint selects per-effect operator approval, and its row states why it
+// diverges today.
+test fn the_r2_mint_selects_operator_approval_and_states_its_divergence() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.cloudflare.r2_token_mint_run::r2_mint_bootstrap"
+      && selected_approved(s: v.selection)
+      && match v.conformance {
+        DivergesWithReason { reason: _ } => true
+        Conforms => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+// THE CONFORMING POPULATION IS NON-EMPTY: at least one federated exemplar and the dashboard-only
+// exemplar conform, so the fold is not refusing everything and calling it rigor.
+test fn the_census_has_conforming_exemplars_of_two_patterns() -> Bool {
+  let federated = any(census_verdicts(), v =>
+    selected_federated(s: v.selection) && match v.conformance { Conforms => true _ => false })
+  let manual = any(census_verdicts(), v =>
+    match v.selection { ManualStepRequired { step: _, receipt: _ } => match v.conformance { Conforms => true _ => false } _ => false })
+  federated && manual
+}
+
+// EVERY STATED REASON CARRIES A DISSOLUTION, AND NONE HAS FIRED. A fired trigger means the site
+// belongs in follow_up_sites rather than behind a statement (review 68720).
+test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
+  (reasoned_divergences() |> count) > 0 && (reasoned_divergences_with_fired_triggers() |> count) == 0
+}
+
+// THE FIRST SITE REALIZED THROUGH THE APPROVAL CAPABILITY CONFORMS. The runner-group create's row is
+// run through the real fold: its characteristics select per-effect operator approval, and it
+// realizes exactly that, so its verdict is Conforms with no stated reason -- the census's first
+// conforming exemplar of the approval pattern.
+test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.runner_group_restriction_ensure_run::microvm_runner_group_after_gate"
+      && selected_approved(s: v.selection)
+      && match v.conformance { Conforms => true _ => false })
+}
+
+// THE MT. COLLINS BOOT (operator ruling 2026-09-23): the census row runs through the real fold and
+// DERIVES the federated pattern, and the site's realization conforms -- the boot is no longer an
+// unrostered per-run approval.
+test fn the_mtcollins1_boot_selects_federation_and_conforms() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+      && selected_federated(s: v.selection)
+      && match v.conformance {
+        Conforms => true
+        DivergesWithReason { reason: _ } => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+// THE STANDING RULING IS WHAT THE DERIVATION RESTS ON, so the mutation is that one field. The boot is
+// declared IrreversibleEffect (a power cycle destroys RAM and session state). Under the operator's
+// standing authorization, conditional on the unit hold, it selects federation; strip the ruling and
+// the same effect owes a witness AND must run unattended, so no pattern is admissible -- the fold
+// refuses rather than quietly picking one. The label is not what decides; the ruling is.
+test fn the_mtcollins1_boot_is_irreversible_and_federated_only_under_its_standing_ruling() -> Bool {
+  let e = mtcollins1_boot_effect()
+  let without_ruling = PrivilegedEffect {
+    subject: e.subject,
+    frequency: e.frequency,
+    reversibility: e.reversibility,
+    surface: e.surface,
+    workload_identity: e.workload_identity,
+    minted_reach: e.minted_reach,
+    billing: e.billing,
+    witness_discharge: NoWitnessDischarge,
+  }
+  let declared_irreversible = match e.reversibility {
+    IrreversibleEffect { what_is_lost: _ } => true
+    ReversibleByReapply => false
+  }
+  declared_irreversible
+    && selected_federated(s: select_authorization_pattern(e: e))
+    && match select_authorization_pattern(e: without_ruling) {
+      NoAdmissiblePattern { causes: _, scope: _ } => true
+      _ => false
+    }
+}
+
+// THE RULING DISCHARGES IRREVERSIBILITY AND NOTHING ELSE: an irreversible effect that also mints an
+// account-wide credential still owes a per-instance witness under the same ruling.
+test fn a_standing_ruling_does_not_discharge_a_wide_credential() -> Bool {
+  let e = mtcollins1_boot_effect()
+  let wide = PrivilegedEffect {
+    subject: e.subject, frequency: e.frequency, reversibility: e.reversibility, surface: e.surface,
+    workload_identity: e.workload_identity, minted_reach: MintsAccountWideCredential, billing: e.billing,
+    witness_discharge: e.witness_discharge,
+  }
+  !witness_required(e: e) && witness_required(e: wide)
+}
+
+// EVERY STANDING RULING IN THE CENSUS NAMES AN INTERLOCK ROSTERED AGAINST ITS OWN SITE.
+test fn every_standing_ruling_has_its_interlock_rostered() -> Bool {
+  (rulings_without_a_rostered_interlock() |> count) == 0
+}
+
+// THE CENSUS SHOWS THE INTERLOCK: every interlocked site is a census row, and the boot's names the
+// unit hold and the refusal fold that honors it.
+test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool {
+  (interlocked_sites_missing_from_census() |> count) == 0
+    && any(privileged_effect_interlocks, i =>
+      declaration_ref_display_key(ref: i.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+        && declaration_ref_display_key(ref: i.refusal) == "gunbc.managed_host_unit_hold::unit_hold_acquire"
+        && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet")
+        && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.host_reset_return_run::host_reset_return_wet"))
+}
+
+// ONE RULING, EVERY ROOT A CENSUS ROW AT THE SAME GRAIN (side-chat review 5288466573): the ruling's
+// roots and the census sites carrying its discharge are the same set, both roots select the federated
+// pattern and conform, and both carry an interlock row.
+test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
+  (ruling_roots_missing_from_census() |> count) == 0
+    && (census_sites_outside_ruling_roots() |> count) == 0
+    && any(census_verdicts(), v =>
+      declaration_ref_display_key(ref: v.site) == "gunbc.host_reset_return_run::host_reset_return_wet"
+        && selected_federated(s: v.selection)
+        && match v.conformance { Conforms => true  _ => false })
+    && any(privileged_effect_interlocks, i => declaration_ref_display_key(ref: i.site) == "gunbc.host_reset_return_run::host_reset_return_wet")
+}
+
+// THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT deregistration is a
+// recurring automated effect under the dispatching run's federated identity, so the selection must
+// answer the federated scoped grant and the row must conform; rowing it as an approval capability or
+// a per-registration ntfy approval turns this red.
+test fn the_jit_registration_and_deregistration_sites_select_the_federated_grant_and_conform() -> Bool {
+  ["dispatch_jit_mint", "ensure_jit_runner_deregistered"] |> all(name =>
+    any(census_verdicts(), v =>
+      (v.site.decl_name as String) == name
+        && selected_federated(s: v.selection)
+        && match v.conformance { Conforms => true _ => false }))
+}
+
+// THE R2 MINT CUSTODY CELLS ARE REALIZED BY THE FEDERATED GCP IAM ROUTE, NOT AN OPERATOR SESSION:
+// no census site remains in gunbc.cloudflare.r2_mint_secret_access (its gcloud converges were
+// deleted), and the gcp-iam-converge apply site that now grants them is a federated grant naming the
+// R2 custody cells. The RED is the operator-session row restored.
+test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
+  !any(privileged_effect_census, row => starts_with(s: declaration_ref_display_key(ref: row.site), prefix: "gunbc.cloudflare.r2_mint_secret_access::"))
+    && any(privileged_effect_census, row =>
+      declaration_ref_display_key(ref: row.site) == "gunbc.auth.gcp_iam_converge_run::gcp_iam_converge_apply_wet"
+        && string_contains(s: row.effect.subject as String, pattern: "R2 mint custody cells")
+        && match row.realized {
+          RealizedFederatedGrant => true
+          RealizedRunSelected => false
+          RealizedApprovalCapability => false
+          RealizedHumanStep => false
+          RealizedOperatorSession { arm: _ } => false
+          RealizedUnauthorized => false
+        })
+}

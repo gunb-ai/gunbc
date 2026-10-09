@@ -1,0 +1,5 @@
+module test.fixture.evaluation_store_address_zero_candidate_plant_absent.noop
+
+fn planted_digest_call() -> Int {
+  0
+}

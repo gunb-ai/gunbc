@@ -7,7 +7,6 @@ data s1_closure_paths: List<String> = [
   "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/02_parse.dag",
   "src/v2/compiler/03_normalize.dag",
-  "src/v2/compiler/parse_engine_hooks.dag",
   "src/v2/extdeps/languages/dag.dag",
   "src/v2/extdeps/languages/fidelity.dag",
   "src/v2/std/algebra.dag",

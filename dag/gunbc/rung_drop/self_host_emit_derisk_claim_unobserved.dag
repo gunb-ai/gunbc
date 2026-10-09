@@ -1,0 +1,74 @@
+module gunbc.rung_drop.self_host_emit_derisk_claim_unobserved
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the self-host emit-derisk claims that are enrolled, red, and
+// planned by no lane (DESIGN 4b(3) rung honesty; DESIGN 5 specification-without-execution).
+// ============================================================================================
+//
+// WHAT IS DROPPED. `v2.test.long.self_host_module_emit_derisk`
+// `self_host_frontier_emit_ownership_miss_accepts` and
+// `self_host_frontier_emit_two_user_types_accepts` assert that
+// `emit_compiler_import_closure_from_ingest` returns Accepted for constructed standalone-module
+// shapes. They are `test fn`s. Discovery excludes their file at directory grain
+// (`gunbc.ci_layer_roots` `witness_exclusion_substrings` pattern `test/claim/long/`).
+// `gunbc.witness_deferral_freeze` carries them as FrozenPathDeferral. No required lane executes
+// them. A red that nothing observes is not mechanically preventable.
+//
+// EXECUTED ON NAMED HEADS, not transcribed from another PR. On main `db66e208a0` (2026-09-17),
+// `claim_batch --source-root dag --source-root src/v2 --entry
+// src/v2/test/claim/long/self_host_module_emit_derisk_test.dag --function <fn>`:
+// both emit rows FAIL (ownership_miss: cpu=334ms wall=1237ms eval_steps=224878;
+// two_user_types: exit 1). The sibling `self_host_frontier_infer_single_arm_module_holds`
+// also FAIL, so the emit conjunct is not an isolated emit-stage miss. On
+// `6a1e5acfae`, interpreted probes that return the diagnostic reason (head, and
+// `frontier_probe_assemble_located_reason_from_diagnostics` which skips
+// `parse_grammar_choice_overlap_residue`) all printed `resolve_reason_unbound_symbol` for
+// assemble, infer, and emit of both fixtures. Head and located reason agreed: this is not
+// residue masking. The interpreted claim may consume that skip fold; an emitted closure
+// currently cannot. The probes are not kept: they are not the hold-claim, and a Symbol
+// return is not a claim_batch Bool verdict.
+//
+// WHY THE EXCLUSION IS KEPT. `long_lane_exclusion_note` already retracts the claim that
+// relocating under this prefix is a construction backstop: the deadline fires only while a
+// witness runs, and the move is what stops it running (gunbc#7762). That retraction does not
+// make the directory grain the wrong HOME for a witness whose historical eval was ~31s. It
+// makes admission at identity grain, which these rows already have as freeze. Moving the file
+// onto per-PR discovery while the claims return false would observe the red by turning every
+// merge red for a defect this drop names. Adding a CI job is refused (DESIGN, Building and
+// checks: the job roster is closed to growth). So (i): the exclusion stands, and the
+// unobserved red is this drop.
+//
+// THE REASON IS LOST-AS-PASSENGER: these identities would have been observed by the long /
+// falsifier substrate cadence whose executor left with falsifier.yml (611fd02770, gunbc#8283).
+// Path policy still offlines the directory; nothing executes the freeze.
+//
+// THE TRIGGER NAMES A CAPABILITY: an executing required or scheduled lane observes an isolated
+// assemble-or-emit-from-ingest claim of a standalone one-module fixture. Either the two
+// identities become ordinary `test fn`s planned by a live cadence and reach PASS, or they are
+// rostered known-red on a cadence that actually runs (so the red is a control, not a silent
+// enrollee). Claim_batch locally reproducing FAIL or PASS does not retire this row: that is
+// the state it declares. Re-adding falsifier.yml in its 2026-08 shape does not retire it.
+data self_host_emit_derisk_claim_unobserved: RungDrop = RungDrop {
+  identity: "self_host_emit_derisk_claim_unobserved" as NonEmptyStr,
+
+  subject: "the enrolled emit-derisk hold-claims over emit_compiler_import_closure_from_ingest of a standalone module (v2.test.long.self_host_module_emit_derisk), which are red and planned by no lane",
+
+  declared: "2026-09-17",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "test/claim/long/ discovery exclusion (gunbc.ci_layer_roots) plus FrozenPathDeferral (gunbc.witness_deferral_freeze), after the falsifier/long executor deleted at 611fd02770 (gunbc#8283)" },
+    population: [
+      "v2.test.long.self_host_module_emit_derisk self_host_frontier_emit_ownership_miss_accepts",
+      "v2.test.long.self_host_module_emit_derisk self_host_frontier_emit_two_user_types_accepts",
+    ],
+    restoration_trigger: "an executing required or scheduled lane observes an isolated assemble-or-emit-from-ingest claim of a standalone one-module fixture: these two identities are planned by a live cadence, either as ordinary hold-claims that reach PASS on that run or as known-red controls whose red is read by that run. Observed at retirement, not asserted. A claim_batch invocation of the same entry is the declared unobserved state, not the trigger. Relocating the file onto per-PR discovery while the claims return false, or re-adding falsifier.yml in its 2026-08 shape, does not retire this row."
+  }
+}

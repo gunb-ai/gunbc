@@ -1,8 +1,9 @@
 module test.claim.stage0_rust_source_lifecycle_scaffold_witness
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.keyed_roster { path_occurrence_count }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
+  stage0_src_repo_path,
   DerivedDuplicateExactPaths,
   DerivedHandMaintainedGrew,
   DerivedNewlyUnclassified,
@@ -69,9 +70,9 @@ import gunbc.stage0_rust_host_observation {
 }
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
+import v2.std.algebra { any, length, list_map }
 import v2.std.text { String }
+import v2.compiler.self_host.stage0_crate_layout { wet_actuator_generated_stage0_files }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 // Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must
@@ -482,17 +483,23 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
     && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
-// ORDER UPDATED, NOT WEAKENED. This is a list equality, so it asserts the derived ORDER as well
-// as the membership, and the order is a projection of the registration families in
-// v2.compiler.self_host.stage0_crate_layout: the overlap is a filter over
-// derived_hand_maintained_stage0_repo_paths, which follows hand_maintained_stage0_filenames.
-// v1_interpreter_dispatch_generated moved from the scaffold family to the wet-actuator family
-// where its actual producer lives, which puts it after bootstrap rather than before it. Membership
-// and count are unchanged. The equality is kept rather than relaxed to a set comparison because
-// the ordering IS derived and deterministic, so asserting it catches strictly more; a set
-// comparison here would be a quieter assertion bought with no fact.
-test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [bootstrap_stage0_crate_layout_generated_repo_path, v1_interpreter_dispatch_generated_repo_path]
+// THE OVERLAP IS THE WET-ACTUATOR FAMILY, JOINED BY IDENTITY. The layout paths that are also
+// generated-artifact registry paths are exactly the wet-actuator-generated registrations of
+// v2.compiler.self_host.stage0_crate_layout, in their derived order: no seed-retained or
+// emitter-divergent file is a registry artifact, and every wet-actuator file is one. This
+// replaces a two-path literal copied from the tree, which went stale as registrations
+// (seed retention frontier, evaluation budget consequence, file transport, release-locus
+// constants) moved into the family -- a measurement of the current tree is not an oracle
+// (DESIGN §5). The equality is still a list equality, so order is asserted as well.
+fn wet_actuator_generated_stage0_repo_paths() -> List<String> {
+  list_map(
+    xs: wet_actuator_generated_stage0_files(),
+    f: fn(filename) { stage0_src_repo_path(filename: filename) }
+  )
+}
+
+test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_the_wet_actuator_family() -> Bool {
+  generated_artifact_layout_overlap_repo_paths() == wet_actuator_generated_stage0_repo_paths()
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {

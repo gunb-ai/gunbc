@@ -13,7 +13,6 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_pick_if_arrow_with_body_swapped_arms
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Bind,
   Branch,
@@ -29,7 +28,7 @@ import v2.std.node_query { find_arrow_body_child }
 
 // Wave 1 Gate 1 Stage D long-lane helpers: census ingest via ingested_fixture_arrows.
 // Well-formedness + behavior-kind checks here; ingested bind/loop execution+RED in
-// long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution in
+// execution/long/{bind,loop}_eval_by_execution_test.dag (census_ingested_*); add/pick/match execution in
 // general_body_producer + pick_ingested + classical_not witnesses.
 
 fn wave1_gate1_d_arrow_well_formed_with_body(o: Outcome<Node>) -> Bool {
@@ -51,7 +50,8 @@ fn wave1_gate1_d_arrow_body_is_transform(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -66,7 +66,8 @@ fn wave1_gate1_d_arrow_body_is_branch(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Branch } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -81,7 +82,8 @@ fn wave1_gate1_d_arrow_body_is_bind(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Bind } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -96,7 +98,8 @@ fn wave1_gate1_d_arrow_body_is_loop(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Loop } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -111,7 +114,8 @@ fn wave1_gate1_d_arrow_body_is_match(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Match } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }

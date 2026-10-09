@@ -1,6 +1,19 @@
 module test.claim.config_record_emit_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_deploy_emit { manifest_record_knobs }
+// `render` and the serializer names below were called here without being imported, so which
+// declaration each bound to depended on what else was compiled beside this file: clean as a lone
+// entry, a different `render` once `gunbc.demo.semantic_system_readout` is in the population.
+import std.layout { LayoutProtocol, render }
+import std.languages {
+  SerializationKnobs, SerialField, json_record_knobs,
+  yaml_format, toml_format, makefile_format, gitignore_format,
+}
+import std.serialize {
+  serial_scalar, serial_field,
+  serialize_field_doc, serialize_fields_doc, serialize_record_doc,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

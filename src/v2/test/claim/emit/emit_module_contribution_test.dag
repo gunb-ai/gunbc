@@ -1,23 +1,22 @@
 module v2.test.emit.emit_module_contribution
 
+import std.types { List }
 import v2.compiler.emit_module {
   emit_module_contribution,
-  emit_module_decl_separator,
   emit_module_text
 }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_source_text }
 import v2.extdeps.languages.rust_test { rust_add_target_model_staging }
 import v2.test.execution.emit_host_add_equals_eval { emit_eval_subject_tree }
-import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.algebra { fold_list, list_append }
+import v2.std.algebra { fold_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { Empty }
+import std.algebra { Empty, list_append }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.emission_provenance {
   EmissionAuthoredFragment,
@@ -43,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // All three contribution arms are REAL at this seam, none is a stand-in:
 //   EmissionAuthoredFragment    the separator, whose bytes are the literal declared at
-//                               v2.compiler.emit_module emit_module_decl_separator
+//                               v2.compiler.target_carriers emit_module_decl_separator
 //   EmissionSourceComposition   the module fold, and one composition per declaration
 //   EmissionUnobservedFragment  v2.compiler.emit returns Medium<String>: the fold OBSERVES the
 //                               bytes but emit reports no contribution structure for them, so

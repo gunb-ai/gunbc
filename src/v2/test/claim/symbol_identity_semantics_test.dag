@@ -2,10 +2,8 @@ module v2.test.claim.symbol_identity_semantics
 
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
-import v2.std.node { Symbol, symbol_identity_digest }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Symbol, symbol_identity_digest, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

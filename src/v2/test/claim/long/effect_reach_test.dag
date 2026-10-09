@@ -1,5 +1,6 @@
 module v2.test.claim.long.effect_reach_test
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.effect_reach {
   effect_reach_classification_from_facts,
@@ -9,13 +10,10 @@ import v2.lens.effect_reach {
   effect_reach_touched_by_paths
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
-import v2.std.collection { List }
 import v2.std.data_index { DataInitDecl }
 import v2.std.effect_reach { EffectReachClassification }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index { FnArrowDecl }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.text { String }
 
 data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
@@ -212,7 +210,8 @@ test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
 }
 
 test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
-  !effect_reach_touched_by_paths(
+  derived_host_reading(classification: transport_classification())
+    && !effect_reach_touched_by_paths(
     classification: transport_classification(),
     touched_paths: ["src/v2/std/logic.dag"]
   )

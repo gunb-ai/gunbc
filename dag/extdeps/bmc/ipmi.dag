@@ -1,15 +1,44 @@
 module extdeps.bmc.ipmi
 
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, NonEmptyStr, Unit }
-import std.string_type { String }
+import std.types { Bool, Int, NonEmptyStr, Unit }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import v2.std.algebra { filter }
+import std.resources { Network }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+// THE SUBJECT IS THE IPMITOOL TRANSPORT, NOT THE IPMI WIRE SPEC. diagnostic.ipmi.Tool is the
+// module's bound realization of ipmitool(1)'s command surface (argv, -I/-H/-U/-f flags, output
+// parsing), so the primary citation is the tool's own man page (doc/ipmitool.1.in; latest release
+// 1.8.19). The Intel IPMI v2.0 rev1.1 spec stays as a further citation for the wire semantics the
+// tool drives -- the live PDF this repository already cites in extdeps.bmc.ipmi_sel; the earlier
+// HTML locator redirected to Intel's 404 and was dropped.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
+    locator: "github.com/ipmitool/ipmitool/blob/master/doc/ipmitool.1.in"
   }
+}
+
+data extdeps_intel_ipmi_spec_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi",
+      decl_name: "diagnostic.ipmi.Tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps.bmc.ipmi.extdeps_intel_ipmi_spec_citation]
 }
 
 // THE WRITE HALF OF THE IPMI CHASSIS INTERFACE was added 2026-09-05 beside the three readonly
@@ -55,11 +84,119 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Mt. Collins unit 2026-09-05: before "No override", after "Force PXE", "Options apply to only next
 // boot".
 //
+// ChassisStatus AND ChassisBootParamGet RUN UNDER coreutils `timeout` AND HAVE NO UNBOUNDED TWIN.
+// Every caller polls or gates on them (the boot handoff's power read-back, the fan series, the boot
+// diagnostics), and an unbounded read is a step that can outlive its derived timeout. The bound is
+// the caller's policy, passed in as deadline and kill_after; one operation per command, so the argv
+// has one home (review 71095 on gunbc#12263 refused a second, bounded copy of each).
+//
 // THIS PROSE SITS ABOVE THE SERVICE AND NOT BESIDE EACH OPERATION because §4c admits annotations at
 // module-item grain only; a `//` block inside a declaration body is a hard error, which is how the
 // first draft of these operations was caught.
+// SelListAuthenticated IS SelList WITH A CREDENTIAL, FOR THE SAME REASON SdrTypeList IS SdrList
+// WITH ONE: every controller in this fleet refuses an unauthenticated session, and changing what
+// SelList means would silently change its existing readers. It binds stderr and exit_code because
+// its consumer (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) records WHY a read failed,
+// and it runs under coreutils `timeout` (extdeps.tools.gnu_coreutils timeout_command's argv shape,
+// --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
+// answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
+//
+// SdrDumpAuthenticated AND SelListAuthenticatedCached ARE ONE READ SPLIT AT THE SDR. ipmitool(1)
+// (ipmitool 1.8.19, OPTIONS and SEL COMMANDS): `sel elist` "cross-references event records with
+// sensor data records to produce descriptive event output", so an uncached elist reads the whole SDR
+// repository from the controller before it prints a record; `sdr dump <file>` writes that repository
+// to a local file, and `-S <sdr_cache_file>` "use[s] local file for remote SDR cache", which the page
+// says "can drastically increase performance for commands that require knowledge of the entire SDR,
+// such as sdr, sel elist". The cached read is a second operation rather than an optional flag on the
+// first because an absent cache file is not the same argv with a blank: SelListAuthenticated keeps
+// meaning "the controller supplies its own SDR". Both run under coreutils `timeout` for the reason
+// SelListAuthenticated does.
+//
+// SdrElistAuthenticatedCached IS THE WHOLE SENSOR TABLE THROUGH THE SAME CACHE. ipmitool(1) SDR
+// COMMANDS: `sdr elist` prints every sensor with its sensor number, status, ENTITY ID and reading,
+// and the entity id ("<entity>.<instance>", IPMI v2.0 §43.14 and Table 43-13) is what attributes a
+// sensor to a physical subject such as one processor package. It reads through -S for the reason
+// SelListAuthenticatedCached does, and it is readonly: reading a sensor does not change it.
+//
+// MasterWriteReadAuthenticated IS IPMI v2.0 §22.11 (NetFn App 06h, command 52h) through `ipmitool raw`,
+// with the request's framing modeled in extdeps.bmc.ipmi_master_write_read. Its write carries exactly
+// two data bytes because the one consumer's device protocol (extdeps.ampere.smpro_register: register
+// address, value size) is two bytes; a device with a different write length is a second operation,
+// not a variadic argv this transport cannot express. It is deliberately NOT `readonly`: the command
+// performs an I2C write on the BMC's bus, and whether that write changes the addressed device is a
+// fact about the device, which the caller's register model states and this operation cannot.
+//
+// SdrTypeList IS THE AUTHENTICATED, TYPE-SELECTED READ, AND IT EXISTS BECAUSE SdrList COULD NOT BE
+// USED. The three original readonly operations carry no credential, which the asymmetry paragraph
+// above already records as a real gap; every controller in this fleet now requires one, so a sensor
+// read had no reachable operation at all. Rather than add a credential to SdrList and change what an
+// existing operation means, this is a second operation whose whole contract is authenticated,
+// type-selected sensor reading.
+//
+// THE SENSOR TYPE IS A PARAMETER FOR THE SAME REASON THE BOOT DEVICE IS. "Fan" and "Temperature" are
+// the two a fan-policy observation wants today and they are business policy, not facts about the
+// IPMI interface; baking either into argv here would need a second near-identical operation the
+// first time anything wanted "Power Supply". The values are the SDR sensor-type strings ipmitool
+// itself accepts, which come from the IPMI specification's sensor-type table.
+// WHY `sol activate` REFUSED, AS ipmitool 1.8.19 SAYS IT (lib/ipmi_sol.c ipmi_sol_activate, which the
+// Ubuntu 1.8.19-7ubuntu0.24.04.3 patch series leaves untouched). The first five are its renderings of
+// the Activate Payload response (IPMI v2.0 §24.1: payload already active, payload disabled,
+// activation limit, and the two encryption mismatches); "Error activating SOL payload" carries any
+// other completion code; "No response activating SOL payload" is no response at all.
+type IpmitoolSolActivateRefusal
+  = SolPayloadAlreadyActive
+  | SolPayloadDisabled
+  | SolPayloadActivationLimitReached
+  | SolPayloadEncryptionMismatch { detail: String }
+  | SolPayloadActivationError { detail: String }
+  | SolPayloadActivationUnanswered
+
+// THE SESSION IS OPERATIONAL, AS ipmitool 1.8.19 SAYS IT: ipmi_sol_activate prints this banner on
+// STDOUT once the Activate Payload exchange (and any port handoff) has succeeded, immediately before
+// ipmi_sol_red_pill starts receiving -- so it is the first thing the session writes to stdout, ahead
+// of any host byte. It is printf-buffered; a consumer that needs it promptly must line-buffer stdout.
+data ipmitool_sol_operational_banner: String = "[SOL Session operational."
+
+fn ipmitool_sol_activate_line(output: String, pattern: String) -> String {
+  let hits: List<String> = filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern))
+  match hits.first() {
+    Present { value: l } => trim(s: l)
+    Absent => ""
+  }
+}
+
+fn ipmitool_sol_activate_refusal(output: String) -> IpmitoolSolActivateRefusal? {
+  if string_contains(s: output, pattern: "SOL payload already active on another session") {
+    Present { value: SolPayloadAlreadyActive }
+  } else if string_contains(s: output, pattern: "SOL payload disabled") {
+    Present { value: SolPayloadDisabled }
+  } else if string_contains(s: output, pattern: "SOL payload activation limit reached") {
+    Present { value: SolPayloadActivationLimitReached }
+  } else if string_contains(s: output, pattern: "cannot activate SOL payload with") {
+    Present { value: SolPayloadEncryptionMismatch { detail: ipmitool_sol_activate_line(output: output, pattern: "cannot activate SOL payload with") } }
+  } else if string_contains(s: output, pattern: "Error activating SOL payload") {
+    Present { value: SolPayloadActivationError { detail: ipmitool_sol_activate_line(output: output, pattern: "Error activating SOL payload") } }
+  } else if string_contains(s: output, pattern: "No response activating SOL payload") {
+    Present { value: SolPayloadActivationUnanswered }
+  } else {
+    none
+  }
+}
+
+fn ipmitool_sol_activate_refusal_text(refusal: IpmitoolSolActivateRefusal) -> String {
+  match refusal {
+    SolPayloadAlreadyActive => "the SOL payload is already active on another session"
+    SolPayloadDisabled => "the SOL payload is disabled on the BMC"
+    SolPayloadActivationLimitReached => "the BMC's SOL payload activation limit is reached"
+    SolPayloadEncryptionMismatch { detail: d } => concat("SOL payload encryption mismatch: ", d)
+    SolPayloadActivationError { detail: d } => d
+    SolPayloadActivationUnanswered => "no response activating the SOL payload"
+  }
+}
+
 service diagnostic.ipmi.Tool {
   operation SensorList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -71,6 +208,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -81,7 +219,20 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  operation SdrTypeList {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "type", "{sensor_type}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sdr type failed"
+    }
+  }
+
   operation SelList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -92,7 +243,91 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  operation SelListAuthenticated {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sel", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated sel elist failed"
+    }
+  }
+
+  operation SdrDumpAuthenticated {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "dump", "{sdr_cache_file}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated sdr dump failed"
+    }
+  }
+
+  operation SelListAuthenticatedCached {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sel", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated cached sel elist failed"
+    }
+  }
+
+  operation SdrElistAuthenticatedCached {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sdr", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated cached sdr elist failed"
+    }
+  }
+
+  operation MasterWriteReadAuthenticated {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, bus: NonEmptyStr, slave_address: NonEmptyStr, read_count: NonEmptyStr, write_first: NonEmptyStr, write_second: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "raw", "0x06", "0x52", "{bus}", "{slave_address}", "{read_count}", "{write_first}", "{write_second}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw master write-read failed"
+    }
+  }
+
   operation ChassisBootDev {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
@@ -102,11 +337,39 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  operation ChassisBootParamGet {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr }
+  operation ChassisBootDevWithOptions {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, options: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}", "options={options}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis bootdev with options failed"
+    }
+  }
+
+  operation SolDeactivate {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sol", "deactivate"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sol deactivate failed"
+    }
+  }
+
+  operation ChassisBootParamGet {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis bootparam get failed"
@@ -114,6 +377,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisPowerControl {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, action: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "power", "{action}"] }
@@ -124,10 +388,16 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisStatus {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis status failed"
@@ -135,6 +405,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation FruPrint {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -145,11 +416,34 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  operation McInfo {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+  operation HpmCheck {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "hpm", "check"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool hpm check failed"
+    }
+  }
+
+  operation McInfo {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool mc info failed"

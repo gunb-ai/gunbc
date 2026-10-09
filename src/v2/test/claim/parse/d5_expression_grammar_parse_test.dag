@@ -2,14 +2,12 @@ module v2.test.parse.d5_expression_grammar_parse
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node }
-import v2.std.optional { Absent, Present }
+import v2.std.node { Node, symbol_lexeme }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,7 +68,12 @@ fn d5_keyword_field_name_is_lexeme(parsed: Outcome<Node>) -> Bool {
 }
 
 data d5_p_keyword_field_source: String = "module probe.d5p\nfn f() -> Int { Rec { module: 1 } }\n"
-data d5_p_keyword_field_red_source: String = "module probe.d5p_red\nfn f() -> Int { Rec { module 1 } }\n"
+// THE RED DROPS THE FIELD'S VALUE, as the h/i/o/n/q reds drop their operand. It was `Rec { module 1 }`
+// (no colon), which stopped refusing once `module` names a value in expression position
+// (v2.extdeps.languages.dag dag_grammar_primary_name_expr): the body then reads as two juxtaposed
+// statements, `Rec` and the block `{ module 1 }`, exactly as `Rec { x 1 }` already did. So that red
+// had been discriminating the keyword's expression standing, not the keyword-field initializer.
+data d5_p_keyword_field_red_source: String = "module probe.d5p_red\nfn f() -> Int { Rec { module: } }\n"
 
 data d5_h_as_cast_source: String = "module probe.d5h\nfn f() -> Int { 1 as Int }\n"
 data d5_h_as_cast_red_source: String = "module probe.d5h_red\nfn f() -> Int { 1 as }\n"

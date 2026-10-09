@@ -1,0 +1,223 @@
+module test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import gunbc.machine_intake_mtcollins1_census_refusal_hypotheses {
+  CensusBootCapture, DefaultPlacement, ConstrainedPlacement,
+  census_boot_reading, refusal_recurrence,
+  census_qemu_probe_verdict, QemuReproduced, QemuNotReproduced, QemuCouldNotTell, RefusalOnSomeBoots, RefusalOnEveryBoot, NoRefusalAcrossBoots,
+  candidate_agreement, NoRefusingBootNamed, OneRefusingBootNamed, SameCandidatesOnEveryNamedBoot, CandidatesDifferAcrossBoots,
+  hypothesis_bearing, FavoursXhciPair, FavoursMemoryPlacement, BearingUndetermined,
+  placement_tallies, census_refusal_hypotheses_text, xhci_registration_line,
+}
+import test.claim.machine_intake.kernel_module_decompression_observation_witness_test { failed_attempt_excerpt, census_reaching_excerpt }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TWO REAL RECEIPTS, as their excerpts are carried (with capture and artifact digests) by
+// test.claim.machine_intake.kernel_module_decompression_observation_witness_test: identical media and
+// cmdline, one refusing boot and one census-reaching boot, both before the module-identity instrument.
+data refusing_run: CensusBootCapture = CensusBootCapture { source: "fleet-converge run 36335369059", placement: DefaultPlacement, lines: failed_attempt_excerpt }
+
+data reaching_run: CensusBootCapture = CensusBootCapture { source: "fleet-converge run 36253081549", placement: DefaultPlacement, lines: census_reaching_excerpt }
+
+// DESIGNED INSTRUMENTED CAPTURES, in the loader-record shape the instrumented QEMU control printed
+// (the observation witness's instrumented_excerpt). Each is one refusal plus the EINVAL insert
+// failures a refusing boot would carry under the instrument; the module chosen is the variable.
+fn designed_refusing_boot(source: NonEmptyStr, placement_arg: String, module_paths: List<String>) -> CensusBootCapture {
+  CensusBootCapture {
+    source: source,
+    placement: if placement_arg == "" { DefaultPlacement } else { ConstrainedPlacement { kernel_arg: placement_arg as NonEmptyStr } },
+    lines: ["[   10.374590] ZSTD-decompression failed with status 20\r"].concat(
+      map(module_paths, p => concat("[   10.380000] (udev-worker)[100]: Failed to insert module '", p, "': Invalid argument\r")),
+    ),
+  }
+}
+
+data xhci_pair_paths: List<String> = [
+  "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci-renesas.ko.zst",
+  "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst",
+]
+
+data xhci_pair_paths_reversed: List<String> = [
+  "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst",
+  "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci-renesas.ko.zst",
+]
+
+// THE REAL RECEIPTS: nondeterministic across identical media, xHCI bound only on the boot that did
+// not refuse, and NO bearing -- neither boot names a candidate, so the two candidates stay level.
+test fn the_real_receipts_are_nondeterministic_and_do_not_separate_the_candidates() -> Bool {
+  let readings = map([refusing_run, reaching_run], c => census_boot_reading(capture: c))
+  (match refusal_recurrence(readings: readings) { RefusalOnSomeBoots { refusing: a, clean: b, unclear: u } => a == 1 && b == 1 && u == 0  _ => false })
+    && (match candidate_agreement(readings: readings) { NoRefusingBootNamed { unread: u } => u == 1  _ => false })
+    && (match hypothesis_bearing(readings: readings) { BearingUndetermined { missing: m } => string_contains(s: m, pattern: "instrumented refusing boot")  _ => false })
+}
+
+// THE ROUTE: xHCI binding is read off the controller's own registration line on the reaching boot,
+// and is absent on the refusing boot.
+test fn xhci_binding_is_read_on_the_reaching_boot_only() -> Bool {
+  census_boot_reading(capture: reaching_run).xhci_bound && !census_boot_reading(capture: refusing_run).xhci_bound
+}
+
+// A line that merely mentions the driver is not the registration: "Adding to iommu group" on the
+// reaching boot and a usb bus's Manufacturer line both carry xhci text and neither is the record.
+test fn only_the_host_controller_line_counts_as_registration() -> Bool {
+  xhci_registration_line(rest: "xhci_hcd 0000:00:01.0: xHCI Host Controller")
+    && !xhci_registration_line(rest: "xhci_hcd 0004:03:00.0: Adding to iommu group 17")
+    && !xhci_registration_line(rest: "usb usb1: Manufacturer: Linux 6.8.0-71-generic xhci-hcd")
+}
+
+// DISCRIMINATING PAIR. Two instrumented refusing boots naming the xHCI pair bear toward that
+// candidate; two naming different modules bear toward memory placement. The only variable is which
+// module the refusing boots name.
+test fn instrumented_refusals_agreeing_on_the_xhci_pair_bear_toward_it() -> Bool {
+  let readings = map([
+    designed_refusing_boot(source: "boot a", placement_arg: "", module_paths: xhci_pair_paths),
+    designed_refusing_boot(source: "boot b", placement_arg: "", module_paths: xhci_pair_paths_reversed),
+  ], c => census_boot_reading(capture: c))
+  match hypothesis_bearing(readings: readings) {
+    FavoursXhciPair { modules: m, boots: n } => n == 2 && count(m) == 2
+    _ => false
+  }
+}
+
+test fn instrumented_refusals_naming_different_modules_bear_toward_memory_placement() -> Bool {
+  let readings = map([
+    designed_refusing_boot(source: "boot a", placement_arg: "", module_paths: xhci_pair_paths),
+    designed_refusing_boot(source: "boot b", placement_arg: "", module_paths: ["/lib/modules/6.8.0-71-generic/kernel/drivers/net/ethernet/intel/igb/igb.ko.zst"]),
+  ], c => census_boot_reading(capture: c))
+  match hypothesis_bearing(readings: readings) {
+    FavoursMemoryPlacement { named: ns } => count(ns) == 2
+    _ => false
+  }
+}
+
+// ONE NAMED BOOT IS NOT AGREEMENT: a single instrumented refusal beside the uninstrumented real one
+// leaves the bearing undetermined, and the unread boot is counted, never read as disagreement.
+test fn one_named_refusing_boot_beside_an_unread_one_is_undetermined() -> Bool {
+  let readings = map([refusing_run, designed_refusing_boot(source: "boot a", placement_arg: "", module_paths: xhci_pair_paths)], c => census_boot_reading(capture: c))
+  (match candidate_agreement(readings: readings) { OneRefusingBootNamed { modules: _, unread: u } => u == 1  _ => false })
+    && (match hypothesis_bearing(readings: readings) { BearingUndetermined { missing: _ } => true  _ => false })
+}
+
+// Agreement on a non-xHCI victim is neither candidate's prediction and is not promoted to either.
+test fn agreement_outside_the_xhci_pair_is_undetermined_not_a_bearing() -> Bool {
+  let igb = ["/lib/modules/6.8.0-71-generic/kernel/drivers/net/ethernet/intel/igb/igb.ko.zst"]
+  let readings = map([
+    designed_refusing_boot(source: "boot a", placement_arg: "", module_paths: igb),
+    designed_refusing_boot(source: "boot b", placement_arg: "", module_paths: igb),
+  ], c => census_boot_reading(capture: c))
+  (match candidate_agreement(readings: readings) { SameCandidatesOnEveryNamedBoot { modules: _, named: n, unread: _ } => n == 2  _ => false })
+    && (match hypothesis_bearing(readings: readings) { BearingUndetermined { missing: m } => string_contains(s: m, pattern: "not exactly the xHCI pair")  _ => false })
+}
+
+// THE PLACEMENT HALF is tallied per placement and never turned into a bearing here.
+test fn placements_are_tallied_separately() -> Bool {
+  let readings = map([
+    refusing_run, reaching_run,
+    CensusBootCapture { source: "boot c", placement: ConstrainedPlacement { kernel_arg: "numa=off" }, lines: census_reaching_excerpt },
+  ], c => census_boot_reading(capture: c))
+  let tallies = placement_tallies(readings: readings)
+  count(tallies) == 2
+    && match first(tallies) { Absent => false  Present { value: t } => t.refusing == 1 && t.clean == 1 }
+    && match first(tallies.skip(n: 1)) { Absent => false  Present { value: t } => t.refusing == 0 && t.clean == 1 }
+}
+
+test fn the_report_names_recurrence_route_and_bearing() -> Bool {
+  let text = census_refusal_hypotheses_text(captures: [refusing_run, reaching_run])
+  string_contains(s: text, pattern: "refused on 1 boot(s), observed clean on 1, unclear on 0")
+    && string_contains(s: text, pattern: "xhci bound on: fleet-converge run 36253081549")
+    && string_contains(s: text, pattern: "bearing undetermined")
+}
+
+// SUBSET RED: two boots agreeing on xhci_pci ALONE are not the pair's signature.
+test fn agreement_on_one_member_of_the_pair_is_not_the_xhci_bearing() -> Bool {
+  let one = ["/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst"]
+  let readings = map([
+    designed_refusing_boot(source: "boot a", placement_arg: "", module_paths: one),
+    designed_refusing_boot(source: "boot b", placement_arg: "", module_paths: one),
+  ], c => census_boot_reading(capture: c))
+  match hypothesis_bearing(readings: readings) {
+    FavoursXhciPair { modules: _, boots: _ } => false
+    BearingUndetermined { missing: m } => string_contains(s: m, pattern: "not exactly the xHCI pair")
+    FavoursMemoryPlacement { named: _ } => false
+  }
+}
+
+// A boot with no refusal AND no xHCI registration is UNCLEAR, never clean: the capture that ends at
+// /init has no refusal line because it never reached coldplug.
+data ended_at_init: CensusBootCapture = CensusBootCapture { source: "ended at /init", placement: DefaultPlacement, lines: failed_attempt_excerpt.take(n: 1) }
+
+test fn a_boot_without_refusal_or_xhci_is_unclear_not_clean() -> Bool {
+  match refusal_recurrence(readings: map([ended_at_init], c => census_boot_reading(capture: c))) {
+    NoRefusalAcrossBoots { clean: c, unclear: u } => c == 0 && u == 1
+    _ => false
+  }
+}
+
+// THE QEMU VERDICT, three ways. Reproduced from a parsed refusal, with its candidates.
+test fn a_parsed_refusal_is_reproduced() -> Bool {
+  match census_qemu_probe_verdict(capture: designed_refusing_boot(source: "qemu subject", placement_arg: "", module_paths: xhci_pair_paths)) {
+    QemuReproduced { reading: _, candidates: cs } => count(cs) == 2
+    _ => false
+  }
+}
+
+// Not reproduced only when the route ran: no refusal and the xHCI registered (the reaching boot).
+test fn no_refusal_with_xhci_registered_is_not_reproduced() -> Bool {
+  match census_qemu_probe_verdict(capture: reaching_run) { QemuNotReproduced { source: _ } => true  _ => false }
+}
+
+// RED: no refusal and NO xHCI is not NotReproduced.
+test fn no_refusal_without_xhci_is_could_not_tell_not_not_reproduced() -> Bool {
+  match census_qemu_probe_verdict(capture: ended_at_init) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "no xHCI controller registered")
+    _ => false
+  }
+}
+
+test fn a_silent_capture_is_could_not_tell() -> Bool {
+  match census_qemu_probe_verdict(capture: CensusBootCapture { source: "silent", placement: DefaultPlacement, lines: [] }) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "empty")
+    _ => false
+  }
+}
+
+test fn a_truncated_refusal_record_is_could_not_tell() -> Bool {
+  match census_qemu_probe_verdict(capture: CensusBootCapture { source: "truncated", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with sta"] }) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "none could be parsed")
+    _ => false
+  }
+}
+
+// NON-TARGET STATUS RED: a parsed checksum mismatch (22) or an uncatalogued code is a different
+// decoder failure. It is not a reproduction, and it is unclear, not refusing, in the partition.
+data status_22_boot: CensusBootCapture = CensusBootCapture { source: "status 22", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with status 22\r"] }
+
+data status_42_boot: CensusBootCapture = CensusBootCapture { source: "status 42", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with status 42\r"] }
+
+test fn a_parsed_non_target_status_is_not_reproduced() -> Bool {
+  (match census_qemu_probe_verdict(capture: status_22_boot) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "different status")
+    _ => false
+  }) && (match census_qemu_probe_verdict(capture: status_42_boot) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "zstd error 42")
+    _ => false
+  })
+}
+
+// UNPARSED-ONLY AND NON-TARGET BOOTS ENTER RECURRENCE AND PLACEMENT AS UNCLEAR, beside one target
+// refusal: the tally is refusing 1, clean 0, unclear 2.
+data truncated_boot: CensusBootCapture = CensusBootCapture { source: "truncated", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with sta"] }
+
+test fn unparsed_and_non_target_refusals_are_unclear_in_recurrence_and_placement() -> Bool {
+  let readings = map([refusing_run, truncated_boot, status_22_boot], c => census_boot_reading(capture: c))
+  (match refusal_recurrence(readings: readings) {
+    RefusalOnSomeBoots { refusing: a, clean: b, unclear: u } => a == 1 && b == 0 && u == 2
+    _ => false
+  }) && (match first(placement_tallies(readings: readings)) {
+    Absent => false
+    Present { value: t } => t.refusing == 1 && t.clean == 0 && t.unclear == 2
+  })
+}

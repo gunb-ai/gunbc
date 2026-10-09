@@ -60,17 +60,19 @@ type HostConvergenceSubject
   | SparkRuntimeImage
   | RunnerHostFiles
   | RunnerPasswordSessionTools
+  | RunnerBrowserToolchain
+  | HostCredentialCustody
   | MicrovmHost
   | GuestImage
   | Srv3InstallMedia
   | SrvBmcCredential
+  | BmcSecureAccountState
   | TypedRemoteFileBytes
-  | OrgActions
-  | AppControlPlane
   | HostToolchain
   | RunnerMemoryCaps
   | ContributorRepoLocalGitConfig
   | FleetHostKeyEnrollment
+  | MachineIntakeArrival
 
 type PersistentHostEffectStatus
   = ReachesPersistentHostMutation
@@ -245,7 +247,8 @@ fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRef
           Absent => none
         }
       }
-    _ => none
+    RetainAuthority => none
+    OutsideHostConvergence { protocol: _ } => none
   }
 }
 
@@ -353,7 +356,7 @@ fn live_member_observe() -> DeclarationRef {
 }
 
 fn live_readiness() -> DeclarationRef {
-  cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once")
+  cite(module_path: "gunbc.live_deploy.readiness", decl_name: "live_deploy_service_ready_once_for_deploy")
 }
 
 fn deployment_spec_for() -> DeclarationRef {
@@ -555,10 +558,10 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_readiness_gate"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.live_deploy.spec", decl_name: "deployment_spec_srv1"),
+    identity: cite(module_path: "gunbc.live_deploy.desired", decl_name: "deployment_spec_srv1"),
     subject: DeploymentSpecPopulation,
     phases: none_phases(),
-    current_authority: cite(module_path: "gunbc.live_deploy.spec", decl_name: "deployment_spec_srv1"),
+    current_authority: cite(module_path: "gunbc.live_deploy.desired", decl_name: "deployment_spec_srv1"),
     persistent_host_effect: DoesNotMutateHost,
     disposition: BindToAuthority { target: deployment_spec_for() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "timer_retirement_observed_legacy_srv1"),
@@ -569,7 +572,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "FleetConvergeWorkflowMode"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "FleetConvergeScope") },
+    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_scope", decl_name: "FleetConvergeScope") },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -585,13 +588,13 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_dashboard_deploy_step_if"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_provider_readiness_json"),
+    identity: cite(module_path: "gunbc.dashboard_provider_readiness", decl_name: "observe_dashboard_provider_readiness"),
     subject: RoadmapServeProviderReadiness,
     phases: protocol_phases(false, false, false, false, false, false, true),
-    current_authority: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_provider_readiness_json"),
+    current_authority: cite(module_path: "gunbc.dashboard_provider_readiness", decl_name: "observe_dashboard_provider_readiness"),
     persistent_host_effect: DoesNotMutateHost,
-    disposition: BindToAuthority { target: live_readiness() },
-    first_consumer: cite(module_path: "gunbc.roadmap_serve", decl_name: "dashboard_instance_json"),
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.roadmap_serve", decl_name: "roadmap_serve_respond"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
@@ -603,13 +606,13 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
+    identity: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_ensure"),
     subject: SparkHostGrants,
     phases: protocol_phases(false, false, false, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
+    current_authority: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_ensure"),
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge_with_supplied_token"),
+    first_consumer: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.spark.pair_serving_apply", decl_name: "spark_pair_serving_apply_wet"),
@@ -684,11 +687,38 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "runner_password_session_tool_converge_ci_wet"),
   ),
   census_row(
+    identity: cite(module_path: "gunbc.runner_browser_toolchain", decl_name: "runner_browser_toolchain_converge_ci_wet"),
+    subject: RunnerBrowserToolchain,
+    phases: protocol_phases(false, true, false, false, true, true, true),
+    current_authority: cite(module_path: "gunbc.runner_browser_toolchain", decl_name: "runner_browser_toolchain_converge_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
+    subject: HostCredentialCustody,
+    phases: protocol_phases(false, true, true, true, true, true, false),
+    current_authority: cite(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  ),
+  census_row(
     identity: cite(module_path: "gunbc.runner_microvm_host_ready", decl_name: "runner_microvm_host_converge_wet"),
     subject: MicrovmHost,
     phases: protocol_phases(false, true, false, false, false, false, true),
     current_authority: cite(module_path: "gunbc.runner_microvm_host_ready", decl_name: "runner_microvm_host_converge_wet"),
     persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.runner_microvm_network_observe", decl_name: "runner_microvm_network_observe_wet"),
+    subject: MicrovmHost,
+    phases: protocol_phases(false, true, false, false, false, false, false),
+    current_authority: cite(module_path: "gunbc.runner_microvm_network_observe", decl_name: "runner_microvm_network_observe_wet"),
+    persistent_host_effect: DoesNotMutateHost,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
@@ -738,22 +768,13 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_actions_converge_wet"),
-    subject: OrgActions,
-    phases: protocol_phases(false, true, true, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_actions_converge_wet"),
-    persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
-    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.fleet.app_control_plane_converge", decl_name: "app_control_plane_converge_wet"),
-    subject: AppControlPlane,
-    phases: protocol_phases(false, true, true, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.fleet.app_control_plane_converge", decl_name: "app_control_plane_converge_wet"),
-    persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
-    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+    identity: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "inspect_bmc_secure_state"),
+    subject: BmcSecureAccountState,
+    phases: protocol_phases(false, true, true, true, true, true, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "inspect_bmc_secure_state"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: std_reconcile() },
+    first_consumer: cite(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.host_toolchain_ensure", decl_name: "host_toolchain_ensure"),
@@ -799,6 +820,33 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_authorized_key_enroll_target"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, false, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "access_discover"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, false, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    subject: MachineIntakeArrival,
+    phases: protocol_phases(false, true, true, true, false, true, false),
+    current_authority: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix"),
   ),
 ]
 

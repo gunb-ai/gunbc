@@ -1,0 +1,33 @@
+module gunbc.host_crypto_digest_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the host crypto digest seams in v1_interpreter, enumerated because
+// gunbc.seed_growth_admission makes unenumerated hand growth in src/v1 a stop-line.
+//
+// TWO SEAMS, ONE RECEIPT. hmac_sha256_hex_tag (the HMAC-SHA-256 mint behind extdeps.crypto.mac
+// mac_sign) landed with no receipt; it is enumerated here beside sha256_hex_of_text_digest, which this
+// change adds, because they are one boundary: RustCrypto sha2 reached from the interpreter.
+//
+// WHY A HOST SEAM AND NOT THE PURE FOLD. extdeps.crypto.sha2 sha256_hex is the substrate's SHA-256 and
+// stays its authority and oracle, but interpreted it costs ~200k eval steps per 64-octet block
+// (measured with claim_batch on test.claim.sha256_host_known_answer_witness), and the fabric store
+// door (gunbc.fabric_store_operation_admission) digests an approved intent on every protected write.
+//
+// NOT COUNTED BELOW, disclosed: the interpreter arms free_call.hmac_sha256_hex, free_call.hmac_sha256_
+// verify_hex and free_call.sha256_hex_of_text (macro arms inside eval_builtin_inner, not citable
+// declarations). The generated v1_interpreter_dispatch_generated.rs and v1_compiler_infer_method.rs
+// project gunbc.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities
+// change with them.
+data host_crypto_digest_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "sha256_hex_of_text_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "hmac_sha256_hex_tag", field: WholeDeclaration }
+  ],
+  reason: "A cryptographic digest over a text's bytes is realized by the host's audited RustCrypto sha2 exactly as HMAC already is: the substrate's pure fold (extdeps.crypto.sha2) remains the authority and the differential oracle, and the host seam changes cost only -- ~200k interpreted eval steps per block becomes one native call on the store door's per-write path. Correctness is established by known answers shared with the grandfathered sha256_fips_witness (pure fold == NIST/RFC values) and by host-vs-known-answer claims over the padding boundaries.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete when the digest is realized by EMITTED code rather than the interpreter's host arm: a rt_function_registry bridge row for sha256_hex_of_text (and hmac_sha256_hex) with its v1_rt runtime body, admitted by the #12389 primitive-runtime-body gate, so the self-emitted store door and mac_sign call the emitted body. Sufficient means both digests run in an emitted crate with the same known-answer claims green; an interpreter-only arm does not satisfy it.",
+  current_boundary: "sha256_hex_of_text_digest returns hex(Sha256::digest(text.as_bytes())); hmac_sha256_hex_tag decodes a hex key and returns hex(HMAC-SHA-256(key, message)) or none for non-hex key material. Neither holds state, reads anything but its arguments, or makes a decision; every refusal and every use is in the .dag callers."
+}

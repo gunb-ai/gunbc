@@ -1,9 +1,10 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.yaml.emit { emit_inline_scalar_text }
+import extdeps.github.action_release { action_release_uses_text }
 import extdeps.github.actions {
-  ActionRef,
   Job,
   RunnerSpec,
   SelfHosted
@@ -19,10 +20,9 @@ import v2.extdeps.languages.bash {
   bash_target_model_bundle,
   bash_word_atom
 }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,
@@ -51,10 +51,9 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
@@ -268,13 +267,6 @@ fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
   }
 }
 
-fn gha_fold_uses_ref_text(uses: ActionRef) -> String {
-  concat(
-    concat(concat(concat(uses.owner, "/"), uses.repo), "@"),
-    uses.ref
-  )
-}
-
 fn gha_fold_step_head_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node> {
   match emit {
     GhaPilotRunEmit { run: r } =>
@@ -286,7 +278,7 @@ fn gha_fold_step_head_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node>
     GhaPilotUsesEmit { uses: u } =>
       Holds {
         value: gha_fold_step_head_uses_emitted(
-          scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
+          scalar: gha_fold_scalar_emitted(text: action_release_uses_text(action_release: u))
         )
       }
   }
@@ -303,7 +295,7 @@ fn gha_fold_step_tail_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node>
     GhaPilotUsesEmit { uses: u } =>
       Holds {
         value: gha_fold_step_tail_uses_emitted(
-          scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
+          scalar: gha_fold_scalar_emitted(text: action_release_uses_text(action_release: u))
         )
       }
   }
@@ -434,7 +426,11 @@ fn gha_fold_job_bundle_witness(job: Job) -> Witness<GhaFoldJobBundle> {
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
-    _ =>
+    HostedRunner { label: _ } =>
+      Violates {
+        diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_runner_not_self_hosted_pilot)
+      }
+    RunsOnExpression { expression: _ } =>
       Violates {
         diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_runner_not_self_hosted_pilot)
       }
@@ -618,19 +614,7 @@ fn gha_fold_formal_productions() -> List<FormalProduction> {
 
 fn gha_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
   let productions = gha_fold_formal_productions()
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn gha_fold_formal_production_for_job_witness(emitted: Node) -> Witness<FormalProduction> {
@@ -658,46 +642,11 @@ data gha_fold_pilot_job_emitted: Node = gha_fold_job_emitted(
         )
       ),
       right: gha_fold_step_tail_uses_emitted(
-        scalar: gha_fold_scalar_emitted(text: "actions/checkout@v4")
+        scalar: gha_fold_scalar_emitted(text: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09")
       )
     )
   )
 )
-
-fn gha_fold_serialize_source_witness(
-  emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
-) -> Witness<Node> {
-  match gha_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
-      match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-        Accepted { value: tokens_root, diagnostics: _ } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                bash_named_edge(
-                  name: ^serialize_source_field_source_text,
-                  target: bash_word_atom(id: source_literal)
-                ),
-                bash_named_edge(
-                  name: ^serialize_source_field_source_grammar,
-                  target: bash_word_atom(id: production_binding)
-                ),
-                bash_named_edge(
-                  name: ^grammar_relation_field_tokens,
-                  target: tokens_root
-                )
-              ],
-              occurrence_id: OccurrenceSynthetic
-            }
-          }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
 
 fn gha_fold_translation_rules_node_for_emitted(
   emitted: Node,
@@ -728,7 +677,7 @@ fn gha_fold_translation_rules_node_for_emitted(
 fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
@@ -751,7 +700,8 @@ fn gha_fold_lex_rules() -> LexRuleSet {
       gha_fold_lex_rule(token_class: ^gha_token_yaml_job_trailing_newline, text: "\n"),
       gha_fold_lex_rule(token_class: ^gha_fold_prod_kind_tag, text: gha_fold_prod_kind_sentinel),
       gha_fold_lex_rule(token_class: ^gha_fold_scalar_kind, text: gha_fold_scalar_kind_sentinel)
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -776,25 +726,15 @@ fn gha_fold_target_model_bundle_witness(
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Witness<Node> {
-  match gha_fold_serialize_source_witness(
+  match gha_fold_translation_rules_node_for_emitted(
     emitted: emitted,
-    source_literal: source_literal,
-    production_binding: production_binding
+    lhs: production_binding,
+    rule_name: rule_name
   ) {
-    Holds { value: serialize_source } =>
-      match gha_fold_translation_rules_node_for_emitted(
-        emitted: emitted,
-        lhs: production_binding,
-        rule_name: rule_name
-      ) {
-        Holds { value: rules } =>
-          Holds {
-            value: bash_target_model_bundle(
-              rules: rules,
-              serialize_source: serialize_source
-            )
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: rules } =>
+      Holds {
+        value: bash_target_model_bundle(
+          rules: rules)
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
@@ -913,7 +853,7 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
                 )
               ),
               right: gha_fold_flat_step_tail_uses_emitted(
-                scalar: gha_fold_scalar_emitted(text: "actions/checkout@v4")
+                scalar: gha_fold_scalar_emitted(text: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09")
               )
             )
           }

@@ -1,0 +1,63 @@
+module v2.test.claim.compiler.infer_cardinality_type_owes_no_descent_test
+
+// A type node owes no evaluation descent: v2.std.cardinality connective_multiplicity answers
+// Bounded for every connective, Cardinality (T?) included, and repetition enters a program only
+// through the Loop behavior. The discriminating red for T? is
+// v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
+// infer_optional_formal_reaches_optional_carrier_frontier_holds; this module holds the control
+// that must not move when Cardinality stops owing descent. The tree is SUPPLIED at the infer
+// boundary (DESIGN §3, a witness discriminates at one interface).
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one
+}
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  Some,
+  diagnostics_has_reason
+}
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Authored,
+  Node,
+  OccurrenceSynthetic,
+  Positional,
+  Symbol,
+  TypeNode,
+  LoopBoundEdge,
+  core_edge_label,
+}
+
+fn cod_loop(measure: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: dag_int_literal_fixture_one() },
+      Edge {
+        label: core_edge_label(marker: LoopBoundEdge),
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: measure } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The control that must not move: a Loop whose measure carries no descent fact still refuses,
+// and refuses FOR descent.
+test fn infer_loop_without_descent_fact_still_refuses_for_descent_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: cod_loop(measure: ^cod_unregistered_measure))) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_descent_not_derived)
+  }
+}

@@ -9,6 +9,9 @@ import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
 import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
 import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_operator_drive_mirror_authority,
+}
 import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
 import extdeps.bonterms.cloud_terms { bonterms_cloud_terms_v1_0_ref }
 
@@ -88,6 +91,43 @@ data mt_collins_getting_started_guide_subject_ref: DeclarationRef = DeclarationR
   module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject",
   decl_name: "mt_collins_getting_started_guide",
   field: WholeDeclaration,
+}
+
+data mt_jade_getting_started_guide_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ampere.mt_jade_getting_started_guide.subject",
+  decl_name: "mt_jade_getting_started_guide",
+  field: WholeDeclaration,
+}
+
+// EACH READ TRANSCRIBES ITS OWN DIGEST, AND THAT IS NOT THE THREE-SPELLINGS FORK IT LOOKS LIKE.
+// An earlier revision bound both receipts to sha256_digest_wire_form(mt_jade_gsg_content_digest)
+// to remove a duplicated literal (review 67907). That collapsed the wall: the comparison below
+// asks pd == md, so feeding both sides the SAME declaration made RecordedReadBytesAgree true by
+// construction, and the witness cited it as coverage (review 68035). Two independent fetches are
+// two OBSERVATIONS, not two copies of a declared fact -- DESIGN section 3 external upstream
+// decomposition puts our reads in this layer and the document's declared digest in extdeps -- so
+// three rows here are three different facts, and their agreement is the thing worth checking. The
+// Collins pair below has always been written this way.
+data mt_jade_gsg_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_getting_started_guide_subject_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 16317856),
+    content_digest: "sha256 f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f",
+    detail: "Fetched without credentials from the Ampere publisher locator on 2026-09-18; application/pdf, 18 pages. Table 11 and chassis rows were already modeled from the operator Drive copy; this fetch is the publisher-slot read, not a substitution of that copy for the publisher.",
+  },
+}
+
+data mt_jade_gsg_drive_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_getting_started_guide_subject_ref,
+  provenance: DocumentMirrorLocatorFetchedAndTextIngested {
+    mirror: mt_jade_gsg_operator_drive_mirror_authority,
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 18 },
+    http_status: 200,
+    byte_count: byte_size(count: 16317856),
+    content_digest: "sha256 f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f",
+    detail: "Fetched without credentials from the operator-supplied Google Drive locator on 2026-09-18 and compared with the separately fetched publisher PDF (cmp and SHA-256). Matching bytes. This is a mirror read, not a publisher read.",
+  },
 }
 
 data mt_jade_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
@@ -241,9 +281,19 @@ fn specification_citation_read_byte_standing(publisher: SpecificationCitationRea
             if ps != 200 || ms != 200 {
               ReadBytesNotComparable
             } else { if pb == mb && pd == md { RecordedReadBytesAgree } else { RecordedReadBytesDiffer } }
-          _ => ReadBytesNotComparable
+          DocumentLocatorFetchRefused { http_status: _, detail: _ } => ReadBytesNotComparable
+          DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => ReadBytesNotComparable
+          DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => ReadBytesNotComparable
+          PeerSessionPdfTextIngested { peer_session: _, detail: _ } => ReadBytesNotComparable
+          DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => ReadBytesNotComparable
+          OperatorSuppliedDocumentText {} => ReadBytesNotComparable
         }
-      _ => ReadBytesNotComparable
+      DocumentLocatorFetchRefused { http_status: _, detail: _ } => ReadBytesNotComparable
+      DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => ReadBytesNotComparable
+      DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => ReadBytesNotComparable
+      PeerSessionPdfTextIngested { peer_session: _, detail: _ } => ReadBytesNotComparable
+      DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => ReadBytesNotComparable
+      OperatorSuppliedDocumentText {} => ReadBytesNotComparable
     }
   }
 }
@@ -261,6 +311,11 @@ fn specification_citation_compare_read_bytes(publisher: SpecificationCitationRea
 data mt_collins_2u_citation_read_comparison: SpecificationCitationReadByteComparison = specification_citation_compare_read_bytes(
   publisher: mt_collins_2u_publisher_citation_read_receipt,
   mirror: mt_collins_2u_mirror_citation_read_receipt,
+)
+
+data mt_jade_gsg_citation_read_comparison: SpecificationCitationReadByteComparison = specification_citation_compare_read_bytes(
+  publisher: mt_jade_gsg_publisher_citation_read_receipt,
+  mirror: mt_jade_gsg_drive_mirror_citation_read_receipt,
 )
 
 // THE PINNED CONTRACT STANDARD'S READS, one typed receipt per locator the extdeps module cites,
@@ -324,4 +379,21 @@ data bonterms_cloud_terms_v1_0_citation_read_receipt: SpecificationCitationReadR
     content_digest: "sha256 a523d49b2e6e8f671ee650dd5f15ccbd591b7fa3070f3cf30385a0851a0c46c5",
     detail: "Fetched without credentials on 2026-09-12 as HTML; the tag-stripped visible text (40865 characters) carries the complete Bonterms Cloud Terms (Version 1.0), sections 1 through 22 (General Terms) plus Definitions, including Section 21 (Trials and Betas), and the footer '(c) 2022 Bonterms. Free to use under CC BY 4.0.' The page states no release date and no statement about whether the posted text stays fixed at its locator. An earlier attempt by this session at bonterms.com/forms/cloud-terms/ answered 404: that was a constructed path, and it is evidence about the path, not about the publisher.",
   },
+}
+
+// Direct publisher-locator read, 2026-10-04. Portwell is the datasheet publisher;
+// its dimensions remain reseller evidence about the FII/Ampere motherboard.
+data portwell_collins_citation_read_receipt:SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+ subject:DeclarationRef {module_path:"extdeps.portwell.aptsa_627211_b4",decl_name:"collins_datasheet_mechanicals",field:WholeDeclaration},
+ provenance:DocumentLocatorFetchedAndTextIngested {
+  http_status:200,byte_count:byte_size(count:4916642),
+  content_digest:"3914b6dfb871b9eb4b317d658175de9346c8b2bfbcdfb1d541c6e74b05f9a285",
+  detail:"2026-10-04: downloaded the live Portwell PDF with TLS verification using the missing Let's Encrypt YR2 intermediate plus the system CA bundle; decoded all three pages. March 2022 p1 gives board 512 mm x 424.2 mm and 20.13 in x 16.7 in, and chassis 847.5 x 448 x 87.5 mm (L x W x H). Metric and inch dimensions are inconsistent; axis assignment is a downstream inference, not a labelled upstream dimension."
+ }
+}
+
+// Publisher PDF downloaded and text read 2026-10-05; see the subject's authority URL.
+data arctic_p14_wiring_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+ subject: DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration},
+ provenance:DocumentLocatorFetchedAndTextIngested {http_status:200,byte_count:byte_size(count:680386),content_digest:"sha256:aba0ac25c2063b7607702a04cf47bd7c2f8bf71e933d64858316fbf8b4c81bcf",detail:"Publisher P14 PWM PST specification page 1 read 2026-10-05: 400 mm cable, four-pin connector plus socket, 0.12 A at 12 V. Chain count and board-header capacity are not established by this sheet."},
 }

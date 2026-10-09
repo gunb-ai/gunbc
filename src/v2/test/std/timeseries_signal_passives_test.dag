@@ -1,6 +1,5 @@
 module v2.test.std.timeseries_signal_passives
 
-import v2.std.logic { Bool }
 import v2.std.timeseries_signal {
   BranchCurrent,
   Current,
@@ -18,15 +17,6 @@ import v2.std.timeseries_signal {
   timeseries_witness_approx_zero,
   voltage,
   voltage_count,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -70,12 +60,4 @@ test fn branch_current_of_magnitude_is_structural_identity_holds() -> Bool {
     BranchCurrent { magnitude: m } =>
       current_count(c: m) == current_count(c: witness_current_zero)
   }
-}
-
-data claim_timeseries_signal_module_compiles: TestClaim = CompilesClaim {
-  label: "std/timeseries_signal: torsor + passive topology + map/fold passives compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: GroundReference,
-  expected_value: GroundReference,
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }

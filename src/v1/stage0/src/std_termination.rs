@@ -8,6 +8,8 @@ use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{BoundedLattice, Ordering};
+pub use crate::std_optional::Optional;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -38,14 +40,14 @@ pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> 
         DescentEvidence::Strict => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            _ => DescentEvidence::DescentUnknown,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
         },
         DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::NonIncreasing,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            _ => DescentEvidence::DescentUnknown,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
         },
-        _ => DescentEvidence::DescentUnknown,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
     }
 }
 
@@ -54,7 +56,8 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
         DescentEvidence::DescentUnknown => b.clone(),
         DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
-            _ => DescentEvidence::NonIncreasing,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
         },
         DescentEvidence::Strict => DescentEvidence::Strict,
     }
@@ -79,7 +82,7 @@ pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     match evidence.clone() {
         DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
         DescentEvidence::Strict => DescentEvidence::Strict,
-        _ => DescentEvidence::DescentUnknown,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
     }
 }
 
@@ -156,7 +159,7 @@ pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
         match (*steps.clone()).clone() {
             PositiveDescentAmount::OneStep => 1,
             PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
-                (1 + positive_descent_count(p.clone()))
+                v1_rt::int_add(1, positive_descent_count(p.clone()))
             }
         }
     })
@@ -181,7 +184,7 @@ pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
         ProportionalDivisor::DivideByTwo => 2,
         ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
-            (1 + proportional_divisor_to_int(p.clone()))
+            v1_rt::int_add(1, proportional_divisor_to_int(p.clone()))
         }
     })
 }
@@ -201,7 +204,7 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
                 if (k.clone() == 1) {
                     Some(Rc::new(PositiveDescentAmount::OneStep))
                 } else {
-                    match positive_descent_amount_from_positive_int((k.clone() - 1)) {
+                    match positive_descent_amount_from_positive_int(v1_rt::int_sub(k.clone(), 1)) {
                         Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
                             previous: prev.clone(),
                         })),
@@ -224,7 +227,7 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
                 if (k.clone() == 2) {
                     Some(Rc::new(ProportionalDivisor::DivideByTwo))
                 } else {
-                    match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
+                    match proportional_divisor_from_int_at_least_two(v1_rt::int_sub(k.clone(), 1)) {
                         Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
                             inner: prev.clone(),
                         })),

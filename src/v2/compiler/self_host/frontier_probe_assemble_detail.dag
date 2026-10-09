@@ -1,6 +1,6 @@
 module v2.compiler.self_host.frontier_probe_assemble_detail
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, list_snoc_item }
 import v2.std.algebra {
   Empty,
   HeadAbsent,
@@ -10,7 +10,6 @@ import v2.std.algebra {
   fold_list,
   is_empty,
   list_head,
-  list_snoc_item,
   list_tail
 }
 import v2.compiler.parse_diagnostic {
@@ -18,8 +17,6 @@ import v2.compiler.parse_diagnostic {
   NonEmptyParseStageDiagnostics,
   ParseStageDiagnostic,
   grammar_choice_ambiguity_rows_from_non_empty_parse_stage,
-  list_head_value_or_self_parse_stage,
-  list_tail_or_empty_parse_stage,
   non_empty_grammar_choice_ambiguity_rows_from_parse_stage,
   parse_overlap_residue_stage_diagnostic_at,
   parse_stage_diagnostic_from_diagnostic_only
@@ -33,8 +30,6 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeDetail,
   FrontierProbeReceipt,
   GrammarChoiceOverlap,
-  MaskedAssembleRefusal,
-  MaskedAssembleRefusalWithoutEvidence,
   MissingModuleIdentityUnavailable,
   NonEmptySymbolChain,
   OtherAssembleRefusal,
@@ -42,8 +37,8 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_fatal, diagnostics_fatal_reason }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
@@ -89,89 +84,36 @@ fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<Qualifi
 // ParseStageDiagnostic.evidence and map Present -> AssembleMissingModule {
 // requested }.
 
+// THE CAUSE IS THE FATAL DIAGNOSTIC, THE CHAIN'S LAST. An advisory prepended to the refusal (the
+// grammar overlap residue heads every module's chain) is not the cause, so the chain is classified
+// by its fatal element and the residue no longer needs a masking arm of its own: its rows ride on
+// the detail's overlap_residue_stage. A refusal whose fatal element is itself the overlap residue
+// carries its rows as GrammarChoiceOverlap.
 fn assemble_rejection_cause_from_parse_stage(
   d: NonEmptyParseStageDiagnostics
 ) -> AssembleRejectionCause {
-  if !is_empty(xs: d.tail) && (d.head.diagnostic.reason == ^parse_grammar_choice_overlap_residue) {
-    match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
-      d: NonEmptyParseStageDiagnostics { head: d.head, tail: Empty }
-    ) {
-      Present { value: overlap_evidence } =>
-        MaskedAssembleRefusal {
-          overlap_evidence: overlap_evidence,
-          remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
-            head: list_head_value_or_self_parse_stage(head: d.head, tail: d.tail),
-            tail: list_tail_or_empty_parse_stage(tail: d.tail)
-          )
-        }
-      Absent =>
-        MaskedAssembleRefusalWithoutEvidence {
-          remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
-            head: list_head_value_or_self_parse_stage(head: d.head, tail: d.tail),
-            tail: list_tail_or_empty_parse_stage(tail: d.tail)
-          )
-        }
-    }
-  } else if d.head.diagnostic.reason == ^resolve_module_not_found {
-    match diagnostic_module_root_missing_qn_optional(d: d.head.diagnostic) {
+  let fatal = parse_stage_fatal(d: d)
+  if fatal.diagnostic.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: fatal.diagnostic) {
       Present { value: requested } => AssembleMissingModule { requested: requested }
       Absent => MissingModuleIdentityUnavailable
     }
-  } else {
+  } else if fatal.diagnostic.reason == ^parse_grammar_choice_overlap_residue {
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(d: d) {
       Present { value: rows } => GrammarChoiceOverlap { rows: rows }
-      Absent => OtherAssembleRefusal { reason: d.head.diagnostic.reason }
+      Absent => OtherAssembleRefusal { reason: fatal.diagnostic.reason }
     }
+  } else {
+    OtherAssembleRefusal { reason: fatal.diagnostic.reason }
   }
 }
 
-fn non_empty_symbol_chain_from_parse_stage_head(
-  head: ParseStageDiagnostic,
-  tail: FreeMonoid<ParseStageDiagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
-    head: head.diagnostic.reason,
-    tail: fold_list(
-      xs: tail,
-      empty: Empty,
-      cons: fn(acc, item) { list_snoc_item(xs: acc, item: item.diagnostic.reason) }
-    )
-  }
+fn parse_stage_fatal(d: NonEmptyParseStageDiagnostics) -> ParseStageDiagnostic {
+  fold_list(xs: d.tail, empty: d.head, cons: fn(acc, item) { item })
 }
 
 fn diagnostic_reason_is_overlap_residue(d: Diagnostic) -> Bool {
   d.reason == ^parse_grammar_choice_overlap_residue
-}
-
-fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
-  d: NonEmptyDiagnostics
-) -> Optional<Diagnostic> {
-  if !diagnostic_reason_is_overlap_residue(d: d.head) {
-    optional_present(value: d.head)
-  } else {
-    fold_list(
-      xs: d.tail,
-      empty: optional_absent(),
-      cons: fn(acc, diag) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            if diagnostic_reason_is_overlap_residue(d: diag) {
-              optional_absent()
-            } else {
-              optional_present(value: diag)
-            }
-        }
-      }
-    )
-  }
-}
-
-fn frontier_probe_assemble_located_reason_from_diagnostics(d: NonEmptyDiagnostics) -> Symbol {
-  match frontier_probe_first_non_overlap_residue_diagnostic_optional(d: d) {
-    Present { value: diag } => diag.reason
-    Absent => d.head.reason
-  }
 }
 
 fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<Diagnostic>) -> Bool {
@@ -315,48 +257,14 @@ fn non_empty_parse_stage_diagnostics_merged(
 fn assemble_rejection_cause_from_diagnostics(
   d: NonEmptyDiagnostics
 ) -> AssembleRejectionCause {
-  if !is_empty(xs: d.tail) && (d.head.reason == ^parse_grammar_choice_overlap_residue) {
-    MaskedAssembleRefusalWithoutEvidence {
-      remaining_chain: non_empty_symbol_chain_from_diagnostic_list(
-        head_diag: list_head_value_or_self(head: d.head, tail: d.tail),
-        tail: list_tail_or_empty_diagnostics(tail: d.tail)
-      )
-    }
-  } else if d.head.reason == ^resolve_module_not_found {
-    match diagnostic_module_root_missing_qn_optional(d: d.head) {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: fatal) {
       Present { value: requested } => AssembleMissingModule { requested: requested }
       Absent => MissingModuleIdentityUnavailable
     }
   } else {
-    OtherAssembleRefusal { reason: d.head.reason }
-  }
-}
-
-fn non_empty_symbol_chain_from_diagnostic_list(
-  head_diag: Diagnostic,
-  tail: FreeMonoid<Diagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
-    head: head_diag.reason,
-    tail: fold_list(
-      xs: tail,
-      empty: Empty,
-      cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
-    )
-  }
-}
-
-fn list_head_value_or_self(head: Diagnostic, tail: FreeMonoid<Diagnostic>) -> Diagnostic {
-  match list_head(xs: tail) {
-    HeadFound { value: diag } => diag
-    HeadAbsent => head
-  }
-}
-
-fn list_tail_or_empty_diagnostics(tail: FreeMonoid<Diagnostic>) -> FreeMonoid<Diagnostic> {
-  match list_tail(xs: tail) {
-    TailAbsent => Empty
-    TailFound { tail: rest } => rest
+    OtherAssembleRefusal { reason: fatal.reason }
   }
 }
 
@@ -366,7 +274,7 @@ fn frontier_probe_assemble_detail_from_parse_stage(
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_parse_stage(d: d),
     cause: assemble_rejection_cause_from_parse_stage(d: d),
-    at: frontier_probe_cause_location_from_locus(at: d.head.diagnostic.at)
+    at: frontier_probe_cause_location_from_locus(at: parse_stage_fatal(d: d).diagnostic.at)
   }
 }
 
@@ -376,7 +284,7 @@ fn frontier_probe_assemble_detail_from_rejection(
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
     cause: assemble_rejection_cause_from_diagnostics(d: d),
-    at: frontier_probe_cause_location_from_locus(at: d.head.at)
+    at: frontier_probe_cause_location_from_locus(at: diagnostics_fatal(d: d).at)
   }
 }
 
@@ -392,7 +300,7 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
         cause: assemble_rejection_cause_from_parse_stage(
           d: non_empty_parse_stage_diagnostics_merged(d: d, overlap_stage: stage)
         ),
-        at: frontier_probe_cause_location_from_locus(at: d.head.at)
+        at: frontier_probe_cause_location_from_locus(at: diagnostics_fatal(d: d).at)
       }
   }
 }
@@ -403,7 +311,7 @@ fn frontier_probe_receipt_from_assemble_rejection(
   detail: FrontierProbeDetail,
   overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 ) -> FrontierProbeReceipt {
-  let located_reason = frontier_probe_assemble_located_reason_from_diagnostics(d: diagnostics)
+  let located_reason = diagnostics_fatal_reason(d: diagnostics)
   FrontierProbeReceipt {
     module_path: module_path,
     blocker_class: frontier_classify_rejection_reason(reason: located_reason),

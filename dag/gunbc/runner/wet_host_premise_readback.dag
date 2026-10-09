@@ -1,0 +1,62 @@
+module gunbc.wet_host_premise_readback
+
+import std.types { Bool, List }
+import std.algebra { list_append }
+import v2.std.algebra { fold_list }
+import v2.workflow.wet_evidence {
+  WetHostPremise, RunnerBrowserToolchainReadyForJobUser, WetPremisedClaim,
+  WetHostPremiseReading, WetHostPremiseMet, WetHostPremiseUnmet, wet_host_premise_name,
+}
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_premise_roster }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainResolution, BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  runner_browser_toolchain_here_wet, runner_browser_toolchain_standing_text,
+}
+
+// HOW A DECLARED WET HOST PREMISE IS READ BACK, and why this is its own module. The premise
+// vocabulary (`v2.workflow.wet_evidence` `WetHostPremise`) names WHAT the runner must hold; the
+// authority that can answer it lives with the runner (`gunbc.runner_browser_toolchain`). Putting
+// the readback in either would make one layer import the other's concern, so the join is here.
+//
+// NO SECOND PROBE. The toolchain premise is answered by the toolchain authority's own consumer seam
+// -- the same `runner_browser_toolchain_here_wet` the premised claims call -- and its unmet words
+// are that authority's own text: the readback standing (host, root, tree admission, versions,
+// libraries, render) for NotReady, the cause for Unresolved. Nothing here decides readiness.
+
+// THE PROJECTION, over a SUPPLIED resolution so its arms are witnessed without a host.
+fn browser_toolchain_premise_reading(premise: WetHostPremise, resolution: RunnerBrowserToolchainResolution) -> WetHostPremiseReading {
+  match resolution {
+    BrowserToolchainReady { location: _, standing: _ } => WetHostPremiseMet { premise: premise }
+    BrowserToolchainNotReady { standing: st } =>
+      WetHostPremiseUnmet { premise: premise, words: concat("the runner browser toolchain is not ready on this host: ", runner_browser_toolchain_standing_text(s: st)) }
+    BrowserToolchainUnresolved { cause: c } =>
+      WetHostPremiseUnmet { premise: premise, words: concat("the runner browser toolchain is unresolved on this host: ", c) }
+  }
+}
+
+fn wet_host_premise_read_wet(premise: WetHostPremise) -> WetHostPremiseReading {
+  match premise {
+    RunnerBrowserToolchainReadyForJobUser =>
+      browser_toolchain_premise_reading(premise: premise, resolution: runner_browser_toolchain_here_wet())
+  }
+}
+
+fn premise_listed(ps: List<WetHostPremise>, p: WetHostPremise) -> Bool {
+  fold_list(xs: ps, empty: false, cons: fn(seen, q) { seen || wet_host_premise_name(premise: q) == wet_host_premise_name(premise: p) })
+}
+
+// EVERY DISTINCT PREMISE THE ROSTER DECLARES, ONCE. One readback per premise per lane run, not one
+// per premised claim: the answer is a fact about the host at the start of the lane, and every claim
+// that declares it is gated on that one reading.
+fn premise_set(roster: List<WetPremisedClaim>) -> List<WetHostPremise> {
+  fold_list(
+    xs: roster,
+    empty: [],
+    cons: fn(acc, c) { if premise_listed(ps: acc, p: c.premise) { acc } else { list_append(left: acc, right: [c.premise]) } }
+  )
+}
+
+// THE ONE ENTRY THE WET EXECUTOR CALLS, before it invokes any premised claim.
+fn local_repo_wet_premise_readings_wet() -> List<WetHostPremiseReading> {
+  premise_set(roster: local_repo_wet_premise_roster()) |> map(p => wet_host_premise_read_wet(premise: p))
+}

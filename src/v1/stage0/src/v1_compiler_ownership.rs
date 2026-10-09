@@ -615,7 +615,7 @@ pub fn walk_expr(
                             .iter()
                             .cloned()
                             {
-                                if (p.0.clone() < (ss_count.clone() - 1)) {
+                                if (p.0.clone() < v1_rt::int_sub(ss_count.clone(), 1)) {
                                     __result.push(p);
                                 }
                             }
@@ -1067,7 +1067,7 @@ pub fn merge_fold_acc_use_summaries(
     right: Rc<FoldAccUseSummary>,
 ) -> Rc<FoldAccUseSummary> {
     Rc::new(FoldAccUseSummary {
-        whole_acc_uses: (left.whole_acc_uses.clone() + right.whole_acc_uses.clone()),
+        whole_acc_uses: v1_rt::int_add(left.whole_acc_uses.clone(), right.whole_acc_uses.clone()),
         field_moves: v1_rt::concat(left.field_moves.clone(), right.field_moves.clone()),
         nested_acc_refs: (left.nested_acc_refs.clone() || right.nested_acc_refs.clone()),
     })

@@ -1,0 +1,24 @@
+module gunbc.spark.spark_gpu_direct_capability
+
+import std.types { NonEmptyStr }
+
+// ── WHICH PLATFORM THE CAPABILITY IS BEING ASKED ABOUT ────────────────────────────────────────
+//
+// THIS MODULE CARRIES A NAME AND NOT A READING, and the difference is the whole point. An earlier
+// revision also carried the two `cuDeviceGetAttribute` outcomes as authored literals -- with the
+// host, the driver revision and the date of the read in prose beside them -- and the live route
+// consumed them as the authority deciding whether a staged collective memory path is a defect. That
+// is a transcribed instrument output standing where its own producer already existed (DESIGN §6:
+// name the instrument, never transcribe its output), and a declared frontier does not authorise the
+// debt (DESIGN §5).
+//
+// THE READING NOW COMES FROM THE ROUTE. gunbc.spark.serving_rank_observe
+// `observe_rank_gpu_direct_capability` runs `extdeps.nvidia.cuda_driver` `cuda_device_attribute_argv`
+// inside the container the engine runs in and folds both replies through
+// `extdeps.nvidia.gpu_direct_rdma` `gpu_direct_rdma_capability`, so the capability refreshes with
+// the host it describes and a leg that cannot run yields Unread rather than a stale zero.
+//
+// WHAT IS STILL AUTHORED IS THE PLATFORM NAME, which is a fact about which hardware Group B IS
+// rather than an answer any instrument returned, and it is what the Unsupported arm carries so a
+// reader knows which device said no.
+data spark_gb10_platform: NonEmptyStr = "NVIDIA GB10 Grace Blackwell (DGX Spark), unified LPDDR5X" as NonEmptyStr

@@ -1,7 +1,8 @@
 module gunbc.json_member_conservation_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { JsonKeyValue, JsonNumber, JsonString, JsonValue, json_object }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
 import extdeps.languages.json.member_conservation {
@@ -9,6 +10,7 @@ import extdeps.languages.json.member_conservation {
   JsonMemberOccurrence,
   MemberConsumed,
   MemberDefective,
+  MemberDisposition,
   MemberDispositionedTwice,
   MemberForeignToObject,
   PartitionSourcePathMismatch,
@@ -34,8 +36,24 @@ data subject: JsonValue = match parse_json_document(s: subject_text) {
 
 data subject_occurrences: List<JsonMemberOccurrence> = occurrences_of_object(object_path: "zones[0].pids[1]", value: subject)
 
-fn nth(occurrences: List<JsonMemberOccurrence>, ordinal: Int) -> JsonMemberOccurrence {
-  filter(occurrences, occurrence => occurrence.identity.ordinal == ordinal).first()
+fn nth(occurrences: List<JsonMemberOccurrence>, ordinal: Int) -> List<JsonMemberOccurrence> {
+  filter(occurrences, occurrence => occurrence.identity.ordinal == ordinal)
+}
+
+fn consumed(occurrences: List<JsonMemberOccurrence>, role: NonEmptyStr) -> List<MemberDisposition> {
+  map(occurrences, occurrence => MemberConsumed { occurrence: occurrence, role: role })
+}
+
+fn defective(occurrences: List<JsonMemberOccurrence>, cause: NonEmptyStr) -> List<MemberDisposition> {
+  map(occurrences, occurrence => MemberDefective { occurrence: occurrence, cause: cause })
+}
+
+fn unmodeled(occurrences: List<JsonMemberOccurrence>) -> List<MemberDisposition> {
+  map(occurrences, occurrence => MemberUnmodeled { occurrence: occurrence })
+}
+
+fn key_at(occurrences: List<JsonMemberOccurrence>, ordinal: Int) -> List<String> {
+  map(nth(occurrences: occurrences, ordinal: ordinal), occurrence => occurrence.member.key)
 }
 
 // FOUR MEMBERS, FOUR DISPOSITIONS: name consumed, both "type" occurrences carried separately -- one
@@ -44,12 +62,15 @@ fn nth(occurrences: List<JsonMemberOccurrence>, ordinal: Int) -> JsonMemberOccur
 data honest_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[1]",
   source: subject_occurrences,
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
-    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
-    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
-  ],
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type"),
+      defective(occurrences: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated"),
+      unmodeled(occurrences: nth(occurrences: subject_occurrences, ordinal: 3)),
+    ],
+    group => group,
+  ),
 }
 
 fn the_honest_partition_conserves() -> Bool {
@@ -66,12 +87,15 @@ fn the_honest_partition_conserves() -> Bool {
 data substituted_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[1]",
   source: subject_occurrences,
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type_again" },
-    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
-  ],
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type_again"),
+      defective(occurrences: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated"),
+    ],
+    group => group,
+  ),
 }
 
 fn the_substitution_is_caught_and_named() -> Bool {
@@ -89,11 +113,14 @@ fn the_substitution_is_caught_and_named() -> Bool {
 data lossy_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[1]",
   source: subject_occurrences,
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
-    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
-  ],
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type"),
+      defective(occurrences: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated"),
+    ],
+    group => group,
+  ),
 }
 
 fn a_dropped_member_is_named() -> Bool {
@@ -107,11 +134,14 @@ fn a_dropped_member_is_named() -> Bool {
 // cover a source member it never read.
 data foreign_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[1]",
-  source: [nth(occurrences: subject_occurrences, ordinal: 0)],
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
-  ],
+  source: nth(occurrences: subject_occurrences, ordinal: 0),
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      unmodeled(occurrences: nth(occurrences: subject_occurrences, ordinal: 3)),
+    ],
+    group => group,
+  ),
 }
 
 fn a_foreign_occurrence_is_named() -> Bool {
@@ -126,8 +156,8 @@ fn a_foreign_occurrence_is_named() -> Bool {
 // be invisible.
 fn duplicate_keys_are_separate_occurrences() -> Bool {
   subject_occurrences.length() == 4
-    && nth(occurrences: subject_occurrences, ordinal: 1).member.key == "type"
-    && nth(occurrences: subject_occurrences, ordinal: 2).member.key == "type"
+    && key_at(occurrences: subject_occurrences, ordinal: 1) == ["type"]
+    && key_at(occurrences: subject_occurrences, ordinal: 2) == ["type"]
 }
 
 // THE CASE THE FIRST VERSION OF THIS WITNESS MISSED, AND IT IS THE COMMON ONE. The foreign
@@ -138,8 +168,8 @@ fn duplicate_keys_are_separate_occurrences() -> Bool {
 // module that stops it.
 data sibling_occurrences: List<JsonMemberOccurrence> = occurrences_of_object(object_path: "zones[0].pids[2]", value: subject)
 
-fn sibling_nth(ordinal: Int) -> JsonMemberOccurrence {
-  filter(sibling_occurrences, occurrence => occurrence.identity.ordinal == ordinal).first()
+fn sibling_nth(ordinal: Int) -> List<JsonMemberOccurrence> {
+  filter(sibling_occurrences, occurrence => occurrence.identity.ordinal == ordinal)
 }
 
 // THIS OBJECT'S OWN MEMBERS ARE ALL ACCOUNTED FOR EXACTLY ONCE, and one extra disposition names an
@@ -151,13 +181,16 @@ fn sibling_nth(ordinal: Int) -> JsonMemberOccurrence {
 data sibling_substituted_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[1]",
   source: subject_occurrences,
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
-    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
-    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
-    MemberUnmodeled { occurrence: sibling_nth(ordinal: 1) },
-  ],
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type"),
+      defective(occurrences: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated"),
+      unmodeled(occurrences: nth(occurrences: subject_occurrences, ordinal: 3)),
+      unmodeled(occurrences: sibling_nth(ordinal: 1)),
+    ],
+    group => group,
+  ),
 }
 
 fn a_sibling_object_cannot_satisfy_this_objects_obligation() -> Bool {
@@ -177,12 +210,15 @@ fn a_sibling_object_cannot_satisfy_this_objects_obligation() -> Bool {
 data mislabelled_partition: ObjectMemberPartition = ObjectMemberPartition {
   object_path: "zones[0].pids[9]",
   source: subject_occurrences,
-  dispositions: [
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
-    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
-    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
-    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
-  ],
+  dispositions: flat_map(
+    [
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name"),
+      consumed(occurrences: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type"),
+      defective(occurrences: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated"),
+      unmodeled(occurrences: nth(occurrences: subject_occurrences, ordinal: 3)),
+    ],
+    group => group,
+  ),
 }
 
 fn a_partition_labelled_for_another_object_is_named() -> Bool {

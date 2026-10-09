@@ -5,13 +5,14 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   NodeFoldTopDown,
   Positional,
   Symbol,
   TypeNode,
   fold_node_topdown,
+  StructuralLabel,
 }
 import v2.std.verification {
   CompilesClaim,
@@ -35,7 +36,7 @@ fn topdown_one_child_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_child_a }, target: topdown_leaf() }
+      Edge { label: Authored { name: ^topdown_child_a }, target: topdown_leaf() }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -45,7 +46,7 @@ fn topdown_two_level_chain() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
+      Edge { label: Authored { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -68,7 +69,8 @@ fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {
       match e.label {
-        Named { name: lbl } =>
+        StructuralLabel { label: _ } => depth + 1
+        Authored { name: lbl } =>
           if lbl == ^topdown_right_child { depth + 2 } else { depth + 1 }
         Positional => depth + 1
       }
@@ -81,8 +83,8 @@ fn topdown_edge_dispatch_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
-      Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
+      Edge { label: Authored { name: ^topdown_left_child }, target: topdown_leaf() },
+      Edge { label: Authored { name: ^topdown_right_child }, target: topdown_leaf() }
     ],
     occurrence_id: OccurrenceSynthetic
   }

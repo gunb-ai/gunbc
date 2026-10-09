@@ -2,16 +2,17 @@
 // Source module: std.types
 
 use self::AuthScheme::*;
-use self::Bool::*;
 use self::DocSourceKind::*;
 use self::FermiDepth::*;
-use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
+use self::WherePredicateMarker::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
     carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
+pub use crate::std_optional::Optional;
+pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -165,23 +166,9 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
     )))
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum Bool {
-    True,
-    False,
-}
-// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)
-impl From<Bool> for bool {
-    fn from(b: Bool) -> bool {
-        match b {
-            Bool::True => true,
-            Bool::False => false,
-        }
-    }
-}
+pub type Bool = bool;
+
+pub type Unit = ();
 
 pub type Json = serde_json::Value;
 
@@ -196,30 +183,99 @@ pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _| (acc + 1))
+    items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
 }
 
 pub type CommitSha = String;
 
 pub fn commit_sha_text_holds(head: String) -> bool {
-    ((v1_rt::string_length(&head) == 40) && {
-        let mut __all = true;
-        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-            .iter()
-            .cloned()
-        {
-            if !(((cp.clone() >= 48) && (cp.clone() <= 57))
-                || ((cp.clone() >= 97) && (cp.clone() <= 102)))
-            {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    })
+    ((v1_rt::string_length(&head) == 40)
+        && (v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(
+                                            v1_rt::replace(
+                                                v1_rt::replace(
+                                                    v1_rt::replace(
+                                                        v1_rt::replace(
+                                                            v1_rt::replace(
+                                                                v1_rt::replace(
+                                                                    v1_rt::replace(
+                                                                        head.clone(),
+                                                                        "0".to_string(),
+                                                                        "".to_string(),
+                                                                    ),
+                                                                    "1".to_string(),
+                                                                    "".to_string(),
+                                                                ),
+                                                                "2".to_string(),
+                                                                "".to_string(),
+                                                            ),
+                                                            "3".to_string(),
+                                                            "".to_string(),
+                                                        ),
+                                                        "4".to_string(),
+                                                        "".to_string(),
+                                                    ),
+                                                    "5".to_string(),
+                                                    "".to_string(),
+                                                ),
+                                                "6".to_string(),
+                                                "".to_string(),
+                                            ),
+                                            "7".to_string(),
+                                            "".to_string(),
+                                        ),
+                                        "8".to_string(),
+                                        "".to_string(),
+                                    ),
+                                    "9".to_string(),
+                                    "".to_string(),
+                                ),
+                                "a".to_string(),
+                                "".to_string(),
+                            ),
+                            "b".to_string(),
+                            "".to_string(),
+                        ),
+                        "c".to_string(),
+                        "".to_string(),
+                    ),
+                    "d".to_string(),
+                    "".to_string(),
+                ),
+                "e".to_string(),
+                "".to_string(),
+            ),
+            "f".to_string(),
+            "".to_string(),
+        ) == "".to_string()))
 }
 
 pub type Sha256 = String;
+
+pub fn gt_zero(value: i64) -> bool {
+    (value.clone() > 0)
+}
+
+pub fn range(value: i64, min: Option<i64>, max: Option<i64>) -> bool {
+    {
+        let at_least_min = match min.clone() {
+            Some(lo) => (value.clone() >= lo.clone()),
+            std::option::Option::None => true,
+        };
+        let at_most_max = match max.clone() {
+            Some(hi) => (value.clone() <= hi.clone()),
+            std::option::Option::None => true,
+        };
+        (at_least_min.clone() && at_most_max.clone())
+    }
+}
 
 pub type RetryCount = i64;
 
@@ -254,6 +310,27 @@ pub type SecretValue = std::string::String;
 pub type SemVer = String;
 
 pub type NonEmptyStr = String;
+
+pub fn string_non_empty(value: String) -> bool {
+    (v1_rt::string_length(&value) > 0)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WherePredicateMarker {
+    NominalBrand { name: String },
+}
+impl WherePredicateMarker {
+    pub fn name(&self) -> String {
+        match self {
+            WherePredicateMarker::NominalBrand { name: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn brand(name: String) -> Rc<WherePredicateMarker> {
+    Rc::new(WherePredicateMarker::NominalBrand { name: name.clone() })
+}
 
 pub type LanguageId = String;
 
@@ -299,7 +376,7 @@ pub type FilePath = String;
 pub fn file_path_sentinel_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
+            "review 45141. FilePath where string_non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -391,20 +468,6 @@ pub type BinaryFilePath = String;
 
 pub type MimeType = String;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum HttpMethod {
-    GET,
-    POST,
-    PUT,
-    PATCH,
-    DELETE,
-    HEAD,
-    OPTIONS,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AuthScheme {
@@ -436,21 +499,6 @@ pub type FilesystemHandle = String;
 pub type NetworkHandle = ();
 
 pub type ToolHandle = String;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TransportRequest {
-    pub method: HttpMethod,
-    pub url: String,
-    pub headers: serde_json::Value,
-    pub body: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TransportResponse {
-    pub status: i64,
-    pub headers: serde_json::Value,
-    pub body: String,
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FileResponse {
@@ -589,17 +637,3 @@ pub struct M;
 pub struct L;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Xl;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GET;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct POST;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PUT;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PATCH;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DELETE;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HEAD;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct OPTIONS;

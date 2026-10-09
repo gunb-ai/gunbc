@@ -1,0 +1,81 @@
+module test.claim.ipmitool_hpm_check_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
+  HpmVersionHeld, HpmVersionAbsent, hpm_check_table_of,
+  HpmComponentRow, HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE TABLE READER AT ITS INTERFACE, over the one retained capture and edits of it.
+fn rows_of(t: HpmCheckTable) -> Int {
+  match t {
+    HpmCheckRead { rows: rs } => count(rs)
+    HpmCheckUpgradeVariant { header: _ } => -1
+    HpmCheckUnreadable { detail: _ } => -2
+  }
+}
+
+test fn the_retained_capture_reads_five_components_with_their_active_cells_verbatim() -> Bool {
+  match hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32) {
+    HpmCheckRead { rows: rs } => {
+      let app = filter(rs, r => (r.name as String) == "APP").first()
+      let app_ok = match app {
+        Present { value: r } =>
+          r.id == 1 && r.cold_reset_required
+            && (match r.active { HpmVersionHeld { rendering: v } => (v as String) == "0.32 01112100" HpmVersionAbsent => false })
+            && (match r.backup { HpmVersionAbsent => true HpmVersionHeld { rendering: _ } => false })
+        Absent => false
+      }
+      count(rs) == 5 && app_ok && any(rs, r => (r.name as String) == "CPLD" && r.id == 5)
+    }
+    HpmCheckUpgradeVariant { header: _ } => false
+    HpmCheckUnreadable { detail: _ } => false
+  }
+}
+
+// THE UPGRADE-PROGRESS TABLE NAMES A File COLUMN: it refuses by name instead of being read as versions.
+test fn the_upgrade_progress_table_refuses_by_name() -> Bool {
+  let upgrade = replace(s: ipmitool_hpm_check_bmc0_32, from: "|     Backup      |", to: "|      File       |")
+  rows_of(t: hpm_check_table_of(stdout: upgrade)) == -1
+}
+
+test fn a_row_that_is_not_five_cells_refuses_and_no_table_refuses() -> Bool {
+  let broken = replace(s: ipmitool_hpm_check_bmc0_32, from: "|*  2|BIOS         |", to: "|*  2 BIOS         |")
+  rows_of(t: hpm_check_table_of(stdout: broken)) == -2 && rows_of(t: hpm_check_table_of(stdout: "Error: Unable to establish IPMI v2 / RMCP+ session\n")) == -2
+}
+
+// THE CELL GRAMMAR: aux is exactly eight hex digits, the revision a nonnegative decimal major.minor.
+fn with_app_active(cell: String) -> Int {
+  rows_of(t: hpm_check_table_of(stdout: replace(s: ipmitool_hpm_check_bmc0_32, from: "   0.32 01112100 ", to: cell)))
+}
+
+test fn a_malformed_version_cell_refuses() -> Bool {
+  with_app_active(cell: "   0.32 0000000G ") == -2
+    && with_app_active(cell: "   0.32 garbage00 ") == -2
+    && with_app_active(cell: "  -1.00 00000000 ") == -2
+    && with_app_active(cell: "   0.32 01112100 ") == 5
+}
+
+// ONE COMPONENT PER NAME AND PER ID: a table naming one twice is unreadable, and a selection over rows
+// that do is ListedTwice.
+test fn a_component_named_twice_refuses_at_the_table_and_at_the_selection() -> Bool {
+  let twice = replace(s: ipmitool_hpm_check_bmc0_32, from: "|*  6|BOOTFW       |", to: "|*  6|APP          |")
+  let table_refuses = rows_of(t: hpm_check_table_of(stdout: twice)) == -2
+  let rows = [
+    HpmComponentRow { id: 1, name: "APP", cold_reset_required: true, active: HpmVersionAbsent, backup: HpmVersionAbsent, deferred: HpmVersionAbsent },
+    HpmComponentRow { id: 7, name: "APP", cold_reset_required: true, active: HpmVersionAbsent, backup: HpmVersionAbsent, deferred: HpmVersionAbsent },
+  ]
+  let selection_refuses = match hpm_component_named(rows: rows, name: "APP") {
+    HpmComponentListedTwice { name: _, ids: ids } => count(ids) == 2
+    HpmComponentSelected { row: _ } => false
+    HpmComponentNotListed { name: _, listed: _ } => false
+  }
+  table_refuses && selection_refuses
+}

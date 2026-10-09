@@ -1,5 +1,6 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra {
   Cons,
@@ -79,16 +80,12 @@ import v2.std.algebra {
   fold_list_node
 }
 import v2.std.collection {
-  List,
   Map,
   map_insert
 }
 import v2.std.diagnostic {
   Accepted,
   Rejected
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.node {
   Atom,
@@ -101,7 +98,7 @@ import v2.std.node {
   TypeNode,
   node_rebuild,
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

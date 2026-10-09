@@ -210,12 +210,3 @@ test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
   }
 }
 
-test fn dashboard_instance_stop_contract_keystone_holds() -> Bool {
-  stop_pane_parse_holds()
-    && stop_gate_kills_only_proven_selected_provider()
-    && cleanup_separates_running_process_from_retained_session()
-    && stop_wire_statuses_discriminate()
-    && stop_client_carries_the_chip()
-    && stop_chip_is_styled()
-    && stop_fingerprint_scaffold_is_discharged()
-}

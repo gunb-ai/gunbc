@@ -1,6 +1,9 @@
 module extdeps.huggingface.hub
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { ByteSize, Gibibyte, gibibyte_ceiling }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https, uri_wire }
 
@@ -69,6 +72,49 @@ data hub_cache_root_env_var: NonEmptyStr = "HF_HUB_CACHE" as NonEmptyStr
 data hub_home_env_var: NonEmptyStr = "HF_HOME" as NonEmptyStr
 data hub_home_cache_subdirectory: NonEmptyStr = "hub" as NonEmptyStr
 
+// THE CACHE ROOT A COMMAND WRITES TO IS A FUNCTION OF ITS ENVIRONMENT, NOT A CONSTANT (operator ruling,
+// 2026-10-03). Upstream huggingface_hub `constants.py` (huggingface_hub 1.x, the CLI the Spark runtimes ship):
+//   default_home = os.path.join(os.path.expanduser("~"), ".cache")
+//   HF_HOME      = os.path.expanduser(os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", default_home), "huggingface")))
+//   HF_HUB_CACHE = os.path.expanduser(os.getenv("HF_HUB_CACHE", os.path.join(HF_HOME, "hub")))
+// so the default is relative to the EXECUTING process's home: the same command run on the host and inside a
+// container resolves to two different directories. hub_default_cache_root above is that default as spelled
+// for a reader; what a command actually writes to is hub_cache_root_for over its own environment and home.
+type HubCacheEnvironment {
+  hf_hub_cache: NonEmptyStr?
+  hf_home: NonEmptyStr?
+  xdg_cache_home: NonEmptyStr?
+}
+
+data hub_cache_environment_unset: HubCacheEnvironment = HubCacheEnvironment { hf_hub_cache: none, hf_home: none, xdg_cache_home: none }
+
+fn hub_cache_root_for(env: HubCacheEnvironment, executing_home: NonEmptyStr) -> NonEmptyStr {
+  match env.hf_hub_cache {
+    Present { value: c } => c
+    Absent =>
+      match env.hf_home {
+        Present { value: h } => join([h as String, "/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+        Absent =>
+          match env.xdg_cache_home {
+            Present { value: x } => join([x as String, "/huggingface/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+            Absent => join([executing_home as String, "/.cache/huggingface/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+          }
+      }
+  }
+}
+
+// THE VARIABLES AN ENVIRONMENT SETS, as NAME=VALUE words, for a launcher that passes them (docker -e).
+fn hub_env_word(name: String, value: NonEmptyStr?) -> List<String> {
+  match value {
+    Present { value: v } => [join([name, "=", v as String], "")]
+    Absent => [] as List<String>
+  }
+}
+
+fn hub_cache_environment_words(env: HubCacheEnvironment) -> List<String> {
+  concat(concat(hub_env_word(name: hub_cache_root_env_var as String, value: env.hf_hub_cache), hub_env_word(name: hub_home_env_var as String, value: env.hf_home)), hub_env_word(name: "XDG_CACHE_HOME", value: env.xdg_cache_home))
+}
+
 // ── THE CACHE SKELETON ─────────────────────────────────────────────────────────────────────────
 //
 // EVERY REPO FOLDER HAS THE SAME SHAPE, and the distinction that matters to a consumer is that
@@ -91,6 +137,36 @@ fn hub_snapshot_directory(cache_root: NonEmptyStr, repo: HubRepoId, revision: No
     "/", hub_repo_snapshots_subdirectory as String,
     "/", revision as String,
   ], "") as NonEmptyStr
+}
+
+// A REPO BLOB ENTRY MAY BE A LINK INTO A HUB-LEVEL SHARED STORE, PER FILE. The cache document above
+// describes `blobs/<hash>` inside each repo folder as the regular file. hf 1.33 (read by
+// valiant-crab-775 on srv7 2026-10-03, during the GLM-5.3 fetch) kept completed LFS files in a
+// hub-level store, `<cache_root>/blobs/<2 hex>/<sha256>`, and left the repo folder's `blobs/<hash>`
+// as a SYMLINK into it. Upstream's shared store is CONDITIONAL and decided per file: it applies to
+// Xet-backed files under the symlink cache, can be disabled by environment, and falls back to an
+// ordinary repo-local blob where sharing fails (unsupported filesystem, permissions); with symlinks
+// disabled (HF_HUB_DISABLE_SYMLINKS below) files are copied into `snapshots/` and `blobs/` is unused.
+// So one cache can hold shared-store links beside regular repo-local blobs, and no CLI version fixes
+// one cache-wide layout. What a consumer owes is therefore unconditional: a reader or linker of a
+// repo entry's BYTES dereferences it, which is correct for a link and a no-op for a regular file.
+// The repo folder alone (a mount, a copy, an undereferenced size) can hand out dangling links and
+// SHRINKS as files complete; the shared store sits under the cache root, so a cache-root mount
+// carries both.
+
+// THE BYTES A REPO FOLDER (or its snapshots) HOLDS are read dereferenced: snapshot entries are links
+// in every layout and, in the shared-store layout, so are the repo blobs. GNU du counts an inode once
+// per invocation, so following both kinds of link never counts a blob twice.
+fn hub_dereferenced_bytes_argv(path: NonEmptyStr) -> List<String> {
+  ["du", "-sbL", path as String]
+}
+
+// A HARD LINK OF A REPO BLOB must land on the bytes, whichever kind the entry is. ln(1) (GNU
+// coreutils): -L, --logical "dereference TARGETs that are symbolic links"; on a regular file it links
+// that file. So -L is right for a shared-store link and for a repo-local blob alike, and the argv
+// needs no guess about which this entry is; without it a link entry is hard-linked as a dangling pointer.
+fn hub_repo_blob_hard_link_argv(repo_blob: NonEmptyStr, destination: NonEmptyStr) -> List<String> {
+  ["ln", "-fL", repo_blob as String, destination as String]
 }
 
 // A REVISION IS AN IMMUTABLE COMMIT AND A BRANCH NAME IS NOT. `refs/<branch>` holds the commit the
@@ -224,3 +300,54 @@ data hub_snapshot_download_refuses_incomplete_snapshots: Bool = true
 // sharing above does not happen. A consumer sizing disk against a shared-blob assumption is wrong by
 // a factor of the revision count when this is set.
 data hub_disable_symlinks_env_var: NonEmptyStr = "HF_HUB_DISABLE_SYMLINKS" as NonEmptyStr
+
+// ── A CHECKPOINT MANIFEST AT AN EXACT REVISION, WHICH IS THE HUB'S OWN STATEMENT ─────────────
+//
+// THE SHAPE IS THE HUB'S, NOT ANY MODEL'S. What the model API answers for a repo at a revision --
+// how many safetensors shards, how many bytes they sum to, how many bytes the whole snapshot is --
+// is the same five-field fact for every checkpoint on the Hub, and it lived for a while inside
+// extdeps.zhipu.glm_5_3_flash as `GlmCheckpointManifest`, which made the base GLM model and a
+// third party's redistribution import their ordinary Hub facts from a sibling Flash product. That
+// is a generic shape single-homed in a product module: one authority, wrong layer. It moved here,
+// and each product module owns only its concrete row.
+//
+// THE REVISION IS PART OF THE FACT, not a note beside it. A manifest without its revision is a
+// claim about a branch, and Hub repositories move under their readers. TWO SUMS, BOTH HUB FACTS AND
+// NEITHER A RUNTIME CLAIM: `safetensors_bytes` is the sum of the safetensors files' bytes at the exact
+// revision, as the model API reports them; `repository_total_bytes` is the sum over every file of the
+// snapshot, config and tokenizer included. What a runtime loads, shards or replicates from those
+// files is a placement fact owned elsewhere. They are separated so a consumer says which sum it is
+// asking for, even where the gap is a rounding error today.
+type HubCheckpointManifest sole_constructor {
+  revision: NonEmptyStr
+  safetensors_shard_count: Nat
+  safetensors_bytes: ByteSize
+  repository_total_bytes: ByteSize
+  read_by: NonEmptyStr
+}
+
+// THE MINT, because the seal is per module and the rows are not: sole_constructor refuses a partial
+// or reordered literal anywhere, and product modules author their rows through this.
+fn hub_checkpoint_manifest(
+  revision: NonEmptyStr,
+  safetensors_shard_count: Nat,
+  safetensors_bytes: ByteSize,
+  repository_total_bytes: ByteSize,
+  read_by: NonEmptyStr,
+) -> HubCheckpointManifest {
+  HubCheckpointManifest {
+    revision: revision,
+    safetensors_shard_count: safetensors_shard_count,
+    safetensors_bytes: safetensors_bytes,
+    repository_total_bytes: repository_total_bytes,
+    read_by: read_by,
+  }
+}
+
+// GiB IS DERIVED FOR PROSE AND SCREENING AND IS NOT A SECOND AUTHORITY, AND IT ROUNDS UP -- the only
+// safe direction for a consumer that screens on it: a ceiling can refuse a candidate a byte-exact
+// test would admit, never admit one it would refuse. Feasibility arithmetic that must be exact reads
+// `safetensors_bytes` and does not round at all.
+fn hub_checkpoint_manifest_gibibytes(m: HubCheckpointManifest) -> Gibibyte {
+  gibibyte_ceiling(b: m.safetensors_bytes)
+}

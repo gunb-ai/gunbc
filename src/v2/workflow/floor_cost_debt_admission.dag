@@ -1,195 +1,177 @@
 module v2.workflow.floor_cost_debt_admission
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import gunbc.floor_cost_distribution {
-  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
-}
-import std.measure { Millisecond, millisecond_count }
+import v2.std.algebra { list_reverse }
+import std.types { NonEmptyStr, List }
 
-// ROSTER ADMISSION BY CONSTRUCTION FOR `v2.workflow.floor_cost_debt`.
+// TYPED ROSTER ADMISSION FOR THE ENROLMENT MARGIN: AN IDENTITY AND A REASON, NEVER A READING.
 //
-// WHY THIS IS NOT INSIDE THAT MODULE. `required_floor` already imports `floor_cost_debt` for
-// membership. Importing `ClaimCostReading` there would pull `gunbc.floor_cost_distribution`
-// into every required-floor compile — a second copy of a large analysis module on the floor's
-// hot path. The identity census stays there; the READING FIELD of a new row lives here.
+// WHAT THIS REPLACED, AND WHY AT THE ROOT (DESIGN §3, replacement migration; gunbc#11622 review
+// 68363). A typed admission used to carry an authored `ClaimCostReading` that a constructor
+// compared against the per-subject CPU line. Once the enrolment gate decides the Roster ground
+// from THIS run's live reading (`v2.workflow.floor_enrolment_margin`
+// `enrolment_declared_measured_standing`), a stored reading answers the same question a second
+// time -- is this identity expensive enough to admit -- and the two can disagree: a stored 681
+// says admit while a live 200 says stale. Nothing would say which wins. The stored figure also
+// decided nothing any more while still being a number transcribed into source. So it is gone,
+// with the constructor that judged it: the only cost that can justify an admission is the one the
+// floor measures on the run it is judging, and an admission whose identity has become cheap goes
+// stale and refuses, which forces its deletion.
 //
-// THE PROVEN CLASS, STATED SO THE PR DOES NOT RE-DERIVE THE POLICY: witnesses whose observed
-// CPU exceeds `required_floor_per_subject_cpu_line_ms` (the 500ms CPU line -- CPU milliseconds, NOT the
-// work envelope: they share a magnitude and are different quantities) plus censored
-// witnesses that never reached a verdict. A censored reading must ESTABLISH that supplied
-// ceiling (censoring_ceiling equals it, lower bound at least it) and the attempt must CARRY
-// `FloorCostDebtNeverReachedAVerdict` — censoring is not that discriminator.
-// required_floor treats the roster and the long home as ONE declaration class. This constructor
-// is what makes "one declaration class" true IN EVIDENCE: a margin crossing (over 302, under
-// 500) cannot mint a row, and a 1ms censored reading against the 500ms ceiling cannot either.
+// WHAT A ROW STILL CARRIES. The identity, and a reason that is the whole surviving justification:
+// the diagnosis of why the witness is honestly expensive, and who owns it. The measurement that
+// established it is cited by naming the run that produced it in the change that authors the row,
+// never by copying its figures here.
 //
-// THE CEILING IS A PARAMETER. This module must not import `required_floor` (cycle through
-// floor_cost_debt) and must not restate 500. Callers pass
-// `required_floor_per_subject_cpu_line_ms()`.
-//
-// DECLARED FRONTIER (DESIGN §3c), not a live mint. `floor_cost_debt_row` is consumed by
-// `floor_cost_debt_admit_attempts` and by executing tests; it is NOT consumed by
-// `floor_cost_debt_roster`. The live withhold set is still those identity strings. Wiring
-// this module into every required-floor compile would import `gunbc.floor_cost_distribution`
-// onto that hot path (the reason the constructor is not inside `floor_cost_debt`).
-//
-// NAMED CONSUMER: `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`
-// decodes this list onto enrolment Roster ground. The withhold HashSet union into
-// `floor_cost_debt_roster` remains a later consumer: the first identity that would otherwise
-// be appended as a string after this PR is authored here as a `FloorCostDebtReadingAttempt`
-// and nowhere else. Until then this list is Empty, which is the honest population.
+// NAMED CONSUMER: `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`,
+// decoded by the host `required_floor_runner` `floor_enrolment_typed_cost_debt_identities`.
 
-fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
-  []
+type FloorCostDebtTypedAdmission {
+  identity: String
+  reason: NonEmptyStr
 }
 
-fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {
-  reverse(fold(
-    floor_cost_debt_admit_attempts(
-      attempts: floor_cost_debt_typed_admission_attempts(),
-      ceiling_ms: ceiling_ms,
-    ),
+// THE APP ATTEST INTERPRETED-CRYPTO ROWS (gunbc#11981, 2026-09-22), and only those ten. Each identity
+// in `app_attest_interpreted_crypto_typed_admissions` evaluates
+// real P-384 field arithmetic or a real SHA-384 over a published vector, and the seed interpreter
+// realizes those primitives as 16-limb bignat folds and Word64 pairs because it reifies no machine
+// width. That realization, not the claim's shape, is what the CPU pays: there is no repeated
+// demand and no nested scan to remove -- measured, not asserted: one nested scan DID exist when this was written (octet_split recomputing count per octet, called twice per point by curve_admit_point_octets), it is removed, and removing it moved eval_steps by roughly six hundred out of eight hundred thousand, which is the receipt that the overrun is the primitive's realization and not the fold's shape (review 70100) -- and supplying the curve check's
+// answer or the digest as a fixture would delete the only execution of these primitives on the
+// acceptance path (DESIGN section 3, the pairing obligation). The terminal shape is the natively
+// emitted crypto closure that gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier names; when it lands these rows go stale on their own
+// live reading and must be deleted, which is the whole point of carrying no figure here. The
+// measurement that established each row is the merge-queue required floor run 35678328407 of
+// gunbc#11981 and the PR floor run that follows it, artifact required-ci-measurement-receipt,
+// enrolment-margin lines. The three published SHA-384 vectors are THREE identities here, one per
+// vector, each PAIRED WITH THE MUTATION THAT DISCRIMINATES IT. An earlier cut folded them into one
+// claim so the summed bill cleared the per-subject line; that was enrolment-gate avoidance by
+// aggregation, and the counterfactual shows it: removing one vector changed no semantic fact about
+// the others yet could make the admission stale, and adding an unrelated fourth would have
+// strengthened nothing yet stabilised the admission. A cost ground that moves with its neighbours
+// does not ground the subject it admits. Paired instead, each claim's cost is caused by its own
+// subject -- the second evaluation is the RED that DESIGN section 4b requires of the rung anyway,
+// not ballast bought to clear a budget -- and each measured decisively above the line.
+data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve",
+    reason: "the seed interpreter evaluates one P-384 curve equation over the standard base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_beside_the_base_point_is_off_the_curve",
+    reason: "the seed interpreter evaluates one P-384 curve equation over an off-curve neighbour of the base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_with_a_coordinate_at_p_is_not_admitted",
+    reason: "the seed interpreter evaluates one P-384 range refusal over an unreduced residue as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.apples_ca_and_root_keys_are_on_p384",
+    reason: "the seed interpreter evaluates two P-384 curve equations over Apple's real CA and root keys as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p256_dag_ecdsa_witness_test.the_base_point_is_on_the_curve",
+    reason: "the seed interpreter evaluates one P-256 curve equation over the published base point as 11-limb bignat folds; it is the cheap half of a claim whose other half, n*G = infinity, crossed the wall deadline and left the floor for the native row; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_and_adding_the_base_point_stay_on_the_curve",
+    reason: "the seed interpreter evaluates one Jacobian doubling, one addition and two projective curve-equation checks as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_an_off_curve_point_stays_off_the_curve",
+    reason: "the seed interpreter evaluates one Jacobian doubling and one projective curve-equation check as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published empty-message SHA-384 vector and the one-octet message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published abc SHA-384 vector and the abd message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published 896-bit two-block SHA-384 vector and the last-block mutation that discriminates its padding path as Word64 pairs, four block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.app_attest_verifier_witness_test.the_sample_passes_every_step_before_the_extension_steps",
+    reason: "the one end-to-end inhabitance claim of the App Attest attestation path: Apple's real attestation object through decode_attestation (CBOR, two DER certificates, the PEM-pinned root, WebAuthn authenticator data) and the whole structural fold, with the SHA-256s steps 2-4 require, on a seed interpreter that reifies no machine width; its supplied-input siblings are kept off this list by construction, and this row is the real path they lean on (DESIGN section 3 pairing obligation); owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure that gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names, the restoration trigger of gunbc.rung_drop app_attest_verifier_new_witness_eval_step_cost",
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.app_attest_verifier_witness_test.the_nonce_step_reds_on_other_client_data",
+    reason: "single-step irreducible: nonce_step alone over supplied inputs, whose whole cost is its own two interpreted SHA-256s (the client data, then authData concatenated with that hash); nothing before the step is paid; established by the enrolment-margin lines of the required floor's artifact required-ci-measurement-receipt on gunbc#11989, and re-derivable locally with claim_batch --hermetic --entry dag/test/claim/app_attest_verifier_witness_test.dag --functions <this claim>; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure that gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names, the restoration trigger of gunbc.rung_drop app_attest_verifier_new_witness_eval_step_cost",
+  },
+]
+
+// THE mtcollins1 BOOT MATRIX'S CASES ABOVE THE PER-SUBJECT LINE (gunbc#12800; the three full-boot
+// cd_error cases joined in gunbc#12874), which straddle it between runners (the third form
+// gunbc#12853 repaired). The interrupted-attempt case runs the real boot entry TWICE -- the killed run
+// up to StartMedia, then the next run over the world it left -- because recovering the dead run's hold
+// is what it asserts; the cd_error cases run it once through a full boot. Each run pays the dry KVM
+// observer and gunbc#12434's SOL polling route faithfully. Each left the dead band when it crossed the
+// line, as that band's self-staling rule requires. Discharged by the capability
+// gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost names.
+data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
+    reason: "the real boot entry end to end over the dry realization twice (the killed run, then the next run recovering its hold), measured above the per-subject line by the enrolment-margin lines of PR required floor runs 36765162766 (srv1, 523 ms), 36775473983 (srv3, 582 ms) and 36783312538 (srv3, 543 ms); merge-group run 36793281217 read it at 466 ms on srv4, under the line, which v2.workflow.floor_enrolment_margin now holds as EnrolmentRosterGroundWithinRunnerEnvelope (gunbc#12853) rather than staling the row; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted",
+    reason: "the real boot entry end to end over the dry realization through a stop, a replace and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 249812 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 415 ms and run 36825466924 at c158c04300a read 583 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded",
+    reason: "the real boot entry end to end over the dry realization through an attach and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 239309 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 419 ms and run 36825466924 at c158c04300a read 652 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_is_recorded_and_booted",
+    reason: "the real boot entry end to end over the dry realization through an attach and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 254859 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 423 ms and run 36825466924 at c158c04300a read 643 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+]
+
+// THE REAL-CORPUS IMPORT-CLOSURE ROW (gunbc#12910, 2026-10-01), granted by deep-ferret-305 with
+// jolly-boar-500's retirement condition. test.claim.module_graph.import_closure_live is the real-corpus
+// inhabitance claim for v2.lens.module_graph import_closure_live: the DESIGN section 3 pairing obligation
+// for test.claim.module_graph.demand_closure_agreement_witness, which supplies its pool as a fixture. It
+// replaces reference_closure_equivalence, an operator-ruled B2 wall that measured 14s on the floor.
+data import_closure_real_corpus_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.module_graph.import_closure_live.dag_import_closure_live_witness_bundle_holds",
+    reason: "the real-corpus inhabitance claim for import_closure_live (section 3 pairing obligation for demand_closure_agreement_witness): it walks a real entry's closure over real production modules, so its pool cannot be supplied. Its pool is already narrowed to the closure's own directories, derived from a golden derived from declared import edges; the remaining cost is the exclusive reference_pool_names heads fill over those directories, measured at 843 ms wall by the enrolment-margin lines of PR required floor run 36883586866. Directory-grain scoping below that, without a demand set, is the fail-open shape the compile-cost lane refuses. Retires when the whole-pool heads demand is demand-keyed: gunbc.resolver_cost_frontier, the frontier row on v1.compiler.parse parse_heads_with_table (demand-engine M1), i.e. when the reference pool fill is shared or scoped below the margin." as NonEmptyStr
+  },
+]
+
+// THE APPROVAL-INTENT DIGEST ROWS (gunbc#13004, 2026-10-02), granted by the allocation landing lane
+// (snappy-gull-889 msg_75d78dfe), declared down at gunbc.rung_drop
+// approval_intent_digest_new_witness_eval_step_cost. Each is the ONE real-path inhabitance claim of an approval-request
+// constructor: the request digests its intent with an interpreted SHA-256 and the gate admits
+// exactly that revision. Every sibling claim reads the intent instead (the binding of target, role,
+// member and attempt; the material/policy separation; the run-attempt binding) and stays under the
+// line by construction, so these rows are the real path those siblings lean on (DESIGN section 3
+// pairing obligation). The cost is the primitive's realization, not the claim's shape: the same
+// constructors measured 1.4M-2.6M eval steps when each sibling paid them, in the enrolment-margin
+// lines of PR required floor run 37062802746, and one digest per claim is what remains. Retired by that
+// drop's restoration trigger: SHA-256 executing as natively emitted code on the merge path.
+data approval_intent_digest_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.approved_secret_grants_witness_test.the_real_request_digests_its_intent_and_admits_only_that_revision",
+    reason: "the one inhabitance claim of gunbc.auth.approved_secret_grants secret_grants_approval_request: one interpreted SHA-256 over the real grants intent, then the gate over that revision and a refused other revision; its binding siblings read secret_grants_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision",
+    reason: "the one inhabitance claim of gunbc.fabric_storage_state_provision fabric_state_provision_request: one interpreted SHA-256 over the real material intent, then the gate over that revision and a refused other revision; its siblings read fabric_state_provision_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+]
+
+fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
+  concat(concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions), approval_intent_digest_typed_admissions)
+}
+
+fn floor_cost_debt_typed_admitted_identities() -> List<String> {
+  list_reverse(xs: fold(
+    floor_cost_debt_typed_admissions(),
     init: [],
     f: fn(acc, row) { concat([row.identity], acc) },
   ))
-}
-
-type FloorCostDebtRow {
-  identity: String
-  reading: ClaimCostReading
-}
-
-// VERDICT REACHABILITY IS A SEPARATE AXIS from ClaimCostReading (gunbc.floor_cost_distribution
-// / v2.workflow.claim_cost_observation). Censoring does not prove "never reached a verdict".
-// The attempt carries the discriminator; the constructor consumes it.
-type FloorCostDebtVerdictAxis =
-    FloorCostDebtReachedAVerdict
-  | FloorCostDebtNeverReachedAVerdict
-
-type FloorCostDebtRowStanding =
-    FloorCostDebtRowAdmitted { row: FloorCostDebtRow }
-  | FloorCostDebtRowRefusedUnderCeiling { identity: String, observed_cpu_ms: Millisecond }
-  | FloorCostDebtRowRefusedCensoredNotEstablished {
-      identity: String
-      cpu_lower_bound_ms: Millisecond
-      censoring_ceiling_ms: Millisecond
-    }
-  | FloorCostDebtRowRefusedBoundWithoutCeiling {
-      identity: String
-      cpu_lower_bound_ms: Millisecond
-    }
-
-type FloorCostDebtReadingAttempt {
-  identity: String
-  reading: ClaimCostReading
-  verdict: FloorCostDebtVerdictAxis
-}
-
-// A BOUND WITH NO CEILING CAN NEVER ESTABLISH THE SUPPLIED ONE, SO IT REFUSES ON ITS OWN ARM.
-// The admission test for a censored row is that its reading ESTABLISHES the ceiling it was
-// stopped at -- `censoring_ceiling` equals the supplied ceiling and the bound reaches it. A
-// `CpuLowerBoundWithoutCeiling` carries no ceiling at all, so that test has nothing to compare
-// and the row cannot be minted. It does NOT reuse `RefusedCensoredNotEstablished`, whose
-// `censoring_ceiling_ms` field would have to be filled from the SUPPLIED ceiling -- writing a
-// figure the reading never carried into a field named for one it did, which is the fabricated
-// diagnostic DESIGN §5 forbids. The refusal is typed, located, and names the bound it did read.
-fn floor_cost_debt_row(
-  identity: String,
-  reading: ClaimCostReading,
-  ceiling_ms: Millisecond,
-  verdict: FloorCostDebtVerdictAxis,
-) -> FloorCostDebtRowStanding {
-  match reading {
-    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: c, eval_steps_before_censor: steps } =>
-      match verdict {
-        FloorCostDebtNeverReachedAVerdict =>
-          if millisecond_count(m: c) == millisecond_count(m: ceiling_ms)
-            && millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
-            FloorCostDebtRowAdmitted {
-              row: FloorCostDebtRow {
-                identity: identity,
-                reading: RightCensoredCpuReading {
-                  cpu_lower_bound_ms: b,
-                  censoring_ceiling_ms: c,
-                  eval_steps_before_censor: steps,
-                },
-              },
-            }
-          } else {
-            FloorCostDebtRowRefusedCensoredNotEstablished {
-              identity: identity,
-              cpu_lower_bound_ms: b,
-              censoring_ceiling_ms: c,
-            }
-          }
-        FloorCostDebtReachedAVerdict =>
-          FloorCostDebtRowRefusedCensoredNotEstablished {
-            identity: identity,
-            cpu_lower_bound_ms: b,
-            censoring_ceiling_ms: c,
-          }
-      }
-    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
-      FloorCostDebtRowRefusedBoundWithoutCeiling {
-        identity: identity,
-        cpu_lower_bound_ms: b,
-      }
-    ObservedCpuReading { cpu_ms: c, eval_steps: steps } =>
-      if millisecond_count(m: c) > millisecond_count(m: ceiling_ms) {
-        FloorCostDebtRowAdmitted {
-          row: FloorCostDebtRow {
-            identity: identity,
-            reading: ObservedCpuReading { cpu_ms: c, eval_steps: steps },
-          },
-        }
-      } else {
-        FloorCostDebtRowRefusedUnderCeiling { identity: identity, observed_cpu_ms: c }
-      }
-  }
-}
-
-fn floor_cost_debt_row_is_admitted(standing: FloorCostDebtRowStanding) -> Bool {
-  match standing {
-    FloorCostDebtRowAdmitted { row: _ } => true
-    FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => false
-    FloorCostDebtRowRefusedCensoredNotEstablished {
-      identity: _,
-      cpu_lower_bound_ms: _,
-      censoring_ceiling_ms: _,
-    } => false
-    FloorCostDebtRowRefusedBoundWithoutCeiling {
-      identity: _,
-      cpu_lower_bound_ms: _,
-    } => false
-  }
-}
-
-// THE ROSTER WITNESS FOLD. Identity-grain over every attempt: a 325ms observed row cannot
-// survive into the admitted set; a censored row that does not establish the supplied ceiling
-// cannot either.
-fn floor_cost_debt_admit_attempts(
-  attempts: List<FloorCostDebtReadingAttempt>,
-  ceiling_ms: Millisecond,
-) -> List<FloorCostDebtRow> {
-  reverse(fold(attempts, init: [], f: fn(acc, attempt) {
-    match floor_cost_debt_row(
-      identity: attempt.identity,
-      reading: attempt.reading,
-      ceiling_ms: ceiling_ms,
-      verdict: attempt.verdict,
-    ) {
-      FloorCostDebtRowAdmitted { row: row } => concat([row], acc)
-      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => acc
-      FloorCostDebtRowRefusedCensoredNotEstablished {
-        identity: _,
-        cpu_lower_bound_ms: _,
-        censoring_ceiling_ms: _,
-      } => acc
-      FloorCostDebtRowRefusedBoundWithoutCeiling {
-        identity: _,
-        cpu_lower_bound_ms: _,
-      } => acc
-    }
-  }))
 }

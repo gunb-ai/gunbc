@@ -1,10 +1,11 @@
 module product.fabric.demand
 
-import std.types { NonEmptyStr, Timestamp, Bool, List }
+import std.types { NonEmptyStr, Timestamp, Bool, List, brand }
 import std.decl_ref { DeclarationRef }
 import std.measure { MoneyAmountMicro }
 import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
+import std.algebra { Cons, Empty }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
 // live here and nowhere else, which is what keeps Work provider-neutral.

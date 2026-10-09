@@ -3,7 +3,7 @@ module gunbc.provider_standing
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length, EpochSecs }
 import std.claim_evidence { RecordedFactId, RecordedFact }
 import std.measure { BasisPoint }
-import v2.std.optional { optional_absent, optional_present }
+import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
@@ -496,21 +496,32 @@ fn first_blocking_native_limit_bucket_for_automatic_draw(
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
                     optional_present(value: key)
-                  _ => optional_absent()
+                  ProviderAccountLimit { credential: _ } => optional_absent()
+                  ProviderWorkspaceLimit { workspace_account: _ } => optional_absent()
+                  ProviderModelLimit { credential: _, model: _ } => optional_absent()
                 }
               LimitRateLimited { subject: s, native_token: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
                     optional_present(value: key)
-                  _ => optional_absent()
+                  ProviderAccountLimit { credential: _ } => optional_absent()
+                  ProviderWorkspaceLimit { workspace_account: _ } => optional_absent()
+                  ProviderModelLimit { credential: _, model: _ } => optional_absent()
                 }
               LimitUnavailableUntilReset { subject: s, cause: _, reset: _, reason: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
                     optional_present(value: key)
-                  _ => optional_absent()
+                  ProviderAccountLimit { credential: _ } => optional_absent()
+                  ProviderWorkspaceLimit { workspace_account: _ } => optional_absent()
+                  ProviderModelLimit { credential: _, model: _ } => optional_absent()
                 }
-              _ => optional_absent()
+              LimitObservationUnobserved { reason: _ } => optional_absent()
+              LimitCapabilityGapUnobservable { reason: _ } => optional_absent()
+              LimitSubjectUnobserved { subject: _, native_token: _, reason: _ } => optional_absent()
+              LimitObservedAvailable { subject: _ } => optional_absent()
+              LimitWarning { subject: _, native_token: _, utilization_basis_points: _ } => optional_absent()
+              LimitRejected { subject: _, native_token: _, reason: _ } => optional_absent()
             }
           } else {
             optional_absent()

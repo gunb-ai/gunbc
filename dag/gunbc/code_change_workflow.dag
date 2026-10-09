@@ -1,5 +1,11 @@
 module gunbc.code_change_workflow
 
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha, Timestamp }
+import gunbc.process_algebra { ProcessNodeId }
+import gunbc.review_verdict { MergeReadinessTally }
+import gunbc.pr_digests { MergeReadinessVerdict, Ready, NotReady }
+import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
+
 type CodeChangeActiveStage
   = ChangeOpen
   | ChangeUnderReview
@@ -349,6 +355,7 @@ fn decide_code_change_transition(request: CodeChangeTransitionRequest) -> CodeCh
 
 service gunbc.CodeChangeWorkflow {
   operation ClassifyGithubPrTerminalAnchor {
+    requires none
     input {
       pr: extdeps.github.pulls.PullRequest
     }
@@ -359,6 +366,7 @@ service gunbc.CodeChangeWorkflow {
   }
 
   operation DecideTransition {
+    requires none
     input {
       request: CodeChangeTransitionRequest
     }

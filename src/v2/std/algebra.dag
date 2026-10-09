@@ -1,8 +1,8 @@
 module v2.std.algebra
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import v2.std.node { Conj, Edge, Authored, Node, TypeNode }
+import std.optional { Optional, optional_absent, optional_present }
 import std.algebra {
   AbelianGroup,
   BooleanAlgebra,
@@ -27,24 +27,15 @@ import std.algebra {
   Ring,
   Semigroup,
   Semiring,
-}
-
-type ApproximateField<T> {
-  add: fn(T, T) -> T
-  zero: T
-  negate: fn(T) -> T
-  mul: fn(T, T) -> T
-  one: T
-  compare: fn(T, T) -> Ordering
+  list_append,
+  list_snoc_item,
 }
 
 type Equivalence<T> {
   eq: fn(T, T) -> Bool
 }
 
-fn freemonoid_empty<T>() -> FreeMonoid<T> {
-  Empty
-}
+
 type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
@@ -132,8 +123,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Named { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
         ],
         occurrence_id: OccurrenceSynthetic
 }
@@ -147,414 +138,6 @@ fn algebra_empty_conj() -> Node {
 }
 }
 
-fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge { label: Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
-      ],
-      occurrence_id: OccurrenceSynthetic
-},
-    inhabitant: inhabitant,
-  )
-}
-
-fn free_monoid_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      Edge { label: Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
-      Edge {
-        label: Named { name: ^free_monoid_variant_cons },
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge { label: Named { name: ^free_monoid_field_head }, target: inhabitant },
-            Edge {
-              label: Named { name: ^free_monoid_field_tail },
-              target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
-            },
-          ],
-          occurrence_id: OccurrenceSynthetic
-},
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: codomain },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: codomain },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn ordering_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      Edge { label: Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn magma_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^magma_field_op },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn semigroup_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn monoid_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^monoid_field_identity }, target: inhabitant },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn commutative_monoid_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn group_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
-      Edge {
-        label: Named { name: ^group_field_inverse },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn abelian_group_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn semiring_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn commutative_semiring_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn ring_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn commutative_ring_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn ordered_ring_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
-      Edge {
-        label: Named { name: ^ordered_ring_field_compare },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn field_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn field_reciprocal_operation_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^field_reciprocal_operation } }, children: [],
- occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn field_reciprocal_nonzero_precondition_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^field_reciprocal_nonzero_precondition } }, children: [],
- occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn approximate_field_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^approximate_field_field_add },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge { label: Named { name: ^approximate_field_field_zero }, target: inhabitant },
-      Edge {
-        label: Named { name: ^approximate_field_field_negate },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^approximate_field_field_mul },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge { label: Named { name: ^approximate_field_field_one }, target: inhabitant },
-      Edge {
-        label: Named { name: ^approximate_field_field_compare },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn lattice_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^lattice_field_meet },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^lattice_field_join },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn bounded_lattice_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^bounded_lattice_field_top }, target: inhabitant },
-      Edge { label: Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn boolean_algebra_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^boolean_algebra_field_bounded_lattice },
-        target: bounded_lattice_type_node(inhabitant: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^boolean_algebra_field_complement },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^algebra_edge }, target: algebra },
-      Edge { label: Named { name: ^inhabitant_edge }, target: inhabitant },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn magma_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: magma_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn semigroup_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: semigroup_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn monoid_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: monoid_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn commutative_monoid_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: commutative_monoid_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn group_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: group_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn abelian_group_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: abelian_group_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn semiring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: semiring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn commutative_semiring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: commutative_semiring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn ring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: ring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn commutative_ring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: commutative_ring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn ordered_ring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: ordered_ring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn field_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: field_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn approximate_field_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: approximate_field_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn lattice_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: lattice_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn bounded_lattice_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: bounded_lattice_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
 type BoundedLatticeMissingWitness
   = MissingMeet
   | MissingJoin
@@ -565,50 +148,6 @@ type BoundedLatticeInstanceCompleteness
   | BoundedLatticeComplete
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
 
-fn boolean_algebra_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn bool_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      Edge { label: Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn equivalence_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^equivalence_field_eq },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())
-      },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
-fn equivalence_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: equivalence_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
-
-fn free_monoid_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: free_monoid_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
-}
 
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
@@ -689,26 +228,7 @@ fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   state.unique
 }
 
-// THE COST IS CHARGED IN THE RIGHT OPERAND, AND THE RIGHT-FOLD THIS REPLACED CHARGED THE LEFT.
-// `concat` is the primitive two-list append; `std.primitives` `concat_contract` declares its
-// persistent carrier cost as `log(n + m)`. The `fold_list_right` form that stood here walked
-// its LEFT operand instead, one `Cons` per element, so an accumulate-on-the-left fold paid the
-// whole accumulator at every step and came out quadratic in the accumulated length --
-// `list_snoc_item` below is exactly that shape, which is why it inherited the defect, and it is
-// the shape the corpus uses wherever it builds a list by appending. Routing to the primitive
-// makes the singleton case constant and the general case linear in the appended side only.
-// DESIGN section 6 fixes a proven cost-shape defect at the root rather than per callsite.
-fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
-  left |> concat(right)
-}
 
-// `list_push` is the primitive single-item append (amortized O(log n) on the persistent
-// carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
-// every build-by-appending accumulator quadratic — measured on the first-set union fold in
-// the self-hosted parser (2026-09-09, required-v2-native lane work).
-fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
-  xs |> list_push(item)
-}
 
 // FIRST MATCH, WITH THE EARLY EXIT. The closed vocabulary has any/filter/contains -- Bool, or the
 // whole filtered list -- and none of them answers "the first element satisfying p, or nothing"

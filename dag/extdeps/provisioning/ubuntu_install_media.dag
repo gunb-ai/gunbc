@@ -146,3 +146,30 @@ data noble_numbat_2404_3_live_server_arm64: UbuntuInstallMediaArtifactRow = Ubun
   content_sha256: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
   sha256sums_authority: noble_numbat_2404_3_live_server_arm64_sha256sums_authority,
 }
+
+// THE STOCK MEDIUM'S BOOT CONFIGURATION, AS A MEMBER OF THE PINNED ARTIFACT. /boot/grub/grub.cfg of
+// ubuntu-24.04.3-live-server-arm64.iso (the artifact above, sha256 2ee2163c...) is fixed by that
+// digest, so its bytes are an upstream fact like the digest itself: read once from the artifact
+// (2026-09-28) and carried here with their own sha256. A builder that edits this file checks the
+// extracted member against `content_sha256` on the host where it runs and writes its edit of
+// `content`, rather than reading the file back through a process whose captured stdout is not the
+// file's exact bytes.
+type UbuntuInstallMediaGrubConfig {
+  artifact_sha256: NonEmptyStr
+  content: String
+  content_sha256: NonEmptyStr
+}
+
+data noble_numbat_2404_3_live_server_arm64_grub_cfg: UbuntuInstallMediaGrubConfig = UbuntuInstallMediaGrubConfig {
+  artifact_sha256: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
+  content: "set timeout=30\n\nloadfont unicode\n\nset menu_color_normal=white/black\nset menu_color_highlight=black/light-gray\n\nmenuentry \"Try or Install Ubuntu Server\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/vmlinuz  --- console=tty0\n\tinitrd\t/casper/initrd\n\}\nmenuentry \"Ubuntu Server with the HWE kernel\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/hwe-vmlinuz  --- console=tty0\n\tinitrd\t/casper/hwe-initrd\n\}\nmenuentry 'Boot from next volume' \{\n\texit 1\n\}\nmenuentry 'UEFI Firmware Settings' \{\n\tfwsetup\n\}\n",
+  content_sha256: "e1280b6cab9d57cf5a1e3b67153164cda0f730f85ebdcda14eda629995ecafe7",
+}
+
+data ubuntu_install_media_grub_configs: List<UbuntuInstallMediaGrubConfig> = [noble_numbat_2404_3_live_server_arm64_grub_cfg]
+
+// The grub.cfg member of a pinned artifact, or none: an artifact with no carried member has no
+// modeled boot configuration to edit, and a builder refuses it rather than reading one back.
+fn ubuntu_install_media_grub_cfg_for(artifact: UbuntuInstallMediaArtifactRow) -> UbuntuInstallMediaGrubConfig? {
+  first(flat_map(ubuntu_install_media_grub_configs, g => if (g.artifact_sha256 as String) == (artifact.content_sha256 as String) { [g] } else { [] }))
+}

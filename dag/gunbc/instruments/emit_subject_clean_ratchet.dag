@@ -262,12 +262,15 @@ fn run_coordinate(variable: String) -> ActionsRunCoordinate {
 }
 
 fn current_observation_binding(subjects: List<EmissionMeasurementSubject>) -> ObservationBinding {
+  let run_identity = run_coordinate(variable: github_run_id_variable_name)
+  let run_attempt = run_coordinate(variable: github_run_attempt_variable_name)
+  let runner = run_coordinate(variable: github_runner_name_variable_name)
   observation_binding(
     subjects: subjects,
     observations: ActionsRunEnvironmentObservations {
-      run_identity: run_coordinate(variable: github_run_id_variable_name),
-      run_attempt: run_coordinate(variable: github_run_attempt_variable_name),
-      runner: run_coordinate(variable: github_runner_name_variable_name)
+      run_identity: run_identity,
+      run_attempt: run_attempt,
+      runner: runner
     }
   )
 }

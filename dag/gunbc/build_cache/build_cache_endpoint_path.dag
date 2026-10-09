@@ -1,7 +1,7 @@
 module gunbc.build_cache_endpoint_path
 
 import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import gunbc.build_cache_instance {
   BuildCacheInstance, ProcessIdentity, EndpointObservationUnavailableReason,
   unavailable_reason_detail,
@@ -10,7 +10,7 @@ import extdeps.cache.sccache { SccacheServerTcpPort, SccacheServerUnixSocket }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 
-data build_cache_endpoint_path_scope_disposition: Disposition = SingleAuthority
+data build_cache_endpoint_path_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // WHY THE ENDPOINT PATH NEEDS ITS OWN STATE MACHINE, AND WHY EndpointAbsent WAS NOT ENOUGH.
 // gunbc.build_cache_instance's EndpointAbsent answers one question — is anybody listening — and

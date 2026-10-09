@@ -1,0 +1,136 @@
+module test.claim.scm.scm_object_store_batch_witness_test
+
+// THE BATCH PRODUCER'S SEMANTICS, PROVEN AT SMALL n SO THE COST-SHAPE CLAIM NEVER HIDES A WRONG
+// ANSWER. The 2026-09-21 wedge was a cost defect, and the repair that deletes the copies must not
+// change what gets stored: every input receives its reference in input order, duplicate bytes
+// store once, content already in the store dedupes to the held object, and a removed path leaves
+// the manifest -- the same answers the per-insert path gives, or this is a second producer, not a
+// faster one.
+
+import std.types { Bool, String, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.worktree_inventory { worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, object_id_eq, empty_store,
+  AuthoredSourceObjectRef,
+  store_authored_source, SourceStored, SourceLocatorCollision,
+  store_authored_sources_batch, SourcesBatched, SourceBatchCollision,
+  authored_source_target_of,
+  CorpusManifestEntry,
+  empty_path_unique_entries, path_unique_with_path_bound, path_unique_with_path_removed, path_unique_entry_list,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type IdAtAcc { i: Int, found: ObjectId? }
+
+fn id_at(sources: List<AuthoredSourceObjectRef>, index: Int) -> ObjectId? {
+  fold(sources, init: IdAtAcc { i: 0, found: none }, f: fn(acc, s) {
+    IdAtAcc {
+      i: acc.i + 1,
+      found: if acc.i == index { Present { value: s.locator } } else { acc.found },
+    }
+  }).found
+}
+
+fn stored_ref(text: String) -> AuthoredSourceObjectRef? {
+  match store_authored_source(store: empty_store(), text: text) {
+    SourceStored { store: _, source } => Present { value: source }
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+  }
+}
+
+test fn the_batch_stores_duplicate_bytes_once_but_answers_every_input() -> Bool {
+  match store_authored_sources_batch(store: empty_store(), texts: ["alpha", "beta", "alpha"]) {
+    SourceBatchCollision { identity: _ } => false
+    SourcesBatched { store, sources } =>
+      count(sources) == 3 && count(store.objects) == 2
+  }
+}
+
+test fn the_batch_aligns_each_reference_to_its_own_input() -> Bool {
+  match store_authored_sources_batch(store: empty_store(), texts: ["alpha", "beta", "alpha"]) {
+    SourceBatchCollision { identity: _ } => false
+    SourcesBatched { store: _, sources } =>
+      match id_at(sources: sources, index: 0) {
+        Absent => false
+        Present { value: first } =>
+          match id_at(sources: sources, index: 1) {
+            Absent => false
+            Present { value: second } =>
+              match id_at(sources: sources, index: 2) {
+                Absent => false
+                Present { value: third } =>
+                  object_id_eq(left: first, right: third)
+                    && !object_id_eq(left: first, right: second)
+              }
+          }
+      }
+  }
+}
+
+test fn content_already_in_the_store_dedupes_to_the_held_object() -> Bool {
+  match store_authored_source(store: empty_store(), text: "alpha") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: seeded, source: first } =>
+      match store_authored_sources_batch(store: seeded, texts: ["alpha", "beta"]) {
+        SourceBatchCollision { identity: _ } => false
+        SourcesBatched { store, sources } =>
+          count(store.objects) == 2
+            && count(sources) == 2
+            && match id_at(sources: sources, index: 0) {
+              Absent => false
+              Present { value: id } => object_id_eq(left: id, right: first.locator)
+            }
+      }
+  }
+}
+
+test fn a_removal_drops_exactly_the_named_path() -> Bool {
+  match stored_ref(text: "A") {
+    Absent => false
+    Present { value: ref_a } =>
+      match stored_ref(text: "B") {
+        Absent => false
+        Present { value: ref_b } => {
+          let unique = path_unique_with_path_bound(
+            unique: path_unique_with_path_bound(
+              unique: empty_path_unique_entries(),
+              path: "a.dag",
+              source: authored_source_target_of(reference: ref_a),
+            ),
+            path: "b.dag",
+            source: authored_source_target_of(reference: ref_b),
+          )
+          let removed = path_unique_with_path_removed(unique: unique, path: "a.dag")
+          let paths = path_unique_entry_list(unique: removed) |> map(e => e.path as String)
+          count(paths) == 1 && holds_path(paths: paths, path: "b.dag") && !holds_path(paths: paths, path: "a.dag")
+        }
+      }
+  }
+}
+
+fn holds_path(paths: List<String>, path: String) -> Bool {
+  fold(paths, init: false, f: fn(found, p) { found || p == path })
+}
+
+// THE DELTA PARSE: name-status -z interleaves letters and paths, a rename decomposes, and an
+// untracked row never appears in it (the untracked verb answers those separately).
+
+test fn the_changes_parse_binds_modifies_deletes_and_decomposes_renames() -> Bool {
+  let changes = worktree_changes_parse(stdout_nul: "M\0dag/a.dag\0D\0dag/b.dag\0R100\0dag/old.dag\0dag/new.dag\0")
+  count(changes) == 4
+    && change_present(changes: changes, want: "bind", path: "dag/a.dag")
+    && change_present(changes: changes, want: "delete", path: "dag/b.dag")
+    && change_present(changes: changes, want: "delete", path: "dag/old.dag")
+    && change_present(changes: changes, want: "bind", path: "dag/new.dag")
+}
+
+fn change_present(changes: List<WorktreeChange>, want: String, path: String) -> Bool {
+  fold(changes, init: false, f: fn(found, c) {
+    found || match c {
+      WorktreeBind { path: p } => want == "bind" && (p as String) == path
+      WorktreeDelete { path: p } => want == "delete" && (p as String) == path
+    }
+  })
+}

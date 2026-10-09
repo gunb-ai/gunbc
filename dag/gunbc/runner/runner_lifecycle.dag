@@ -4,9 +4,9 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.nat { Nat }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import extdeps.github.actions_runner {
   ActionsRunnerRelease,
@@ -15,16 +15,8 @@ import extdeps.github.actions_runner {
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  RunnerSlotPurpose,
-  SlotServesGitHubActions,
-  SlotServesFabricExecution,
-  RunnerSlotMembership,
-  CommittedSlotMember,
-  SlotOutsideCommittedPopulation,
-  runner_slot_membership,
-}
+import gunbc.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, SlotMembershipWidthUnresolved, runner_width_unresolved_cause_text }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host_disk_observation {
   HostDiskObservation,
   DiskUnobserved,
@@ -55,7 +47,7 @@ type RunnerReplacementCause
   | ReplacementCauseWedgedBroker {}
   | ReplacementCauseOperatorForced { detail: String }
 
-data runner_lifecycle_authority_disposition: Disposition = SingleAuthority
+data runner_lifecycle_authority_disposition: ConstructionMechanism = SingleAuthority
 
 data runner_lifecycle_ctrl_void_note: String = "gunbc citations must not treat ctrl as a live upstream repo (operator ruling 2026-08-06). On hosts ctrl IS still deployed: install-actions-runner.sh lives at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh; ctrl-runner-reclaim.timer is active. gunbc.runner_lifecycle ADD path must READ that installer as ground truth for what creates a runner, then subsume it through HostEffect arms — never invoke ctrl from gunbc run, never fork runner-liveness-reconcile (timer active on srv1 every 2 min; /opt/actions-runner/runner-liveness-reconcile.sh documents the Aug-6 outage — #7940 subsumes it). runner_host_deploy ctrl path literals remain void legacy pointers only."
 
@@ -158,6 +150,10 @@ type RunnerSlotAddSequence
 // only thing executing it, and a witness is not a consumer.
 fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
   match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotMembershipWidthUnresolved { identity: _, cause: c } =>
+      SlotIsNotACommittedMember {
+        reason: join(["this host's committed width does not resolve, so there is no committed population and no membership answer -- which is a REFUSAL to classify rather than a finding that the slot is outside a population: ", runner_width_unresolved_cause_text(cause: c)], "")
+      }
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMember {
         reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"

@@ -1,6 +1,7 @@
 module v2.test.manual.connective_anchors
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.compiler.eval { eval_diagnostic }
 import v2.std.diagnostic {
   Accepted,
@@ -54,14 +55,7 @@ data stub_empty_conj: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-data stub_arrow_pair: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: stub_empty_conj },
-    Edge { label: Positional, target: stub_empty_conj }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data stub_arrow_pair: Node = anonymous_signature_arrow(domain_types: [], codomain: stub_empty_conj, source: stub_empty_conj)
 
 data stub_empty_disj: Node = Node {
   kind: TypeNode { connective: Disj },
@@ -81,6 +75,7 @@ data stub_empty_instantiation: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
+// Deliberately hand-built shape with no producer: an Arrow with no children (A1 arity refusal).
 data stub_empty_arrow: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [],

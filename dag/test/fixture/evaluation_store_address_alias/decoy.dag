@@ -1,0 +1,9 @@
+module test.fixture.evaluation_store_address_alias.decoy
+
+fn evaluation_store_address() -> Bool {
+  true
+}
+
+fn decoy_caller() -> Bool {
+  evaluation_store_address()
+}

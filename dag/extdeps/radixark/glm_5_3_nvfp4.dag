@@ -1,0 +1,285 @@
+module extdeps.radixark.glm_5_3_nvfp4
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, BitWidth, bit_width, bit_width_count, bits_per_byte, BasisPoint, basis_point, basis_point_unity_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
+import extdeps.safetensors.format {
+  SafetensorsEntry, safetensors_entry, safetensors_entry_span, safetensors_dtype_byte_width,
+  SafeU8, SafeF8E4M3, SafeF32,
+}
+import extdeps.zhipu.glm_5_3 {
+  GlmMoeDsaShape, glm_5_3_hub_repo, glm_5_3_native_manifest,
+  glm_5_3_moe_layer_count, glm_5_3_routed_expert_projection_count, glm_5_3_routed_expert_params,
+}
+
+// ── THE LAYERING DECISION, STATED RATHER THAN DEFAULTED ──────────────────────────────────────
+//
+// THIS IS RadixArk's ARTIFACT, NOT Z.ai's, SO IT IS ITS OWN MODULE. RadixArk/GLM-5.3-NVFP4 is a
+// third-party quantized redistribution: a different publisher, a different Hub repository with its
+// own revision history, its own quantization producer (modelopt) and its own manifest. DESIGN
+// section 3's external-decomposition rule gives every independently governed upstream its own
+// module authority, and "independently governed" is decided by who can change the artifact --
+// RadixArk can re-quantize and push a new revision tomorrow, and Z.ai cannot stop them. Filing it
+// under extdeps.zhipu would let a Z.ai-owned module carry facts Z.ai never published and cannot
+// correct, which is the layer inversion the rule exists to forbid.
+//
+// WHAT IT CITES, AND WHY THE CITATION IS A DECLARATION RATHER THAN A STRING. The redistribution
+// inherits the base model's architecture class and MoE shape -- those are facts about the model
+// that was quantized, so this module IMPORTS them from extdeps.zhipu.glm_5_3 and derives its byte
+// accounting from them. Spelling `GlmMoeDsaForCausalLM` or 256 experts a second time here would
+// give one upstream fact two homes. The base is cited as a further citation on the scope, so a
+// reader of the scope sees both governing parties.
+data glm_5_3_nvfp4_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "RadixArk/GLM-5.3-NVFP4" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: glm_5_3_nvfp4_hub_repo),
+}
+
+data glm_5_3_nvfp4_base_citation: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: glm_5_3_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.radixark.glm_5_3_nvfp4",
+      decl_name: "glm_5_3_nvfp4_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [glm_5_3_nvfp4_base_citation],
+}
+
+// ── THE CHECKPOINT MANIFEST AT AN EXACT REVISION ─────────────────────────────────────────────
+//
+// THE REVISION IS PART OF THE FACT. The same API response that gave these sizes reported
+// lastModified 2026-09-17T19:03:01Z -- the day before this was read -- so `main` for this repo is
+// demonstrably moving under any reader who does not pin.
+//
+// THE ARCHITECTURE CLASS AND THE SHAPE ARE NOT RESTATED HERE. A consumer that needs them imports
+// extdeps.zhipu.glm_5_3 directly: this artifact's config.json carries the same values, diffed on
+// the read date, and a second spelling would be one upstream fact with two homes.
+data glm_5_3_nvfp4_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
+  revision: "6e389189d564d9d3e4ea7fa284fe91f136d8ae2a" as NonEmptyStr,
+  safetensors_shard_count: 47,
+  safetensors_bytes: byte_size(count: 464823042096),
+  repository_total_bytes: byte_size(count: 464874334651),
+  read_by: "the Hub model API for RadixArk/GLM-5.3-NVFP4 with blobs enabled, summed over the 47 safetensors siblings of its 58 files, read 2026-09-18. The response's own sha is the revision above and its lastModified was 2026-09-17T19:03:01Z" as NonEmptyStr,
+)
+
+// ── THE QUANTIZATION, AS config.json's quantization_config STATES IT ─────────────────────────
+//
+// FOUR-BIT WEIGHTS AND FOUR-BIT INPUT ACTIVATIONS, which is the fact that distinguishes NVFP4 from a
+// weight-only scheme: a runtime must carry the activation quantizer and the FP4 GEMM, not merely a
+// dequantizing loader. The KV cache scheme is fp8. The producer is modelopt, and `quant_method` --
+// the key vLLM dispatches its quantization config on -- is "modelopt".
+//
+// THE IGNORE LIST IS MODELLED, NOT FLATTENED. config.json carries 240 patterns; read structurally
+// they are exactly seven classes of module, and everything outside those seven is quantized. The
+// classes are what a consumer needs -- "only the routed experts are NVFP4, everything else stays
+// bf16" -- and the pattern list is the evidence for them, named in read_by rather than copied.
+type GlmMoeDsaModuleClass
+  = LmHead
+  | EmbedTokens
+  | LeadingDenseLayerWhole
+  | NextnPredictorLayerWhole
+  | RouterGate
+  | SharedExperts
+  | SelfAttention
+  | RoutedExperts
+
+fn glm_moe_dsa_module_class_label(c: GlmMoeDsaModuleClass) -> String {
+  match c {
+    LmHead => "lm_head"
+    EmbedTokens => "model.embed_tokens"
+    LeadingDenseLayerWhole => "model.layers.\{0..first_k_dense_replace-1\}.*"
+    NextnPredictorLayerWhole => "model.layers.\{num_hidden_layers\}.*"
+    RouterGate => "model.layers.\{n\}.mlp.gate"
+    SharedExperts => "model.layers.\{n\}.mlp.shared_experts*"
+    SelfAttention => "model.layers.\{n\}.self_attn*"
+    RoutedExperts => "model.layers.\{n\}.mlp.experts.\{e\}.*"
+  }
+}
+
+data glm_moe_dsa_module_classes: List<GlmMoeDsaModuleClass> = [
+  LmHead, EmbedTokens, LeadingDenseLayerWhole, NextnPredictorLayerWhole,
+  RouterGate, SharedExperts, SelfAttention, RoutedExperts,
+]
+
+type ModeloptNvfp4Config sole_constructor {
+  quant_method: NonEmptyStr
+  quant_algo: NonEmptyStr
+  weight_width: BitWidth
+  input_activation_width: BitWidth
+  group_size: Nat
+  kv_cache_width: BitWidth
+  producer_version: NonEmptyStr
+  ignore: List<GlmMoeDsaModuleClass>
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_nvfp4_quantization: ModeloptNvfp4Config = ModeloptNvfp4Config {
+  quant_method: "modelopt" as NonEmptyStr,
+  quant_algo: "NVFP4" as NonEmptyStr,
+  weight_width: bit_width(count: 4),
+  input_activation_width: bit_width(count: 4),
+  group_size: 16,
+  kv_cache_width: bit_width(count: 8),
+  producer_version: "0.47.0.dev91+g7ff81dd79" as NonEmptyStr,
+  ignore: [LmHead, EmbedTokens, LeadingDenseLayerWhole, NextnPredictorLayerWhole, RouterGate, SharedExperts, SelfAttention],
+  read_by: "quantization_config in config.json at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a, read 2026-09-18: config_groups.group_0 carries weights and input_activations both \{num_bits 4, type float, group_size 16, dynamic false\} targeting Linear; kv_cache_scheme \{num_bits 8, type float\}; producer \{modelopt 0.47.0.dev91+g7ff81dd79\}; quant_method modelopt; quant_algo NVFP4. The 240-entry ignore list is lm_head, model.embed_tokens, model.layers.0*, model.layers.1.*, model.layers.2.*, model.layers.78*, and for every layer 3..77 the three patterns .mlp.gate, .mlp.shared_experts* and .self_attn* -- no other pattern occurs. hf_quant_config.json restates the same under exclude_modules" as NonEmptyStr,
+}
+
+// QUANTIZED IS DERIVED FROM THE IGNORE LIST, so there is exactly one place the partition is written.
+fn nvfp4_ignores(q: ModeloptNvfp4Config, c: GlmMoeDsaModuleClass) -> Bool {
+  any(q.ignore, i => glm_moe_dsa_module_class_label(c: i) == glm_moe_dsa_module_class_label(c: c))
+}
+
+fn nvfp4_quantizes(q: ModeloptNvfp4Config, c: GlmMoeDsaModuleClass) -> Bool {
+  !nvfp4_ignores(q: q, c: c)
+}
+
+fn nvfp4_quantized_classes(q: ModeloptNvfp4Config) -> List<GlmMoeDsaModuleClass> {
+  filter(glm_moe_dsa_module_classes, c => nvfp4_quantizes(q: q, c: c))
+}
+
+// ── ONE ROUTED EXPERT, AS THE SHARD HEADER DECLARES IT ───────────────────────────────────────
+//
+// THESE TWELVE ROWS ARE THE INSTRUMENT'S OUTPUT AT ONE REPRESENTATIVE, carried so the byte model
+// below can be checked against the format rather than against arithmetic that agrees with itself.
+// They are layer 3 expert 0 -- the first routed expert in the first MoE layer -- read from the
+// safetensors header of model-00001-of-00047.safetensors at the pinned revision, fetched by HTTP
+// range (the 8-byte header length, then the header JSON) on 2026-09-18, each entry copied with its
+// dtype, shape and data_offsets.
+//
+// WHAT THE SHAPES SAY. gate_proj.weight is U8 [2048, 3072] for a [2048, 6144] projection: two FP4
+// values per byte. gate_proj.weight_scale is F8_E4M3 [2048, 384]: one scale per 16 input elements,
+// which is where group_size 16 comes from and is checked against the declared config below.
+// weight_scale_2 and input_scale are F32 scalars. down_proj is the transpose, [6144, 1024] over
+// [6144, 2048]. That is the whole NVFP4 storage layout, and it is why the bytes per parameter are
+// 4 (the value) plus 8/16 (one fp8 scale per sixteen) plus three F32 pairs per expert.
+data nvfp4_representative_expert_entries: List<SafetensorsEntry> = [
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.down_proj.input_scale" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 0, end_offset: 4),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.down_proj.weight_scale_2" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 4, end_offset: 8),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.gate_proj.input_scale" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 8, end_offset: 12),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.gate_proj.weight_scale_2" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 12, end_offset: 16),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.up_proj.input_scale" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 16, end_offset: 20),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.up_proj.weight_scale_2" as NonEmptyStr, dtype: SafeF32, shape: [], begin_offset: 20, end_offset: 24),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.down_proj.weight_scale" as NonEmptyStr, dtype: SafeF8E4M3, shape: [6144, 128], begin_offset: 4638608808, end_offset: 4639395240),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.gate_proj.weight_scale" as NonEmptyStr, dtype: SafeF8E4M3, shape: [2048, 384], begin_offset: 4639395240, end_offset: 4640181672),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.up_proj.weight_scale" as NonEmptyStr, dtype: SafeF8E4M3, shape: [2048, 384], begin_offset: 4640181672, end_offset: 4640968104),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.down_proj.weight" as NonEmptyStr, dtype: SafeU8, shape: [6144, 1024], begin_offset: 5233937832, end_offset: 5240229288),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.gate_proj.weight" as NonEmptyStr, dtype: SafeU8, shape: [2048, 3072], begin_offset: 5240229288, end_offset: 5246520744),
+  safetensors_entry(name: "model.layers.3.mlp.experts.0.up_proj.weight" as NonEmptyStr, dtype: SafeU8, shape: [2048, 3072], begin_offset: 5246520744, end_offset: 5252812200),
+]
+
+// THE BYTES ONE ROUTED EXPERT OCCUPIES ON DISK, summed from the header spans. This is the
+// per-expert figure every projection multiplies: 256 experts, one MoE layer's worth per layer.
+fn nvfp4_representative_expert_bytes() -> ByteSize {
+  byte_size(count: fold(nvfp4_representative_expert_entries, init: 0, f: (acc, e) =>
+    acc + byte_size_count(b: safetensors_entry_span(e: e))))
+}
+
+// THE SAME QUANTITY DERIVED FROM THE SHAPE AND THE SCHEME, so the two can disagree. Per parameter:
+// the weight width, plus one scale per group_size parameters at the scale tensor's own dtype width
+// (F8_E4M3, read from the representative entries rather than assumed from the scheme), plus per
+// projection two F32 scalars (input_scale and weight_scale_2). Every width is a carrier and every
+// byte figure a ByteSize: the bit widths are std.measure BitWidth and the dtype widths are
+// extdeps.safetensors.format's, so nothing here re-states "8 bits in a byte" or "4 bytes in an F32".
+// If this equals the header sum, the model of the layout is right at byte grain; if the group size
+// or the scalar count were wrong the two would differ, and the witness reads both.
+data nvfp4_per_projection_f32_scalars: Nat = 2
+
+fn nvfp4_expert_bytes_from_shape(s: GlmMoeDsaShape, q: ModeloptNvfp4Config) -> ByteSize {
+  let params = glm_5_3_routed_expert_params(s: s)
+  let value_bytes = (params * bit_width_count(b: q.weight_width)) / bits_per_byte()
+  let scale_bytes = (params / q.group_size) * byte_size_count(b: safetensors_dtype_byte_width(d: SafeF8E4M3))
+  let scalar_bytes = glm_5_3_routed_expert_projection_count() * nvfp4_per_projection_f32_scalars * byte_size_count(b: safetensors_dtype_byte_width(d: SafeF32))
+  byte_size(count: value_bytes + scale_bytes + scalar_bytes)
+}
+
+// GROUP SIZE READ OFF THE LAYOUT: input width divided by the scale tensor's inner dimension. For
+// gate_proj: hidden_size 6144 over 384 scale columns. A checkpoint whose config said 16 while its
+// scale tensors were shaped for 32 would fail this, which is the point of deriving it.
+fn nvfp4_group_size_from_layout(s: GlmMoeDsaShape) -> Nat? {
+  let scale = first(filter(nvfp4_representative_expert_entries, e =>
+    e.name as String == "model.layers.3.mlp.experts.0.gate_proj.weight_scale"))
+  match scale {
+    Absent => none
+    Present { value: e } =>
+      if length(e.shape) != 2 {
+        none
+      } else {
+        match first(e.shape.skip(n: 1)) {
+          Absent => none
+          Present { value: cols } => if cols == 0 { none } else { Present { value: s.hidden_size / cols } }
+        }
+      }
+  }
+}
+
+// ── THE ROUTED-EXPERT TOTAL, DERIVED AND MEASURED ────────────────────────────────────────────
+//
+// DERIVED: one expert's bytes, times the expert count, times the MoE layer count, all from the base
+// shape. MEASURED: every routed-expert tensor in all 47 headers, summed -- carried as a figure with
+// its instrument named, and equal to the derivation at byte grain (the witness reads both). The
+// nextn predictor layer (model.layers.78) also holds 256 experts, but they are in the ignore list
+// and stored bf16, so they are NOT in this total; they are the second figure below.
+fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize? {
+  let per_expert = byte_size_count(b: nvfp4_representative_expert_bytes())
+  match glm_5_3_moe_layer_count(s: s) {
+    Absent => none
+    Present { value: layers } => Present { value: byte_size(count: per_expert * s.n_routed_experts * layers) }
+  }
+}
+
+// THE ALL-SHARD PARTITION IS A REPORTED MEASUREMENT, AND ITS STANDING SAYS SO. The two totals below
+// were produced by a header census over all 47 shards that this repository does not execute: no
+// producer here fetches the headers, so a moved artifact would not redden them, and the witness that
+// compares the routed total with the shape-derived figure is a consistency check between one
+// authored number and one derivation -- it verifies neither, and the transcription is not an
+// oracle. That is the §4d transcribed standing, carried as such with the read obligation named --
+// an executing, content-addressed header-census producer over the pinned revision -- rather than a
+// `measured` label the corpus cannot back. The REPRESENTATIVE expert's twelve entries above are the
+// part that IS carried at the format's grain.
+type ReportedBytePartition sole_constructor {
+  routed_experts: ByteSize
+  nextn_layer: ByteSize
+  standing: CitedFigureStanding
+  read_by: NonEmptyStr
+}
+
+data nvfp4_reported_partition: ReportedBytePartition = ReportedBytePartition {
+  routed_experts: byte_size(count: 407686809600),
+  nextn_layer: byte_size(count: 19905841664),
+  standing: TranscribedUncited { read_obligation: "an executing header-census producer over the 47 safetensors shards at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a -- fetch each header by HTTP range, classify every entry by the quantization_config ignore classes, sum -- whose content-addressed output a witness would compare against the derivation. NO SUCH PRODUCER EXISTS IN THIS REPOSITORY TODAY: nothing here fetches headers, so the artifact moving under the pin does not redden anything, and the witness that reads this row is a consistency check between a derivation and a transcribed figure, not a verification of either" as NonEmptyStr },
+  read_by: "all 47 safetensors headers at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a, fetched by HTTP range on 2026-09-18; every entry named model.layers.\{3..77\}.mlp.experts.\{e\}.* summed for the routed-expert figure (232,385 entries total in the headers; 5,435,824,128 bytes in each of the 75 MoE layers), every entry named model.layers.78.* summed for the nextn figure (its 256 experts are bf16, 19,327,352,832 bytes of the 19,905,841,664). The remainder -- self_attn 26,137,084,416; shared_experts 5,662,310,400; embed_tokens plus lm_head 3,806,330,880; the three dense MLPs 1,358,954,496; router gates 236,006,400; norms 1,929,216 -- is bf16 or f32 and sums with these two to the headers' 464,795,267,072 payload bytes, which is the safetensors total of 464,823,042,096 less the 47 headers themselves" as NonEmptyStr,
+}
+
+// THE SHARE OF THE ARTIFACT THAT IS NVFP4, as a BasisPoint so a consumer can screen on it without a
+// float -- DERIVED from the modelled expert layout (one representative expert's header bytes, the
+// expert count and the MoE layer count) over the manifest's safetensors bytes, so it rests on
+// nothing transcribed. The scale is the basis-point unity std.measure owns, not a literal. An empty
+// manifest has no share and the fold refuses rather than divides.
+fn nvfp4_routed_experts_share(s: GlmMoeDsaShape, m: HubCheckpointManifest) -> BasisPoint? {
+  let total = byte_size_count(b: m.safetensors_bytes)
+  match nvfp4_routed_experts_total_bytes(s: s) {
+    Absent => none
+    Present { value: routed } => if total == 0 { none } else { Present { value: basis_point(count: (byte_size_count(b: routed) * basis_point_unity_count()) / total) } }
+  }
+}
+
+// WHAT THE REDISTRIBUTION COMPRESSED, in basis points of the base's native FP8 safetensors: the
+// 465 GB artifact against Z.ai's 756 GB one. This is the one place the base manifest is consumed,
+// and it is why the base module carries it.
+fn nvfp4_share_of_native() -> BasisPoint? {
+  let native = byte_size_count(b: glm_5_3_native_manifest.safetensors_bytes)
+  if native == 0 { none } else { Present { value: basis_point(count: (byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes) * basis_point_unity_count()) / native) } }
+}

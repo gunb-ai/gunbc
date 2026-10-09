@@ -100,16 +100,3 @@ test fn witness_red_global_get_argv_not_read_back_authority_holds() -> Bool {
   let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
   reconcile_read_back_argv(binding: binding) != shape_git_config_get_argv(key: core_hooks_path_key)
 }
-
-test fn witness_holds() -> Bool {
-  witness_desired_binding_count_holds()
-    && witness_converge_entry_is_declared()
-    && witness_empty_observed_reconcile_upserts_holds()
-    && witness_matching_observed_converged_holds()
-    && witness_read_back_all_desired_holds()
-    && witness_red_wrong_value_fails_read_back_holds()
-    && witness_red_wrong_value_not_converged_holds()
-    && witness_install_argv_uses_extdeps_shape_holds()
-    && witness_actuator_in_repo_argv_derives_from_extdeps_shape_holds()
-    && witness_red_global_get_argv_not_read_back_authority_holds()
-}

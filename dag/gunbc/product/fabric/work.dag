@@ -6,7 +6,7 @@ import product.fabric.envelope {
   ResourceEnvelope, CpuRequirement, MemoryRequirement,
 }
 
-import std.types { NonEmptyStr, List, String }
+import std.types { NonEmptyStr, List, String, brand }
 import std.nat { Nat }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.measure { HardwareThreadCount, hardware_thread_count_value, byte_size_count }

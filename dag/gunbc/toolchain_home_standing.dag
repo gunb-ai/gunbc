@@ -3,9 +3,10 @@ module gunbc.toolchain_home_standing
 import std.types { String, Bool, List }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
-  setup_rust_action, action_ref_eq
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression
 }
+import gunbc.action_use_admission { setup_rust_action }
+import extdeps.github.action_release { action_release_same_producer }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_rm_rustup_cargo_command,
   ci_isolate_echo_home_command,
@@ -102,7 +103,7 @@ fn step_installs_toolchain(step: Step) -> Bool {
   match step {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      action_ref_eq(a: u, b: setup_rust_action)
+      action_release_same_producer(a: u, b: setup_rust_action)
   }
 }
 

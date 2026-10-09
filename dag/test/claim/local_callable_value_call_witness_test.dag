@@ -1,0 +1,54 @@
+module test.claim.local_callable_value_call_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { total_blocking_count_for }
+
+// Enrolled controls for calling a LOCALLY BOUND function value (the extdeps.apple.app_attest
+// first_assertion_refusal idiom before gunbc#12251 rewrote it). The EXECUTION half -- one program
+// interpreted and emitted, built and run to the same line -- is
+// test.fixture.emitted_interpreted_parity local_callable_value_calls, receipted on
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target.
+//
+// Inference: a lambda parameter bound under a List<fn..> element is callable. v1.compiler.infer
+// child_type_node read an Arrow element's inferred slot, which is the arrow's RETURN, so the element
+// of List<fn(Int) -> Int> was Int and `r(1)` refused as "function 'r' not found in scope".
+//
+// Emission: a lambda literal in a List<fn..> is the arrow carrier, each bound at the rendered arrow
+// (a Vec of bare closures is E0308, and an `as` cast would type Some(7) as Option<i32>); a let-bound
+// lambda keeps a bare closure with TYPED parameters (an untyped `|x|` is E0282 at x.clone()).
+
+data fold_lambda_param_called_source: String = "module lcv_fold\n\nfn first_some(rs: List<fn() -> Int?>) -> Int? {\n  fold(rs, init: none, f: (acc, r) => match acc {\n    Present { value: a } => Present { value: a }\n    Absent => r()\n  })\n}\n"
+
+data unary_element_called_source: String = "module lcv_unary\n\nfn sum_applied(fs: List<fn(Int) -> Int>, v: Int) -> Int {\n  fold(fs, init: 0, f: (acc, f) => acc + f(v))\n}\n"
+
+data map_element_called_source: String = "module lcv_map\n\nfn run_all(rs: List<fn() -> Int>) -> List<Int> {\n  rs |> map(r => r())\n}\n"
+
+test fn a_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
+  total_blocking_count_for(source: fold_lambda_param_called_source) == 0
+}
+
+test fn a_unary_callable_element_is_callable() -> Bool {
+  total_blocking_count_for(source: unary_element_called_source) == 0
+}
+
+test fn a_map_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
+  total_blocking_count_for(source: map_element_called_source) == 0
+}
+
+test fn a_lambda_list_literal_realizes_each_element_at_the_arrow_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module lcvlist\n\nfn first_some(rs: List<fn() -> Int?>) -> Int? {\n  fold(rs, init: none, f: (acc, r) => match acc {\n    Present { value: a } => Present { value: a }\n    Absent => r()\n  })\n}\n\nfn pick() -> Int? {\n  first_some(rs: [fn() { none }, fn() { Present { value: 7 } }])\n}\n",
+    "src/lcvlist.rs",
+    ["{ let __callable: Rc<dyn Fn() -> Option<i64>> = { Rc::new(move || Some(7)) }; __callable }", "Option::None => r()"],
+    ["vec![||", "compile_error!"]
+  )
+}
+
+test fn a_let_bound_lambda_is_emitted_with_typed_parameters() -> Bool {
+  compile_dag_rust_emit_check(
+    "module lcvlet\n\nfn apply_it(g: fn(Int) -> Int, v: Int) -> Int {\n  g(v)\n}\n\nfn go() -> Int {\n  let h: fn(Int) -> Int = fn(x) { x * 2 }\n  h(3) + apply_it(g: h, v: 4)\n}\n",
+    "src/lcvlet.rs",
+    ["let h = |x: i64|", "h(3)"],
+    ["let h = |x| ", "compile_error!"]
+  )
+}

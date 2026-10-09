@@ -167,7 +167,6 @@ test fn sg_rc_f1_value_dual_boundary_holds() -> Bool {
 test fn sg_rc_f1_dual_boundary_holds() -> Bool {
   sg_rc_f1_rc_type_text() == sg_rc_expected_rc_diagnostics
     && sg_rc_f1_owned_type_text() == sg_rc_expected_owned_diagnostics
-    && sg_rc_f1_value_dual_boundary_holds()
 }
 
 test fn sg_rc_f2_return_value_holds() -> Bool {

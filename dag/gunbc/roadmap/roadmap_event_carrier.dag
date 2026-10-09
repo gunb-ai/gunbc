@@ -1,8 +1,35 @@
 module gunbc.roadmap.roadmap_event_carrier
 
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, GitRef }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileRead,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
+import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
+import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
+import gunbc.roadmap.roadmap_event_log {
+  roadmap_event_chain, roadmap_event_admitted_after,
+  EventPrincipal, AttemptResultOutcome, RoadmapResultBinding, roadmap_result_returned_event,
+  RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+}
+import gunbc.roadmap.roadmap_attempt_request_record {
+  AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
+  AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
+  attempt_request_binding_read_for_instance,
+}
+import extdeps.shell
+import gunbc.roadmap.roadmap_event_log { roadmap_event_heads, roadmap_history_unordered_reason, roadmap_issue_state }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
 import extdeps.git {
@@ -11,7 +38,7 @@ import extdeps.git {
   shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
 }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_roadmap_events_worktree, dashboard_instance_roadmap_events_worktree_under }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_event_log {
@@ -20,23 +47,12 @@ import gunbc.roadmap.roadmap_event_log {
   NodeStandingRow, RoadmapStandings, StandingsObserved, StandingsUnobserved, roadmap_node_standing,
 }
 
-// THE CARRIER IS TWO OPERATIONS AND NOTHING ELSE: append one event; read one node's events. Everything
-// about WHERE the events live is a realization behind those two, and this module holds the first one
-// -- a git branch, `roadmap-events`, checked out in a worktree of the instance's repository, one file
-// per event at events/<node>/<id>.json, pushed to origin on every append and fetched before every
-// read. It is the realization because git is what every host already has, it is auditable, and a
-// content-addressed file per event makes concurrent writers converge at the file level (two hosts
-// writing the same event write the same path with the same bytes). It is NOT the design: the model
-// (gunbc.roadmap.roadmap_event_log) knows nothing about branches, and a store or a stream realizes
-// the same two operations later without touching the fold (operator, 2026-09-05: this becomes a
-// widely distributed stateless service; the git ref must be a handler, not the shape).
-//
-// WHAT THIS REALIZATION REFUSES RATHER THAN HIDES. A push the remote rejects (another writer got
-// there first) is EventAppendRefused with the remote's words; the caller re-reads and appends again,
-// and because the event file is content-addressed the retry produces the same file, never a second
-// event. A read whose fetch fails is EventsReadRefused, never a stale set presented as current: the
-// last-fetched state is not "the events", it is "the events as of a fetch that may be old", and the
-// carrier has no way to say how old, so it says nothing.
+// The issue command boundary is carrier-independent. This Git realization publishes the issue
+// revision and operation receipt together with an exact remote-ref compare-and-swap. Each read
+// or append owns a private snapshot; fetching cannot reset another request's index or precondition.
+// A failed read remains a refusal. Publication conflicts never rebase a stale issue command.
+// Operation retries bind issue, principal, payload and original precondition, and recover the
+// committed event before checking the current revision. Timestamps are result data, not identity.
 data roadmap_events_branch: NonEmptyStr = "roadmap-events" as NonEmptyStr
 data roadmap_events_remote: String = "origin"
 data roadmap_events_dir_segment: String = "events"
@@ -47,14 +63,16 @@ type RoadmapEventCarrierLayout {
   worktree: FilePath
   git_program: String
   directory_program: String
+  remote: String
 }
 
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
 // instance root the worktree hangs under, and the host's git and directory (install) realizations.
 fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
   RoadmapEventCarrierLayout {
+    remote: if instance.instance_id == srv2_dashboard_preview_id { concat(instance.instance_root as String, "/ui-preview-events.git") } else { roadmap_events_remote },
     repo_root: instance.repo_root,
-    worktree: join([instance.instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: dashboard_instance_roadmap_events_worktree(instance: instance),
     git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
     directory_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
   }
@@ -62,8 +80,9 @@ fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) ->
 
 fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, git_program: String, directory_program: String) -> RoadmapEventCarrierLayout {
   RoadmapEventCarrierLayout {
+    remote: roadmap_events_remote,
     repo_root: repo_root,
-    worktree: join([instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: dashboard_instance_roadmap_events_worktree_under(instance_root: instance_root),
     git_program: git_program,
     directory_program: directory_program,
   }
@@ -117,11 +136,11 @@ fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEns
   if probe.success {
     CarrierReady
   } else {
-    match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_ls_remote_heads_args(remote: roadmap_events_remote, branch: roadmap_events_branch)) {
+    match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_ls_remote_heads_args(remote: layout.remote, branch: roadmap_events_branch)) {
       CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "ls-remote", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
       CarrierExecOk { stdout } =>
         if trim(stdout) != "" {
-          match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["fetch", roadmap_events_remote, join([roadmap_events_branch as String, ":", roadmap_events_branch as String], "")]) {
+          match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["fetch", layout.remote, join([roadmap_events_branch as String, ":", roadmap_events_branch as String], "")]) {
             CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "fetch-branch", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
             CarrierExecOk { stdout: _ } =>
               match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_worktree_add_branch_argv(path: layout.worktree, branch: roadmap_events_branch)) {
@@ -136,7 +155,7 @@ fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEns
               match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_checkout_orphan_args(branch: roadmap_events_branch)) {
                 CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "checkout-orphan", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
                 CarrierExecOk { stdout: _ } =>
-                  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rm", "-rfq", "--cached", "."]) {
+                  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rm", "-rfq", "--cached", "--ignore-unmatch", "."]) {
                     CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "orphan-unstage", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
                     CarrierExecOk { stdout: _ } =>
                       match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["clean", "-fdq"]) {
@@ -145,7 +164,7 @@ fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEns
                           match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_allow_empty_args(message: "roadmap events: root")) {
                             CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "root-commit", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
                             CarrierExecOk { stdout: _ } =>
-                              match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", roadmap_events_remote, roadmap_event_push_refspec()]) {
+                              match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", layout.remote, roadmap_event_push_refspec()]) {
                                 CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "root-push", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
                                 CarrierExecOk { stdout: _ } => CarrierReady
                               }
@@ -163,7 +182,7 @@ fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEns
 // to the remote branch. Local state that was never pushed is discarded here on purpose -- an event
 // that failed to publish is not part of the shared log, and the append reports that refusal itself.
 fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsure {
-  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["fetch", "-q", roadmap_events_remote, roadmap_events_branch as String]) {
+  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["fetch", "-q", layout.remote, roadmap_events_branch as String]) {
     CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "fetch", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
     CarrierExecOk { stdout: _ } =>
       match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["reset", "-q", "--hard", "FETCH_HEAD"]) {
@@ -173,45 +192,280 @@ fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsur
   }
 }
 
-fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent) -> RoadmapEventAppend {
-  let env = roadmap_event_envelope(e: event)
+// Every operation owns its worktree. A concurrent read cannot reset a writer's index or FETCH_HEAD.
+// The remote publication is conditional on the EXACT fetched commit, not merely fast-forward.
+// The issue-parent decision and operation receipt are made inside that same immutable snapshot.
+// A SNAPSHOT'S PATH SAYS WHOSE IT IS. Every private snapshot of one carrier layout is created at
+// stem, then a fixed-width structural digest of the layout's complete long-lived worktree path,
+// then a dot, then mktemp's suffix. The worktree path is per instance, so the namespace is per
+// instance. The digest is over the whole path and has one width, so two worktree paths that differ
+// anywhere have different namespaces, no namespace is a prefix of another, and an instance root of
+// any length costs the same one filename component.
+//
+// OWNERSHIP IS THE WHOLE SHAPE, not a prefix: a path is one of this layout's snapshots only when it
+// is the namespace followed by exactly the suffix mktemp writes in place of the template's
+// placeholder (roadmap_event_snapshot_path_owned). The census of one instance
+// (gunbc.roadmap.roadmap_event_snapshot_census) selects by that, so a worktree someone registered
+// at a longer path beginning with the namespace is not counted as a snapshot.
+data roadmap_event_snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
+data roadmap_event_snapshot_placeholder: String = "XXXXXXXXXX"
+
+fn roadmap_event_snapshot_namespace(layout: RoadmapEventCarrierLayout) -> String {
+  join([
+    roadmap_event_snapshot_stem,
+    content_hash_tagged_structural(tag: "roadmap-event-snapshot-namespace" as NonEmptyStr, payload: content_hash_atom(value: layout.worktree as String as NonEmptyStr)).digest as String,
+    ".",
+  ], "")
+}
+
+fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePath {
+  concat(roadmap_event_snapshot_namespace(layout: layout), roadmap_event_snapshot_placeholder) as FilePath
+}
+
+fn roadmap_event_snapshot_path_owned(namespace: String, path: String) -> Bool {
+  starts_with(s: path, prefix: namespace)
+    && string_length(s: path) == string_length(s: namespace) + string_length(s: roadmap_event_snapshot_placeholder)
+    && all((path |> chars).skip(n: string_length(s: namespace)), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+}
+
+type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }
+
+fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierSnapshot {
   match roadmap_event_carrier_ensure(layout: layout) {
-    CarrierEnsureRefused { step, reason } => EventAppendRefused { id: env.id, step: join(["ensure/", step], ""), reason: reason }
-    CarrierReady =>
-      match roadmap_event_carrier_sync(layout: layout) {
-        CarrierEnsureRefused { step, reason } => EventAppendRefused { id: env.id, step: join(["sync/", step], ""), reason: reason }
-        CarrierReady => {
-          let rel = roadmap_event_file_relative(node: event.node, id: env.id)
-          let path = join([layout.worktree as String, "/", rel], "")
-          let existing = Filesystem.Read(path: path)
-          if existing.success {
-            EventAlreadyPresent { id: env.id }
-          } else {
-            match carrier_exec_program(program: layout.directory_program, workdir: layout.worktree as String, args: ["-d", roadmap_event_node_dir(layout: layout, node: event.node)]) {
-              CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "mkdir", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
-              CarrierExecOk { stdout: _ } => {
-              let w = Filesystem.Write(path: path, content: roadmap_event_wire_text(env: env))
-              if !w.success {
-                EventAppendRefused { id: env.id, step: "write", reason: w.error }
-              } else {
-                match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_add_path_args(path: rel)) {
-                  CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "add", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
-                  CarrierExecOk { stdout: _ } =>
-                    match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_message_args(message: roadmap_event_commit_message(env: env))) {
-                      CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "commit", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
-                      CarrierExecOk { stdout: _ } =>
-                        match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", roadmap_events_remote, roadmap_event_push_refspec()]) {
-                          CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "push", reason: join(["the remote refused the push (exit ", to_string(value: exit_code), "); another writer may have appended first — re-read and append again: ", stderr], "") }
-                          CarrierExecOk { stdout: _ } => EventAppended { id: env.id }
-                        }
-                    }
-                }
+    CarrierEnsureRefused { step, reason } => CarrierSnapshotRefused { reason: concat(step, concat(": ", reason)) }
+    CarrierReady => {
+      let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))
+      if !temporary.success { CarrierSnapshotRefused { reason: "cannot create private event snapshot" } }
+      else { match carrier_exec(layout: layout, workdir: layout.repo_root as String,
+        args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"]) {
+        CarrierExecFailed { exit_code: _, stderr } => CarrierSnapshotRefused { reason: stderr }
+        CarrierExecOk { stdout: _ } => CarrierSnapshotReady { layout: RoadmapEventCarrierLayout {
+          remote: layout.remote, repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program } }
+      } }
+    }
+  }
+}
+
+// WHAT BECAME OF THE OPERATION'S PRIVATE SNAPSHOT. Not opened is an operation refused before a
+// snapshot existed, so there was nothing to remove. Closed is the worktree removed. Close failed is
+// a worktree the operation left behind, named with what the removal answered. It is a fact beside
+// the operation's result and never a rewrite of it: an event that was published stays published
+// whether or not its scratch worktree could be removed.
+type CarrierSnapshotClose
+  = SnapshotNotOpened
+  | SnapshotClosed
+  | SnapshotCloseFailed { worktree: FilePath, exit_code: Int, stderr: String }
+
+// EVERY SNAPSHOT-OWNING OPERATION ANSWERS WITH BOTH: its own result, unchanged, and the standing of
+// the snapshot it owned. The caller is the one that has a surface for a leaked worktree, so the
+// standing travels to it as a value; no carrier operation decides it is unimportant.
+type CarrierClosed<T> {
+  result: T
+  close: CarrierSnapshotClose
+}
+
+fn carrier_snapshot_close_of(layout: RoadmapEventCarrierLayout, removal: CarrierExec) -> CarrierSnapshotClose {
+  match removal {
+    CarrierExecOk { stdout: _ } => SnapshotClosed
+    CarrierExecFailed { exit_code, stderr } => SnapshotCloseFailed { worktree: layout.worktree, exit_code: exit_code, stderr: stderr }
+  }
+}
+
+// The sentence a caller with a text surface states, and none when there is nothing to state.
+fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
+  match close {
+    SnapshotNotOpened => none
+    SnapshotClosed => none
+    SnapshotCloseFailed { worktree, exit_code, stderr } =>
+      Present { value: join(["roadmap event snapshot worktree ", worktree as String, " was not removed (exit ", to_string(value: exit_code), "): ", trim(stderr)], "") }
+  }
+}
+
+fn carrier_snapshot_close_failures(closes: List<CarrierSnapshotClose>) -> List<String> {
+  fold(closes, init: [], f: (acc, c) => match carrier_snapshot_close_failure(close: c) {
+    Present { value: line } => concat(acc, [line])
+    Absent => acc
+  })
+}
+
+// A REPORT IS A TEXT SURFACE, so a leaked snapshot is stated on it after the report's own answer,
+// which is left exactly as it was.
+fn carrier_report_with_snapshot_close(text: String, close: CarrierSnapshotClose) -> String {
+  match carrier_snapshot_close_failure(close: close) {
+    Absent => text
+    Present { value: leak } => join([text, " [", leak, "]"], "")
+  }
+}
+
+fn roadmap_event_snapshot_close(layout: RoadmapEventCarrierLayout) -> CarrierSnapshotClose {
+  carrier_snapshot_close_of(layout: layout, removal: carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "remove", "--force", layout.worktree as String]))
+}
+
+// THE CLOSE IS TAKEN INSIDE A MATCH ON THE OPERATION'S OWN RESULT, in every snapshot-owning
+// operation below. The removal is therefore a dependency of the answer (the answer carries its
+// standing) and the operation's result is a dependency of the removal (the arm that removes exists
+// only once the result does), so the snapshot is removed after the operation and before the answer,
+// by construction and not by the order two independent bindings happen to be written in.
+fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, operation: String = "") -> CarrierClosed<RoadmapEventAppend> {
+  if operation != "" && !roadmap_operation_identity_valid(operation: operation) {
+    CarrierClosed { result: EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "operation-invalid", reason: "operation identity must be 1–128 URL-safe ASCII characters" }, close: SnapshotNotOpened }
+  } else {
+    match roadmap_event_private_snapshot(layout: layout) {
+      CarrierSnapshotRefused { reason } => CarrierClosed { result: EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+      CarrierSnapshotReady { layout: private } =>
+        match roadmap_event_append_private(layout: private, event: event, operation: operation) {
+          EventAppended { id } => CarrierClosed { result: EventAppended { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+          EventAlreadyPresent { id } => CarrierClosed { result: EventAlreadyPresent { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+          EventAppendRefused { id, step, reason } => CarrierClosed { result: EventAppendRefused { id: id, step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+        }
+    }
+  }
+}
+
+fn roadmap_operation_identity_valid(operation: String) -> Bool {
+  string_length(s: operation) > 0 && string_length(s: operation) <= 128
+    && all(operation |> chars, cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 95)
+}
+
+fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> String {
+  join(["operations/", event.node as String, "/", operation, ".json"], "")
+}
+
+// recorded_at belongs to the committed result, not the retry payload. Parent remains bound to
+// the original precondition; a key cannot be repurposed for a new command after a later event.
+fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
+  a.node == b.node && a.author == b.author && a.parent == b.parent && a.kind == b.kind
+}
+
+// The operation receipt is observed, not read-and-kind-matched: the old flow branched on the
+// host error's error_kind string ("not_found"), which breaks on every host phrasing. The
+// observation authority establishes absence from the listing, so a missing receipt is an
+// established fact (proceed with the append), a listed-but-unreadable receipt is a refusal that
+// says whether the operation already ran is UNKNOWN, and a readable receipt decodes.
+fn roadmap_event_append_after_no_operation_receipt(
+  layout: RoadmapEventCarrierLayout,
+  event: RoadmapEvent,
+  env: RoadmapEventEnvelope,
+  operation: String,
+  receipt_path: String,
+  expected_commit: String,
+) -> RoadmapEventAppend {
+  match roadmap_events_read_synced(layout: layout, node: event.node) {
+    EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
+    EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
+      else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
+        EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+      } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
+        EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
+      } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: expected_commit) }
+  }
+}
+
+fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, operation: String) -> RoadmapEventAppend {
+  let env = roadmap_event_envelope(e: event)
+  match roadmap_event_carrier_sync(layout: layout) {
+    CarrierEnsureRefused { step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
+    CarrierReady => match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+      CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: "snapshot-revision", reason: stderr }
+      CarrierExecOk { stdout: revision } => {
+        let receipt_path = roadmap_event_operation_path(event: event, operation: operation)
+        if operation == "" {
+          roadmap_event_append_after_no_operation_receipt(
+            layout: layout,
+            event: event,
+            env: env,
+            operation: operation,
+            receipt_path: receipt_path,
+            expected_commit: trim(revision),
+          )
+        } else {
+          match filesystem_file_observation_of_path(path: concat(layout.worktree as String, concat("/", receipt_path))) {
+            FilesystemFileRead { path: _, content } =>
+              match roadmap_event_decode(text: content) {
+                RoadmapEventUndecodable { reason } => EventAppendRefused { id: env.id, step: "operation-read", reason: reason }
+                RoadmapEventDecoded { envelope: previous } => if roadmap_event_same_command(a: previous.event, b: event) {
+                  let committed = Filesystem.Read(path: concat(layout.worktree as String, concat("/", roadmap_event_file_relative(node: previous.event.node, id: previous.id))))
+                  match filesystem_read_outcome(content: committed.content, success: committed.success, error: committed.error) {
+                    FilesystemReadRefused { error } =>
+                      EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the committed event at this operation's address could not be read, so whether the operation already ran is unknown: ", error], "") }
+                    FilesystemReadSucceeded { content: committed_text } => if committed_text == content { EventAlreadyPresent { id: previous.id } }
+                      else { EventAppendRefused { id: env.id, step: "operation-read", reason: "operation receipt has no matching committed event" } }
+                  }
+                } else { EventAppendRefused { id: env.id, step: "operation-conflict", reason: "operation identity already belongs to another issue/principal/payload/precondition" } }
               }
-            }
-            }
+            FilesystemFileAbsent(_) =>
+              roadmap_event_append_after_no_operation_receipt(
+                layout: layout,
+                event: event,
+                env: env,
+                operation: operation,
+                receipt_path: receipt_path,
+                expected_commit: trim(revision),
+              )
+            FilesystemFileIndeterminate { cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt could not be observed, so whether the operation already ran is unknown: ", cause], "") }
+            FilesystemFileObservationsDisagree { path: _, cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt observation is self-contradictory, so whether the operation already ran is unknown: ", cause], "") }
+            FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt path was refused before any filesystem call ran: ", cause], "") }
           }
         }
       }
+    }
+  }
+}
+
+fn roadmap_event_parent_admitted(event: RoadmapEvent, envelopes: List<RoadmapEventEnvelope>) -> Bool {
+  match roadmap_history_unordered_reason(envs: envelopes) {
+    Present { value: _ } => false
+    Absent =>
+      if any(envelopes, e => e.event.node != event.node) { false }
+      else {
+        let readable = match roadmap_event_heads(envs: envelopes).first() {
+          Absent => CasReadableAbsent
+          Present { value: head } => CasReadablePresent { version: CasSlotVersion {
+            generation: count(envelopes), content: content_hash_of_value(value: head.id as NonEmptyStr), value: head.id } }
+        }
+        match event.parent {
+          Absent => cas_expectation_admits(expected: ExpectSlotAbsent, readable: readable)
+          Present { value: expected } => match filter(envelopes, e => e.id == expected).first() {
+            Absent => false
+            Present { value: previous } => cas_expectation_admits(expected: ExpectSlotGeneration {
+              generation: count(roadmap_event_chain(envs: envelopes, head: previous, budget: count(envelopes))) }, readable: readable)
+          }
+        }
+      }
+  }
+}
+
+fn roadmap_event_publish_private(layout: RoadmapEventCarrierLayout, env: RoadmapEventEnvelope,
+  operation: String, receipt_path: String, expected_commit: String) -> RoadmapEventAppend {
+  let rel = roadmap_event_file_relative(node: env.event.node, id: env.id)
+  match carrier_exec_program(program: layout.directory_program, workdir: layout.worktree as String,
+    args: ["-d", roadmap_event_node_dir(layout: layout, node: env.event.node), concat(layout.worktree as String, concat("/operations/", env.event.node as String))]) {
+    CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: "mkdir", reason: stderr }
+    CarrierExecOk { stdout: _ } => {
+      let written = Filesystem.Write(path: concat(layout.worktree as String, concat("/", rel)), content: roadmap_event_wire_text(env: env))
+      let recorded = if operation == "" { written.success } else { Filesystem.Write(path: concat(layout.worktree as String, concat("/", receipt_path)), content: roadmap_event_wire_text(env: env)).success }
+      if !written.success || !recorded { EventAppendRefused { id: env.id, step: "write", reason: "event or operation receipt write refused" } }
+      else { match carrier_exec(layout: layout, workdir: layout.worktree as String, args: concat(["add", "--", rel], if operation == "" { [] } else { [receipt_path] })) {
+        CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: "add", reason: stderr }
+        CarrierExecOk { stdout: _ } => match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_message_args(message: roadmap_event_commit_message(env: env))) {
+          CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: "commit", reason: stderr }
+          CarrierExecOk { stdout: _ } => match carrier_exec(layout: layout, workdir: layout.worktree as String,
+            args: ["push", "-q", concat("--force-with-lease=refs/heads/roadmap-events:", expected_commit), layout.remote, "HEAD:refs/heads/roadmap-events"]) {
+            CarrierExecFailed { exit_code: _, stderr } => match carrier_exec(layout: layout, workdir: layout.worktree as String,
+              args: shape_git_ls_remote_heads_args(remote: layout.remote, branch: roadmap_events_branch)) {
+              CarrierExecOk { stdout: current } => EventAppendRefused { id: env.id,
+                step: if trim(current) != "" && !starts_with(s: current, prefix: concat(expected_commit, "\t")) { "revision-conflict" } else { "publication-refused" },
+                reason: concat("conditional publication refused; retry using the same operation identity: ", stderr) }
+              CarrierExecFailed { exit_code: _, stderr: _ } => EventAppendRefused { id: env.id, step: "publication-refused", reason: stderr }
+            }
+            CarrierExecOk { stdout: _ } => EventAppended { id: env.id }
+          }
+        }
+      } }
+    }
   }
 }
 
@@ -225,7 +479,10 @@ type EventFileRead
 fn roadmap_events_decode_all(node: RoadmapNodeId, dir: String, names: List<String>) -> RoadmapEventsRead {
   let reads = map(filter(names, n => ends_with(s: n, suffix: ".json")), n => {
     let r = Filesystem.Read(path: join([dir, "/", n], ""))
-    if r.success { EventFileContent { content: r.content } } else { EventFileUnreadable { detail: r.error } }
+    match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+      FilesystemReadSucceeded { content } => EventFileContent { content: content }
+      FilesystemReadRefused { error } => EventFileUnreadable { detail: error }
+    }
   })
   roadmap_events_decode_reads(node: node, reads: reads)
 }
@@ -243,7 +500,7 @@ fn roadmap_events_decode_reads(node: RoadmapNodeId, reads: List<EventFileRead>) 
   }
 }
 
-fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+fn roadmap_events_read_private(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => EventsReadRefused { node: node, step: join(["ensure/", step], ""), reason: reason }
     CarrierReady =>
@@ -252,7 +509,7 @@ fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -
         CarrierReady => {
           let dir = roadmap_event_node_dir(layout: layout, node: node)
           let listing = Filesystem.List(path: dir)
-          if !listing.success {
+          if !listing.success && listing.error_kind != "not_found" { EventsReadRefused { node: node, step: "list", reason: listing.error } } else if !listing.success {
             EventsRead { node: node, envelopes: [] }
           } else {
             roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
@@ -265,7 +522,15 @@ fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -
 // EVERY NODE'S STANDING IN ONE SYNC: one fetch, then one fold per node directory. The belt's served
 // observation reads this on every tick so the board shows the log without a merge; a carrier that
 // cannot be reached is StandingsUnobserved with the step that failed, never an empty roster.
-fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+fn roadmap_standing_rows_of_reads(reads: List<RoadmapEventsRead>) -> List<NodeStandingRow> {
+  fold(reads, init: [], f: (acc, r) => match r {
+    EventsRead { node, envelopes } => { let state = roadmap_issue_state(envs: envelopes)
+      concat(acc, [NodeStandingRow { node_id: node as String, standing: state.standing, assignment: state.assignment }]) }
+    EventsReadRefused { node: _, step: _, reason: _ } => acc
+  })
+}
+
+fn roadmap_standings_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["ensure/", step, ": ", reason], "") }
     CarrierReady =>
@@ -274,17 +539,15 @@ fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> RoadmapStandings
         CarrierReady => {
           let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
           let listing = Filesystem.List(path: root)
-          if !listing.success {
+          if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
             StandingsObserved { rows: [] }
           } else {
             let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
             let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
             match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
               Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
-              _ => StandingsObserved { rows: fold(reads, init: [], f: (acc, r) => match r {
-                EventsRead { node, envelopes } => concat(acc, [NodeStandingRow { node_id: node as String, standing: roadmap_node_standing(envs: envelopes) }])
-                EventsReadRefused { node: _, step: _, reason: _ } => acc
-              }) }
+              Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+              Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
             }
           }
         }
@@ -296,9 +559,190 @@ fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> RoadmapStandings
 fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
   let dir = roadmap_event_node_dir(layout: layout, node: node)
   let listing = Filesystem.List(path: dir)
-  if !listing.success {
+  if !listing.success && listing.error_kind != "not_found" { EventsReadRefused { node: node, step: "list", reason: listing.error } } else if !listing.success {
     EventsRead { node: node, envelopes: [] }
   } else {
     roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
+  }
+}
+
+// EVERY EVENT ACROSS EVERY NODE IN ONE SYNC — one fetch, then one read per node directory, the
+// envelopes concatenated (each envelope carries its own node). The assignment field's recently-used
+// derivation consumes this feed; a refusal on any node's read refuses the whole read, because one
+// damaged directory must never silently narrow the population.
+type RoadmapAllEventsRead
+  = AllEventsRead { envelopes: List<RoadmapEventEnvelope> }
+  | AllEventsReadRefused { step: String, reason: String }
+
+// THE PURE COMPOSITION, so the witness drives it with constructed per-node reads: the first refusal
+// refuses the whole (named by node and step), else the envelopes concatenate in node order.
+fn roadmap_envelopes_of_reads(reads: List<RoadmapEventsRead>) -> List<RoadmapEventEnvelope> {
+  fold(reads, init: [], f: (acc, r) => match r {
+    EventsRead { node: _, envelopes } => concat(acc, envelopes)
+    EventsReadRefused { node: _, step: _, reason: _ } => acc
+  })
+}
+
+fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEventsRead {
+  match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+    Present { value: EventsReadRefused { node, step, reason } } =>
+      AllEventsReadRefused { step: join(["node ", node as String, " ", step], ""), reason: reason }
+    Present { value: EventsRead { node: _, envelopes: _ } } => AllEventsRead { envelopes: roadmap_envelopes_of_reads(reads: reads) }
+    Absent => AllEventsRead { envelopes: roadmap_envelopes_of_reads(reads: reads) }
+  }
+}
+
+// Every node's events from a worktree the caller already synced: the one walk both the all-events
+// read and the bound result append decide over.
+fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success && listing.error_kind != "not_found" { AllEventsReadRefused { step: "list", reason: listing.error } } else if !listing.success {
+    AllEventsRead { envelopes: [] }
+  } else {
+    let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
+  }
+}
+
+fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["sync/", step], ""), reason: reason }
+        CarrierReady => {
+          roadmap_events_read_all_synced(layout: layout)
+        }
+      }
+  }
+}
+
+fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> CarrierClosed<RoadmapEventsRead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: EventsReadRefused { node: node, step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_events_read_private(layout: private, node: node) {
+        EventsRead { node: read_node, envelopes } => CarrierClosed { result: EventsRead { node: read_node, envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
+        EventsReadRefused { node: read_node, step, reason } => CarrierClosed { result: EventsReadRefused { node: read_node, step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
+  }
+}
+
+fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapStandings> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: StandingsUnobserved { reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_standings_read_private(layout: private) {
+        StandingsObserved { rows } => CarrierClosed { result: StandingsObserved { rows: rows }, close: roadmap_event_snapshot_close(layout: private) }
+        StandingsUnobserved { reason } => CarrierClosed { result: StandingsUnobserved { reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
+  }
+}
+
+fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_events_read_all_private(layout: private) {
+        AllEventsRead { envelopes } => CarrierClosed { result: AllEventsRead { envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
+        AllEventsReadRefused { step, reason } => CarrierClosed { result: AllEventsReadRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
+  }
+}
+
+// WHOSE RESULT THIS IS, DERIVED FROM THE ATTEMPT'S OWN RECORD AND NOTHING THE CALLER SAYS. Given the
+// issue and the attempt and what the attempt's create-only request record reads as, the identity a
+// result is written under is established or refused. Established carries the claim THE RECORD
+// names; there is no parameter through which a claim could be offered, so a result for attempt K
+// cannot be addressed to any claim but the one K recorded at launch. An attempt with no record, an
+// autonomous one, and a record that cannot be read have no claim to answer and refuse, each by
+// name.
+type RoadmapResultAuthority
+  = ResultAuthorityEstablished { binding: RoadmapResultBinding }
+  | ResultAuthorityRefused { step: String, reason: String }
+
+fn roadmap_result_authority_of_record(node: RoadmapNodeId, attempt: String, record: AttemptRequestBindingRead) -> RoadmapResultAuthority {
+  if attempt == "" {
+    ResultAuthorityRefused { step: "result-attempt", reason: "the attempt has no key, so no request record can be read for it" }
+  } else {
+    match record {
+      RequestBindingRead { binding: RequestClaimBound { claim } } =>
+        ResultAuthorityEstablished { binding: RoadmapResultBinding { node: node, attempt: attempt as NonEmptyStr, claim: claim } }
+      RequestBindingRead { binding: RequestAutonomous } =>
+        ResultAuthorityRefused { step: "result-binding", reason: join(["attempt ", attempt, " of issue ", node as String, " was launched autonomously; it has no request to answer"], "") }
+      RequestBindingAbsent =>
+        ResultAuthorityRefused { step: "result-binding", reason: join(["attempt ", attempt, " of issue ", node as String, " has no request record, so the claim a result must name is not established"], "") }
+      RequestBindingUnreadable { reason } =>
+        ResultAuthorityRefused { step: "result-binding", reason: join(["the request record of attempt ", attempt, " of issue ", node as String, " cannot be read: ", reason], "") }
+    }
+  }
+}
+
+// WHAT THE BOUND APPEND ANSWERS. Its own type, because a refusal reached before the claim is derived
+// has no event to name: appended and already-present name the result event; refused names the step
+// and the reason.
+type RoadmapResultAppend
+  = ResultAppended { id: RoadmapEventId }
+  | ResultAppendAlreadyPresent { id: RoadmapEventId }
+  | ResultAppendRefused { step: String, reason: String }
+
+fn roadmap_result_append_of(append: RoadmapEventAppend) -> RoadmapResultAppend {
+  match append {
+    EventAppended { id } => ResultAppended { id: id }
+    EventAlreadyPresent { id } => ResultAppendAlreadyPresent { id: id }
+    EventAppendRefused { id: _, step, reason } => ResultAppendRefused { step: step, reason: reason }
+  }
+}
+
+// THE BOUND RESULT APPEND: the one way a ResultReturned reaches the log. The caller names the issue
+// and the attempt and supplies the outcome. It supplies neither an event nor a claim. Inside ONE
+// private snapshot the effect reads the attempt's own create-only request record and derives the
+// claim from it (roadmap_result_authority_of_record), reads the whole log,
+// roadmap_bound_result_admission decides over it (no result for the attempt on any other issue,
+// none that differs on this one, the claim a Claimed on this issue's history, a single head), the
+// event is built from that derived identity and chained on the head the snapshot read, and it is
+// published against that exact commit. A log that moved between the read and the publish is
+// refused by the same conditional push as any append. The snapshot is closed inside a match on the
+// append's own result, and its standing is answered beside that result (roadmap_event_append).
+fn roadmap_bound_result_append(instance: HostDashboardInstance, node: RoadmapNodeId, attempt: String, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String) -> CarrierClosed<RoadmapResultAppend> {
+  match roadmap_event_private_snapshot(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: ResultAppendRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_bound_result_append_private(instance: instance, layout: private, node: node, attempt: attempt, outcome: outcome, author: author, recorded_at: recorded_at) {
+        ResultAppended { id } => CarrierClosed { result: ResultAppended { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+        ResultAppendAlreadyPresent { id } => CarrierClosed { result: ResultAppendAlreadyPresent { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+        ResultAppendRefused { step, reason } => CarrierClosed { result: ResultAppendRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
+  }
+}
+
+fn roadmap_bound_result_append_private(instance: HostDashboardInstance, layout: RoadmapEventCarrierLayout, node: RoadmapNodeId, attempt: String, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String) -> RoadmapResultAppend {
+  match roadmap_result_authority_of_record(node: node, attempt: attempt, record: attempt_request_binding_read_for_instance(instance: instance, node_id: node, attempt_key: attempt)) {
+    ResultAuthorityRefused { step, reason } => ResultAppendRefused { step: step, reason: reason }
+    ResultAuthorityEstablished { binding } =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => ResultAppendRefused { step: step, reason: reason }
+        CarrierReady => match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+          CarrierExecFailed { exit_code: _, stderr } => ResultAppendRefused { step: "snapshot-revision", reason: stderr }
+          CarrierExecOk { stdout: revision } =>
+            match roadmap_events_read_all_synced(layout: layout) {
+              AllEventsReadRefused { step, reason } => ResultAppendRefused { step: step, reason: reason }
+              AllEventsRead { envelopes } =>
+                match roadmap_bound_result_admission(envs: envelopes, binding: binding, outcome: outcome) {
+                  ResultNotAdmitted { step, reason } => ResultAppendRefused { step: step, reason: reason }
+                  ResultAlreadyOnLog { id } => ResultAppendAlreadyPresent { id: id }
+                  ResultAdmitted { parent } =>
+                    roadmap_result_append_of(append: roadmap_event_publish_private(
+                      layout: layout,
+                      env: roadmap_event_envelope(e: roadmap_result_returned_event(binding: binding, outcome: outcome, author: author, parent: parent, recorded_at: recorded_at)),
+                      operation: "",
+                      receipt_path: "",
+                      expected_commit: trim(revision),
+                    ))
+                }
+            }
+        }
+      }
   }
 }

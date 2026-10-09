@@ -1,7 +1,6 @@
 module extdeps.git.inspect
 
 import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -149,12 +148,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // later stage -- and it carries the object id, so a population read out of a revision can name each
 // member by content identity instead of by path alone.
 //
+// ListTreeEntryAtPath is the same record for ONE path: a consumer that needs one file's mode and
+// object id at a revision asks for that path rather than enumerating the tree.
+//
 // BOTH OPERATIONS SURVIVE. A consumer that only needs paths pays neither the wider output nor the
 // parse, and asking for identity when you wanted names is the same collapse ResolveRefCommit and
 // ShowTree are kept apart to prevent. The record separator is NUL and the fields are separated by
 // SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
 // quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
 // invents.
+// HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex and IgnoredAgainstIndex TRUST THE REPOSITORY
+// THEY ARE ASKED ABOUT, for their own invocation only: `-c safe.directory=<repository_path>` beside
+// `-C <repository_path>`, the same words extdeps.git git_in_trusted_repository_args builds for the
+// transported legs. Their one consumer reads a deployed tree another principal owns, which git
+// otherwise refuses as dubious ownership; the trust is derived from the input path, so it can name
+// neither a different repository nor the wildcard, and nothing is written to any config.
+//
 // git.Inspect.ReadTreeIntoIndex IS NOT readonly, AND THE THREE NEIGHBOURS AROUND IT ARE. read-tree
 // WRITES the index file GIT_INDEX_FILE names; the repository's own index is untouched, which is why
 // StatusAgainstIndex and IgnoredAgainstIndex stay readonly, but the scratch index is a file the
@@ -164,6 +173,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // every observer of that release and never removed (PR #10696).
 service git.Inspect {
   operation Toplevel {
+    requires none
     input {}
     output { path: FilePath from "stdout" }
     readonly
@@ -178,6 +188,7 @@ service git.Inspect {
   }
 
   operation HeadCommit {
+    requires none
     input {}
     output {
       sha: CommitSha from "stdout"
@@ -192,6 +203,7 @@ service git.Inspect {
   }
 
   operation WorkingTreeStatus {
+    requires opaque
     input { repository_path: String }
     output {
       entries_nul: String from "stdout"
@@ -210,6 +222,7 @@ service git.Inspect {
   }
 
   operation HeadCommitIn {
+    requires none
     input { repository_path: String }
     output {
       sha: String from "stdout"
@@ -217,7 +230,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "HEAD"] }
+    transport shell { argv: ["git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "rev-parse", "HEAD"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -228,12 +241,13 @@ service git.Inspect {
   }
 
   operation ReadTreeIntoIndex {
+    requires opaque
     input { repository_path: String, revision_hex: String, index_path: String }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -244,6 +258,7 @@ service git.Inspect {
   }
 
   operation StatusAgainstIndex {
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       entries_nul: String from "stdout"
@@ -251,7 +266,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -262,6 +277,7 @@ service git.Inspect {
   }
 
   operation IgnoredAgainstIndex {
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       paths_nul: String from "stdout"
@@ -269,7 +285,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -280,6 +296,7 @@ service git.Inspect {
   }
 
   operation IgnoredFiles {
+    requires opaque
     input {}
     output {
       paths_nul: String from "stdout"
@@ -298,6 +315,7 @@ service git.Inspect {
   }
 
   operation MergeBase {
+    requires opaque
     input { repository_path: String, left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -315,6 +333,7 @@ service git.Inspect {
   }
 
   operation ListTreePathsAtRevision {
+    requires opaque
     input { ref: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -330,6 +349,7 @@ service git.Inspect {
   }
 
   operation ListTreeEntriesAtRevision {
+    requires opaque
     input { ref: GitRef }
     output {
       entries_nul: String from "stdout"
@@ -344,7 +364,24 @@ service git.Inspect {
     }
   }
 
+  operation ListTreeEntryAtPath {
+    requires opaque
+    input { ref: GitRef, path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-z", "{ref}", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation GrepMatchesAtRevision {
+    requires opaque
     input { pattern: String, ref: GitRef, pathspec: String }
     output {
       matches: String from "stdout"
@@ -361,6 +398,7 @@ service git.Inspect {
   }
 
   operation ResolveRefCommit {
+    requires opaque
     input { ref: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -376,6 +414,7 @@ service git.Inspect {
   }
 
   operation GrepFixedAtRevision {
+    requires opaque
     input { pattern: String, ref: GitRef }
     output {
       paths: String from "stdout"
@@ -392,6 +431,7 @@ service git.Inspect {
   }
 
   operation ShowTree {
+    requires opaque
     input { ref: GitRef }
     output {
       tree: String from "stdout"
@@ -407,6 +447,7 @@ service git.Inspect {
   }
 
   operation ConfigGet {
+    requires none
     input { key: String }
     output {
       value: String from "stdout"
@@ -423,6 +464,7 @@ service git.Inspect {
   }
 
   operation MergeTreeWriteTree {
+    requires opaque
     input { left: GitRef, right: GitRef }
     output {
       stdout: String from "stdout"

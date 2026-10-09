@@ -1,7 +1,11 @@
 module extdeps.docker.cli
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
+import std.measure { Second, second, second_count, ByteSize, byte_size_count }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -23,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // docker 29.2.1 on the Sparks (2026-09-05). The program is spelled absolute because a systemd
 // ExecStart= requires an absolute path and the same argv is what the unit renders.
-data docker_binary_path: NonEmptyStr = "/usr/bin/docker" as NonEmptyStr
+fn docker_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/docker" as NonEmptyStr)
 
 type DockerRestartPolicy = RestartNo | RestartUnlessStopped | RestartAlways | RestartOnFailure
 
@@ -86,59 +90,180 @@ fn docker_mount_flag(m: DockerMount) -> List<String> {
   }
 }
 
+// THE WORD SHAPES, ONE AUTHORITY. docker create's structured renderer and the raw word-list
+// renderers (the GLM native arm's systemd Exec line) must spell a device mapping, a capability
+// and the memlock ulimit identically; extracted 2026-09-17 when the native arm took the RoCE
+// collective-transport plan and would otherwise have re-typed the three literals.
+fn docker_memlock_unlimited_words() -> List<String> { ["--ulimit", "memlock=-1:-1"] }
+
+fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
+  ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
+}
+
+fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
+
+// ── ONE CONTAINER PLAN, TWO VERB PROJECTIONS ─────────────────────────────────────────────────
+//
+// A CONTAINER IS CREATED TWO WAYS IN THIS FLEET AND THEY ARE THE SAME CONTAINER. The relaunch
+// transaction runs `docker create` then `docker start`, because it needs a handle it can rename and
+// restore; a systemd unit runs `docker run --rm` in the foreground, because a unit stays active
+// exactly while its exec does. Those are two REALIZATION handlers for one plan (DESIGN section 3:
+// transport is a handler bound to a shape, never a fork of the shape), so the flags they spell come
+// from one body here and neither may hand-assemble its own.
+//
+// WHAT THIS CLOSED. Until 2026-09-18 the GLM native arm's systemd unit built its own word list, and
+// the two renderings of ONE Group-B launch had already drifted on three fields -- the create spec
+// carried a --shm-size the unit did not, the two read their environment values from different
+// authorities, and only the unit declared the usage-stats reporter off. Nothing could report the
+// disagreement, because there was no shared value for a comparison to be against.
+//
+// THE RESTART FLAG IS THE ONE FIELD THE TWO PROJECTIONS DO NOT SHARE, and it is a refusal rather
+// than an omission. `docker run --rm` conflicts with a restart policy: under systemd the supervisor
+// IS systemd, so the container's own policy must be RestartNo, and a spec asking for anything else
+// has asked for two supervisors. Dropping the field silently would be exactly the widen DESIGN
+// section 5 forbids.
+fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
+  [
+    "--name", spec.name as String,
+    "--network", docker_namespace_mode_wire(m: spec.network) as String,
+    "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
+    "--shm-size", to_string(spec.shm_size_bytes),
+  ]
+}
+
+fn docker_container_resource_flags(spec: DockerCreateSpec) -> List<String> {
+  concat(
+    concat(
+      concat(
+        if spec.memlock_unlimited { docker_memlock_unlimited_words() } else { [] },
+        if spec.gpus_all { ["--gpus", "all"] } else { [] },
+      ),
+      flat_map(spec.devices, d => docker_device_words(d: d)),
+    ),
+    concat(
+      flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
+      concat(
+        flat_map(spec.mounts, m => docker_mount_flag(m: m)),
+        flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+      ),
+    ),
+  )
+}
+
+fn docker_container_image_and_command(spec: DockerCreateSpec) -> List<String> {
+  concat([spec.image as String], spec.command)
+}
+
 fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
       concat(
-        concat(
-          concat(
-            [
-              "create",
-              "--name", spec.name as String,
-              "--network", docker_namespace_mode_wire(m: spec.network) as String,
-              "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
-              "--shm-size", to_string(spec.shm_size_bytes),
-              "--restart", docker_restart_policy_wire(p: spec.restart) as String,
-            ],
-            if spec.memlock_unlimited { ["--ulimit", "memlock=-1:-1"] } else { [] },
-          ),
-          if spec.gpus_all { ["--gpus", "all"] } else { [] },
-        ),
-        flat_map(spec.devices, d => ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]),
+        concat(["create"], docker_container_identity_flags(spec: spec)),
+        ["--restart", docker_restart_policy_wire(p: spec.restart) as String],
       ),
-      concat(
-        flat_map(spec.cap_add, c => ["--cap-add", c as String]),
-        concat(
-          flat_map(spec.mounts, m => docker_mount_flag(m: m)),
-          flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
-        ),
-      ),
+      docker_container_resource_flags(spec: spec),
     ),
-    concat([spec.image as String], spec.command),
+    docker_container_image_and_command(spec: spec),
   )
 }
 
+type DockerForegroundRun
+  = DockerForegroundRunArgv { argv: List<String> }
+  | DockerForegroundRunRefused { cause: NonEmptyStr }
+
+fn docker_run_foreground_argv(spec: DockerCreateSpec) -> DockerForegroundRun {
+  match spec.restart {
+    RestartNo => DockerForegroundRunArgv {
+      argv: concat(
+        concat(
+          concat(
+            [docker_program().invocation as String, "run", "--rm"],
+            docker_container_identity_flags(spec: spec),
+          ),
+          docker_container_resource_flags(spec: spec),
+        ),
+        docker_container_image_and_command(spec: spec),
+      ),
+    }
+    RestartUnlessStopped => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+    RestartAlways => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+    RestartOnFailure => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+  }
+}
+
+fn docker_foreground_restart_refusal(p: DockerRestartPolicy) -> NonEmptyStr {
+  join([
+    "a foreground `docker run --rm` cannot carry the restart policy `",
+    docker_restart_policy_wire(p: p) as String,
+    "`: --rm and --restart conflict, and a container supervised by a unit manager must leave restart to it",
+  ], "") as NonEmptyStr
+}
+
 fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: docker_create_arguments(spec: spec))
+  argv_command(program: docker_program(), arguments: docker_create_arguments(spec: spec))
 }
 
 fn docker_start_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["start", name as String])
+  argv_command(program: docker_program(), arguments: ["start", name as String])
 }
 
 fn docker_remove_force_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["rm", "-f", name as String])
+  argv_command(program: docker_program(), arguments: ["rm", "-f", name as String])
 }
 
-fn docker_stop_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["stop", name as String])
+// ── STOP, AND WHY THE GRACE PERIOD IS A PARAMETER RATHER THAN THE DAEMON'S DEFAULT ────────────
+//
+// `docker stop` WITHOUT `-t` GIVES THE PROCESS TEN SECONDS AND THEN SIGKILLs IT. For a shell that is
+// ample; for a tensor-parallel inference engine holding several tens of gigabytes of device memory
+// across four hosts it is not, and a rank killed mid-teardown leaves its peers waiting on a
+// collective that will never complete. The relaunch procedure this fleet actually performed used
+// `-t 30`, so the grace period is a value the caller states rather than one the daemon chooses.
+//
+// The `docker stop -t` flag takes SECONDS, which is why the parameter is a Second rather than a bare
+// Nat: a caller cannot hand it a millisecond figure and get a container killed three hundred times
+// too early.
+fn docker_stop_command(name: NonEmptyStr, grace: Second) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["stop", "-t", to_string(second_count(s: grace)), name as String])
+}
+
+// ── RENAME, WHICH IS HOW A CONTAINER IS PRESERVED RATHER THAN DESTROYED ───────────────────────
+//
+// THE OLD CONTAINER OBJECT IS THE ROLLBACK RECORD, and it is the only complete one: it carries the
+// exact argv, environment, mounts, device mappings and ulimits the daemon was given, in the daemon's
+// own accounting, with no transcription step that could lose a field. A `docker rm` followed by a
+// recreate-from-model would replace that record with this repository's belief about it -- and a
+// belief that was missing three fields is precisely what put this fleet on TCP for two and a half
+// days. So the incumbent is renamed aside and left on the host.
+fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["rename", name as String, new_name as String])
+}
+
+// ── LOGS ──────────────────────────────────────────────────────────────────────────────────────
+//
+// THE WHOLE LOG, BECAUSE THE LINES THAT MATTER ARE AT THE BEGINNING. NCCL announces the network it
+// built once per communicator init, during startup, and the engine prints its KV residuals a few
+// seconds later; `--tail` returns the END of the stream, so a tailed read of a long-running engine
+// returns steady-state request logging and no announcement at all -- and the reader would then
+// report "no transport announced" for a rank that announced one perfectly well. No bounded arm is
+// offered, because an arm nothing constructs is a decoration that will be reached for by the next
+// author who wants the cheap read and does not know why it is the wrong one.
+//
+// THIS IS AN UNBOUNDED READ AND THAT IS A DECLARED COST, not an oversight: an engine logging at INFO
+// with NCCL_DEBUG=INFO produces a stream whose size grows with uptime, and this command transfers all
+// of it. TRIGGER for bounding it: a `--since`/`--until` window derived from the container's own
+// `State.StartedAt`, which extdeps.docker.container_inspect already decodes -- that needs instant
+// arithmetic over extdeps.time.rfc3339 (add a duration to a captured instant), which std does not
+// carry today. SUFFICIENT FOR: reading the startup announcement of a container that has been up for
+// weeks without transferring its steady-state log.
+fn docker_logs_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["logs", name as String])
 }
 
 // `docker exec` runs argv inside a running container; env assignments ride `--env`, never the
 // container's baked environment, so the caller decides every value the process sees.
 fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: List<String>) -> ArgvCommand {
   argv_command(
-    program: docker_binary_path,
+    program: docker_program(),
     arguments: concat(
       concat(["exec"], flat_map(env, e => ["--env", join([e.name as String, "=", e.value], "")])),
       concat([name as String], argv),
@@ -147,7 +272,7 @@ fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: 
 }
 
 fn docker_build_command(tag: NonEmptyStr, context_dir: FilePath) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["build", "--tag", tag as String, context_dir as String])
+  argv_command(program: docker_program(), arguments: ["build", "--tag", tag as String, context_dir as String])
 }
 
 // A BUILD IS NOT ALWAYS A TAG AND A DIRECTORY. docker_build_command above is the whole invocation for
@@ -200,7 +325,7 @@ fn docker_build_spec_arguments(spec: DockerBuildSpec) -> List<String> {
 }
 
 fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
+  argv_command(program: docker_program(), arguments: docker_build_spec_arguments(spec: spec))
 }
 
 // THE TWO QUESTIONS A CONVERGENT BUILD ASKS ARE ONE QUESTION. Does this exact tag already name an
@@ -214,7 +339,21 @@ fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
 // identity readback is docker_image_inspect_command, a different symbol with a different
 // absence contract (inspect exits non-zero when the object is missing).
 fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
+  argv_command(program: docker_program(), arguments: ["images", "--no-trunc", "--quiet", image as String])
+}
+
+// SAVE AND LOAD ARE THE IMAGE'S BYTE TRANSPORT BETWEEN HOSTS THAT SHARE NO REGISTRY. `docker save
+// -o <path> <image>` writes the image and its metadata as a tar; `docker load -i <path>` reads it
+// back and preserves the image's config digest, which is what makes the delivered identity
+// checkable against the source's readback rather than against the tar's name. Modeled when the
+// GLM derived image needed to leave its build host (2026-09-17): the fleet runs no registry, and
+// rebuilding per host re-pays a two-hour compile for a fact one host already holds.
+fn docker_image_save_command(image: NonEmptyStr, output_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["save", "-o", output_path as String, image as String])
+}
+
+fn docker_image_load_command(input_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["load", "-i", input_path as String])
 }
 
 // DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
@@ -230,7 +369,7 @@ fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
 // docker_image_inspect_names_no_such_image, a typed refusal, not empty stdout. Callers that need
 // empty-means-absent stay on docker_image_digest_command.
 fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["image", "inspect", image as String])
+  argv_command(program: docker_program(), arguments: ["image", "inspect", image as String])
 }
 
 // CONTAINER INSPECT, the container-object sibling of docker_image_inspect_command
@@ -239,12 +378,72 @@ fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
 // naming "No such container" when the reference names nothing. No --format, for the same
 // portable-word reason as the image form. The argv and the sudoers Cmnd_Spec that authorizes it are
 // the same words, so a grantee rendering both reads this one function.
+// THE RUNNING CONTAINERS SELECTED BY ONE `docker ps` FILTER, one container id per line (`docker ps
+// --filter <key>=<value> --quiet`): empty output is "no such running container". `docker ps` lists
+// RUNNING containers only, which is the question a quiescence reading asks; a stopped container is
+// not a residual realization of an effect. Two filters this repository asks by: `name=<name>`
+// (docker's name filter is an unanchored regular expression, so it matches any running container
+// whose name contains the text -- wider than exact, and the wider reading is the safe one for a
+// residue question) and `ancestor=<image>` (containers created from that image reference, for an
+// effect that starts an unnamed container). `--quiet` rather than a `--format` template because
+// the argv crosses an ssh leg whose portable word alphabet has no braces.
+// A THIRD FILTER, `label=<key>=<value>`, selects the containers an effect created and marked, and no
+// others: an image filter also matches every other container started from the same image, which is
+// the wrong population once serving and a probe share an image on one host.
+type DockerPsFilter
+  = DockerPsByName { name: NonEmptyStr }
+  | DockerPsByAncestor { image: NonEmptyStr }
+  | DockerPsByLabel { label: DockerLabel }
+
+// docker run --label <key>=<value> (docs.docker.com/reference/cli/docker/container/run/#label).
+type DockerLabel { key: NonEmptyStr, value: NonEmptyStr }
+
+fn docker_label_wire(l: DockerLabel) -> String {
+  join([l.key as String, "=", l.value as String], "")
+}
+
+fn docker_ps_filter_wire(f: DockerPsFilter) -> String {
+  match f {
+    DockerPsByName { name: n } => join(["name=", n as String], "")
+    DockerPsByAncestor { image: i } => join(["ancestor=", i as String], "")
+    DockerPsByLabel { label: l } => join(["label=", docker_label_wire(l: l)], "")
+  }
+}
+
+fn docker_ps_running_command(filter: DockerPsFilter) -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
+}
+
+// EVERY RUNNING CONTAINER, UNFILTERED (`docker ps --no-trunc`, docs.docker.com/reference/cli/docker/
+// container/ls/): the default table -- id, image, command, created, status, ports, names -- with no
+// field cut short. It is an OBSERVATION's read, for a reader that must see what runs before it can
+// name it; an effect that asks about one container asks by filter above.
+fn docker_ps_running_all_command() -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["ps", "--no-trunc"])
+}
+
 fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["container", "inspect", name as String])
+  argv_command(program: docker_program(), arguments: ["container", "inspect", name as String])
 }
 
 fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "No such image")
+}
+
+// THE DAEMON'S OWN WORDS FOR "THAT NAME IS NOT TAKEN", AND WHY THE DISTINCTION IS LOAD-BEARING.
+// `docker container inspect` exits non-zero for a container that does not exist AND for a daemon that
+// could not be reached, a socket permission failure, and a document this side could not parse. A
+// caller asking "is this name free" and reading any non-zero exit as "free" has answered yes for
+// every one of those -- which is the absorbing arm of DESIGN section 5 in the one place it costs an
+// outage, because the caller then renames onto a name that was taken and finds out after stopping
+// the thing it was protecting.
+//
+// SO THE MARKER IS CITED RATHER THAN THE EXIT CODE. This is the same shape as the image reader above
+// and carries the same limitation honestly: it is a string upstream prints, not a typed error code
+// the API surfaces, so a wording change upstream turns a free-name answer into an unread one -- which
+// is the safe direction, because an unread name refuses.
+fn docker_container_inspect_names_no_such_container(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "No such container")
 }
 
 type DockerImageInspectIdRead
@@ -296,6 +495,95 @@ fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRe
   }
 }
 
+// THE IMAGE'S SIZE, READ OFF THE SAME INSPECT DOCUMENT AS ITS Id. `Size` is the image's total
+// uncompressed layer bytes (docs.docker.com/reference/api/engine/version/v1.47/#tag/Image/operation/ImageInspect:
+// "Total size of the image including all layers it is composed of"), a JSON integer. It is what a
+// `docker save` tar of the image carries, give or take the tar's own headers and the config and
+// manifest members, and what a `docker load` on a host holding none of its layers writes -- so it is
+// the byte requirement a byte transport between daemons states before moving anything. A member that
+// is absent, duplicated, not an integer or negative is Unreadable, never a zero.
+type DockerImageInspectSizeRead
+  = DockerImageInspectSize { bytes: Int }
+  | DockerImageInspectSizeUnreadable { cause: String }
+
+fn docker_image_inspect_size_from_stdout(stdout: String) -> DockerImageInspectSizeRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageInspectSizeUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Size") {
+            JsonMemberAbsent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON names no Size" }
+            JsonMemberNotAnObject => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageInspectSizeUnreadable { cause: join(["docker image inspect JSON names Size ", to_string(n), " times"], "") }
+            JsonMemberFound { value: sv } =>
+              match sv {
+                JsonNumber { lexeme: l } =>
+                  match parse_int(s: l) {
+                    Absent => DockerImageInspectSizeUnreadable { cause: join(["docker image inspect Size is not an integer: ", l], "") }
+                    Present { value: n } =>
+                      if n < 0 {
+                        DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is negative" }
+                      } else {
+                        DockerImageInspectSize { bytes: n }
+                      }
+                  }
+                JsonNull => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonBool { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonString { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonArray { elements: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonObject { members: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+              }
+          }
+      }
+  }
+}
+
+// THE DAEMON'S DATA ROOT, WHERE `docker load` WRITES LAYERS, READ FROM THE DAEMON. dockerd's
+// --data-root defaults to /var/lib/docker (docs.docker.com/reference/cli/dockerd/) and daemon.json can
+// move it, so the default is not a reading: a free-space read of the default path on a host whose
+// root moved answers for the wrong filesystem. `docker info` with no template prints the server's
+// state as text, one ` Docker Root Dir: <path>` line among them
+// (docs.docker.com/reference/cli/docker/system/info/); no --format, for the portable-word reason
+// docker_image_inspect_command states. A document with no such line, two of them, or a value that is
+// not an absolute path is Unreadable -- never the default.
+fn docker_info_command() -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["info"])
+}
+
+data docker_info_root_dir_label: String = "Docker Root Dir:"
+
+type DockerRootDirRead
+  = DockerRootDir { path: NonEmptyStr }
+  | DockerRootDirUnreadable { cause: String }
+
+fn docker_info_root_dir_from_stdout(stdout: String) -> DockerRootDirRead {
+  let values = flat_map(split(s: stdout, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: docker_info_root_dir_label) {
+      [trim(s: substring(s: t, start: docker_info_root_dir_label.length(), end: t.length()))]
+    } else {
+      [] as List<String>
+    }
+  })
+  if count(values) != 1 {
+    DockerRootDirUnreadable { cause: join(["docker info names the Docker Root Dir ", to_string(count(values)), " times"], "") }
+  } else {
+    match first(values) {
+      Absent => DockerRootDirUnreadable { cause: "docker info names no Docker Root Dir" }
+      Present { value: v } =>
+        if starts_with(s: v, prefix: "/") {
+          DockerRootDir { path: v as NonEmptyStr }
+        } else {
+          DockerRootDirUnreadable { cause: join(["docker info's Docker Root Dir is not an absolute path: ", v], "") }
+        }
+    }
+  }
+}
+
 // THE CONTAINER'S TWO IDENTITY FIELDS, AND NOTHING ELSE OFF THE INSPECT OBJECT. `docker container
 // inspect` returns the whole object extdeps.docker.container_inspect ContainerInspect models,
 // including Config.Env, whose values can carry secrets. This reader takes exactly .Id -- the full
@@ -319,6 +607,75 @@ fn docker_inspect_nonempty_string_member(obj: JsonValue, key: String) -> String?
       let text = json_string_value_or_empty(v: v)
       if text == "" { none } else { Present { value: text } }
     }
+  }
+}
+
+// THE EFFECTIVE ENVIRONMENT IS A SEPARATE, NAMED DISCLOSURE. The identity reader above takes .Id
+// and .Image and nothing else; this reader takes .Config.Env -- the assignment list docker exec
+// hands the container's process -- because the serving route's telemetry obligation
+// (gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation) is
+// dischargeable only by a reading of the environment of the container that ANSWERED, and the
+// inspect leg already returns this document under the same per-container grant. The disclosure is
+// stated here rather than hidden in a generic parse: Config.Env can carry secrets in the general
+// case, so this reader is for containers whose environment this repository itself declares, and it
+// returns the assignments as opaque NAME=value strings -- classification of any one of them is the
+// consumer's cited reading (extdeps.vllm.usage_stats vllm_usage_stats_assignment_disables), not
+// this module's guess.
+type DockerContainerInspectEnvRead
+  = DockerContainerInspectEnv { assignments: List<String> }
+  | DockerContainerInspectEnvUnreadable { cause: String }
+
+// A null Env is docker's spelling of an empty one (the daemon emits "Env": null when a container
+// was created with no environment), so null reads as the empty list rather than as unreadable.
+fn docker_inspect_string_list_member(obj: JsonValue, key: String) -> List<String>? {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberNotAnObject => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => Present { value: [] as List<String> }
+        JsonArray { elements: es } =>
+          if all(es, e => match e {
+            JsonString { value: _ } => true
+            JsonNull => false
+            JsonBool { value: _ } => false
+            JsonNumber { lexeme: _ } => false
+            JsonArray { elements: _ } => false
+            JsonObject { members: _ } => false
+          }) {
+            Present { value: map(es, e => json_string_value_or_empty(v: e)) }
+          } else {
+            none
+          }
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn docker_container_inspect_env_from_stdout(stdout: String) -> DockerContainerInspectEnvRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerContainerInspectEnvUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Config") {
+            JsonMemberAbsent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON names no Config" }
+            JsonMemberNotAnObject => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerContainerInspectEnvUnreadable { cause: join(["docker container inspect JSON names Config ", to_string(n), " times"], "") }
+            JsonMemberFound { value: config } =>
+              match docker_inspect_string_list_member(obj: config, key: "Env") {
+                Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON Config.Env is not a string list" }
+                Present { value: assignments } => DockerContainerInspectEnv { assignments: assignments }
+              }
+          }
+      }
   }
 }
 
@@ -385,14 +742,27 @@ fn docker_short_mount_flag(m: DockerMount) -> List<String> {
 // .../v41_capability_probe.py`. A question about what an image CONTAINS is not a question its
 // entrypoint is equipped to answer, so the caller supplies the program and the image supplies only
 // the filesystem.
-fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
+// docker run --memory <bytes> --memory-swap <bytes> (docs.docker.com/engine/containers/resource_constraints/):
+// the container's memory cgroup is capped at the limit, and setting --memory-swap to the same value
+// grants it no swap, so a runaway is OOM-killed inside its own cgroup rather than pressing the host.
+fn docker_memory_limit_flags(limit: ByteSize?) -> List<String> {
+  match limit {
+    Absent => [] as List<String>
+    Present { value: b } => ["--memory", to_string(byte_size_count(b: b)), "--memory-swap", to_string(byte_size_count(b: b))]
+  }
+}
+
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, labels: List<DockerLabel>, memory_limit: ByteSize?, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
   argv_command(
-    program: docker_binary_path,
+    program: docker_program(),
     arguments: concat(
       concat(
         concat(
-          concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
-          flat_map(mounts, m => docker_short_mount_flag(m: m)),
+          concat(
+            concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
+            flat_map(mounts, m => docker_short_mount_flag(m: m)),
+          ),
+          concat(flat_map(labels, l => ["--label", docker_label_wire(l: l)]), docker_memory_limit_flags(limit: memory_limit)),
         ),
         ["--entrypoint", entrypoint as String],
       ),
@@ -402,5 +772,5 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 }
 
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
+  argv_command(program: docker_program(), arguments: ["image", "pull", image as String])
 }

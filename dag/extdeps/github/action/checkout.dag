@@ -1,0 +1,51 @@
+module extdeps.github.action.checkout
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// actions/checkout releases this repository has read.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/checkout"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.checkout",
+      decl_name: "checkout_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data checkout_v4_4_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "checkout", tag: "v4.4.0", commit: "11d5960a326750d5838078e36cf38b85af677262"
+}
+
+data checkout_v5_1_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "checkout", tag: "v5.1.0", commit: "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-09-18.
+data checkout_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: checkout_v4_4_0,
+    declared: JavaScriptAction { node_major: 20 },
+  },
+  ActionManifestReading {
+    action_release: checkout_v5_1_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+]

@@ -43,7 +43,7 @@ fn probe_repo() -> NonEmptyStr {
 // The argv builders read only `locus.repo`, so a witness can exercise them through a locus whose
 // transport is never used. Nothing here reaches a host.
 fn probe_revision_words() -> List<String> {
-  ["git", "-C", probe_repo() as String, "rev-parse", "HEAD"]
+  ["git", "-c", join(["safe.directory=", probe_repo() as String], ""), "-C", probe_repo() as String, "rev-parse", "HEAD"]
 }
 
 data probe_index_path: String = "/tmp/gunbc-deployed-tree-index-probe-attempt"
@@ -51,7 +51,7 @@ data probe_index_path: String = "/tmp/gunbc-deployed-tree-index-probe-attempt"
 fn probe_status_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
-    "git", "-C", probe_repo() as String, "--no-optional-locks",
+    "git", "-c", join(["safe.directory=", probe_repo() as String], ""), "-C", probe_repo() as String, "--no-optional-locks",
     "status", "--porcelain=v1", "-z", "--untracked-files=all",
   ]
 }
@@ -59,7 +59,7 @@ fn probe_status_words() -> List<String> {
 fn probe_ignored_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
-    "git", "-C", probe_repo() as String,
+    "git", "-c", join(["safe.directory=", probe_repo() as String], ""), "-C", probe_repo() as String,
     "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]
 }
@@ -67,7 +67,7 @@ fn probe_ignored_words() -> List<String> {
 fn probe_read_tree_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
-    "git", "-C", probe_repo() as String, "read-tree", "--no-sparse-checkout",
+    "git", "-c", join(["safe.directory=", probe_repo() as String], ""), "-C", probe_repo() as String, "read-tree", "--no-sparse-checkout",
     "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
   ]
 }
@@ -456,4 +456,19 @@ test fn witness_a_never_attempted_leg_does_not_read_as_a_host_failure() -> Bool 
   string_contains(s: text, pattern: "never attempted")
     && string_contains(s: text, pattern: "no credential")
     && !string_contains(s: text, pattern: "ran and failed")
+}
+
+// THE TRUST IS THE REPOSITORY ASKED ABOUT, NOT A PATH THE BUILDER KNOWS. A second repository gets its
+// own `safe.directory=` word, so a trust hard-coded to the probe path, or widened to the wildcard,
+// reds here while the probe-path witnesses above stay green.
+test fn witness_every_leg_trusts_exactly_the_repository_it_names() -> Bool {
+  let other = "/srv/another-checkout" as NonEmptyStr
+  let trust = join(["safe.directory=", other as String], "")
+  let legs = [
+    deployed_tree_revision_argv(repo: other),
+    deployed_tree_read_tree_argv(repo: other, revision_hex: "abc", index_path: probe_index_path),
+    deployed_tree_status_argv(repo: other, index_path: probe_index_path),
+    deployed_tree_ignored_argv(repo: other, index_path: probe_index_path),
+  ]
+  all(legs, argv => any(argv, w => w == trust) && !any(argv, w => w == "safe.directory=*") && !any(argv, w => w == join(["safe.directory=", probe_repo() as String], "")))
 }

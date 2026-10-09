@@ -1,18 +1,20 @@
 module gunbc.runner_connectivity_recovery
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
-import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
+import gunbc.runner_slot_allocation { runner_label_sets_equal }
+import gunbc.runner_registration_labels {
+  runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
+}
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
   process_identity_eq,
   RunnerSlotIdentity,
   ProcessIdentity,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_broker_progress_watchdog {
   RunnerRemoteRegistration,
   RunnerRemoteOnline,
@@ -51,7 +53,7 @@ import gunbc.runner_broker_progress_watchdog {
   runner_broker_progress_silence_bound_seconds,
 }
 
-data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
+data runner_connectivity_recovery_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is
 // the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived
@@ -589,12 +591,24 @@ fn plan_slot_connectivity_action(
   )
 }
 
+// THE DESIRED SIDE IS THE SLOT'S OWN REGISTRATION LABELS (platform, class and the host it runs
+// on), compared as a SET: order is not a fact GitHub schedules on, and a successor that registered
+// under another host's label is not this slot's runner.
+// A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
+// fails the postcondition rather than accepting whatever the successor registered with.
+fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
+  match runner_slot_labels_conform(slot: slot, observed: observed) {
+    RegistrationLabelsConform => true
+    RegistrationLabelsDiverge => false
+    RegistrationLabelsUnjudged { host: _, cause: _ } => false
+  }
+}
+
 fn verify_incarnation_replace_postcondition(
   slot: RunnerSlotIdentity,
   prior: RunnerLocalIncarnation,
   after_local: RunnerLocalObservation,
   after_remote: RunnerRemoteObservation,
-  expected_labels: List<String>,
 ) -> IncarnationReplacePostcondition {
   if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
@@ -611,7 +625,7 @@ fn verify_incarnation_replace_postcondition(
       Present { value: reg } =>
         match reg {
           RunnerRemoteOnline { runner_name: name, labels: labels } =>
-            if labels == expected_labels {
+            if replace_successor_labels_conform(slot: slot, observed: labels) {
               ReplaceVerified {
                 slot: slot,
                 prior: prior,

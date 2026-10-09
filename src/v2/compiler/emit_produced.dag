@@ -1,20 +1,28 @@
 module v2.compiler.emit_produced
 
-import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
-import v2.compiler.target_carriers { target_source_medium }
+import std.types { List }
+import v2.compiler.target_serialize { target_bundle_optional_child, target_serialize_bodied_arrow_from_model }
+import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   ProducedDeclWired,
   TargetModel,
   produced_decl_render_from_rows,
   render_target_text,
-  target_model_with_produced_scaffold
+  target_atom_type_spelling,
+  target_model_with_produced_scaffold,
+  TargetTypeExprAtom,
+  TargetTypeExpression,
+  target_type_expr_declaration_reference_emitted,
+  target_type_expression_spelling,
+  type_expression_projection_from_target,
+  BoundToken,
+  FixedToken
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.algebra { fold_list, FreeMonoid, list_append, list_snoc_item }
-import std.algebra { Cons, Empty }
+import v2.std.collection { Absent, Present, list_at_optional, map_get }
+import v2.std.algebra { contains, fold_list, FreeMonoid }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -28,8 +36,15 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Conj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
-import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }
+import v2.std.integer { Int }
 import v2.std.text { String }
 
 fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -40,13 +55,27 @@ fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
+fn emit_produced_decl_not_conj_refusal(decl: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+    )
+  }
+}
+
 fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
   match decl.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: decl.children, index: 0) {
         Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            Authored { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            StructuralLabel { label: _ } =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
             Positional =>
               Rejected {
                 diagnostics: diagnostics_singleton(
@@ -61,12 +90,12 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
             )
           }
       }
-    _ =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
+    TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Cardinality } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
+    ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
 }
 
@@ -98,11 +127,17 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 // variables from a declared parameter type, not from a field-access scrutinee.
 fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: _ } =>
+    Authored { name: _ } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } => true
-        _ => false
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -136,6 +171,290 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
   produced_decl_conjs_in_children(children: root.children, acc: Empty)
 }
 
+
+
+// EVERY DIRECT MEMBER OF A MODULE BODY HAS EXACTLY ONE TARGET REALIZATION OR ONE TYPED REFUSAL.
+// The class is decided once, here, from the member's own declaration edge and its module's declaration
+// facts -- never from target syntax and never by filtering: a member no class renders refuses the whole
+// module, located at that member, so `fn add` beside an unrenderable declaration is never published
+// alone. A bodied Arrow renders through the target's produced-declaration rows (emit_produced_decl); a
+// coproduct (a plain Disj, which only a coproduct lowers to) and a record (a plain Conj its module's
+// declaration kinds call DeclaredRecord) render through v2.compiler.emit_semantic_decl
+// emit_semantic_type_decl; a where-refinement (DeclaredRefinement) takes its own class. The kinds are
+// v2.compiler.normalized_tree NormalizedTree type_declaration_kinds, one coproduct value per declaration,
+// so a member has one kind or none. A plain Conj with none -- a payload-bearing single variant shares
+// that shape after lowering -- is UNDECIDED and refuses; reading the kind back from the lowered shape or
+// its labels would be the heuristic the captured kind exists to replace. An alias, a bodyless declaration and a generic declaration
+// refuse under their own reasons: no target realization exists for them yet.
+type ModuleMemberClass
+  = ModuleMemberBodiedArrow
+  | ModuleMemberBodylessArrow
+  | ModuleMemberCoproduct { name: Symbol, coproduct: Node }
+  | ModuleMemberRecord { name: Symbol, record: Node }
+  | ModuleMemberRefinement { name: Symbol, refinement: Node }
+  | ModuleMemberRecordOrRefinement
+  | ModuleMemberAlias
+  | ModuleMemberOpaque
+  | ModuleMemberGeneric
+  | ModuleMemberUnsupported
+
+fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
+  match edge.label {
+    StructuralLabel { label: _ } => ModuleMemberUnsupported
+    Positional => ModuleMemberUnsupported
+    Authored { name: n } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          match find_arrow_body_child(root: edge.target) {
+            Accepted { value: _, diagnostics: _ } => ModuleMemberBodiedArrow
+            Rejected { diagnostics: _ } => ModuleMemberBodylessArrow
+          }
+        _ =>
+          match type_decl_view(target: edge.target) {
+            TypeAlias { binders: _, aliased: _ } => ModuleMemberAlias
+            OpaqueTypeDecl { binders: _ } => ModuleMemberOpaque
+            GenericTypeDecl { binders: _, member: _ } => ModuleMemberGeneric
+            PlainTypeDecl { member: m } =>
+              match m.kind {
+                TypeNode { connective: Disj } => ModuleMemberCoproduct { name: n, coproduct: m }
+                TypeNode { connective: Conj } =>
+                  module_member_conj_class(name: n, member: m, kinds: kinds)
+                _ => ModuleMemberUnsupported
+              }
+          }
+      }
+  }
+}
+
+// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so. A
+// resource has no target realization, so its member refuses as unsupported at the member.
+fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
+  fold_list(
+    xs: kinds,
+    empty: ModuleMemberRecordOrRefinement,
+    cons: fn(acc, k) {
+      match acc {
+        ModuleMemberRecordOrRefinement =>
+          match k {
+            DeclaredRecord { name: r } =>
+              if r == name { ModuleMemberRecord { name: name, record: member } } else { acc }
+            DeclaredRefinement { name: r } =>
+              if r == name { ModuleMemberRefinement { name: name, refinement: member } } else { acc }
+            DeclaredResource { name: r } =>
+              if r == name { ModuleMemberUnsupported } else { acc }
+          }
+        _ => acc
+      }
+    }
+  )
+}
+
+// A WHERE-REFINEMENT DECLARATION THROUGH THE TARGET'S OWN REALIZATION ROW (target_model_edge_
+// refinement_declaration; Rust's is a transparent alias, v2.extdeps.languages.rust
+// rust_refinement_declaration_realization_node). The fold supplies only what the declaration states --
+// its name and its carrier -- and the row supplies every token class; the carrier is spelled by the one
+// type resolver (produced_type_binding), so no target spelling is written here. A target declaring no
+// row refuses emit_module_member_refinement_not_realized at the member; so does a refinement whose
+// carrier edge is missing or whose carrier the target cannot spell. Rows are read from the base target,
+// as the atom realizations are (the partition's augmented bundle is not their host).
+fn emit_refinement_declaration(
+  name: Symbol,
+  refinement: Node,
+  target: TargetModel,
+  realization_host: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: target_bundle_optional_child(target: realization_host, edge_name: ^target_model_edge_refinement_declaration),
+    f: fn(row_optional) {
+      match row_optional {
+        Absent => emit_module_member_refused(reason: ^emit_module_member_refinement_not_realized, at: refinement)
+        Present { value: row } =>
+          bind_outcome(
+            o: refinement_declaration_row_classes(row: row),
+            f: fn(classes) {
+              bind_outcome(
+                o: named_child_outcome(node: refinement, name: ^dag_surface_type_expr, missing: ^emit_module_member_refinement_carrier_absent),
+                f: fn(carrier) {
+                  if refinement_carrier_is_unlowered(carrier: carrier) {
+                    emit_module_member_refused(reason: ^emit_module_member_refinement_carrier_unlowered, at: carrier)
+                  } else {
+                  let resolve_type = produced_type_binding(target: realization_host)
+                  bind_outcome(
+                    o: resolve_type(carrier),
+                    f: fn(carrier_binding) {
+                      serialize_concrete_syntax_tokens_to_source(
+                        target: target,
+                        tokens: [
+                          FixedToken { token_class: classes.keyword },
+                          BoundToken { token_class: classes.name, binding: name },
+                          FixedToken { token_class: classes.assign },
+                          BoundToken { token_class: classes.name, binding: carrier_binding },
+                          FixedToken { token_class: classes.terminator }
+                        ]
+                      )
+                    }
+                  )
+                  }
+                }
+              )
+            }
+          )
+      }
+    }
+  )
+}
+
+// A REFINEMENT'S CARRIER MUST BE A LOWERED TYPE. The production route lowers it (a module member's
+// where-refinement emits `type Pos = i32;` in v2.test.claim.emit.module_member_emission); a carrier that
+// is still a parse-production shell refuses under its own reason rather than as an unrealized type, so the
+// refusal says what is missing.
+fn refinement_carrier_is_unlowered(carrier: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: carrier) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+type RefinementDeclarationClasses {
+  keyword: Symbol
+  name: Symbol
+  assign: Symbol
+  terminator: Symbol
+}
+
+// Each field the row must name, read as one token-class atom; a missing, duplicated or non-atom field
+// refuses emit_module_member_refinement_realization_malformed, located at the row.
+fn refinement_declaration_row_classes(row: Node) -> Outcome<RefinementDeclarationClasses> {
+  bind_outcome(
+    o: refinement_row_class(row: row, field: ^refinement_declaration_field_keyword),
+    f: fn(keyword) {
+      bind_outcome(
+        o: refinement_row_class(row: row, field: ^refinement_declaration_field_name),
+        f: fn(name_class) {
+          bind_outcome(
+            o: refinement_row_class(row: row, field: ^refinement_declaration_field_assign),
+            f: fn(assign) {
+              bind_outcome(
+                o: refinement_row_class(row: row, field: ^refinement_declaration_field_terminator),
+                f: fn(terminator) {
+                  outcome_accepted(value: RefinementDeclarationClasses { keyword: keyword, name: name_class, assign: assign, terminator: terminator })
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn refinement_row_class(row: Node, field: Symbol) -> Outcome<Symbol> {
+  bind_outcome(
+    o: named_child_outcome(node: row, name: field, missing: ^emit_module_member_refinement_realization_malformed),
+    f: fn(t) {
+      match t.kind {
+        TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+        _ => outcome_rejected(d: emit_produced_decl_diagnostic(reason: ^emit_module_member_refinement_realization_malformed, node: row))
+      }
+    }
+  )
+}
+
+// The one child a row or member names (v2.std.node_query named_child_lookup); missing or duplicated
+// refuses with the caller's reason, located at the node.
+fn named_child_outcome(node: Node, name: Symbol, missing: Symbol) -> Outcome<Node> {
+  match named_child_lookup(root: node, name: name) {
+    NamedChildFound { target: t } => outcome_accepted(value: t)
+    NamedChildMissing => outcome_rejected(d: emit_produced_decl_diagnostic(reason: missing, node: node))
+    NamedChildAmbiguous => outcome_rejected(d: emit_produced_decl_diagnostic(reason: missing, node: node))
+  }
+}
+
+fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String>> {
+  outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
+}
+
+fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
+  match module_member_class(edge: edge, kinds: kinds) {
+    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host)
+    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target, realization_host: realization_host)
+    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target, realization_host: realization_host)
+    ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
+    ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
+    ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
+    ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
+    ModuleMemberOpaque => emit_module_member_refused(reason: ^emit_module_member_opaque_not_realized, at: edge.target)
+    ModuleMemberGeneric => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+    ModuleMemberUnsupported => emit_module_member_refused(reason: ^emit_module_member_unsupported, at: edge.target)
+  }
+}
+
+fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
+  match edge.label {
+    Authored { name: n } => n == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+// A module body's members in source order: its direct children, less the production marker the graft
+// stamps on every body. Never a recursive walk -- a record's fields, a coproduct's alternatives and an
+// arrow body's inner arrows are not module members.
+fn module_body_member_edges(body: Node) -> List<Edge> {
+  fold(body.children, init: [], f: fn(acc, e) {
+    if produced_module_edge_is_production_marker(edge: e) { acc } else { list_snoc_item(xs: acc, item: e) }
+  })
+}
+
+fn module_bodies_in_tree(node: Node, acc: List<Node>) -> List<Node> {
+  if namespace_graft_node_is_module_body(node: node) {
+    list_snoc_item(xs: acc, item: node)
+  } else {
+    fold(node.children, init: acc, f: fn(a, e) { module_bodies_in_tree(node: e.target, acc: a) })
+  }
+}
+
+// A TREE IS RENDERED AS A MODULE WHEN IT HOLDS AT LEAST ONE MODULE BODY AND EVERY BODY DECLARES AT
+// LEAST ONE MEMBER. Whether each member RENDERS is not asked here: the member fold below is the one
+// authority for that, and it refuses on the first member it cannot realize, so there is no preflight
+// classifier beside the renderer to disagree with it. A module declaring nothing keeps the other
+// route, where the type-expression translate refuses it typed and located
+// (`translate_module_not_a_type_expression`) rather than publishing zero bytes as a program -- the
+// absence v2.compiler.self_host.candidate_generation refuses as `rust_module_emission_decl_absent`.
+fn produced_module_bodies_declare_members(root: Node) -> Bool {
+  let bodies = module_bodies_in_tree(node: root, acc: [])
+  (count(bodies) > 0)
+    && fold(bodies, init: true, f: fn(acc, b) { acc && (count(module_body_member_edges(body: b)) > 0) })
+}
+
+// Every module body's members, in order, each through its one realization; the first refusal refuses
+// the module with nothing partial published.
+fn emit_module_body_members(root: Node, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  bind_outcome(
+    o: fold_list(
+      xs: members,
+      empty: Accepted { value: "", diagnostics: None },
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(partial) {
+            bind_outcome(
+              o: emit_module_member(edge: edge, target: target, realization_host: realization_host, kinds: kinds),
+              f: fn(medium) {
+                Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(joined) { target_source_medium(text: joined, target: target) }
+  )
+}
+
 fn emit_produced_decl_with_target(
   decl: Node,
   target: TargetModel
@@ -161,6 +480,10 @@ fn emit_produced_decl_with_target(
 // produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  emit_produced_decl_declaring(decl: decl, target: target, realization_host: target)
+}
+
+fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_host: TargetModel) -> Outcome<Medium<String>> {
   match target.produced_decl_support {
     ProducedDeclUnwired =>
       outcome_rejected(
@@ -172,7 +495,7 @@ fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>
       scaffold_base_row: base_row
     } =>
       bind_outcome(
-        o: produced_decl_render_from_rows(rows: rows, decl: decl),
+        o: produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: produced_type_binding(target: realization_host)),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,
@@ -217,6 +540,9 @@ fn emit_produced_module_step(
   )
 }
 
+// A SUPPLIED DECLARATION LIST, NOT A MODULE. This fold renders the arrow declarations its caller hands
+// it (v2.workflow.realization_attempt and the emit-host fixtures build their own lists); what a MODULE
+// emits to is emit_module_body_members, the one module authority both emission paths call.
 // THE JOIN IS `concat` OVER A "" SEED, NOT `list_append` OVER `Empty`, and the difference is not
 // cosmetic. Built by list_append from the FreeMonoid variant, the fold's result carries the
 // CONS-LIST SPELLING of a string rather than the native one: `==` and `concat` still behave, which

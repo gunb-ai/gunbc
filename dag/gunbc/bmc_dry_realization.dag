@@ -1,0 +1,269 @@
+module gunbc.bmc_dry_realization
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
+import std.measure { Second, second }
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep,
+  OperationObserved, OperationHarnessFault, ShellObserved,
+  operation_input_text, virtual_delay_binding,
+}
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.bmc.ipmi_chassis_control {
+  ipmi_chassis_control_action_of_verb, ipmitool_chassis_status_power_line, ipmitool_chassis_power_control_reply,
+}
+import gunbc.bmc_model {
+  BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
+  BootOverrideNone, BootOverrideCdromEfiNextBoot,
+}
+import gunbc.megarac_media_model {
+  MegaRacMediaWorld, megarac_session_valid, megarac_open_session, megarac_close_session,
+  megarac_start_media, megarac_stop_media,
+}
+import extdeps.bmc.megarac_observed_output {
+  megarac_media_general_body, megarac_configuration_row, megarac_image_row, megarac_invalid_session_body,
+  megarac_session_body, megarac_write_ack_body,
+}
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.machine_intake_megarac_media_attach { json_string_member, json_number_member }
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_hpm_check_bmc0_32,
+  ipmitool_mc_info_mt_collins,
+  ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
+  ipmitool_sel_elist_line,
+}
+
+// THE DRY ADAPTER BETWEEN THE extdeps.bmc INTERFACE AND THE ONE BMC MODEL. For each bound operation
+// it reads the actual inputs the dispatcher bound, asks gunbc.bmc_model for the transition, and
+// ENCODES the resulting world as that operation's transport observation -- the stdout the client
+// would print -- using the extdeps renderer that sits beside the production decoder. It holds no BMC
+// state of its own and decides nothing a production decoder decides: the orchestrator's own decoders
+// read what this renders.
+//
+// An operation the model does not cover is not bound here, so the dispatcher refuses it as unbound;
+// an input this adapter cannot read into the model's vocabulary is a harness fault, never a
+// plausible success.
+data bmc_ipmi_operation_path: String = "dag/extdeps/bmc/ipmi.dag"
+
+data bmc_ipmi_service: String = "diagnostic.ipmi.Tool"
+
+data sleep_delay_seconds_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/sleep.dag",
+  service: "sleep.Delay",
+  operation: "Seconds",
+}
+
+fn bmc_ipmi_operation(operation: String) -> OperationRef {
+  OperationRef { path: bmc_ipmi_operation_path, service: bmc_ipmi_service, operation: operation }
+}
+
+// ONE BMC COMMAND'S RESULT BEFORE IT IS PLACED IN A SCENARIO: the stdout the client would print and the
+// world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
+// them through a lens into whatever scenario state embeds the world.
+type BmcReply
+  = BmcReplied { stdout: String, world: BmcWorld }
+  | BmcReplyFault { reason: NonEmptyStr }
+
+fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+}
+
+fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  match operation_input_text(invocation: call.invocation, name: "action") {
+    Absent => BmcReplyFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
+    Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
+      Absent => BmcReplyFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
+      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action, now: call.now).world }
+    }
+  }
+}
+
+fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
+  match operation_input_text(invocation: call.invocation, name: name) {
+    Present { value: v } => v == expected
+    Absent => false
+  }
+}
+
+fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "parameter", expected: "5") {
+    BmcReplied {
+      stdout: match world.boot_override {
+        BootOverrideNone => ipmitool_bootparam5_no_override
+        BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
+      },
+      world: world,
+    }
+  } else {
+    BmcReplyFault { reason: "the model answers boot parameter 5 only" as NonEmptyStr }
+  }
+}
+
+// The override this controller has been observed to take: cdrom, EFI, next boot only. Any other
+// device or option set is a request the model does not carry, and it refuses rather than guessing.
+fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "device", expected: "cdrom") && input_is(call: call, name: "options", expected: "efiboot") {
+    BmcReplied { stdout: ipmitool_bootdev_cdrom_reply, world: bmc_with_override(world: world, over: BootOverrideCdromEfiNextBoot) }
+  } else {
+    BmcReplyFault { reason: "the model carries the cdrom boot override with options=efiboot only" as NonEmptyStr }
+  }
+}
+
+fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
+}
+
+// `mc info` answers whenever the management controller does, whatever the host's power or SOL state.
+fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world }
+}
+
+// THE COMPONENT TABLE AS THE CONTROLLER PRINTED IT: the one retained capture, a layout fixture of
+// BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32), not a modeled version.
+fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
+}
+
+// One IPMI round trip takes one virtual second.
+fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> fn(S, OperationCall) -> OperationStep<S> {
+  fn(state, call) {
+    match reply(get(state), call) {
+      BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+      BmcReplied { stdout: out, world: w } => OperationObserved {
+        observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
+        state: put(state, w),
+        elapsed: second(count: 1),
+      }
+    }
+  }
+}
+
+fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<OperationBinding<S>> {
+  [
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_status_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_power_control_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: get, put: put, reply: bmc_bootparam_get_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootDevWithOptions"), handler: bmc_lift(get: get, put: put, reply: bmc_bootdev_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
+  ]
+}
+
+fn bmc_chassis_power_control_handler(world: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  let handler = bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_chassis_power_control_reply)
+  handler(world, call)
+}
+
+fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) -> OperationRealization<BmcWorld> {
+  OperationRealization {
+    identity: identity,
+    initial: initial,
+    epoch: epoch,
+    bindings: list_snoc_item(
+      xs: bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
+      item: virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
+    ),
+    advance: bmc_advance,
+  }
+}
+
+// THE MEGARAC MEDIA ROUTES, answered over the media model as curl --fail-with-body sees them: a
+// request with a valid session gets the firmware's body and exit 0; one without gets the 401 body on
+// stdout, curl's own error line on stderr, and exit 22 (curl(1), --fail-with-body). The session probe's
+// `-w "\n%{http_code}"` appends the status line. One request takes one virtual second.
+data megarac_operation_path: String = "dag/extdeps/bmc/megarac.dag"
+
+fn megarac_operation(operation: String) -> OperationRef {
+  OperationRef { path: megarac_operation_path, service: "megarac.Media", operation: operation }
+}
+
+fn curl_answer<S>(state: S, exit_code: Int, stdout: String, stderr: String) -> OperationStep<S> {
+  OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: exit_code, stdout: stdout, stderr: stderr } }, state: state, elapsed: second(count: 1) }
+}
+
+fn curl_refused_401<S>(state: S, with_status_line: Bool) -> OperationStep<S> {
+  curl_answer(state: state, exit_code: 22, stdout: if with_status_line { concat(megarac_invalid_session_body, "\n401") } else { megarac_invalid_session_body }, stderr: "curl: (22) The requested URL returned error: 401\n")
+}
+
+fn call_text(call: OperationCall, name: String) -> String {
+  match operation_input_text(invocation: call.invocation, name: name) { Present { value: v } => v Absent => "" }
+}
+
+fn megarac_configurations_body(media: MegaRacMediaWorld) -> String {
+  concat("[", concat(megarac_configuration_row(image_name: media.cd.image_name, redirection_status: media.cd.redirection_status, media_index: media.cd.media_index, session_index: media.cd.session_index), "]"))
+}
+
+fn megarac_images_body(media: MegaRacMediaWorld) -> String {
+  concat("[", concat(join(map(media.images, i => megarac_image_row(image_name: i.image_name, image_index: i.image_index)), ","), "]"))
+}
+
+fn megarac_authenticated<S>(get: fn(S) -> MegaRacMediaWorld, render: fn(S, OperationCall) -> OperationStep<S>) -> fn(S, OperationCall) -> OperationStep<S> {
+  fn(state, call) {
+    if megarac_session_valid(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token")) {
+      render(state, call)
+    } else {
+      curl_refused_401(state: state, with_status_line: false)
+    }
+  }
+}
+
+// The start and stop bodies are the production builders' JSON; the model reads them with the same
+// member readers the production decoders use (gunbc.machine_intake_megarac_media_attach).
+fn body_member_text(call: OperationCall, key: String) -> String? {
+  match parse_json_document(s: call_text(call: call, name: "json_body")) {
+    JsonDocumentParsed { value: doc } => json_string_member(doc: doc, key: key)
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}
+
+fn body_member_int(call: OperationCall, key: String) -> Int? {
+  match parse_json_document(s: call_text(call: call, name: "json_body")) {
+    JsonDocumentParsed { value: doc } => match json_number_member(doc: doc, key: key) {
+      Present { value: n } => parse_int(s: n)
+      Absent => none
+    }
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}
+
+fn megarac_bindings<S>(get: fn(S) -> MegaRacMediaWorld, put: fn(S, MegaRacMediaWorld) -> S) -> List<OperationBinding<S>> {
+  [
+    OperationBinding { at: megarac_operation(operation: "OpenSession"), handler: fn(state, call) {
+      let opened = megarac_open_session(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"))
+      curl_answer(state: put(state, opened.world), exit_code: 0, stdout: megarac_session_body(racsession_id: opened.racsession_id, csrf_token: opened.csrf_token), stderr: "")
+    } },
+    OperationBinding { at: megarac_operation(operation: "ProbeSessionOnMediaRoute"), handler: fn(state, call) {
+      if megarac_session_valid(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token")) {
+        curl_answer(state: state, exit_code: 0, stdout: concat(megarac_configurations_body(media: get(state)), "\n200"), stderr: "")
+      } else { curl_refused_401(state: state, with_status_line: true) }
+    } },
+    OperationBinding { at: megarac_operation(operation: "GetMediaGeneral"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      let m = get(state)
+      curl_answer(state: state, exit_code: 0, stdout: megarac_media_general_body(server: m.share.server, source_path: m.share.source_path, share_type: m.share.share_type, mount_cd: m.mount_cd, cd_error_code: m.cd_error_code), stderr: "")
+    }) },
+    OperationBinding { at: megarac_operation(operation: "GetRemoteConfigurations"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      curl_answer(state: state, exit_code: 0, stdout: megarac_configurations_body(media: get(state)), stderr: "")
+    }) },
+    OperationBinding { at: megarac_operation(operation: "GetRemoteImages"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      curl_answer(state: state, exit_code: 0, stdout: megarac_images_body(media: get(state)), stderr: "")
+    }) },
+    OperationBinding { at: megarac_operation(operation: "StartMedia"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      match body_member_text(call: call, key: "image_name") {
+        Absent => OperationHarnessFault { reason: "start-media was dispatched without a readable image_name" as NonEmptyStr }
+        Present { value: name } => match body_member_int(call: call, key: "image_index") {
+          Absent => OperationHarnessFault { reason: "start-media was dispatched without a readable image_index" as NonEmptyStr }
+          Present { value: idx } => curl_answer(state: put(state, megarac_start_media(world: get(state), image_name: name, image_index: idx, now: call.now)), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
+        }
+      }
+    }) },
+    OperationBinding { at: megarac_operation(operation: "StopMedia"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      curl_answer(state: put(state, megarac_stop_media(world: get(state))), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
+    }) },
+    OperationBinding { at: megarac_operation(operation: "CloseSession"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+      curl_answer(state: put(state, megarac_close_session(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token"))), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
+    }) },
+  ]
+}

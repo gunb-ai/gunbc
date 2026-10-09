@@ -1,0 +1,85 @@
+module v2.test.claim.namespace_graft.inline_record_field
+
+import v2.compiler.normalize { normalize_census }
+import v2.compiler.normalized_tree { census_tree_binding_source }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import std.optional { Absent, Present }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+// A RECORD FIELD WHOSE TYPE IS AN INLINE RECORD IS NOT A NAMESPACE SPINE SEGMENT. The declaration
+// `R { inner: { a: Int } }` is a Conj with one Named edge to a Conj -- exactly the shape of one
+// containment wrapper -- and the spine recognizer once decided by shape alone, so symbol_index_fill
+// descended `inner` without extending the path: `m.R.a` was indexed and `m.R.inner` never was
+// (executed red on main at c890945d1ee). A spine segment is now one whose chain ends at the body the
+// graft stamped (v2.extdeps.languages.dag namespace_graft_spine_body_optional). The Arrow-domain
+// instance keeps its own controls (v2.test.claim.normalize.service_declaration_lowering). Three
+// claims over the one specimen, so a red names which half broke: the field, its nested field, and
+// the absence of the erased path.
+data inline_record_source: String = "module m\ntype R {\n  inner: { a: Int }\n}\n"
+
+// SUPPLIED TOKEN STREAM (v2.test.parse.supplied_token_stream_support), paired below with the
+// fidelity claim that the real tokenizer emits exactly it (DESIGN section 3 pairing obligation).
+fn inline_record_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^inline_record_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^inline_record_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^inline_record_probe, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^inline_record_probe, start: 14, end: 15 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^inline_record_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "inner", file: ^inline_record_probe, start: 20, end: 25 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^inline_record_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^inline_record_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^inline_record_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^inline_record_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^inline_record_probe, start: 32, end: 35 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^inline_record_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^inline_record_probe, start: 38, end: 39 }
+  ])
+}
+
+test fn inline_record_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: inline_record_source, file: ^inline_record_probe, supplied: inline_record_stream())
+}
+
+fn indexes(index: SymbolIndex, path: FreeMonoid<Symbol>) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: path) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn inline_record_index_holds(check: fn(SymbolIndex) -> Bool) -> Bool {
+  match bind_outcome(o: supplied_stream_parse(tokens: inline_record_stream()), f: fn(tree) { normalize_census(parse_tree: tree) }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      check(symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty }))
+  }
+}
+
+fn in_r(segments: FreeMonoid<Symbol>) -> FreeMonoid<Symbol> {
+  Cons { head: ^m, tail: Cons { head: symbol_intern_lexeme(lexeme: "R"), tail: segments } }
+}
+
+test fn an_inline_record_field_is_indexed_at_its_own_label_holds() -> Bool {
+  inline_record_index_holds(check: fn(index) {
+    indexes(index: index, path: in_r(segments: Cons { head: symbol_intern_lexeme(lexeme: "inner"), tail: Empty }))
+  })
+}
+
+test fn an_inline_record_nested_field_is_indexed_under_its_field_holds() -> Bool {
+  inline_record_index_holds(check: fn(index) {
+    indexes(index: index, path: in_r(segments: Cons { head: symbol_intern_lexeme(lexeme: "inner"), tail: Cons { head: symbol_intern_lexeme(lexeme: "a"), tail: Empty } }))
+  })
+}
+
+test fn an_inline_record_nested_field_is_not_indexed_at_the_record_holds() -> Bool {
+  inline_record_index_holds(check: fn(index) {
+    !indexes(index: index, path: in_r(segments: Cons { head: symbol_intern_lexeme(lexeme: "a"), tail: Empty }))
+  })
+}

@@ -4,6 +4,16 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
+// POPULATION EMPTY, DROP NOT RETIRED (2026-09-19, gunbc#11704). Transition admissions are now
+// carried in the commit messages of the change that needs them and TransitionAdmission no longer
+// has a deletion_follow_up field, so no row can be in this drop's population: the used rows whose
+// owner authored no deletion_follow_up. RECEIPT: v1_compiler.namespace_wave_admission
+// tree_carried_admission_refusal refuses any row file in the tree, and the type in
+// gunbc.namespace.transition_admission carries only label, subject and disposition. The drop is
+// INERT, NOT RETIRED: DESIGN section 4b(3) retires a drop by its trigger and by nothing else, and
+// this row's trigger -- resolving an authored follow-up number to the pull request it names -- has
+// not fired. The declaration below is kept verbatim as the record of what was true on 2026-09-16.
+//
 // DECLARED 2026-09-16 beside gunbc#11481, which removed BOTH merge_group follow-up arms of
 // wave_admission_refusal on an operator ruling that mandating a deletion follow-up pull request is
 // not worth its cost. The sibling row consumed_row_owner_charge_unenforced covers the removal of
@@ -38,8 +48,8 @@ data owner_deletion_follow_up_charge_removed: RungDrop = RungDrop {
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: [
-      "used transition-admission rows whose owning change authored no deletion_follow_up, on that owning change's own merge_group composition"
+      "used transition-admission rows whose owning change authored no deletion_follow_up, on that owning change's own merge_group composition -- EMPTY since gunbc#11704, which deleted the field"
     ],
-    restoration_trigger: "THE CAPABILITY: a required run that adjudicates a deletion_follow_up against WHAT IT NAMES -- resolving the authored number to a pull request that exists and is open or deleting the row -- rather than against the fact that digits were typed. Nothing smaller retires this row, AND IN PARTICULAR RE-ADDING THE REMOVED ARM DOES NOT. That arm's admitting side was satisfied by any digits, so restoring it would restore an advance commitment nobody can check while charging every owner for it, which is the cost the operator ruling priced out; the coverage that is missing is not the refusal but the referent behind it. Nor does authoring follow-up numbers on the rows standing today, which changes the population and not the coverage. What remains meanwhile is a RECORD and not a refusal: deletion_follow_up is still carried on every row and used_without_follow_up is still counted in the refusal message when some other arm produces one.",
+    restoration_trigger: "THE CAPABILITY: a required run that adjudicates a deletion_follow_up against WHAT IT NAMES -- resolving the authored number to a pull request that exists and is open or deleting the row -- rather than against the fact that digits were typed. Nothing smaller retires this row, AND IN PARTICULAR RE-ADDING THE REMOVED ARM DOES NOT. That arm's admitting side was satisfied by any digits, so restoring it would restore an advance commitment nobody can check while charging every owner for it, which is the cost the operator ruling priced out; the coverage that is missing is not the refusal but the referent behind it. Nor does authoring follow-up numbers on the rows standing today, which changes the population and not the coverage. What remained from 2026-09-16 was a RECORD and not a refusal -- deletion_follow_up carried on every row and used_without_follow_up counted in the refusal message. SINCE gunbc#11704 (2026-09-19) NEITHER EXISTS: transition admissions are carried in the commit messages of the change that needs them, TransitionAdmission has no deletion_follow_up field, and WaveAdmissionReport has no used_without_follow_up, so this drop's population is EMPTY and no record of it remains. The drop stays Standing because the trigger above has not fired; it is inert, not retired.",
   }
 }

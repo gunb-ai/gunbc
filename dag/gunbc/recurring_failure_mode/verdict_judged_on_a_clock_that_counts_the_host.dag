@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.verdict_judged_on_a_clock_that_counts_the_host
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data verdict_judged_on_a_clock_that_counts_the_host: RecurringFailureMode = RecurringFailureMode {
+  identity: "verdict_judged_on_a_clock_that_counts_the_host" as NonEmptyStr,
+  receipts: [
+    "**a verdict about a subject's own work is read on a clock that also advances while the host withholds the subject from running** (INVALID STATE: an exclusive partition claims its rows account for the driver's OWN work, and both the rows and the parent were read on the monotonic wall. Every interval the host descheduled the thread -- another tenant's build, fault service waiting on IO, a lock wait -- advanced the parent and no row, so it landed in the residual. HARM: a fixed-tolerance refusal over that residual is a function of host load, not of the subject; DESIGN section 5 requires a verdict determined by its subject, and this one reconciled on a quiet runner and refused on a contended host for the same tree.)",
+    "SPECIMEN: std.compiler_entry native_driver_cost_account over the [native-cost-partition] receipt of the SourceRootEvalDriver (claim_executor --v2-native-route). A bisect across five points of main refused at every one on a loaded srv1 with a residual of the order of a hundred seconds, and the same route reconciled within tolerance on a quiet BuildBuddy runner; nothing in the subject separated the two runs. The residual re-derives by running the route and reading the receipt's remainder_nanos beside parent_wall_nanos; it is not transcribed here.",
+    "THE TEMPTING REPAIRS ARE BOTH THE WRONG LINK. Widening the tolerance until the loaded host passes leaves the verdict a function of load, merely with a different threshold, and blinds the check to real unattributed work of the same size. Naming another span (the repair this law's own annotation prescribes for a residual) cannot succeed, because the residual is not work any span performs. The earliest unjustified boundary (DESIGN section 6b) is the MEASURE: the law is about work, so its readings must be of work.",
+    "REPAIR: the parent and every row read the calling thread's CPU clock (std.realization_measurement ObserveThreadCpuAtSubject, extdeps.posix.clock_gettime ClockThreadCputimeId), realized at the seam observed_thread_cpu_nanos for the emitted runtime and the seed interpreter alike, and the demand engine's own spans in v2.compiler.compile moved with them so the partition still compares readings from one source. The wall is read once around the run and printed as parent_wall_nanos -- an observation that never enters the fold. An unsupported clock refuses; there is no wall fallback.",
+    "EVIDENCE: test native_driver_cost_refusal_test a_host_stall_outside_every_row_reconciles_on_thread_cpu (a sleep longer than the tolerance outside every row, asserted to exceed the tolerance on the wall in the same run, reconciles) and uninstrumented_driver_work_refuses_on_thread_cpu (CPU-bounded busy work outside every row refuses with a residual at least the injected amount) -- one control per direction, so neither 'never refuses' nor 'always refuses' passes both.",
+    "RESIDUAL RISK, STATED BECAUSE THE CLOCK IS NOT A PERFECT PROXY FOR INTENT: thread CPU counts system time charged to the thread, and the sibling class metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound records exactly how that leaks -- under memory pressure the kernel can run direct reclaim in the faulting thread's context and bill it as that thread's system time. So severe memory contention can still enlarge this residual. It is bounded by the reclaim work actually performed on the driver's behalf rather than by elapsed contention, and it is outside the modeled guarantee (DESIGN section 4b): this row does not claim the verdict is load-independent under memory pressure.",
+    "RUNG FOUND AT: mitigatable -- the wrong clock was writable and a fixed-tolerance refusal over it reached main. RUNG NOW: mechanically preventable for this law, by the two discriminating controls above plus an emitted-driver control asserting the parent and rows are CPU spans and the single wall read never reaches the fold.",
+    "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, a capability: duration carriers that carry their std.measure ClockBasis in the type rather than in a receipt string, so native_driver_cost_account can accept only CpuClock spans and a wall reading handed to it fails to typecheck. Until then the basis lives in the receipt's basis field and the controls are the wall.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.compiler_entry", decl_name: "native_driver_cost_account", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.compiler_entry", decl_name: "native_driver_cost_remainder_tolerance_nanos", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.realization_measurement", decl_name: "RealizationMeasureEffect", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.posix.clock_gettime", decl_name: "ClockId", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.measure", decl_name: "ClockBasis", field: WholeDeclaration },
+  ],
+}

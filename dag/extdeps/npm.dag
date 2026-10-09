@@ -2,8 +2,8 @@ module extdeps.npm
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
-import std.integer { UInt8 }
-import std.encoding { base64_decode, base64_encode, Standard }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
+import std.encoding { base64_decode, base64_encode, base64_octets, Standard }
 import std.content_hash {
   ContentHash,
   Sha512Digest,
@@ -17,7 +17,7 @@ import std.content_hash {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.version { VersionIdentity }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.package { PackageCoordinate, PackageLockNode, PackageLockGraph }
@@ -265,12 +265,22 @@ fn npm_registry_integrity_from_decode(
   }
 }
 
-fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
-  map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
-}
-
-fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
-  encoded == base64_encode(octets: octets, variant: Standard)
+// IT RETURNS THE CANONICAL OCTETS RATHER THAN A BOOLEAN ABOUT THEM. The caller needs the same
+// admitted octet string immediately afterwards, to hex-render it for the digest refinement, and a
+// Bool made it re-derive what this fold had already proved -- two admissions of one fact, the
+// second of which base16_encode_lower can no longer accept unsealed. Absent carries both the
+// out-of-range refusal and the noncanonical spelling because the caller reports one cause for
+// both: the payload is not the one canonical base64 spelling of some octet string.
+fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> QualifiedOctets? {
+  match base64_octets(values: octets) {
+    QualifiedOctetsRefused { observed: _ } => none
+    QualifiedOctetsReady { value: qualified } =>
+      if encoded == base64_encode(octets: qualified, variant: Standard) {
+        Present { value: qualified }
+      } else {
+        none
+      }
+  }
 }
 
 fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
@@ -281,18 +291,19 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     match base64_decode(s: encoded, variant: Standard) {
       Present { value: octets } =>
         if count(octets) == 64 {
-          if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
-              Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
-              Absent =>
-                NpmIntegrityMalformed {
-                  reason: "sha512 hex refinement refused" as NonEmptyStr,
-                }
-            }
-          } else {
-            NpmIntegrityMalformed {
-              reason: "sha512 base64 payload is noncanonical" as NonEmptyStr,
-            }
+          match npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
+            Present { value: canonical } =>
+              match sha512_hex_digest(hex: base16_encode_lower(octets: canonical)) {
+                Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
+                Absent =>
+                  NpmIntegrityMalformed {
+                    reason: "sha512 hex refinement refused" as NonEmptyStr,
+                  }
+              }
+            Absent =>
+              NpmIntegrityMalformed {
+                reason: "sha512 base64 payload is noncanonical" as NonEmptyStr,
+              }
           }
         } else {
           NpmIntegrityMalformed {
@@ -309,18 +320,19 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     match base64_decode(s: encoded, variant: Standard) {
       Present { value: octets } =>
         if count(octets) == 20 {
-          if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha1_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
-              Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
-              Absent =>
-                NpmIntegrityMalformed {
-                  reason: "sha1 hex refinement refused" as NonEmptyStr,
-                }
-            }
-          } else {
-            NpmIntegrityMalformed {
-              reason: "sha1 base64 payload is noncanonical" as NonEmptyStr,
-            }
+          match npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
+            Present { value: canonical } =>
+              match sha1_hex_digest(hex: base16_encode_lower(octets: canonical)) {
+                Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
+                Absent =>
+                  NpmIntegrityMalformed {
+                    reason: "sha1 hex refinement refused" as NonEmptyStr,
+                  }
+              }
+            Absent =>
+              NpmIntegrityMalformed {
+                reason: "sha1 base64 payload is noncanonical" as NonEmptyStr,
+              }
           }
         } else {
           NpmIntegrityMalformed {

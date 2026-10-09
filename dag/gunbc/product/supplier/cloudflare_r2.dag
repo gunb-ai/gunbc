@@ -1,6 +1,6 @@
 module product.supplier.cloudflare_r2
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, Timestamp }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -9,7 +9,7 @@ import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathUnread,
   DownstreamProviderPopulation, DownstreamProvidersUnread,
-  ProviderRegionObservation, ProviderRegionUnread,
+  ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread,
   ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
   provider_route_from_region,
 }
@@ -18,6 +18,18 @@ import extdeps.cloudflare.r2 {
   r2_published_location_citations,
   r2_tokens_doc_as_of,
 }
+import extdeps.cloudflare.r2 {
+  parse_r2_bucket_location,
+  r2_bucket_location_ref,
+}
+import extdeps.cloudflare.r2_buckets {
+  R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
+}
+import gunbc.cloudflare.r2_origin {
+  BucketPurpose, FabricDurableOrigin, bucket_purpose_key, bucket_purpose_origin_standing,
+}
+import gunbc.cloudflare.r2_bucket_ensure { classify_r2_bucket_ensure }
+import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.vendor.cloudflare {
   cloudflare_company_document_readings,
   cloudflare_company_document_citations,
@@ -57,12 +69,88 @@ fn cloudflare_r2_service_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "R2S3Endpoint")
 }
 
-data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. Create Bucket locationHint (r2_create_bucket_location_hint_reading, read 2026-09-13) is a requested placement. Get Bucket location (r2_get_bucket_location_reading, read 2026-09-13) is a reported location. Those are two upstream fields that share location tokens; collapsing them is a section 3 meaning-fork. This repository has not queried gunbai-fabric-origin, so no Get Bucket location is an observation of ours. Automatic and R2JurisdictionDefault are not values of ProviderRoute.region. RESOLVED BY a Get Bucket (or equivalent) observation of this bucket's location field sufficient to name the operating region, or by recreating the origin under a Jurisdictional Restriction that names a jurisdiction — at which point this standing takes ProviderRegionRead with that named location as region. A reported location is not a residency guarantee and is not the nine-path closure. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or Create Bucket locationHint."
+data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. Create Bucket locationHint (r2_create_bucket_location_hint_reading, read 2026-09-13) is a requested placement. Get Bucket location (r2_get_bucket_location_reading, read 2026-09-13) is a reported location. Those are two upstream fields that share location tokens; collapsing them is a section 3 meaning-fork. This repository has not queried gunbai-fabric-origin, so no Get Bucket location is an observation of ours. Automatic and R2JurisdictionDefault are not values of ProviderRoute.region. RESOLVED BY a Get Bucket (or equivalent) observation of this bucket's location field sufficient to name the operating region, or by recreating the origin under a Jurisdictional Restriction that names a jurisdiction — at which point this standing takes ProviderRegionRead with that named location as region. A reported location is not a residency guarantee and is not the nine-path closure. The executing route is cloudflare_r2_region_from_observations: a row in cloudflare_r2_bucket_location_observations, transcribed from a gunbc.cloudflare.r2_bucket_ensure receipt line whose read converges on the standing and carries a published location token, takes the read arm. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or Create Bucket locationHint."
 
-fn cloudflare_r2_durable_origin_region() -> ProviderRegionObservation {
-  ProviderRegionUnread {
+// A REPORTED LOCATION IS AN OBSERVATION OF OURS, SO IT LIVES HERE AND NOT IN extdeps (DESIGN
+// section 3: observations are receipts in the observing layer). One row is one Get Bucket answer for
+// one allocated purpose, carried as the classified read extdeps.cloudflare.r2_buckets returns, with
+// the converge receipt that produced it. gunbc.cloudflare.r2_bucket_ensure prints that location on
+// every converged line, so a row is transcribed from a receipt rather than from the dashboard.
+//
+// EMPTY TODAY, AND EMPTY IS THE TYPED STATE "NEVER OBSERVED", not a default. No converge receipt has
+// yet carried a location: the receipt only began printing it with this row's introduction.
+type CloudflareR2BucketLocationObservation {
+  purpose: BucketPurpose
+  read: R2BucketRead
+  observed_at: Timestamp
+  receipt: NonEmptyStr
+}
+
+data cloudflare_r2_bucket_location_observations: List<CloudflareR2BucketLocationObservation> = []
+
+// THE REGION IS READ ONLY FROM A READ THAT CONVERGES ON THE STANDING, and that is what makes it the
+// region of THIS bucket. The same classification the converge uses decides it
+// (classify_r2_bucket_ensure Noop: the bucket is present, answers under the allocated name, and
+// reports the declared jurisdiction), so a read of another bucket, or of the right name under another
+// jurisdiction, cannot lend its location to this route. A converged read whose location is missing or
+// is a token outside the published set stays Unread: absence of the field is not a region.
+fn cloudflare_r2_region_from_read(purpose: BucketPurpose, read: R2BucketRead) -> ProviderRegionObservation {
+  let unread = ProviderRegionUnread {
     obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
   }
+  match classify_r2_bucket_ensure(desired: bucket_purpose_origin_standing(purpose: purpose), read: read).decision {
+    Apply { plan: _ } => unread
+    Refuse { reason: _ } => unread
+    Noop =>
+      match read {
+        R2BucketAbsent => unread
+        R2AccountNotEntitled => unread
+        R2BucketReadRefused { cause: _ } => unread
+        R2BucketPresent { bucket: bucket } =>
+          match bucket.location {
+            Absent => unread
+            Present { value: raw } =>
+              match parse_r2_bucket_location(raw: raw) {
+                Absent => unread
+                Present { value: location } => ProviderRegionRead { region: r2_bucket_location_ref(location: location) }
+              }
+          }
+      }
+  }
+}
+
+// EXACTLY ONE OBSERVATION PER PURPOSE, OR THE REGION IS NOT READ. List position is not evidence, so
+// two rows for one purpose are never resolved by picking one: conflicting reads (enam and weur) would
+// otherwise answer by whichever was transcribed first, and a stale read would survive a recreated
+// bucket. More than one row refuses with its own obligation, whatever the rows say, and is cleared
+// by retiring the superseded row rather than by an ordering rule over observed_at.
+data cloudflare_r2_region_observation_ambiguous_obligation: NonEmptyStr = "More than one bucket-location observation is recorded for this purpose in product.supplier.cloudflare_r2 cloudflare_r2_bucket_location_observations, so the region is UNREAD rather than chosen by list position. RESOLVED BY leaving exactly one row for the purpose: the observation from the most recent converge receipt, with the superseded rows removed in the same change. It is NOT resolved by reordering the rows or by agreeing locations."
+
+fn cloudflare_r2_region_from_observations(
+  purpose: BucketPurpose,
+  observations: List<CloudflareR2BucketLocationObservation>,
+) -> ProviderRegionObservation {
+  let mine = filter(observations, o => bucket_purpose_key(purpose: o.purpose) == bucket_purpose_key(purpose: purpose))
+  if count(mine) > 1 {
+    ProviderRegionUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_observation_ambiguous_obligation"),
+    }
+  } else {
+    fold(
+      mine,
+      init: ProviderRegionUnread {
+        obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
+      },
+      f: fn(acc, o) { cloudflare_r2_region_from_read(purpose: purpose, read: o.read) },
+    )
+  }
+}
+
+fn cloudflare_r2_durable_origin_region() -> ProviderRegionObservation {
+  cloudflare_r2_region_from_observations(
+    purpose: FabricDurableOrigin {},
+    observations: cloudflare_r2_bucket_location_observations,
+  )
 }
 
 fn cloudflare_r2_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
@@ -107,39 +195,63 @@ fn cloudflare_r2_data_paths() -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_how_r2_works_reading"),
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_data_location_reading"),
+      ],
     },
     durable_storage: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_data_location_reading"),
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_create_bucket_location_hint_reading"),
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_get_bucket_location_reading"),
+      ],
     },
     backups: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_backups_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_how_r2_works_reading"),
+      ],
     },
     logs: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_logs_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_data_location_reading"),
+      ],
     },
     telemetry: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_telemetry_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_data_location_reading"),
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_how_r2_works_reading"),
+        decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_subprocessors_reading"),
+        decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_customer_dpa_reading"),
+      ],
     },
     control_plane: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_control_plane_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_how_r2_works_reading"),
+      ],
     },
     support_access: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_support_access_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_subprocessors_reading"),
+      ],
     },
     administrative_access: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_administrative_access_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_subprocessors_reading"),
+      ],
     },
     spill: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_spill_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_how_r2_works_reading"),
+      ],
     },
   }
 }

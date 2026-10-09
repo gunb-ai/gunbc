@@ -117,6 +117,7 @@ pub struct KnownMethodResolution {
     pub semantics: Option<Rc<MethodSemantics>>,
     pub result_type: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub rest_operation: bool,
 }
 
 pub fn lookup_in_scope(
@@ -142,7 +143,6 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
                     formals: Rc::new(vec![]),
                 }),
                 inferred: builtin_return.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -677,7 +677,6 @@ pub fn borrowed_census_callable_candidate(
                     ),
                 }),
                 inferred: return_type.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -846,7 +845,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 },
                                             ),
                                             inferred: raw_return.clone(),
-                                            is_async: false,
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
@@ -883,7 +881,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                     },
                                                 ),
                                                 inferred: qualified_return.clone(),
-                                                is_async: false,
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,
@@ -1732,6 +1729,7 @@ pub fn resolve_known_method_node(
                     semantics: Some(semantics.clone()),
                     result_type: Some(mfr.result_type.clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
+                    rest_operation: false,
                 })
             }
             std::option::Option::None => {
@@ -1751,11 +1749,13 @@ pub fn resolve_known_method_node(
                         })),
                         result_type: Some(svc_result.result_type.clone()),
                         diagnostics: tier0.kernel_diagnostics.clone(),
+                        rest_operation: svc_result.rest.clone(),
                     }),
                     std::option::Option::None => Rc::new(KnownMethodResolution {
                         semantics: std::option::Option::None,
                         result_type: std::option::Option::None,
                         diagnostics: tier0.kernel_diagnostics.clone(),
+                        rest_operation: false,
                     }),
                 }
             }

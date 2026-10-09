@@ -3,10 +3,12 @@ module gunbc.roadmap_launch_deployment_observe
 import extdeps.systemd { systemd_duration_usec }
 import std.measure { Second, second, second_count, microsecond_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
-import gunbc.live_deploy.emit { belt_tick_cadence }
+import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar { iso8601_days_from_civil, iso8601_gregorian_days_in_month, iso8601_seconds_per_day, iso8601_seconds_per_hour }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json }
 import extdeps.languages.json.parse {
@@ -42,7 +44,7 @@ import gunbc.roadmap_belt_actuate {
 // TICK FRESHNESS is decided on two clock readings the receipt run does not control -- the tick's
 // own observed_at and the dashboard receipt's completed_at, both rendered by extdeps.clock Now on
 // srv1 as `%Y-%m-%dT%H:%M:%SZ` -- against the receipt run's own now. The bound is derived from the
-// emitted timer cadence (gunbc.live_deploy.emit belt_tick_cadence, 60s) times a fixed multiplier,
+// emitted timer cadence (gunbc.live_deploy.belt_cadence belt_tick_cadence, 60s) times a fixed multiplier,
 // never typed as an independent number.
 // ---------------------------------------------------------------- HTTP GET
 type HttpBodyRead
@@ -266,27 +268,10 @@ fn observe_workflow_document_routed(base_url: String) -> RoadmapWorkflowObservat
 // ---------------------------------------------------------------- instants
 // `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
 // Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
-// every date the format can spell. Anything that is not exactly that shape refuses.
+// every date the format can spell; the calendar is extdeps.units.iso8601_calendar's, which also formats the
+// same instants. Anything that is not exactly that shape refuses.
 fn two_digits_at(s: String, i: Int) -> Int? {
   parse_int(s: substring(s: s, start: i, end: i + 2))
-}
-
-fn days_from_civil(y: Int, m: Int, d: Int) -> Int {
-  let yy = if m <= 2 { y - 1 } else { y }
-  let era = (if yy >= 0 { yy } else { yy - 399 }) / 400
-  let yoe = yy - era * 400
-  let mp = if m > 2 { m - 3 } else { m + 9 }
-  let doy = (153 * mp + 2) / 5 + d - 1
-  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-  era * 146097 + doe - 719468
-}
-
-// systemd-independent Gregorian day-in-month bound with the leap rule; a calendar-impossible day
-// (Feb 30, Apr 31) must refuse rather than normalize silently through days_from_civil (review 57773).
-fn gregorian_days_in_month(y: Int, m: Int) -> Int {
-  if m == 2 {
-    if y - (y / 4) * 4 == 0 && (y - (y / 100) * 100 != 0 || y - (y / 400) * 400 == 0) { 29 } else { 28 }
-  } else if m == 4 || m == 6 || m == 9 || m == 11 { 30 } else { 31 }
 }
 
 fn iso8601_utc_epoch_seconds(text: String) -> Second? {
@@ -316,11 +301,11 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
                         match two_digits_at(s: t, i: 17) {
                           Absent => none
                           Present { value: ss } =>
-                            if m < 1 || m > 12 || d < 1 || d > gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
+                            if m < 1 || m > 12 || d < 1 || d > iso8601_gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
                               none
                             } else {
                               {
-                                let epoch = days_from_civil(y: y, m: m, d: d) * 86400 + hh * 3600 + mm * 60 + ss
+                                let epoch = iso8601_days_from_civil(y: y, m: m, d: d) * iso8601_seconds_per_day() + hh * iso8601_seconds_per_hour() + mm * (iso8601_seconds_per_minute() as Int) + ss
                                 if epoch < 0 {
                                   none
                                 } else {
@@ -345,7 +330,7 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
 // tick completes, so a live timer produces a receipt at most one cadence plus one tick duration
 // old. Three cadences is the admission; a receipt older than that came from a timer that is not
 // running now, whatever the unit file says.
-// Derived from the ONE emitted cadence authority (gunbc.live_deploy.emit belt_tick_cadence),
+// Derived from the ONE emitted cadence authority (gunbc.live_deploy.belt_cadence belt_tick_cadence),
 // normalized through systemd.time(7); a spelling that stops normalizing refuses freshness rather
 // than silently keeping an out-of-date number here.
 fn belt_tick_cadence_seconds_derived() -> Second? {

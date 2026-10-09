@@ -1,6 +1,7 @@
 module extdeps.iproute2.ss
 
-import std.types { String, Bool }
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import v2.std.algebra { length, filter }
 import std.algebra { trim }
 
 // ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository
@@ -38,4 +39,43 @@ import std.algebra { trim }
 // that already carries a successful completion.
 fn ss_enumeration_is_empty(stdout: String) -> Bool {
   trim(s: stdout) == ""
+}
+
+// THE SAME ENUMERATION SHAPE ASKED OF A CONNECTION RATHER THAN A LISTENER, and it earns its argv
+// because it lands with a consumer: gunbc.spark.rendezvous_participation reads it to decide whether
+// a rank is attached to the store its head is currently serving. The caution above -- that this
+// module twice carried rows authored ahead of their consumers -- is why the listening form still has
+// no argv builder and this one does.
+//
+// `state established` with a `dst` filter answers "is there a live connection from this host to that
+// exact peer", which is the only question that separates a process that is participating from one
+// that merely exists. It needs no privilege: the socket table is world-readable and only the
+// process-attribution flag (`-p`) requires more, which this invocation does not ask for.
+//
+// THE PEER IS ADDRESS AND PORT TOGETHER because a rendezvous is identified by both; filtering on the
+// address alone would count an ssh session to the same host as participation.
+data ss_binary_path: NonEmptyStr = "/usr/bin/ss" as NonEmptyStr
+
+fn ss_established_to_peer_argv(peer: NonEmptyStr) -> List<String> {
+  [
+    ss_binary_path as String,
+    "-H",
+    "-t",
+    "-n",
+    "state",
+    "established",
+    "dst",
+    peer as String,
+  ]
+}
+
+// A COMPLETED ENUMERATION CARRIES ITS POPULATION AS DATA, so the count is derived from the lines and
+// an empty completion counts zero rather than refusing. The caller is responsible for having
+// established that the query completed; this only reads what it printed.
+fn ss_enumeration_line_count(stdout: String) -> Int {
+  if ss_enumeration_is_empty(stdout: stdout) {
+    0
+  } else {
+    length(filter(split(s: trim(s: stdout), delimiter: "\n"), l => trim(s: l) != ""))
+  }
 }

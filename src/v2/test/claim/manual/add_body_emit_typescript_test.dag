@@ -23,7 +23,6 @@ import v2.extdeps.languages.typescript {
   ts_binding_spellings,
   ts_add_declared_inhabitants_root,
   ts_selection_policy_node,
-  ts_serialize_source_node,
   ts_source_text,
   ts_source_text_authority,
   ts_target_model,
@@ -35,8 +34,7 @@ import v2.extdeps.languages.typescript {
   ts_fn_add_lex,
   ts_fn_add_lex_rules
 }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_append }
+import std.algebra { Cons, Empty, list_append }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -52,7 +50,7 @@ import v2.std.collection {
   Map,
   empty_map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -75,14 +73,13 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -107,7 +104,7 @@ data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number
 data add_body_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
 fn add_body_ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn add_body_ts_add_operator_row_minus() -> Node {
@@ -142,10 +139,6 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
         target: ts_translation_rules_node()
       ),
       add_body_ts_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: ts_serialize_source_node()
-      ),
-      add_body_ts_named_edge(
         name: ^target_model_edge_value_expression_projection,
         target: value_expr_projection_bundle_node(
           projection: ts_value_expression_projection()
@@ -169,7 +162,8 @@ fn add_body_ts_lex_with_minus() -> LexRules {
           head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
           tail: Empty
         }
-      )
+      ),
+      modes: []
     }
   }
 }

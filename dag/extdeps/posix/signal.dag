@@ -32,6 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // everything the caller can reach".
 service posix.Signal {
   operation TerminateProcess {
+    requires none
     input { pid: NonEmptyStr }
     output {
       success: Bool from "exit_success"

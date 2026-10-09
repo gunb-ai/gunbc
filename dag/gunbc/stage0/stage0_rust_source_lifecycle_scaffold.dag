@@ -1,5 +1,6 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.stage0_cargo_manifest {
   stage0_cargo_bin_paths_observation_ref
@@ -14,7 +15,8 @@ import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation,
   current_stage0_rust_source_observation
 }
-import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
+import gunbc.generated_artifact_registry { generated_artifact_registry }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import gunbc.rust_item_host_observation {
   rust_source_prefix_test_harness, rust_source_prefix_stage0_test, rust_source_prefix_stage0_example, rust_source_prefix_tooling
@@ -25,8 +27,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import gunbc.roadmap_model { RoadmapNodeId }
 import v2.compiler.self_host.stage0_crate_layout { hand_maintained_stage0_filenames }
-import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.algebra { any, filter, fold_list, length, list_map }
+import std.algebra { list_snoc_item }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 

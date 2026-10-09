@@ -1,5 +1,10 @@
 module test.claim.roadmap_validation_oracle_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+import extdeps.filesystem.filesystem_io { FilesystemReadSucceeded, FilesystemReadRefused }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { Bool, String, NonEmptyStr, List, FilePath }
@@ -14,7 +19,9 @@ import std.content_hash {
 }
 import extdeps.pin { CrossFamilyIdentityIncomparable }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import gunbc.roadmap_workflow_command { WorkflowModeledStateObserved }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreePresent,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
@@ -167,9 +174,11 @@ fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservat
   [
     validation_oracle_observe_from_source(
       oracle: oracle_ref(),
-      source_readable: source_readable,
-      source: source,
-      read_error: if source_readable { "" } else { "No such file or directory" },
+      source_read: if source_readable {
+        FilesystemReadSucceeded { content: source }
+      } else {
+        FilesystemReadRefused { error: "No such file or directory" }
+      },
     ),
   ]
 }
@@ -838,7 +847,8 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     node_id: "v1-emitter-fixed-point",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
+    worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
@@ -878,7 +888,10 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 
@@ -1018,32 +1031,4 @@ test fn verify_lamp_refuses_a_foreign_receipt_document() -> Bool {
   verify_lamp_state(
     receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
   ) == "refused"
-}
-
-test fn roadmap_validation_oracle_keystone_holds() -> Bool {
-  diff_touching_only_the_subject_verifies_clean()
-    && diff_editing_its_own_witness_refuses_with_oracle_moved()
-    && oracle_identity_separates_the_two_witness_sources()
-    && deleted_witness_answers_oracle_missing_not_red()
-    && readable_source_without_the_declaration_is_also_missing()
-    && duplicated_declaration_answers_oracle_ambiguous()
-    && declaration_scan_ignores_the_name_inside_a_note()
-    && oracle_importing_test_helpers_refuses_as_unpinned_dependency()
-    && oracle_importing_only_subject_modules_still_verifies()
-    && unpinned_dependency_detail_names_the_uncovered_modules()
-    && cargo_test_validation_refuses_as_unpinnable()
-    && unspecified_contract_refuses_rather_than_verifying()
-    && empty_validation_contract_refuses_as_closes_nothing_not_admitted()
-    && attempt_without_a_recorded_pin_refuses()
-    && refused_and_failed_verdicts_are_distinct_on_the_wire()
-    && refusal_quoting_passed_does_not_decode_as_passed()
-    && truncated_receipt_with_passed_prefix_is_not_passed()
-    && foreign_receipt_document_is_undecodable()
-    && moved_oracle_detail_locates_both_identities()
-    && verify_lamp_stays_pending_without_a_receipt()
-    && verify_lamp_completes_only_on_a_passed_receipt()
-    && verify_lamp_shows_a_refusal_as_refused_not_failed()
-    && not_run_receipt_is_distinct_from_every_recorded_verdict()
-    && not_run_receipt_reads_as_pending_not_as_a_verdict()
-    && verify_lamp_refuses_a_foreign_receipt_document()
 }

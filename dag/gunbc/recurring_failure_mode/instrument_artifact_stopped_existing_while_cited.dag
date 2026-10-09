@@ -1,0 +1,33 @@
+module gunbc.recurring_failure_mode.instrument_artifact_stopped_existing_while_cited
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data instrument_artifact_stopped_existing_while_cited: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_artifact_stopped_existing_while_cited" as NonEmptyStr,
+  receipts: [
+    "**an instrument's published artifact silently stops existing when the job that published it is replaced, while prose and producers keep citing it as published** (INVALID STATE: the producer still writes the file, the env that arms the write is still set, and every reader -- roadmap rows, rung-drop restoration triggers, gunbc.floor_cost_distribution's annotation, the qualification route's ClaimCostArtifactEvalSteps -- still names the artifact as what each required run uploads; no run uploads it. HARM: a reader who goes to re-derive a figure finds nothing and cannot tell retention expiry from a producer that never ran, and a consumer wired to the artifact reads Absent forever without that ever being a failure anyone sees.)",
+
+    "SPECIMEN: required-floor-claim-cost. 85c1356300c (#11742, 2026-09-19) replaced the whole required floor workflow with a build-only hosted job to save runner-minutes, and the artifact went with the job, not by a decision about the artifact. When the floor returned as the floor job of gunbc.compiler_gate_workflow, that job re-bound gunbc.witness_floor_workflow's measurement-receipt steps and carried GUNBC_REQUIRED_FLOOR_CLAIM_COST in its env -- so claim_executor kept writing required_floor_claim_cost.tsv (cli_run write_required_floor_claim_cost_tsv) on every run -- but the upload row lived only in witness_floor_workflow's own step list, which is no longer what emits witnesses.yml. Measured 2026-10-04: required runs publish only required-ci-measurement-receipt and compiler-pair-candidate. The admission roster, expected-red roster join, long-home storage agreement and cross-claim demand uploads sit in the same list and were lost the same way; this row's fix restores only the claim-cost upload and leaves those four as named members of the class, not repaired.",
+
+    "WHY THE MEASUREMENT RECEIPT DOES NOT STAND IN FOR IT: required-ci-measurement-receipt is MeasurementCompleted { blockers } | MeasurementUnreached { cause } (cli_run required_ci_measurement), with no per-witness cost, so a consumer cannot be re-pointed at it.",
+
+    "RECOGNITION RULE: when a change moves, replaces or re-emits a job, enumerate the job's PUBLISHED OUTPUTS (artifacts, check runs, uploaded receipts), not only its verdict, and join them against the outputs of the job that replaces it. A step list that survives in the source after it stopped being emitted is the tell: it reads as coverage and executes nothing.",
+
+    "RUNG FOUND AT: mitigatable -- a reader eventually notices the artifact is absent. Silence is the harm: no step goes red when an artifact a consumer depends on is never produced.",
+
+    "CEILING: mechanically preventable. The published-output set of the required workflow is derivable from its emitter, and the artifact names its consumers cite are declarations (gunbc.witness_floor_workflow required_floor_claim_cost_artifact_name), so the join between cited artifacts and emitted upload steps is decidable at emission.",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY: an emission-time join that refuses when an artifact-name declaration consumed by a production fold or rostered as an instrument has no upload step in the emitted required workflow -- sufficient that removing an upload, or replacing the job that carried it, reds the generated-artifact phase. One shared bound-step function (required_floor_claim_cost_upload_bound_step) keeps this one artifact's two step lists from parting again; it does not discover the next one.",
+    "RECEIPT, 2026-10-05 (snappy-stag-806): THE ADMISSION ROSTER IS RESTORED, AND IT IS RESTORED WITH A READER. required_floor_disposition.tsv is again published as `required-floor-disposition`, bound by name in both step lists through gunbc.witness_floor_workflow required_floor_disposition_upload_bound_step, the way the claim-cost upload already is. Its executing consumer is tools.gate_closure_decline_census_instrument gate_closure_decline_census, the population census of witness_outside_gate_closure_falsified_by_other_file. The expected-red roster join, long-home storage agreement and cross-claim demand uploads remain unrepaired members of this class.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_upload_bound_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_artifact_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_measurement_bound_steps", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_disposition_upload_bound_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.gate_closure_decline_census", decl_name: "gate_closure_declined_identities", field: WholeDeclaration },
+  ],
+}

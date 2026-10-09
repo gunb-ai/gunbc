@@ -1,0 +1,316 @@
+module gunbc.machine_intake_mtcollins1_physical_orientation
+
+import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import std.measure { gibibyte_count, millivolt_count }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.smpro_register { SmproBootProgress, SmproBootProgressRead, SmproBootProgressRefused, smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
+import extdeps.ampere.mt_collins_product_brief.memory_population { MtCollinsChannelConnectorPair }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank }
+import gunbc.baseboard_dimm_figure { figure_banks, figure_channel_pairs }
+import gunbc.machine_intake_dimm_physical_orientation { DimmOrientedHost }
+import gunbc.machine_intake_dimm_row_orientation {
+  DimmPhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
+  IntendedAsDescribed, IntendedAtDrawingLabels, IntendedAtPhysicalConnectors,
+  DimmTrainedSlot, DimmPlacementAnchor,
+  DimmDamagedConnectorReport, DimmSupersededDamageReport, LabelReadFromUnanchoredDrawing, OperatorRightEdge,
+  DimmPlacementReadback,
+  drawing_labels, placement_physical_population, placement_readback, expected_firmware_readback,
+  board_sockets, nat_member, trained_slot_text,
+}
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1Socket1InvestigationBoot,
+  mtcollins1_boot_receipts_artifact, mtcollins1_socket1_investigation_boots,
+  mtcollins1_socket1_boot_three_sticks, mtcollins1_socket1_boot_two_sticks,
+  mtcollins1_socket1_investigation_predecessor, mtcollins1_socket1_hypotheses,
+  mtcollins1_operator_front_report,
+  MtCollins1DiagnosisHypothesis, HypothesisOpen, HypothesisRefutedByStickSwap,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
+  MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
+  SecondaryJoinUnclassified, secondary_join_outcome, mtcollins1_secondary_join_readings,
+  MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
+  MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
+  MtCollins1PairingBootHistory, MachineBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history,
+  mtcollins1_spare_processors,
+  mtcollins1_socket1_pin_damage_report,
+  MtCollins1SocketDamageReport, MtCollins1SocketEvidenceGate, SocketEvidenceRequiresInspectionSince,
+  SocketEvidenceRequiresInspectionUndated, socket_evidence_gate,
+}
+
+// MT. COLLINS UNIT 1'S DIMM-ROW READINGS AND ITS SOCKET-1 DIAGNOSIS. A receipt in the observing
+// layer (DESIGN §3). The orientation logic is host-generic and lives in
+// gunbc.machine_intake_dimm_physical_orientation (the bound host) and
+// gunbc.machine_intake_dimm_row_orientation (the row logic), over the figure of the baseboard the bound host's
+// controller reported; this module holds only what this unit observed -- its boot receipts read as
+// anchors, its damaged-connector report -- and the diagnosis of its socket 1, which reads the
+// generic orientation of the bound host it is handed and never a board figure of its own.
+
+// An anchor is a boot receipt read as a placement test; it is derived from the receipt, never
+// restated beside it.
+fn boot_anchor(boot: MtCollins1Socket1InvestigationBoot) -> DimmPlacementAnchor {
+  DimmPlacementAnchor {
+    evidence: FirmwareTrainedFact { run_id: boot.run_id, artifact: mtcollins1_boot_receipts_artifact, roster_lines: boot.roster_lines },
+    frame: boot.operator_frame,
+    placed_at_drawing_labels: drawing_labels(intended: boot.intended),
+    trained: boot.trained,
+    live_sockets: boot.live_sockets,
+  }
+}
+
+// Run 35805796492: drawing 'J1','J17','J25'. It cannot tell FullMirror from SocketHalvesSwapped.
+data mtcollins1_three_stick_anchor: DimmPlacementAnchor = boot_anchor(boot: mtcollins1_socket1_boot_three_sticks)
+
+// Run 35808203121: only the rightmost stick (drawing 'J25') removed. FullMirror puts the
+// remaining sticks at J25 and J9 (SK0 MC4); SocketHalvesSwapped at J17 and J1 (SK0 MC0). The
+// roster read SK0 MC4 alone, with the same RCD[32:86] module run 35805796492 trained on MC4.
+data mtcollins1_two_stick_anchor: DimmPlacementAnchor = boot_anchor(boot: mtcollins1_socket1_boot_two_sticks)
+
+// Every boot whose placement was recorded in drawing labels is an anchor.
+data mtcollins1_placement_anchors: List<DimmPlacementAnchor> = map(filter(mtcollins1_socket1_investigation_boots, b => list_length(items: drawing_labels(intended: b.intended)) > 0), b => boot_anchor(boot: b))
+
+data mtcollins1_damage_observed_on: SpecificationDocumentDate = SpecificationDocumentDate { year: 2026, month: 9, day: 23 }
+
+data mtcollins1_damaged_connector_report: DimmDamagedConnectorReport = DimmDamagedConnectorReport {
+  frame: mtcollins1_operator_front_report,
+  counted_from: OperatorRightEdge,
+  ordinal: 5,
+  damage: "cracked connector (one blue socket snapped)",
+  report: OperatorByEyeReport {
+    observed_on: mtcollins1_damage_observed_on,
+    relay: "eager-owl-205 work item adhoc-3c0e7885-cd9 and message msg_760c88a9-98c8-4f09-a2b9-a436bb86dd4a",
+    method: "Operator by-eye count of connector positions from their right edge of the DIMM row. No photograph supplied to this session.",
+  },
+  supersedes: DimmSupersededDamageReport {
+    quote: "one blue socket had snapped off, I think it's J3",
+    stated_label: 3,
+    location: Absent,
+    cause: LabelReadFromUnanchoredDrawing {
+      basis: "The J3 label was read off a figure-derived drawing whose left-to-right order was never anchored to the board; run 35805796492 showed that drawing's labels are not the physical connectors (drawing 'J1','J17','J25' trained as SK0 MC0 and SK0 MC4). The position count from a named edge replaces the label.",
+    },
+  },
+}
+
+// DERIVED FROM THE BOOT RECEIPTS. The physical connectors a boot populated, under the bound host's
+// orientation and figure; Absent for a boot whose placement was only described, or when the
+// orientation is unresolved.
+fn boot_physical_population(boot: MtCollins1Socket1InvestigationBoot, oriented: DimmOrientedHost) -> List<Nat>? {
+  placement_physical_population(intended: boot.intended, frame: boot.operator_frame, orientation: oriented.outcome, banks: figure_banks(figure: oriented.figure))
+}
+
+// Socket 1 has trained no DIMM in any boot of this investigation, including the one whose
+// physical population put a module on J25 (SK1 MC4) beside J9 (SK0 MC4).
+type MtCollins1Socket1Standing
+  = Socket1TrainedNothing { runs: List<Nat>, since: DeclarationRef, symmetric_mc4_runs: List<Nat> }
+  | Socket1TrainedIn { runs: List<Nat> }
+
+fn socket1_standing(boots: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> MtCollins1Socket1Standing {
+  let trained_on_1 = filter(boots, b => fold(b.trained, init: false, f: (acc, t) => acc || t.socket == 1))
+  let symmetric = filter(boots, b => match boot_physical_population(boot: b, oriented: oriented) {
+    Present { value: cs } => nat_member(xs: cs, x: 9) && nat_member(xs: cs, x: 25)
+    Absent => false
+  })
+  if list_length(items: trained_on_1) == 0 {
+    Socket1TrainedNothing { runs: map(boots, b => b.run_id), since: mtcollins1_socket1_investigation_predecessor, symmetric_mc4_runs: map(symmetric, b => b.run_id) }
+  } else {
+    Socket1TrainedIn { runs: map(trained_on_1, b => b.run_id) }
+  }
+}
+
+fn controller_bit(controller: Nat) -> Nat {
+  fold([1, 2, 3, 4, 5, 6, 7], init: 1, f: (acc, i) => if i <= controller { acc * 2 } else { acc })
+}
+
+// The bitmap of socket 0's controllers holding a trained DIMM, each counted once.
+fn trained_controller_bitmap(trained: List<DimmTrainedSlot>) -> Nat {
+  let controllers = fold(filter(trained, t => t.socket == 0), init: [], f: (acc, t) => if nat_member(xs: acc, x: t.controller) { acc } else { concat(acc, [t.controller]) })
+  fold(controllers, init: 0, f: (acc, c) => acc + controller_bit(controller: c))
+}
+
+// AN OBSERVED CORRELATION, NOT A VENDOR DEFINITION (§4d): on every boot that printed it,
+// mcu_enable_mask equalled the bitmap of socket 0 controllers with a trained DIMM. No Ampere
+// document read by this repository defines the mask; one divergent boot ends the claim.
+type MtCollins1MaskCorrelation
+  = MaskMatchedTrainedControllers { runs: List<Nat>, not_printed: List<Nat> }
+  | MaskDiverged { run_id: Nat, mask: Nat, bitmap: Nat }
+
+fn mask_correlation(boots: List<MtCollins1Socket1InvestigationBoot>) -> MtCollins1MaskCorrelation {
+  let printed = filter(boots, b => match b.mcu_enable_mask { Present { value: _ } => true  Absent => false })
+  let diverged = filter(printed, b => match b.mcu_enable_mask { Present { value: m } => m != trained_controller_bitmap(trained: b.trained)  Absent => false })
+  match diverged.first() {
+    Present { value: b } => MaskDiverged { run_id: b.run_id, mask: match b.mcu_enable_mask { Present { value: m } => m  Absent => 0 }, bitmap: trained_controller_bitmap(trained: b.trained) }
+    Absent => MaskMatchedTrainedControllers { runs: map(printed, b => b.run_id), not_printed: map(filter(boots, b => match b.mcu_enable_mask { Present { value: _ } => false  Absent => true }), b => b.run_id) }
+  }
+}
+
+fn boot_history_line(boot: MtCollins1Socket1InvestigationBoot, oriented: DimmOrientedHost) -> String {
+  let intended = match boot.intended {
+    IntendedAsDescribed { description: d } => concat(concat("\"", d), "\"")
+    IntendedAtDrawingLabels { labels: ls } => concat(concat("drawing 'J", join(map(ls, l => to_string(l)), "','J")), "'")
+    IntendedAtPhysicalConnectors { connectors: _ } => "placed by the resolved mapping"
+  }
+  let physical = match boot_physical_population(boot: boot, oriented: oriented) {
+    Present { value: cs } => concat(" = physical J", join(map(cs, c => to_string(c)), ", J"))
+    Absent => ""
+  }
+  let mask = match boot.mcu_enable_mask_line { Present { value: l } => l  Absent => "mcu_enable_mask not printed" }
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    "run ", to_string(boot.run_id)), ": "), intended), physical), " -> trained "),
+    join(map(boot.trained, t => trained_slot_text(slot: t)), ", ")), "; DRAM "), to_string(gibibyte_count(g: boot.dram_total))), " GiB; "), mask)
+}
+
+// Each boot placed by physical J number, read back against the bound host's own figure.
+fn placement_readbacks(boots: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> List<DimmPlacementReadback> {
+  fold(boots, init: [], f: (acc, b) => match placement_readback(run_id: b.run_id, intended: b.intended, trained: b.trained, banks: figure_banks(figure: oriented.figure), pairs: figure_channel_pairs(figure: oriented.figure)) {
+    Present { value: r } => concat(acc, [r])
+    Absent => acc
+  })
+}
+
+fn socket1_standing_text(standing: MtCollins1Socket1Standing) -> String {
+  match standing {
+    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => concat(concat(concat(concat(
+      "Socket 1 trained no DIMM in ", to_string(list_length(items: rs))), " boots, including the J9+J25 placement (run "), join(map(sy, r => to_string(r)), ", run ")), ").")
+    Socket1TrainedIn { runs: rs } => concat("Socket 1 trained a DIMM in run ", join(map(rs, r => to_string(r)), ", run "))
+  }
+}
+
+// THE UNIT'S HISTORY BLOCK FOR THE SLOT MAP: the firmware rosters, socket 1's standing, the CPU facts,
+// the join outcomes, the socket damage and the open bets, all read under the bound host's orientation.
+fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> List<String> {
+  if list_length(items: history) == 0 { [] } else {
+    concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, oriented: oriented))),
+      [socket1_standing_text(standing: socket1_standing(boots: history, oriented: oriented))]),
+      concat(concat(concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: figure_banks(figure: oriented.figure)), map(mtcollins1_secondary_join_readings, r => concat(concat(concat("Join outcome (", r.run), "): "), join_outcome_text(outcome: secondary_join_outcome(reading: r))))), [socket_damage_text(damage: mtcollins1_socket1_pin_damage_report)]), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, oriented: oriented))))
+  }
+}
+
+fn cpu_release_text(issue: MtCollins1CpuRelease) -> String {
+  match issue { EngineeringSample => "engineering sample"  ProductionPart => "production part" }
+}
+
+// Firmware's socket count against the board's: fewer active than the board has is what
+// "not exposed" means here, and it is derived, never authored.
+fn socket_summary_text(summary: MtCollins1FirmwareSocketSummary, banks: List<MtCollinsDimmFigureBank>) -> String {
+  let board = list_length(items: board_sockets(banks: banks))
+  let head = concat(concat(concat(concat("Established (run ", to_string(summary.run_id)), "): SCP reports '"), summary.line), "'")
+  if summary.active_sockets < board { concat(head, " of the board's sockets - firmware does not expose them all. Which layer stops socket 1 is open.") } else { concat(head, " - every board socket is active.") }
+}
+
+// What firmware established, the operator's CPU facts, and the operator's boot report.
+fn cpu_block(cpus: List<MtCollins1SocketCpu>, history: MtCollins1PairingBootHistory, banks: List<MtCollinsDimmFigureBank>) -> List<String> {
+  let lines = map(cpus, c => concat(concat(concat(concat(concat("CPU", to_string(c.socket)), " (socket "), to_string(c.socket)), "): "), concat(concat(cpu_release_text(issue: c.issue), " - "), c.provenance)))
+  let booted = match history {
+    PairingBootNotYetReported { question: q } => concat("Open question: ", q)
+    MachineBootReportedSinceSwap { quote: q, report: _ } => concat(concat("Operator: \"", q), "\" (a boot since the swap, no socket count and no date given).")
+  }
+  concat(concat([socket_summary_text(summary: mtcollins1_firmware_socket_summary, banks: banks)], lines), [booted, concat(concat(concat("Spares on hand: about ", to_string(mtcollins1_spare_processors.approximate_count)), " "), concat(mtcollins1_spare_processors.family, " processors (operator report)."))])
+}
+
+// THE STICK REFUTATION IS DERIVED. A stick is cleared when the swap report places it at a
+// connector that trained nothing in one receipt, and at a connector that trained its expected
+// slot in another. A placement naming a run with no receipt, or no such pair, clears nothing.
+type MtCollins1StickVerdict
+  = StickCleared { stick: NonEmptyStr, silent_run: Nat, silent_connector: Nat, trained_run: Nat, trained_connector: Nat }
+  | StickNotCleared
+
+type MtCollins1PlacementOutcome = PlacementTrained | PlacementSilent | PlacementUnevaluable
+
+fn placement_trained(p: MtCollins1StickPlacement, history: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1PlacementOutcome {
+  let e = expected_firmware_readback(connectors: [p.connector], live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
+  match filter(history, b => b.run_id == p.run_id).first() {
+    Absent => PlacementUnevaluable
+    Present { value: b } => if list_length(items: e.unresolved) > 0 || list_length(items: e.predicted) == 0 { PlacementUnevaluable } else {
+      let hits = list_length(items: filter(e.predicted, t => list_length(items: filter(b.trained, u => u.socket == t.socket && u.controller == t.controller && u.slot == t.slot)) > 0))
+      if hits == list_length(items: e.predicted) { PlacementTrained } else { if hits == 0 { PlacementSilent } else { PlacementUnevaluable } }
+    }
+  }
+}
+
+fn stick_swap_verdict(swap: MtCollins1StickSwapReport, history: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> MtCollins1StickVerdict {
+  let banks = figure_banks(figure: oriented.figure)
+  let pairs = figure_channel_pairs(figure: oriented.figure)
+  let silent = filter(swap.placements, p => placement_trained(p: p, history: history, banks: banks, pairs: pairs) == PlacementSilent)
+  let trained = filter(swap.placements, p => placement_trained(p: p, history: history, banks: banks, pairs: pairs) == PlacementTrained)
+  fold(silent, init: StickNotCleared, f: (acc, s) => match acc {
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => acc
+    StickNotCleared => match filter(trained, t => t.stick == s.stick && t.run_id != s.run_id).first() {
+      Present { value: t } => StickCleared { stick: s.stick, silent_run: s.run_id, silent_connector: s.connector, trained_run: t.run_id, trained_connector: t.connector }
+      Absent => StickNotCleared
+    }
+  })
+}
+
+fn date_text(d: SpecificationDocumentDate) -> String {
+  concat(concat(concat(to_string(d.year), if d.month < 10 { "-0" } else { "-" }), concat(to_string(d.month), if d.day < 10 { "-0" } else { "-" })), to_string(d.day))
+}
+
+fn evidence_gate_text(gate: MtCollins1SocketEvidenceGate) -> String {
+  match gate {
+    SocketEvidenceRequiresInspectionSince { socket: n, since: d } => concat(concat(concat(concat("Socket ", to_string(n)), " evidence after "), date_text(d: d)), " says nothing about the pre-damage fault until the socket is inspected.")
+    SocketEvidenceRequiresInspectionUndated { socket: n } => concat(concat("Socket ", to_string(n)), " evidence from an unknown date onward says nothing about the pre-damage fault until the socket is inspected.")
+  }
+}
+
+fn report_date_text(report: DimmPhysicalFactStanding) -> String {
+  match report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => concat("operator report, ", date_text(d: d))
+    VendorFigureFact { figure: _, standing: _ } => "vendor figure"
+    FirmwareTrainedFact { run_id: r, artifact: _, roster_lines: _ } => concat("firmware run ", to_string(r))
+  }
+}
+
+fn socket_damage_text(damage: MtCollins1SocketDamageReport) -> String {
+  concat(concat(concat(concat(concat(concat("Socket ", to_string(damage.socket)), " pin damage ("), report_date_text(report: damage.report)), "): "), damage.account as String), concat(" ", evidence_gate_text(gate: socket_evidence_gate(damage: damage))))
+}
+
+fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> String {
+  let bet = concat(concat(h.hypothesis, " Test: "), h.discriminator)
+  match h.standing {
+    HypothesisOpen => concat(concat(concat("Open hypothesis (not established): ", bet), " Gate: "), evidence_gate_text(gate: socket_evidence_gate(damage: mtcollins1_socket1_pin_damage_report)))
+    HypothesisRefutedByStickSwap { swap: sw } => match stick_swap_verdict(swap: sw, history: history, oriented: oriented) {
+      StickCleared { stick: k, silent_run: sr, silent_connector: sc, trained_run: tr, trained_connector: tc } =>
+        concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the operator's swap report: "), k), " was silent in J"), to_string(sc)), " (run "), to_string(sr)), ") and trained in J"), to_string(tc)), " (run "), to_string(tr)), "). The J17 slot is not cleared.")
+      StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
+    }
+    HypothesisWeakenedByMatchingCpu0Characteristics { comparison: c } => if matching_cpu0_characteristics(c: c) {
+        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(millivolt_count(v: c.current_fingerprint.core_voltage))), concat(concat(" mV, AVS ", to_string(millivolt_count(v: c.current_fingerprint.avs_voltage))), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
+      } else { concat("Weakening not derivable from the two summaries (unverified): ", h.hypothesis) }
+  }
+}
+
+fn matching_cpu0_characteristics(c: MtCollins1CpuFingerprintComparison) -> Bool {
+  let a = c.reference_fingerprint
+  let b = c.current_fingerprint
+  c.reference.active_sockets >= 2 && a.socket == b.socket && millivolt_count(v: a.core_voltage) == millivolt_count(v: b.core_voltage) && millivolt_count(v: a.avs_voltage) == millivolt_count(v: b.avs_voltage) && a.warranty == b.warranty
+}
+
+fn secondary_stage_text(st: SmproBootProgress) -> String {
+  match st {
+    SmproBootProgressRead { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
+    SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
+  }
+}
+
+fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
+
+fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
+  match outcome {
+    SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
+    SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l } =>
+      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), ", socket 0 continued alone"),
+        concat(", inter_socket_links_reported: ", concat(bool_text(b: l), " }")))
+  }
+}
+
+// What is installed now is the latest receipt's physical population, never a separate row.
+fn installed_connectors(history: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> List<Nat> {
+  match reverse(history).first() {
+    Present { value: b } => match boot_physical_population(boot: b, oriented: oriented) {
+      Present { value: cs } => cs
+      Absent => []
+    }
+    Absent => []
+  }
+}

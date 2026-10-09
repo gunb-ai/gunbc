@@ -16,7 +16,7 @@ fn lmm_loop_with_measure(measure: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -36,8 +36,8 @@ fn lmm_conj_measure(a: Node, b: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^lmm_dim_left }, target: a },
-      Edge { label: Named { name: ^lmm_dim_right }, target: b }
+      Edge { label: Authored { name: ^lmm_dim_left }, target: a },
+      Edge { label: Authored { name: ^lmm_dim_right }, target: b }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -176,7 +176,7 @@ test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
     children: [
       Edge { label: Positional, target: inner },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: lmm_atom(s: ^dag_loop_measure_sym)
       }
     ],

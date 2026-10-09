@@ -7,7 +7,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   SuspectObserved,
   FindingNotEstablished
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -15,8 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // INVOCATION FREQUENCY: resolution_context is the production callsite of
 // symbol_index_fill_module_roots. resolve_with_admission_policy builds that context once and
-// hands it to resolve_with_admission_context_policy, which admits via
-// namespace_for_subject_in_context. resolve_with_admission / resolve_with_admission_grounded
+// hands it to resolve_in_context, which admits via
+// resolution_context_namespace (the module namespace provider). resolve_with_admission / resolve_with_admission_grounded
 // forward default_name_resolution_policy(). Upstream: assemble_program_from_ingest /
 // assemble_program_from_module_roots (ONE resolve per ingest assembly over all validated_roots),
 // compile_ingest_with_admission / compile_source_root_ingest_with_admission (ONE resolve per

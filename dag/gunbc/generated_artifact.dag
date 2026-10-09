@@ -1,26 +1,25 @@
 
 module gunbc.generated_artifact
 
-import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
-import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
-import gunbc.plan_registry { all_plans }
+import gunbc.os_install { HostAutoinstall }
+import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
-import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
-import product.placement_supply { HostIdentity }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import v2.std.decl_ref_resolution {
-  DeclarationRefResolution,
-  declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
-  resolve_declaration_ref_live
-}
+import gunbc.fleet_intent { ComputeHost }
+import product.host_identity { HostIdentity }
+import std.decl_ref { DeclarationRef, decl_ref }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
+  | MicrovmShakedownYamlArtifact
+  | InstrumentDispatchYamlArtifact
+  | HealWorkflowYamlArtifact
+  | HealPublisherWorkflowYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
+  | CargoConfigArtifact
   | RoadmapArtifact
   | DesignArtifact
   | DesignFailureModesArtifact
@@ -34,9 +33,11 @@ type GeneratedArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
+  | Stage0LinkedPartitionCratesArtifact
   | SeedRetentionFrontierGeneratedRsArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
+  | ReleaseLocusSeedConstantsGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
@@ -44,26 +45,34 @@ type GeneratedArtifact
   | PlanArtifact { plan: Plan }
   | CouponCadQueryProgramArtifact
   | WholeCorpusCompileMeasuredRootDemandsArtifact
-
-data generated_artifact_registry: List<GeneratedArtifact> = concat(
-  concat(
-    concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact],
-      map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
-    ),
-    map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
-  ),
-  map(all_plans, pl => PlanArtifact { plan: pl })
-)
+  | ApprovalDeviceVectorsArtifact
+  | ApproveIosProjectYmlArtifact
+  | ApproveIosProtocolSwiftArtifact
+  | ApproveIosWireSwiftArtifact
+  | ApproveIosProtocolVectorTestsSwiftArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
+// CargoToolchain: cargo itself reads the file, discovered from the invocation's directory, before
+// any target is built (gunbc.cargo_config_emit).
+// CrossLanguageClientTest: a client written in another language reads the file as its test oracle
+// for bytes this tree defines (gunbc.auth.approval_device_redemption_fixtures, read by the iOS
+// app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
+// XcodeProjectGenerator: XcodeGen reads the file on the operator's Mac and writes the Xcode project
+// and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
+// SwiftCompiler: swiftc, driven by xcodebuild on the operator's Mac, compiles the file into the app
+// or its test bundle (gunbc.approve_ios_swift_protocol and its siblings, printed by
+// the Swift grammar rows v2.extdeps.languages.swift.rows).
 type RepoConsumer
   = GitProtocol
+  | CargoToolchain
   | GithubActionsWorkflow
   | ProjectDocumentation
   | HostReconciler
   | CompilerRunInput
+  | CrossLanguageClientTest
+  | XcodeProjectGenerator
+  | SwiftCompiler
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -122,17 +131,6 @@ fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRep
   }
 }
 
-fn heal_regenerated_after_provisional_merge_artifacts() -> List<GeneratedArtifact> {
-  filter(generated_artifact_registry, a => match concurrent_divergence_repair(a: a) {
-    AuthorRegeneratesBeforeMerge => false
-    HealRegeneratesAfterProvisionalMerge => true
-  })
-}
-
-fn heal_regenerated_after_provisional_merge_paths() -> List<String> {
-  map(heal_regenerated_after_provisional_merge_artifacts(), a => artifact_path(a: a))
-}
-
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
 // slug -- and the joined string was the only thing this module published. A consumer that must LIST
@@ -176,8 +174,13 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
+    MicrovmShakedownYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "microvm-shakedown.yml" }
+    InstrumentDispatchYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "instrument-dispatch.yml" }
+    HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
+    HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
+    CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
     DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
@@ -194,13 +197,20 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     CouponCadQueryProgramArtifact =>
       ArtifactLocation { directory: "manufacturing", name: "hole_diameter_ladder_r1.py" }
     WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: whole_corpus_compile_demand_projection_directory, name: whole_corpus_compile_demand_projection_name }
+    ApprovalDeviceVectorsArtifact => ArtifactLocation { directory: "dag/test/fixture/approval_device_redemption", name: "vectors.json" }
+    ApproveIosProjectYmlArtifact => ArtifactLocation { directory: "apps/approve-ios", name: "project.yml" }
+    ApproveIosProtocolSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Protocol.swift" }
+    ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
+    ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
+    Stage0LinkedPartitionCratesArtifact => ArtifactLocation { directory: "src/v1/stage0", name: "linked_partition_crates.generated.txt" }
     SeedRetentionFrontierGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_seed_retention_frontier_generated.rs" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "release_locus_seed_constants_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
     Fci1BoundedExecutionContextArtifact => ArtifactLocation { directory: "tools", name: "fabric_ci_fci1_bounded_execution_context.env" }
     AutoinstallUserDataArtifact { spec } =>
@@ -249,12 +259,17 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
     GitattributesArtifact => CommitRequired { consumer: GitProtocol }
+    CargoConfigArtifact => CommitRequired { consumer: CargoToolchain }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    MicrovmShakedownYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    InstrumentDispatchYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
@@ -263,18 +278,26 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     PlanArtifact { plan } =>
       match plan.projection {
         PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+        PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
         PlanIsAuthorityOnly { ruling: _ } => NotCommitted
       }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
+    ApprovalDeviceVectorsArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    ApproveIosProjectYmlArtifact => CommitRequired { consumer: XcodeProjectGenerator }
+    ApproveIosProtocolSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    Stage0LinkedPartitionCratesArtifact => CommitRequired { consumer: GitProtocol }
     SeedRetentionFrontierGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
@@ -287,14 +310,6 @@ fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
     CommitRequired { consumer: _ } => true
     NotCommitted => false
   }
-}
-
-fn committed_generated_artifacts() -> List<GeneratedArtifact> {
-  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
-}
-
-fn committed_generated_artifact_paths() -> List<String> {
-  map(committed_generated_artifacts(), a => artifact_path(a: a))
 }
 
 // Disposition authority (reference only; do not fork the lifecycle here):
@@ -310,8 +325,13 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
+    MicrovmShakedownYamlArtifact => match b { MicrovmShakedownYamlArtifact => true  _ => false }
+    InstrumentDispatchYamlArtifact => match b { InstrumentDispatchYamlArtifact => true  _ => false }
+    HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
+    HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
+    CargoConfigArtifact => match b { CargoConfigArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     DesignFailureModesArtifact => match b { DesignFailureModesArtifact => true  _ => false }
@@ -323,23 +343,26 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     CouponCadQueryProgramArtifact => match b { CouponCadQueryProgramArtifact => true  _ => false }
     WholeCorpusCompileMeasuredRootDemandsArtifact => match b { WholeCorpusCompileMeasuredRootDemandsArtifact => true  _ => false }
+    ApprovalDeviceVectorsArtifact => match b { ApprovalDeviceVectorsArtifact => true  _ => false }
+    ApproveIosProjectYmlArtifact => match b { ApproveIosProjectYmlArtifact => true  _ => false }
+    ApproveIosProtocolSwiftArtifact => match b { ApproveIosProtocolSwiftArtifact => true  _ => false }
+    ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
+    ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
+    Stage0LinkedPartitionCratesArtifact => match b { Stage0LinkedPartitionCratesArtifact => true  _ => false }
     SeedRetentionFrontierGeneratedRsArtifact => match b { SeedRetentionFrontierGeneratedRsArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => match b { ReleaseLocusSeedConstantsGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
-}
-
-fn registry_contains(a: GeneratedArtifact) -> Bool {
-  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
 }
 
 // THE PRODUCER OF EACH ARTIFACT, AS A DECLARATION REFERENCE. Every artifact rostered above is a
@@ -375,11 +398,16 @@ fn registry_contains(a: GeneratedArtifact) -> Bool {
 // that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
-    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: "expected_witness_floor_yml")
+    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
     FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
     FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
+    MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
+    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
+    HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
+    HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
+    CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
     RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "expected_roadmap_md")
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
@@ -391,18 +419,25 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
     WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
+    ApprovalDeviceVectorsArtifact => decl_ref(module_path: "gunbc.auth.approval_device_redemption_fixtures", decl_name: "approval_device_vectors_json")
+    ApproveIosProjectYmlArtifact => decl_ref(module_path: "gunbc.approve_ios_project", decl_name: "expected_approve_ios_project_yml")
+    ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
+    ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
+    ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
     Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
+    Stage0LinkedPartitionCratesArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_linked_partition_crates_txt")
     SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
     V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
     EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.release_locus_seed_constants_emit", decl_name: "expected_release_locus_seed_constants_generated_rs")
     FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
     RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner_host_grants", decl_name: "runner_host_sudoers_content")
-    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "expected_plan_md")
+    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
   }
 }
 
@@ -418,68 +453,3 @@ fn artifact_producer_row(a: GeneratedArtifact) -> GeneratedArtifactProducerRow {
   GeneratedArtifactProducerRow { artifact_path: artifact_path(a: a), producer: artifact_producer(a: a) }
 }
 
-fn generated_artifact_producer_rows() -> List<GeneratedArtifactProducerRow> {
-  map(generated_artifact_registry, a => artifact_producer_row(a: a))
-}
-
-// THE COVERAGE VERDICT, ONE PER ROW, AND THE REFUSAL IS THE RESOLVER'S OWN ARM. The producer is
-// resolved by v2.std.decl_ref_resolution -- module absent, declaration absent, field absent,
-// ambiguous, or resolved -- against the live tree by key, so a producer that has been renamed,
-// moved to another module or deleted refuses with the arm that says which, and the artifact path it
-// leaves uncovered is carried beside it. Nothing here scans the artifact's bytes: the question is
-// whether the declaration join REACHES this artifact, not what the artifact contains.
-type GeneratedArtifactProducerCoverage
-  = GeneratedArtifactProducerCovered { row: GeneratedArtifactProducerRow }
-  | GeneratedArtifactProducerUncovered { row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution }
-
-fn generated_artifact_producer_coverage_of(row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution) -> GeneratedArtifactProducerCoverage {
-  if declaration_ref_resolution_is_resolved(resolution: resolution) {
-    GeneratedArtifactProducerCovered { row: row }
-  } else {
-    GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
-  }
-}
-
-fn generated_artifact_producer_coverage_row(row: GeneratedArtifactProducerRow, pool_roots: List<String>) -> GeneratedArtifactProducerCoverage {
-  generated_artifact_producer_coverage_of(
-    row: row,
-    resolution: resolve_declaration_ref_live(ref: row.producer, pool_roots: pool_roots)
-  )
-}
-
-fn generated_artifact_producer_coverage_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
-  map(rows, r => generated_artifact_producer_coverage_row(row: r, pool_roots: pool_roots))
-}
-
-fn generated_artifact_producer_coverage_is_refused(c: GeneratedArtifactProducerCoverage) -> Bool {
-  match c {
-    GeneratedArtifactProducerCovered { row: _ } => false
-    GeneratedArtifactProducerUncovered { row: _, resolution: _ } => true
-  }
-}
-
-// THE REFUSAL SET over a supplied row population. The registry fold below hands it the real rows; a
-// witness hands it a planted row whose producer names no declaration, which is the only way an
-// uncovered artifact can be authored while GeneratedArtifact stays closed and every rostered
-// producer resolves.
-fn generated_artifact_producer_refusals_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
-  filter(generated_artifact_producer_coverage_over(rows: rows, pool_roots: pool_roots), c => generated_artifact_producer_coverage_is_refused(c: c))
-}
-
-fn generated_artifact_producer_refusals(pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
-  generated_artifact_producer_refusals_over(rows: generated_artifact_producer_rows(), pool_roots: pool_roots)
-}
-
-fn every_generated_artifact_producer_covered(pool_roots: List<String>) -> Bool {
-  count(generated_artifact_producer_refusals(pool_roots: pool_roots)) == 0
-}
-
-// LOCATED: the artifact path, the producer it claims, and the resolver arm that refused it.
-fn generated_artifact_producer_coverage_rendered(c: GeneratedArtifactProducerCoverage) -> String {
-  match c {
-    GeneratedArtifactProducerCovered { row } =>
-      concat(concat(concat("generated artifact ", row.artifact_path), " covered by producer "), declaration_ref_display_key(ref: row.producer))
-    GeneratedArtifactProducerUncovered { row, resolution } =>
-      concat(concat(concat(concat(concat("generated artifact ", row.artifact_path), " UNCOVERED: producer "), declaration_ref_display_key(ref: row.producer)), " "), declaration_ref_resolution_arm_key(resolution: resolution))
-  }
-}

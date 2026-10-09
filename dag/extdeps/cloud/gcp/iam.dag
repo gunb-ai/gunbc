@@ -3,16 +3,38 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
-import v2.std.network { GET, POST }
-import v2.std.optional { Present }
+import std.optional { Absent, Present }
+import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/overview"
   }
+}
+
+// Primary citation for the binding structure: Google's REST reference for Policy#Binding, which defines the binding object as role plus members plus condition.
+data extdeps_external_authority_policy_binding: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/rest/v1/Policy#Binding"
+  }
+}
+
+// Reading: Google's REST reference for Policy#Binding owns the binding structure; type GcpBinding (role, members, condition) transcribes that object field-for-field and is dispatched by the iam_admin route, so the type is the surface that citation owns. The IAM overview (further citation) frames how bindings attach to policies.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpBinding", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_policy_binding,
+  further_citations: [extdeps_external_authority_anchor]
 }
 
 type GcpRole {
@@ -63,6 +85,23 @@ type GcpPolicy {
   bindings: List<GcpBinding>
   etag: String
   version: Int
+}
+
+// THE WIRE POLICY IS A PROTO3 MESSAGE, so google.iam.v1.Policy omits every field at its default:
+// a resource nobody has bound yet comes back as `{"etag": ...}` with NO bindings key and NO
+// version key. Both absences are cited upstream facts, not gaps: a repeated field with no
+// elements is the empty list, and Google documents that a policy without conditional bindings
+// "may specify any valid value or leave the field unset" for version -- the unset reading is
+// version 1. Declaring the operation outputs non-optional made a fresh secret's first policy read
+// a runtime TypeError instead of an empty policy, which is the one state a first grant always
+// starts from. This is the only place the wire optionality is folded into the GcpPolicy value the
+// reconciler consumes; every consumer of a policy read or write routes through it.
+fn gcp_policy_from_wire(bindings: List<GcpBinding>?, etag: String, version: Int?) -> GcpPolicy {
+  GcpPolicy {
+    bindings: match bindings { Present { value: bs } => bs  Absent => [] },
+    etag: etag,
+    version: match version { Present { value: v } => v  Absent => 1 }
+  }
 }
 
 // A GcpBinding is the WIRE shape: one role carrying a LIST of members. It is the
@@ -287,6 +326,8 @@ fn reconcile_faithful_policy(
 // There is deliberately no hand-authored permission roster in this module: a
 // role->permission table written from memory is authored data wearing a citation,
 // and it decays silently as Google edits the role.
+type GcpPermissionProbeWire { permissions: List<String>? }
+
 type GcpPredefinedRole {
   name: String
   title: String
@@ -344,6 +385,11 @@ type GcpGenerateAccessToken200Body {
   expire_time: String from "expireTime"
 }
 
+// GenerateAccessToken: THE REQUEST BODY IS UPSTREAM'S, and it was missing: projects.serviceAccounts.generateAccessToken
+// (https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken)
+// REQUIRES `scope` and takes `lifetime` as a protobuf Duration string ("600s"), so the earlier
+// shape -- no body, lifetime as a bare input nothing sent -- could only ever be answered 400. The
+// default lifetime is upstream's (3600s); the ceiling without the org's lifetime extension is 1h.
 service gcp.IAM {
   config {
     endpoint: "https://iamcredentials.googleapis.com"
@@ -352,10 +398,12 @@ service gcp.IAM {
   }
 
   operation GenerateAccessToken {
+    requires Network
     input {
       access_token: Secret
       target_sa: ServiceAccountEmail
-      lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+      scope: List<String> = ["https://www.googleapis.com/auth/cloud-platform"]
+      lifetime: String = "3600s"
     }
     output {
       access_token: Secret from "accessToken"
@@ -363,7 +411,11 @@ service gcp.IAM {
     }
 
     idempotent
-    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
+    transport rest {
+      method: POST,
+      path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken",
+      body: { scope: scope, lifetime: lifetime }
+    }
     response {
       200 => GcpGenerateAccessToken200Body
       401 => GcpErrorShape
@@ -389,6 +441,7 @@ service gcp.IamRoles {
   config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetRole {
+    requires Network
     input { access_token: Secret, role_name: NonEmptyStr }
     output {
       name: String
@@ -409,14 +462,184 @@ service gcp.IamRoles {
   }
 }
 
+// THE v3 GET RETURNS A DIFFERENT SHAPE FROM THE ESTATE'S GcpProject, and conflating them was a
+// real defect rather than a naming nicety: this operation declared `state` in its output while
+// mapping 200 to GcpProject, which is { project_id, project_number, name } and has no such field.
+// Resource Manager v3 projects.get publishes the project RESOURCE -- projectId, the lifecycle
+// state, and a resource name of the form projects/{number} -- and the lifecycle state is exactly
+// what a converge must read, because a project in DELETE_REQUESTED is neither absent nor usable.
+// GcpProject stays what it is, the estate-observation shape carrying the numeric id as its own
+// field; this type is the wire, and it lives beside the service that returns it exactly as
+// GcpPredefinedRole lives beside gcp.IamRoles. Naming them apart is what keeps the estate's
+// project_number from being read as something this response carries, because it does not.
+// THE LIFECYCLE STATE IS A CLOSED UPSTREAM VOCABULARY AND WAS CROSSING AS A RAW STRING. Resource
+// Manager v3 publishes exactly three values for a project's State, and a consumer was comparing the
+// undecoded string to one literal and carrying every other spelling forward verbatim -- so
+// DELETE_REQUESTED, a typo, and a value this model has never seen were one indistinguishable arm.
+// The sibling in extdeps.cloud.gcp.serviceusage has carried the right shape all along:
+// GcpServiceUsageState is a closed sum with a from_wire fold, and a consumer folds through it
+// rather than string-matching. This is that shape for projects.
+//
+// DELETE_REQUESTED is the state the distinction exists for: a project in it is NEITHER absent NOR
+// usable, so a converge that read it as "not active" and created would collide on a taken id and
+// report a naming failure for a pending deletion nobody mentioned.
+type GcpProjectLifecycleState
+  = ProjectStateUnspecified
+  | ProjectStateActive
+  | ProjectStateDeleteRequested
+
+fn gcp_project_lifecycle_state_wire(s: GcpProjectLifecycleState) -> String {
+  match s {
+    ProjectStateUnspecified => "STATE_UNSPECIFIED"
+    ProjectStateActive => "ACTIVE"
+    ProjectStateDeleteRequested => "DELETE_REQUESTED"
+  }
+}
+
+fn gcp_project_lifecycle_state_from_wire(raw: String) -> GcpProjectLifecycleState? {
+  if raw == gcp_project_lifecycle_state_wire(s: ProjectStateActive) {
+    Present { value: ProjectStateActive }
+  } else {
+    if raw == gcp_project_lifecycle_state_wire(s: ProjectStateDeleteRequested) {
+      Present { value: ProjectStateDeleteRequested }
+    } else {
+      if raw == gcp_project_lifecycle_state_wire(s: ProjectStateUnspecified) {
+        Present { value: ProjectStateUnspecified }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type GcpProjectResourceV3 {
+  parent: String?
+  project_id: GcpProjectId from "projectId"
+  state: String
+  resource_name: String from "name"
+}
+
+// CreateProject DOES NOT RETURN A PROJECT. It returns a long-running Operation, so its response
+// establishes that the request was accepted and nothing about whether the project exists -- which
+// is why its output carries an operation name rather than a GcpProject, and why GetProject is the
+// only thing in this module that may answer "it is there". A 409 means the id is already taken,
+// which for a converge keyed on project_id is the ordinary already-converged answer rather than a
+// failure, and is left for the caller to classify because this module does not know the caller's
+// intent for an id it did not choose.
+type GcpFolderResourceV3 { name: String, parent: String, state: String }
+
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
-  operation GetIamPolicy {
-    input { access_token: Secret, project_id: GcpProjectId }
-    output { bindings: Json, etag: String }
+  operation GetFolder {
+    requires Network
+    input { access_token: Secret, folder: NonEmptyStr }
+    output { name: String, parent: String, state: String }
     readonly
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
+    transport rest { method: GET, path: "/v3/\{folder\}" }
+    response {
+      200 => GcpFolderResourceV3
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetOrganizationIamPolicy {
+    requires Network
+    input { access_token: Secret, organization: NonEmptyStr }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    readonly
+    transport rest { method: POST, path: "/v3/\{organization\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetOrganizationIamPolicy {
+    requires Network
+    input { access_token: Secret, organization: NonEmptyStr, policy: GcpPolicy }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    transport rest { method: POST, path: "/v3/\{organization\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
+    response {
+      200 => GcpPolicy
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation TestIamPermissions {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetProject {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId }
+    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", parent: String? }
+    readonly
+    transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
+    response {
+      200 => GcpProjectResourceV3
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateProject {
+    requires Network
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      display_name: NonEmptyStr
+      parent: NonEmptyStr
+    }
+    output { operation_name: String from "name" }
+    transport rest {
+      method: POST,
+      path: "/v3/projects",
+      body: { projectId: project_id, displayName: display_name, parent: parent }
+    }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetIamPolicy {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape
@@ -427,14 +650,14 @@ service gcp.ResourceManager {
   }
 
   operation SetIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
-      bindings: Json
-      etag: NonEmptyStr
+      policy: GcpPolicy
     }
-    output { ok: Bool }
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape

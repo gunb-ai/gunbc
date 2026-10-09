@@ -9,7 +9,7 @@ import gunbc.fci1_bounded_execution_context {
   Fci1MemoryHighExceedsMax,
   fci1_bounded_execution_context,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.systemd { WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 
 type Fci1BoundedExecutionContextEmission
@@ -21,9 +21,13 @@ type Fci1BoundedExecutionContextEmission
 // emit, which is the tell DESIGN section 6 names, admitted as an interim only because the trigger
 // below names the capability that actually replaces it.
 //
-// dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes this
-// runner through orchestration emit or typed host_effect_apply, without a medium-as-string concat
-// scaffold -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
+// dissolve-on: the bash target grammar gains the constructs the two shell files need ([[ ]] with
+// glob matching, function definitions with local and return, $(<file) reads, and an a && b || c list
+// rendered without a subshell), so this carrier and those files can be built as
+// v2.extdeps.languages.bash_build nodes and emitted by v2.workflow.bash_emit, or as typed
+// host_effect_apply. CORRECTED 2026-09-28: #12430 classed this (c), "route available today". It is
+// (b), a missing target-language capability.
+// -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
 // tools/fabric_ci_fci1_live_instrument.sh.
 //
 // THE MARK IS HERE AND NOT ONLY ON THOSE TWO FILES BECAUSE THE TRIGGER WOULD OTHERWISE RETIRE THEM

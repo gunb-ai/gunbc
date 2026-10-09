@@ -1,0 +1,71 @@
+module test.claim.authored_import_variant_spelling_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING PAIR FOR THE CORRECTED SECOND TERM of
+// gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked.
+// test.claim.authored_import_use_line_binding_witness_test establishes the defect on the corpus
+// spelling UInt8, where the second declarer (v2.std.integer) declares the spelling BOTH as a type alias
+// AND as a unit variant of StandardIntegerType -- so every corpus arm varies the two together and none
+// can say which one drops the line. These arms separate them with fixture modules under
+// test.fixture.forked_spelling: one provider declares the phantom alias FspOctet, and a second
+// declarer reaches the closure through a bystander the consumer imports for an unrelated function,
+// declaring the spelling EITHER as a second alias OR only as a unit variant.
+//
+// MEASURED 2026-09-22 (bold-boar-16) through the real emitter. Before the repair: baseline PRESENT,
+// alias twin PRESENT, variant twin ABSENT -- and the variant twin's absence was decomposed rather than
+// read off one Bool: the same source with the provider's use-line moved to excludes returned true, so
+// the arm compiled clean and dropped the line, not failed to compile. After
+// v1.compiler.emit_rust authored_import_binds_provider_declaration: all three PRESENT.
+//
+// THE THREE STAY ENROLLED (DESIGN section 4b(4)). The variant arm was the expecting-red probe and is
+// now the regression control; the alias arm is the bound that keeps the class from reading as "any
+// duplicate spelling", and it is the arm that FALSIFIED the row's original term 2.
+
+fn v_single_declarer_keeps_the_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fsp_baseline\n\nimport std.types { Int, List }\nimport test.fixture.forked_spelling.provider { FspOctet }\n\nfn count_octets(xs: List<FspOctet>) -> Int {\n  count(xs)\n}\n",
+    "src/fsp_baseline.rs",
+    ["pub use crate::test_fixture_forked_spelling_provider::", "FspOctet"],
+    []
+  )
+}
+
+test fn a_singly_declared_fixture_alias_emits_its_use_line() -> Bool {
+  v_single_declarer_keeps_the_use_line()
+}
+
+// A SECOND ALIAS DECLARER KEEPS THE LINE, before the repair as after it. This is why the row's original
+// term 2 ("the named declaration is a non-nominal alias", with a second declarer of the spelling) was a
+// proxy: an alias forked against an alias never dropped anything.
+fn v_second_alias_declarer_keeps_the_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fsp_alias\n\nimport std.types { Int, List }\nimport test.fixture.forked_spelling.provider { FspOctet }\nimport test.fixture.forked_spelling.alias_bystander { fsp_alias_bystander_answer }\n\nfn count_octets(xs: List<FspOctet>) -> Int {\n  count(xs)\n}\n",
+    "src/fsp_alias.rs",
+    ["pub use crate::test_fixture_forked_spelling_provider::", "FspOctet"],
+    []
+  )
+}
+
+test fn a_second_alias_declarer_keeps_the_use_line() -> Bool {
+  v_second_alias_declarer_keeps_the_use_line()
+}
+
+// A SAME-SPELLED UNIT VARIANT ANYWHERE IN THE CLOSURE used to drop the line: the emitter's
+// closure-wide bare-name variant scan reclassified the authored type import as a variant of another
+// module's enum. The repair answers that question from the module's resolved binding instead, and
+// this arm is the only fixture-grain red that fails if the scan comes back.
+fn v_same_spelled_variant_keeps_the_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fsp_variant\n\nimport std.types { Int, List }\nimport test.fixture.forked_spelling.provider { FspOctet }\nimport test.fixture.forked_spelling.variant_bystander { fsp_variant_bystander_answer }\n\nfn count_octets(xs: List<FspOctet>) -> Int {\n  count(xs)\n}\n",
+    "src/fsp_variant.rs",
+    ["pub use crate::test_fixture_forked_spelling_provider::", "FspOctet"],
+    []
+  )
+}
+
+test fn a_same_spelled_variant_in_the_closure_keeps_the_use_line() -> Bool {
+  v_same_spelled_variant_keeps_the_use_line()
+}

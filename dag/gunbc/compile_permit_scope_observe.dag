@@ -2,9 +2,9 @@ module gunbc.compile_permit_scope_observe
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty, SystemdUnitProperty }
 import extdeps.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.jobserver { jobserver_fifo_path_from_makeflags, jobserver_makeflags_env_name }
@@ -12,6 +12,7 @@ import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.compile_permit_scope {
@@ -29,10 +30,14 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation {
+  committed_slot_identities,
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
 
-data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
+data compile_permit_scope_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THIS MODULE READS, AND WHAT IT MUST NOT SAY. gunbc.compile_permit_scope derives whether
 // cancellation is safe; this module reports the realization the host's committed runner slots are
@@ -124,6 +129,8 @@ fn read_permit_scope_property(
 ) -> PermitScopePropertyRead {
   match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: raw } => PermitScopePropertyText { text: trim(raw) }
+    SystemdPropertyBlank =>
+      PermitScopePropertyUnreadable { cause: "the unit property was blank" as NonEmptyStr }
     SystemdPropertyCaptureRefused { reason: why } =>
       PermitScopePropertyUnreadable { cause: why as NonEmptyStr }
   }
@@ -232,13 +239,21 @@ fn observe_host_compile_cancellation(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> HostCompileCancellationStanding {
-  join_host_slot_realizations(
-    host: host,
-    reads: map(
-      committed_slot_identities(host: host),
-      slot => observe_slot_realization(transport: transport, unit: runner_slot_unit_name(slot: slot)),
-    ),
-  )
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: _, cause: c } =>
+      HostCancellationUnreadable {
+        host: host,
+        cause: join(["there is no committed runner-slot population to observe on this host: ", runner_width_unresolved_cause_text(cause: c)], "") as NonEmptyStr,
+      }
+    CommittedPopulationDerived { members: members } =>
+      join_host_slot_realizations(
+        host: host,
+        reads: map(
+          members,
+          slot => observe_slot_realization(transport: transport, unit: runner_slot_unit_name(slot: slot)),
+        ),
+      )
+  }
 }
 
 fn observe_host_compile_cancellation_for_fleet_host(host: HostIdentity) -> HostCompileCancellationStanding {

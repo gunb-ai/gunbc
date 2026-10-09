@@ -1,0 +1,273 @@
+module v2.test.claim.named_argument_binding
+
+import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.eval { AwaitingChildren, eval_edge_is_runtime_argument }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  application_actual_edges,
+  application_binding_plan,
+  arrow_declared_parameter_order
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  all_edges_positional,
+  Arrow,
+  Atom,
+  ComputationNode,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  node_subtree_nodes,
+  well_formed,
+  StructuralLabel
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: named actuals carried through body lowering and bound by name -- v2.compiler.body_lowering_fold
+// body_lower_call_arg_edges (the label rides the application as a Named edge), v2.std.node's Transform
+// discipline PositionalPrefixThenLabeled, and the one binding authority v2.std.arrow_signature
+// application_binding_plan that v2.compiler.infer judges over and v2.compiler.eval binds through.
+//
+// ROUTE: every specimen is source text assembled through assemble_program_from_ingest (lowering and
+// resolve run for real); each claim reads one interface over what the production route emitted. The
+// specimens are nullary and pure, enrolled in v2.workflow.floor_pure_producer_share.
+//
+// THE SPECIMEN DISAGREES WITH THE DEFECT: `f` declares (a: Int, b: Bool) and is called
+// f(b: true, a: 1), so authored order is the reverse of declared order and binding by position
+// pairs `b` with `a`'s slot.
+//
+// MUTATION RECEIPT: lowering every actual as Positional (the pre-change reader) reds (1) and (3);
+// application_binding_plan binding a named actual by its authored position reds (3) and (5);
+// eval_edge_is_runtime_argument filtering to positional edges reds (4).
+
+data nab_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^named_argument_binding_artifact,
+  file_path: "src/v2/pilot/named_argument_binding_pilot.dag"
+}
+
+fn nab_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: nab_artifact,
+        compilation_unit: ^named_argument_binding_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn nab_reordered() -> Outcome<ResolvedTree> {
+  nab_assemble(src: "module p\n\nfn f(a: Int, b: Bool) -> Int { a }\n\nfn g() -> Int { f(b: true, a: 1) }\n")
+}
+
+fn nab_in_order() -> Outcome<ResolvedTree> {
+  nab_assemble(src: "module p\n\nfn f(a: Int, b: Bool) -> Int { a }\n\nfn g() -> Int { f(a: 1, b: true) }\n")
+}
+
+fn nab_positional_after_named() -> Outcome<ResolvedTree> {
+  nab_assemble(src: "module p\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g() -> Int { f(a: 1, 2) }\n")
+}
+
+fn nab_label_repeated() -> Outcome<ResolvedTree> {
+  nab_assemble(src: "module p\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g() -> Int { f(a: 1, a: 2) }\n")
+}
+
+fn nab_nodes(o: Outcome<ResolvedTree>) -> List<Node> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } => node_subtree_nodes(root: n.root)
+  }
+}
+
+// The applications carrying at least one named actual.
+fn nab_named_applications(o: Outcome<ResolvedTree>) -> List<Node> {
+  fold(nab_nodes(o: o), init: [], f: fn(acc, m) {
+    match m.kind {
+      ComputationNode { behavior: Transform } => if !all_edges_positional(children: m.children) { concat(acc, [m]) } else { acc }
+      _ => acc
+    }
+  })
+}
+
+// The declared Arrow of `f`: the one with two declared parameters.
+fn nab_callee_arrows(o: Outcome<ResolvedTree>) -> List<Node> {
+  fold(nab_nodes(o: o), init: [], f: fn(acc, m) {
+    match m.kind {
+      TypeNode { connective: Arrow } =>
+        match arrow_declared_parameter_order(arrow: m) {
+          ArrowParameterOrderDeclared { labels: ls } => if count(ls) == 2 { concat(acc, [m]) } else { acc }
+          ArrowParameterOrderAbsent => acc
+          ArrowParameterOrderMalformed => acc
+        }
+      _ => acc
+    }
+  })
+}
+
+fn nab_actual_labels(app: Node) -> List<Symbol> {
+  fold(application_actual_edges(site: app), init: [], f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => concat(acc, [^structural])
+      Authored { name: sym } => concat(acc, [sym])
+      Positional => concat(acc, [^positional])
+    }
+  })
+}
+
+// Each declared slot, as [label, index of the authored actual that fills it], flattened.
+fn nab_plan(arrow: Node, app: Node) -> List<Symbol> {
+  match application_binding_plan(arrow: arrow, actuals: application_actual_edges(site: app)) {
+    ApplicationBound { slots: slots } =>
+      fold(slots, init: [], f: fn(acc, sl) {
+        concat(acc, [sl.label, if sl.actual_index == 0 { ^index_0 } else { if sl.actual_index == 1 { ^index_1 } else { ^index_other } }])
+      })
+    ApplicationBindingRefused { reason: r, at: _ } => [^refused, r]
+  }
+}
+
+fn nab_refused_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// (1) THE LABEL RIDES THE APPLICATION. f(b: true, a: 1) lowers to the callee plus two Named edges in
+// AUTHORED order, b then a, and the application is well formed. RED BEFORE: two Positional edges.
+test fn nab_named_actuals_lower_as_named_edges_in_authored_order() -> Bool {
+  let apps = nab_named_applications(o: nab_reordered())
+  (count(apps) == 1) && fold(apps, init: true, f: fn(acc, a) { acc && (nab_actual_labels(app: a) == [^b, ^a]) && well_formed(n: a) })
+}
+
+// (2) NAMED ORDER IS NOT PART OF IDENTITY. The two calls differ only in the order their named actuals
+// are written; the applications hash equal (the named suffix is sorted for the hash).
+test fn nab_reordering_named_actuals_preserves_identity() -> Bool {
+  let r = nab_named_applications(o: nab_reordered())
+  let i = nab_named_applications(o: nab_in_order())
+  (count(r) == 1) && (count(i) == 1)
+    && fold(r, init: true, f: fn(acc, x) { fold(i, init: acc, f: fn(inner, y) { inner && (content_hash(n: x) == content_hash(n: y)) }) })
+}
+
+// (3) BINDING IS BY NAME. Over the production-emitted Arrow of `f` and the application, the plan
+// fills declared slot `a` from authored actual 1 and `b` from authored actual 0. Binding by position
+// fills a from 0 and b from 1.
+test fn nab_the_plan_binds_named_actuals_by_name() -> Bool {
+  let o = nab_reordered()
+  let arrows = nab_callee_arrows(o: o)
+  let apps = nab_named_applications(o: o)
+  (count(arrows) == 1) && (count(apps) == 1)
+    && fold(arrows, init: true, f: fn(acc, ar) {
+      fold(apps, init: acc, f: fn(inner, ap) { inner && (nab_plan(arrow: ar, app: ap) == [^a, ^index_1, ^b, ^index_0]) })
+    })
+}
+
+// (4) EVALUATION ORDER IS AUTHORED ORDER. Eval evaluates every actual after the callee -- named ones
+// included -- in the stored node's order, b then a, and binds through the plan's indices; it never
+// reorders into binding order. RED if named actuals are filtered out (the silent drop this retires).
+test fn nab_eval_evaluates_every_actual_in_authored_order() -> Bool {
+  let apps = nab_named_applications(o: nab_reordered())
+  (count(apps) == 1)
+    && fold(apps, init: true, f: fn(acc, ap) {
+      acc && (nab_named_only(labels: nab_runtime_argument_labels(app: ap)) == [^b, ^a])
+    })
+}
+
+fn nab_named_only(labels: List<Symbol>) -> List<Symbol> {
+  fold(labels, init: [], f: fn(acc, l) { if l == ^positional { acc } else { concat(acc, [l]) } })
+}
+
+// The actuals eval's fold keeps as runtime arguments, read as the fold reads them: edge i is judged at
+// AwaitingChildren { processed: i } (v2.compiler.eval eval_fold_step).
+type NabRuntimeWalk {
+  index: Int
+  labels: List<Symbol>
+}
+
+fn nab_runtime_argument_labels(app: Node) -> List<Symbol> {
+  fold(app.children, init: NabRuntimeWalk { index: 0, labels: [] }, f: fn(acc, e) {
+    NabRuntimeWalk {
+      index: acc.index + 1,
+      labels: if eval_edge_is_runtime_argument(parent: app, progress: AwaitingChildren { processed: acc.index }, edge: e) {
+        match e.label {
+          StructuralLabel { label: _ } => concat(acc.labels, [^structural])
+          Authored { name: sym } => concat(acc.labels, [sym])
+          Positional => concat(acc.labels, [^positional])
+        }
+      } else {
+        acc.labels
+      }
+    }
+  }).labels
+}
+
+// (5) EVERY BINDING CONFLICT REFUSES, TYPED. Over the Arrow of `f`: an unknown label, a slot a
+// positional actual and a named actual both fill, a missing slot, and a surplus positional actual.
+test fn nab_binding_conflicts_refuse_typed() -> Bool {
+  let arrows = nab_callee_arrows(o: nab_reordered())
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, ar) {
+      acc
+        && (nab_plan_edges(arrow: ar, actuals: [nab_named(label: ^c), nab_named(label: ^a)]) == [^refused, ^application_argument_label_unknown])
+        && (nab_plan_edges(arrow: ar, actuals: [nab_positional(), nab_named(label: ^a)]) == [^refused, ^application_argument_slot_bound_twice])
+        && (nab_plan_edges(arrow: ar, actuals: [nab_named(label: ^b)]) == [^refused, ^application_positional_deficit])
+        && (nab_plan_edges(arrow: ar, actuals: [nab_positional(), nab_positional(), nab_positional()]) == [^refused, ^application_positional_surplus])
+        && (nab_plan_edges(arrow: ar, actuals: [nab_positional(), nab_named(label: ^b)]) == [^a, ^index_0, ^b, ^index_1])
+    })
+}
+
+fn nab_plan_edges(arrow: Node, actuals: List<Edge>) -> List<Symbol> {
+  match application_binding_plan(arrow: arrow, actuals: actuals) {
+    ApplicationBound { slots: slots } =>
+      fold(slots, init: [], f: fn(acc, sl) {
+        concat(acc, [sl.label, if sl.actual_index == 0 { ^index_0 } else { if sl.actual_index == 1 { ^index_1 } else { ^index_other } }])
+      })
+    ApplicationBindingRefused { reason: r, at: _ } => [^refused, r]
+  }
+}
+
+fn nab_named(label: Symbol) -> Edge {
+  Edge { label: Authored { name: label }, target: nab_unit() }
+}
+
+fn nab_positional() -> Edge {
+  Edge { label: Positional, target: nab_unit() }
+}
+
+fn nab_unit() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^nab_actual } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+// (6) TWO SHAPES HAVE NO WELL-FORMED APPLICATION AND REFUSE AT LOWERING, located: a positional actual
+// after a named one, and a label written twice.
+test fn nab_malformed_named_mixes_refuse_at_lowering() -> Bool {
+  nab_refused_with(o: nab_positional_after_named(), reason: ^body_lowering_reason_positional_argument_after_named)
+    && nab_refused_with(o: nab_label_repeated(), reason: ^body_lowering_reason_argument_label_repeated)
+}

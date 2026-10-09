@@ -76,3 +76,7 @@ opt-level = 3
 
 [profile.release]
 debug = 0
+# Hand-written seed Rust must refuse on integer overflow, not wrap: the substrate Int refuses
+# (gunbc.recurring_failure_mode hand_written_seed_rust_wraps_silently_in_release). Deliberate
+# wrapping is spelled wrapping_*, which this does not affect; dev/test already trap by default.
+overflow-checks = true

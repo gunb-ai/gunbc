@@ -6,8 +6,10 @@ module gunbc.assimilate.bmc_bootstrap_provision
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyReconciliation, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
-  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells, GcpPolicyRepresentationLossy
+  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells, GcpPolicyRepresentationLossy, gcp_policy_from_wire
 }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import std.types { Secret }
 
 data bmc_assimilate_service_deps: List<GcpService> = [
   GcpServiceUsage,
@@ -37,12 +39,7 @@ fn bmc_secret_iam_bindings() -> List<GcpBinding> {
 // pattern routes token acquisition through ensure_access_token and deletes the shell.GCloud node.
 // Authority: gunbc.auth.access_token_source ensure_access_token.
 
-pattern bmc_bootstrap_provision_srv3() -> {
-  sa_email: ServiceAccountEmail,
-  secret_binding_etag: String,
-  pool_op: String,
-  provider_op: String
-}
+pattern bmc_bootstrap_provision_srv3() -> BmcBootstrapProvision
   uses net: std.resources.Network
 {
   node auth: shell.GCloud.AuthPrintAccessToken()
@@ -53,37 +50,147 @@ pattern bmc_bootstrap_provision_srv3() -> {
     service_ids: bmc_required_gcp_apis
   )
 
+  return match enabled {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapEnableServices, refusal: refusal }
+    RestAnswered { answer: _ } =>
+      bmc_bootstrap_create_service_account(access_token: auth.access_token)
+  }
+}
+
+// ONE REST STEP PER PATTERN, EACH REACHED ONLY FROM THE ANSWERED ARM OF THE STEP BEFORE IT. A node
+// inside one pattern is unconditional, so a chain written as six nodes would perform every later
+// effect after an earlier one refused. Each continuation below therefore holds exactly one node,
+// receives what the earlier steps answered as parameters, and is invoked from the RestAnswered arm
+// alone; a RestRefused arm ends the chain with the step named and the refusal as the transport
+// reported it. The order is the order the single pattern had: enable services, create service
+// account, read secret policy, set secret policy, create pool, create provider.
+//
+// THE REFUSED ARM CLAIMS NOTHING ABOUT WHETHER A MUTATION COMMITTED. It carries the RestRefusal and
+// the step; whether a refused write may have landed is the reader's classification
+// (extdeps.transports.rest classify_rest_refusal), not a fact this result asserts.
+type BmcBootstrapStep
+  = BmcBootstrapEnableServices
+  | BmcBootstrapCreateServiceAccount
+  | BmcBootstrapReadSecretPolicy
+  | BmcBootstrapSetSecretPolicy
+  | BmcBootstrapCreatePool
+  | BmcBootstrapCreateProvider
+
+type BmcBootstrapProvision
+  = BmcBootstrapProvisioned {
+      sa_email: ServiceAccountEmail
+      secret_binding_etag: String
+      pool_op: String
+      provider_op: String
+    }
+  | BmcBootstrapProvisionRefused { step: BmcBootstrapStep, refusal: RestRefusal }
+
+pattern bmc_bootstrap_create_service_account(access_token: Secret) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
   node sa: gcp.IamAdmin.CreateServiceAccount(
-    access_token: auth.access_token,
+    access_token: access_token,
     project_id: bmc_secrets_project_id,
     account_id: bmc_assimilator_account_id,
     display_name: bmc_assimilator_display_name
   )
 
+  return match sa {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreateServiceAccount, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_read_secret_policy(access_token: access_token, sa_email: answer.email)
+  }
+}
+
+pattern bmc_bootstrap_read_secret_policy(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
   node observed_policy: gcp.SecretManager.GetSecretIamPolicy(
-    access_token: auth.access_token,
+    access_token: access_token,
     project_id: bmc_secrets_project_id,
     secret: bmc_srv3_secret_name
   )
 
+  return match observed_policy {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapReadSecretPolicy, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_set_secret_policy(
+        access_token: access_token,
+        sa_email: sa_email,
+        observed: gcp_policy_from_wire(bindings: answer.bindings, etag: answer.etag, version: answer.version)
+      )
+  }
+}
+
+pattern bmc_bootstrap_set_secret_policy(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail,
+  observed: GcpPolicy
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
   node bind: gcp.SecretManager.SetSecretIamPolicy(
-    access_token: auth.access_token,
+    access_token: access_token,
     project_id: bmc_secrets_project_id,
     secret: bmc_srv3_secret_name,
-    policy: bmc_secret_iam_bindings_reconciled_policy(
-      observed: GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version }
-    )
+    policy: bmc_secret_iam_bindings_reconciled_policy(observed: observed)
   )
 
+  return match bind {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapSetSecretPolicy, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_create_pool(
+        access_token: access_token,
+        sa_email: sa_email,
+        secret_binding_etag: answer.etag
+      )
+  }
+}
+
+pattern bmc_bootstrap_create_pool(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail,
+  secret_binding_etag: String
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
   node pool: gcp.IamAdmin.CreateWorkloadIdentityPool(
-    access_token: auth.access_token,
+    access_token: access_token,
     project_id: bmc_secrets_project_id,
     pool_id: bmc_wif_pool_id,
     display_name: bmc_wif_pool_display_name
   )
 
+  return match pool {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreatePool, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_create_provider(
+        access_token: access_token,
+        sa_email: sa_email,
+        secret_binding_etag: secret_binding_etag,
+        pool_op: answer.operation_name
+      )
+  }
+}
+
+pattern bmc_bootstrap_create_provider(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail,
+  secret_binding_etag: String,
+  pool_op: String
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
   node provider: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
-    access_token: auth.access_token,
+    access_token: access_token,
     project_id: bmc_secrets_project_id,
     pool_id: bmc_wif_pool_id,
     provider_id: bmc_wif_provider_id,
@@ -92,11 +199,16 @@ pattern bmc_bootstrap_provision_srv3() -> {
     attribute_condition: bmc_wif_attribute_condition()
   )
 
-  return {
-    sa_email: sa.email,
-    secret_binding_etag: bind.etag,
-    pool_op: pool.operation_name,
-    provider_op: provider.operation_name
+  return match provider {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreateProvider, refusal: refusal }
+    RestAnswered { answer } =>
+      BmcBootstrapProvisioned {
+        sa_email: sa_email,
+        secret_binding_etag: secret_binding_etag,
+        pool_op: pool_op,
+        provider_op: answer.operation_name
+      }
   }
 }
 
@@ -131,8 +243,9 @@ fn bmc_secret_iam_bindings_owned_cells() -> List<GcpIamBindingCell> {
 // convergent re-run looks like it changed something.
 //
 // It is not repaired in place because the caller is a `node bind:` pattern invocation, which
-// cannot branch on a verdict to skip its own effect; making the write conditional requires the
-// call site to become an effect-plan step that can be selected or not.
+// cannot branch on a verdict to skip its own effect: once bmc_bootstrap_set_secret_policy is
+// entered its write happens. The verdict would have to be consumed one step earlier, where the
+// read's answered arm selects that continuation, and that selection is not made today.
 // DISSOLVE-ON: the BMC bootstrap patterns become EffectPlan steps, at which point the reconcile
 // verdict selects whether the SetSecretIamPolicy step is present at all, and this wrapper is
 // deleted rather than returning a policy the caller was never meant to write.

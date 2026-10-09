@@ -2,7 +2,7 @@ module v2.test.manual.bash_emit_command
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model {
@@ -61,7 +61,7 @@ import v2.std.collection {
   Map,
   empty_map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -89,6 +89,7 @@ fn bash_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
 }
 
+// Arrow used as a generic node shape; not a function signature (Program P).
 fn bash_arrow_emitted_red_fixture() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },

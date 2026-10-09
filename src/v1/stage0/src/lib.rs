@@ -136,6 +136,28 @@ pub mod gunbc_namespace_reference_derived_closure_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_reference_derived_candidate;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod gunbc_rust_crate_package_ident;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
     unused_imports,
@@ -159,6 +181,17 @@ pub mod gunbc_stage0_crate_layout_generated;
     clippy::all
 )]
 pub mod gunbc_stage0_crate_partition_generated;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod gunbc_stage0_emitted_edge_admission;
 #[allow(
     unused_imports,
     unused_variables,
@@ -664,6 +697,28 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_generic_identity_census;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_interpolation_hole_census;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
     unused_imports,
@@ -756,36 +811,19 @@ pub mod wt_common;
 #[macro_use]
 pub mod v1_interpreter_dispatch_generated;
 pub mod cli_run;
+pub mod closure_identity;
 pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
-pub mod derived_realization_schedule;
 pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod process_group;
 pub mod recorded_fixture;
-pub mod resolved_graph_cache;
-pub mod shared_typecheck_store;
+pub mod release_locus_seed_constants_generated;
 pub mod std_logic;
-pub mod usv_pilot_v2_std_algebra;
-pub mod usv_pilot_v2_std_collection;
-pub mod usv_pilot_v2_std_node;
 pub mod v1_interpreter;
-pub mod v2_compiler_body_producer;
-pub mod v2_compiler_compile;
-pub mod v2_compiler_discovery_enumeration;
-pub mod v2_compiler_infer;
-pub mod v2_compiler_normalize;
-pub mod v2_compiler_parse_engine_hooks;
-pub mod v2_compiler_program_assembly;
-pub mod v2_compiler_program_partition;
-pub mod v2_compiler_resolve;
-pub mod v2_compiler_source_authority;
-pub mod v2_compiler_target_carriers;
-pub mod v2_compiler_tokenize;
-pub mod v2_compiler_use_site_verdict;
 
 pub struct NonEmptyVec<T>(Vec<T>);
 

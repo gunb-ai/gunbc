@@ -2,7 +2,12 @@ module gunbc.live_deploy.member_identity
 
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
-import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
+import std.content_hash {
+  Fnv1a64Structural,
+  as_content_hash_structural,
+  content_hash_eq_structural,
+  serialize_content_hash,
+}
 import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, systemd_unit_active_state_wire_label }
 
 // A DEPLOYMENT CONVERGES ON IDENTITIES, NOT ON PATHS. gunbc.live_deploy.emit deployment_apply_plan
@@ -31,7 +36,7 @@ import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, D
 // A MEMBER CARRIES ITS OWN KEY WHERE IT HAS ONE. The release members are singular -- there is one
 // executable, one published tree, one serve unit -- so they are nullary. A directory root is not:
 // the deployment owns several, they differ only by path, and minting DispatchWorktreeRoot /
-// AttemptStateRoot / ComputeRoot / FabricEventLogRoot as nullary variants would be several names
+// AttemptStateRoot / ComputeRoot as nullary variants would be several names
 // for one concept (DESIGN section 2, one concept at every breadth). The path is the key, so it
 // lives on the variant and converged_member_label renders it -- which is also what keeps
 // converged_member_eq correct for a payload-carrying member, since that equality is defined
@@ -136,6 +141,77 @@ fn observed_member_member(o: ObservedMember) -> ConvergedMember {
   }
 }
 
+fn hash_algorithm_wire(a: HashAlgorithm) -> String {
+  match a {
+    Sha256 => "sha256"
+    Sha512 => "sha512"
+  }
+}
+
+fn digest_wire(d: Digest) -> String {
+  join([hash_algorithm_wire(a: d.algorithm), ":", d.hex as String], "")
+}
+
+fn structural_digest_wire(h: Fnv1a64Structural) -> String {
+  serialize_content_hash(hash: as_content_hash_structural(structural: h)) as String
+}
+
+fn tree_publication_identity_wire(t: TreePublicationIdentity) -> String {
+  join(
+    [
+      t.revision as String,
+      ":",
+      if t.tracked_projection_clean { "clean" } else { "dirty" },
+    ],
+    "",
+  )
+}
+
+fn unit_file_identity_wire(f: UnitFileIdentity) -> String {
+  join([f.unit as String, ":", structural_digest_wire(h: f.document)], "")
+}
+
+fn unit_manager_standing_wire(s: UnitManagerStanding) -> String {
+  match s {
+    ManagerLoadedCurrent => "loaded-current"
+    ManagerNeedsReload => "needs-reload"
+  }
+}
+
+fn service_process_identity_wire(p: ServiceProcessIdentity) -> String {
+  match p {
+    ProcessRunningRelease { revision } => join(["running-release:", revision as String], "")
+    ProcessNotRunning { active } =>
+      join(["not-running:", systemd_unit_active_state_wire_label(s: active)], "")
+  }
+}
+
+fn directory_root_identity_wire(r: DirectoryRootIdentity) -> String {
+  join([r.path as String, ":owner=", r.owner as String], "")
+}
+
+// TOTAL: every MemberIdentity arm contributes every field that distinguishes it. A forgotten
+// field here is a forgotten field in the stale-plan fingerprint.
+fn member_identity_wire(i: MemberIdentity) -> String {
+  match i {
+    TreeIdentity { tree } => join(["tree:", tree_publication_identity_wire(t: tree)], "")
+    ExecutableIdentity { digest } => join(["executable:", digest_wire(d: digest)], "")
+    UnitFileAt { file } => join(["unit-file:", unit_file_identity_wire(f: file)], "")
+    UnitManagerAt { standing } => join(["unit-manager:", unit_manager_standing_wire(s: standing)], "")
+    ProcessAt { process } => join(["process:", service_process_identity_wire(p: process)], "")
+    RootAt { root } => join(["root:", directory_root_identity_wire(r: root)], "")
+  }
+}
+
+fn observed_member_wire(o: ObservedMember) -> String {
+  match o {
+    MemberObserved { identity: i } => join(["member-observed:", member_identity_wire(i: i)], "")
+    MemberAbsentOnHost { member: m } => join(["member-absent:", converged_member_label(m: m)], "")
+    MemberUnobservable { member: m, cause: c } =>
+      join(["member-unobservable:", converged_member_label(m: m), ":", c], "")
+  }
+}
+
 // WHY A MEMBER'S DECISION COULD NOT BE MADE, as a closed vocabulary rather than prose, so a
 // consumer can branch on the cause and the text is rendered once.
 //
@@ -210,27 +286,51 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
   match a {
     TreeIdentity { tree: ta } => match b {
       TreeIdentity { tree: tb } => (ta.revision as String) == (tb.revision as String) && ta.tracked_projection_clean && tb.tracked_projection_clean
-      _ => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     ExecutableIdentity { digest: da } => match b {
       ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     UnitFileAt { file: fa } => match b {
       UnitFileAt { file: fb } => (fa.unit as String) == (fb.unit as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     UnitManagerAt { standing: sa } => match b {
       UnitManagerAt { standing: sb } => manager_standing_eq(a: sa, b: sb)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     ProcessAt { process: pa } => match b {
       ProcessAt { process: pb } => process_identity_eq(a: pa, b: pb)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      RootAt { root: _ } => false
     }
     RootAt { root: ra } => match b {
       RootAt { root: rb } => (ra.path as String) == (rb.path as String) && (ra.owner as String) == (rb.owner as String)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
     }
   }
 }
@@ -260,19 +360,30 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
 }
 
 fn decision_is_converged(d: MemberDecision) -> Bool {
-  match d { AlreadyConverged { member: _ } => true  _ => false }
+  match d {
+    AlreadyConverged { member: _ } => true
+    Create { member: _, to: _ } => false
+    Replace { member: _, from: _, to: _ } => false
+    MemberRefused { member: _, cause: _ } => false
+  }
 }
 
 fn decision_changes(d: MemberDecision) -> Bool {
   match d {
     Create { member: _, to: _ } => true
     Replace { member: _, from: _, to: _ } => true
-    _ => false
+    AlreadyConverged { member: _ } => false
+    MemberRefused { member: _, cause: _ } => false
   }
 }
 
 fn decision_is_refused(d: MemberDecision) -> Bool {
-  match d { MemberRefused { member: _, cause: _ } => true  _ => false }
+  match d {
+    MemberRefused { member: _, cause: _ } => true
+    AlreadyConverged { member: _ } => false
+    Create { member: _, to: _ } => false
+    Replace { member: _, from: _, to: _ } => false
+  }
 }
 
 fn decision_member(d: MemberDecision) -> ConvergedMember {
@@ -290,6 +401,28 @@ fn decision_label(d: MemberDecision) -> String {
     Create { member, to: _ } => join([converged_member_label(m: member), ": create"], "")
     Replace { member, from: _, to: _ } => join([converged_member_label(m: member), ": replace"], "")
     MemberRefused { member, cause } => join([converged_member_label(m: member), ": refused -- ", member_refusal_text(c: cause)], "")
+  }
+}
+
+fn member_decision_review_line(d: MemberDecision) -> String {
+  match d {
+    AlreadyConverged { member } =>
+      join([converged_member_label(m: member), ": already-converged"], "")
+    Create { member, to } =>
+      join([converged_member_label(m: member), ": create to=", member_identity_wire(i: to)], "")
+    Replace { member, from, to } =>
+      join(
+        [
+          converged_member_label(m: member),
+          ": replace from=",
+          member_identity_wire(i: from),
+          " to=",
+          member_identity_wire(i: to),
+        ],
+        "",
+      )
+    MemberRefused { member, cause } =>
+      join([converged_member_label(m: member), ": refused -- ", member_refusal_text(c: cause)], "")
   }
 }
 
@@ -403,7 +536,11 @@ type EffectDerivation
 fn release_member_changed(d: MemberDecision) -> Bool {
   match decision_member(d: d) {
     DirectoryRoot { path: _ } => false
-    _ => decision_changes(d: d)
+    TreePublication => decision_changes(d: d)
+    Executable => decision_changes(d: d)
+    UnitFile => decision_changes(d: d)
+    UnitManager => decision_changes(d: d)
+    ServiceProcess => decision_changes(d: d)
   }
 }
 
@@ -419,7 +556,8 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
     DirectoryRoot { path: _ } => match d {
       Create { member: _, to: _ } => CreateRoot
       Replace { member: _, from: _, to: _ } => ReownRoot
-      _ => KeepMember
+      AlreadyConverged { member: _ } => KeepMember
+      MemberRefused { member: _, cause: _ } => KeepMember
     }
   }
 }
@@ -502,7 +640,16 @@ fn plan_mutation_is(plan: ReleaseEffectPlan, member: ConvergedMember, expected: 
 }
 
 fn mutation_is_keep(e: MemberMutation) -> Bool {
-  match e { KeepMember => true  _ => false }
+  match e {
+    KeepMember => true
+    InstallExecutable => false
+    PublishTree => false
+    WriteUnit => false
+    DaemonReload => false
+    RestartService => false
+    CreateRoot => false
+    ReownRoot => false
+  }
 }
 
 fn plan_installs_executable(plan: ReleaseEffectPlan) -> Bool {

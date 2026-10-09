@@ -1,6 +1,8 @@
 module extdeps.transports.file
 
-import std.types { FermiDepth }
+import std.types { FermiDepth, Int, String }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.filesystem.filesystem_io { FilesystemFailureKind }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -16,4 +18,56 @@ data file_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, 
 
 type FileTransportConfig {
   base_path: String
+}
+
+// WHAT THE FILE TRANSPORT OBSERVES, as a value: an operation that succeeded with its byte count and
+// any content it read or listed, or one that failed with the host's CLOSED failure kind and its
+// message. This is the observation a modeled operation realization (v2.std.operation_realization)
+// supplies in place of a real filesystem call; the interpreter feeds it to the same declared-output
+// projection a real file result reaches, so success, error, error_kind, content and byte_count are
+// derived exactly as from a real call. A listing's content follows the realization's own contract:
+// the entry names, sorted, one per line.
+type FileExchangeObservation
+  = FileOperationSucceeded { byte_count: ByteSize, content: String }
+  | FileOperationFailed { kind: FilesystemFailureKind, error: String }
+
+// The byte count as the host integer the file transport's `byte_count` output field carries; the
+// dispatcher reads a modeled observation's count through this rather than decoding the measure.
+fn file_observation_byte_count(bytes: ByteSize) -> Int {
+  byte_size_count(b: bytes) as Int
+}
+
+// WHAT AN OPERATION'S `from "key"` NAMES ON THE FILE TRANSPORT (XL-2 PR3a): one channel of the file
+// result. The v2 home of the vocabulary the seed reads as v1.compiler.emit FileResultChannel and
+// file_result_channel_of_key, transcribed arm for arm and key for key (aliases included).
+// The same stated cross-generation divergence, recorded in
+// gunbc.recurring_failure_mode vocabulary_held_in_both_the_frozen_seed_and_v2.
+type FileOutputChannel
+  = FileSuccess
+  | FileByteCount
+  | FilePath
+  | FileError
+  | FileErrorKind
+  | FileContent
+
+fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
+  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { Present { value: FileSuccess } }
+  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileByteCount } }
+  else if key == "path" { Present { value: FilePath } }
+  else if key == "error" { Present { value: FileError } }
+  else if key == "error_kind" { Present { value: FileErrorKind } }
+  else if key == "content" || key == "entries" { Present { value: FileContent } }
+  else { none }
+}
+
+// THE FIELDS A `transport file { .. }` BLOCK DECLARES: the operation's declared request, not
+// FileTransportConfig (the host's base path). Corpus at authoring time: path 8, verb 5.
+type FileBindingField
+  = FileBindingPath
+  | FileBindingVerb
+
+fn file_binding_field_of_key(key: String) -> FileBindingField? {
+  if key == "path" { Present { value: FileBindingPath } }
+  else if key == "verb" { Present { value: FileBindingVerb } }
+  else { none }
 }

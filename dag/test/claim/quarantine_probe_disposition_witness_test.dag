@@ -7,6 +7,7 @@ import gunbc.quarantine_probe_disposition {
   NeverRunDeclinedByHomePolicy,
   NeverRunDeclinedByLiveTreeRead,
   NeverRunPathExcluded,
+  NeverRunDeclinedOutsideGate,
   QuarantineProbeSubject,
   QuarantineProbeHoldingFacts,
   QuarantineProbeDisposition,
@@ -15,20 +16,26 @@ import gunbc.quarantine_probe_disposition {
   QuarantineProbeHeldByMoreThanOne,
   quarantine_probe_disposition,
   quarantine_probe_disposition_holds,
+  quarantine_probe_dispositions,
   quarantine_probe_dispositions_all_hold,
   quarantine_probe_admissions,
-  quarantine_probe_identity
+  quarantine_probe_identity,
+  quarantine_probe_verification_standing,
+  QuarantineProbeVerificationStanding,
+  WitnessNeverRuns
 }
 import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import v2.workflow.required_floor { long_home_prefixes }
+import v2.workflow.required_floor { long_home_prefixes, required_gate_admits }
+import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline, quarantine_outside_gate_declines }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Present }
 import v2.std.text { String }
+import std.types { NonEmptyStr, List }
 
 // THE LIVE JOIN plus its discriminating controls. The model is in
 // gunbc.quarantine_probe_disposition; this file supplies the three live populations from the
@@ -49,10 +56,6 @@ import v2.std.text { String }
 // alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES
 // rather than merely agreeing with today's tree.
 
-fn witness_pool_roots() -> List<String> {
-  ["dag", "src/v2"]
-}
-
 // THE ENTRY-PATH -> AUTHORED-MODULE JOIN, from the same declaration the floor reads.
 //
 // A path-shaped guess is NOT available here and the corpus proves it: the admission entry
@@ -60,51 +63,77 @@ fn witness_pool_roots() -> List<String> {
 // dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
 // declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
 // path would silently miss the roster this fold joins against, and a miss reads as an alarm.
-fn module_for_entry(facts: List<ModuleDeclarationFact>, entry: String) -> String {
+// ONE PASS OVER THE CORPUS CENSUS. The admission entries are keyed first, then the census is
+// read once and only the entries' own rows are kept, so each subject reads its module by key.
+// The earlier shape folded the whole census once per admission row -- rows x corpus, 677,277
+// eval steps of the live claim's ~788k measured with claim_batch -- to name a few dozen modules
+// (DESIGN section 6, bare minimum cost).
+fn entry_modules(facts: List<ModuleDeclarationFact>, rows: List<ExplicitWitnessAdmission>) -> Map<String, String> {
+  let wanted = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row.witness.entry, value: true) })
   fold_list(
     xs: facts,
-    empty: "",
-    cons: fn(acc, fact) { if fact.path == entry { fact.module } else { acc } }
+    empty: empty_map(),
+    cons: fn(acc, fact) {
+      match map_lookup(m: wanted, key: fact.path) {
+        Present { value: _ } => map_insert(m: acc, key: fact.path, value: fact.module)
+        Absent => acc
+      }
+    }
   )
 }
 
-// `LiveTreeDisposition` still owns affected-set selection eligibility after the required-floor
-// decline is deleted. This scan exercises that surviving declaration question only; it does not
-// predict whether the interpreter can execute the witness hermetically.
 fn entry_declares_reads_live_tree_for_selection(entry: String) -> Bool {
   let source = filesystem_read(path: entry).content
   source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
 }
 
 fn subject_for_admission(
-  facts: List<ModuleDeclarationFact>,
+  modules: Map<String, String>,
   row: ExplicitWitnessAdmission
 ) -> QuarantineProbeSubject {
   QuarantineProbeSubject {
-    module: module_for_entry(facts: facts, entry: row.witness.entry),
+    module: match map_lookup(m: modules, key: row.witness.entry) {
+      Present { value: m } => m
+      Absent => ""
+    },
     entry: row.witness.entry,
     function: row.witness.function
   }
 }
 
+// THE CENSUS IS READ OVER THE ENTRIES' OWN DIRECTORIES, not the whole pool: the only rows the
+// join keeps are the admission entries', so scanning the rest of dag and src/v2 was work no
+// consumer read. The roots are derived from the entries (each entry's parent directory, once),
+// never authored, so an admission added anywhere is covered by construction; an entry whose
+// declaration is not found still derives an empty module and reds the live claim as NowPassing.
+fn entry_parent_dir(entry: String) -> String {
+  let parts = split(s: entry, delimiter: "/")
+  join(parts |> take(n: count(parts) - 1), "/")
+}
+
+fn entry_census_roots(rows: List<ExplicitWitnessAdmission>) -> List<String> {
+  sorted_map_keys(fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: entry_parent_dir(entry: row.witness.entry), value: true) }))
+}
+
 fn live_quarantine_probe_subjects() -> List<QuarantineProbeSubject> {
-  let facts = module_declaration_facts_live(pool_roots: witness_pool_roots())
+  let rows = quarantine_probe_admissions(rows: explicit_witness_admissions)
+  let modules = entry_modules(facts: module_declaration_facts_live(pool_roots: entry_census_roots(rows: rows)), rows: rows)
   fold_list(
-    xs: quarantine_probe_admissions(rows: explicit_witness_admissions),
+    xs: rows,
     empty: Empty {},
-    cons: fn(acc, row) { Cons { head: subject_for_admission(facts: facts, row: row), tail: acc } }
+    cons: fn(acc, row) { Cons { head: subject_for_admission(modules: modules, row: row), tail: acc } }
   )
 }
 
-// Declaring ReadsLiveTree still controls affected-set eligibility, but no longer declines
-// execution at the required-floor root. This holder population therefore has no live rows.
 fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
   QuarantineProbeHoldingFacts {
     expected_red_roster: floor_expected_red_roster(),
     route_gap_roster: floor_route_gap_roster(),
     home_prefixes: long_home_prefixes(),
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: quarantine_outside_gate_declines,
+    gate_admits: fn(m) { required_gate_admits(module_path: m) }
   }
 }
 
@@ -124,56 +153,48 @@ test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
   )
 }
 
-// THE LIVE CLAIM IS NOT VACUOUS, PROVEN BY MUTATION RATHER THAN ASSERTED. Each of the three
-// supplied live populations is dropped in turn and the live claim must go RED, then the unmutated
-// fold must go green. Without this, a fold that answered "held" for everything -- or a join that
-// silently matched nothing -- would pass the live claim exactly as it does now. Measured on
-// 967b5bc1b92: dropping the expected-red roster unholds 5 probes, the route-gap roster 6, the
-// home prefixes 7. The live-tree and path-exclusion axes are not mutated here because the
-// required floor no longer has a live-tree decline and neither arm holds a live row.
+// THE LIVE CLAIM IS NOT VACUOUS: every supplied live population holds at least one live probe.
+// Under exactly-one holding, dropping a population turns every probe it solely holds into
+// NowPassing, so "removing P reds the live claim" IS "some live probe's one holder is P". That
+// equivalence is read off ONE live evaluation rather than re-folding the whole join once per
+// dropped population: the earlier mutation form paid the live join five times and was refused at
+// 808,294 eval steps (CI run 36656467027), cost that bought no discrimination the single reading
+// lacks (DESIGN section 3, a witness discriminates at one interface). The mutation half of the
+// equivalence -- that a dropped population really does unhold -- is asserted on supplied facts by
+// the fixture claims below (a_probe_held_by_nothing_is_an_alarm_and_does_not_hold, and the
+// outside-gate pair), where it costs nothing. The live-tree and path-exclusion axes are not
+// required here because the required floor no longer has a live-tree decline and neither arm
+// holds a live row.
+fn live_dispositions() -> List<QuarantineProbeDisposition> {
+  quarantine_probe_dispositions(subjects: live_quarantine_probe_subjects(), facts: live_quarantine_probe_facts())
+}
+
+fn disposition_holds_by(d: QuarantineProbeDisposition, kind: fn(QuarantineProbeHolder) -> Bool) -> Bool {
+  match d {
+    HeldByExactlyOne { identity: _, holder: h } => kind(h)
+    _ => false
+  }
+}
+
+fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(QuarantineProbeHolder) -> Bool) -> Bool {
+  fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || disposition_holds_by(d: d, kind: kind) })
+}
+
 test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
-  let subjects = live_quarantine_probe_subjects()
-  !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_home_prefixes())
-    && quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
+  let ds = live_dispositions()
+  fold_list(xs: ds, empty: true, cons: fn(acc, d) { acc && quarantine_probe_disposition_holds(disposition: d) })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { FloorExpectedRedHeld => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { RouteGapHeldNoVerdict => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedByHomePolicy { matched_prefix: _ } => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedOutsideGate { module: _, trigger: _ } => true  _ => false } })
 }
 
 fn probe_no_strings() -> List<String> {
   Empty {}
 }
 
-fn live_facts_without_expected_red() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: probe_no_strings(),
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
-  }
-}
-
-fn live_facts_without_route_gap() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: probe_no_strings(),
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
-  }
-}
-
-fn live_facts_without_home_prefixes() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: probe_no_strings(),
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
-  }
+fn probe_no_declines() -> List<QuarantineOutsideGateDecline> {
+  Empty {}
 }
 
 data probe_fixture_module: String = "test.claim.synthetic_quarantine_probe_witness"
@@ -198,7 +219,9 @@ fn probe_fixture_no_facts() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -208,7 +231,9 @@ fn facts_with_expected_red() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -218,7 +243,9 @@ fn facts_with_route_gap() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -228,7 +255,9 @@ fn facts_with_home_prefix() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Cons { head: "test.claim.synthetic_", tail: Empty {} },
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -238,7 +267,9 @@ fn facts_with_live_tree_decline() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Cons { head: probe_fixture_entry, tail: Empty {} },
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -248,7 +279,9 @@ fn facts_with_path_exclusion() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Cons { head: "test/claim/synthetic_", tail: Empty {} }
+    path_exclusion_substrings: Cons { head: "test/claim/synthetic_", tail: Empty {} },
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -258,7 +291,9 @@ fn facts_with_two_holders() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -290,6 +325,10 @@ fn quarantine_probe_holder_eq(a: QuarantineProbeHolder, b: QuarantineProbeHolder
     }
     NeverRunPathExcluded { matched_substring: sa } => match b {
       NeverRunPathExcluded { matched_substring: sb } => sa == sb
+      _ => false
+    }
+    NeverRunDeclinedOutsideGate { module: ma, trigger: ta } => match b {
+      NeverRunDeclinedOutsideGate { module: mb, trigger: tb } => ma == mb && (ta as String) == (tb as String)
       _ => false
     }
   }
@@ -367,7 +406,9 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Boo
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
   disposition_is_now_passing(disposition: fixture_disposition(facts: near_miss))
     && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
@@ -395,4 +436,43 @@ test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool {
 test fn the_live_tree_declaration_read_discriminates() -> Bool {
   entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
     && !entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
+}
+
+// THE OUTSIDE-GATE ARM HOLDS ONLY OUTSIDE THE GATE, AND ONLY AS NEVER-RUN. A decline row for the
+// fixture probe holds it while the supplied gate refuses the module, and the holder's standing is
+// WitnessNeverRuns -- an unenforced red, never coverage. The SAME row under a gate that admits the
+// module derives no holder, so the probe reads NowPassing: a probe the floor would execute cannot
+// be parked here. The pair is the discriminating control for the join on module identity.
+fn probe_fixture_outside_gate_row() -> List<QuarantineOutsideGateDecline> {
+  [
+    QuarantineOutsideGateDecline {
+      module: probe_fixture_module,
+      function: probe_fixture_function,
+      trigger: "fixture: its module entering the required gate" as NonEmptyStr
+    },
+  ]
+}
+
+fn facts_with_outside_gate(gate_admits_fixture: Bool) -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_fixture_outside_gate_row(),
+    gate_admits: fn(m) { gate_admits_fixture && m == probe_fixture_module }
+  }
+}
+
+test fn an_outside_gate_row_holds_only_while_the_gate_refuses_the_module_and_only_as_never_run() -> Bool {
+  let outside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: false))
+  let inside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: true))
+  (match outside {
+    HeldByExactlyOne { identity: _, holder: h } =>
+      (match h { NeverRunDeclinedOutsideGate { module: m, trigger: _ } => m == probe_fixture_module  _ => false })
+        && (match quarantine_probe_verification_standing(holder: h) { WitnessNeverRuns => true  _ => false })
+    _ => false
+  })
+    && disposition_is_now_passing(disposition: inside)
 }

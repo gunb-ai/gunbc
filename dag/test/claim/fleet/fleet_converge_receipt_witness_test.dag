@@ -227,6 +227,7 @@ test fn witness_apply_receipt_partially_applied_round_trips() -> Bool {
       match back.terminal {
         PartiallyApplied { refused_axis_count: n, detail: d } => n == 2 && string_contains(s: d, pattern: "timer=1")
         FullyApplied => false
+        AwaitingCapability { capability: _ } => false
       }
     FleetConvergeApplyReceiptUnreadable { reason: _ } => false
   }

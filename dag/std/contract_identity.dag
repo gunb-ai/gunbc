@@ -1,6 +1,6 @@
 module std.contract_identity
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, brand }
 
 // ONE CANONICAL CONTRACT IDENTITY, because DESIGN §3 makes a name a semantic carrier: within one
 // naming surface and one declared effective version or epoch, holding the name constant may not

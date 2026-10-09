@@ -2,6 +2,8 @@ module extdeps.vllm.log_lines
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { TokenCount, token_count, ConcurrentRequestHundredths, concurrent_request_hundredths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -112,5 +114,262 @@ fn vllm_startup_reading(
     line: line,
     captured_text: captured_text,
     observed_at_revision: observed_at_revision
+  }
+}
+
+// ── THE PRODUCER: READING THESE LINES OFF CAPTURED ENGINE OUTPUT ───────────────────────────────
+//
+// WHAT THIS CLOSES, AND WHAT IT COSTS TO NOT HAVE IT. extdeps.vllm.kv_cache names this parser by the
+// name it expected it to have -- "that parser is gunbc.spark.serving_readback_parse's job and does
+// not read this line yet" -- and states that until it exists the token count is AUTHORED beside a
+// real line, so a genuine KV-cache-size line paired with a wrong number is admitted and undetected.
+// That module was deleted; this fold is the obligation landing at the authority that owns the line
+// grammar instead.
+//
+// THE MARKER IS A SUBSTRING AND NOT A LINE PREFIX, AND THE HEADER ABOVE WAS WRONG ABOUT THAT.
+// `vllm_startup_line_prefix` is called a prefix and the header calls each marker "a STABLE PREFIX
+// the engine emits" -- but a real line, captured from the Group B arm on 2026-09-16, reads
+//
+//   (EngineCore pid=273) INFO 09-16 20:00:46 [kv_cache_utils.py:2312] GPU KV cache size: 2,195,189 tokens, ...
+//
+// so the marker sits behind a process tag, a level, a timestamp and a source location, none of which
+// this module models. A reader keyed on `starts_with` would match NOTHING on real output and report
+// an engine that printed no startup lines -- green, empty, and wrong. The markers are matched as
+// substrings, and the function keeps its name because the STRING it returns is unchanged and is
+// still what upstream is cited for; what changes is how a reader is entitled to use it.
+//
+// AND ONE PHYSICAL LINE CARRIES TWO LINE CLASSES on this build. `GPU KV cache size: 2,195,189
+// tokens, Maximum concurrency for 262,144 tokens per request: 8.37x` contains both markers, so it
+// yields TWO readings whose captured_text is the same line. That is faithful: the two classes are
+// two FACTS, upstream happens to print them together here, and a reader that returned the first
+// match and stopped would silently lose the concurrency figure that extdeps.vllm.kv_layout
+// cross-checks the pool against.
+fn vllm_line_carries(line: String, class: VllmStartupLine) -> Bool {
+  string_contains(s: line, pattern: vllm_startup_line_prefix(line: class) as String)
+}
+
+fn vllm_readings_in_line(
+  line: String,
+  observed_at_revision: VllmSourceRevision,
+) -> List<VllmStartupReading> {
+  let text = trim(s: line)
+  if text == "" {
+    []
+  } else {
+    fold(vllm_startup_lines, init: [], f: (acc, class) =>
+      if vllm_line_carries(line: text, class: class) {
+        concat(acc, [vllm_startup_reading(
+          line: class,
+          captured_text: text as NonEmptyStr,
+          observed_at_revision: observed_at_revision,
+        )])
+      } else {
+        acc
+      })
+  }
+}
+
+// THE REVISION IS THE CALLER'S TO SUPPLY AND THIS FOLD DOES NOT INVENT ONE. The carrier's own note
+// states why: a constructor that filled the revision from the modelled constant made every
+// downstream revision comparison permanently green. The capture and the revision are read from the
+// SAME running container by the route that calls this, and if the route has no revision it has no
+// reading either.
+fn vllm_startup_readings(
+  captured_stdout: String,
+  observed_at_revision: VllmSourceRevision,
+) -> List<VllmStartupReading> {
+  fold(split(s: captured_stdout, delimiter: "\n"), init: [], f: (acc, line) =>
+    concat(acc, vllm_readings_in_line(line: line, observed_at_revision: observed_at_revision)))
+}
+
+fn vllm_readings_of_class(
+  readings: List<VllmStartupReading>,
+  class: VllmStartupLine,
+) -> List<VllmStartupReading> {
+  filter(readings, r => vllm_startup_line_same(a: r.line, b: class))
+}
+
+fn vllm_startup_line_same(a: VllmStartupLine, b: VllmStartupLine) -> Bool {
+  (vllm_startup_line_prefix(line: a) as String) == (vllm_startup_line_prefix(line: b) as String)
+}
+
+// ── THE NUMBERS, PARSED OUT OF THE LINE THEY WERE PRINTED ON ──────────────────────────────────
+//
+// THIS IS THE HALF THAT WAS MITIGATABLE AND IS NOW STRUCTURAL. kv_cache states the residual plainly:
+// the line class was bound by construction and the TOKEN COUNT was not, so "a genuine KV-cache-size
+// line paired with a wrong number is admitted, and this module does not detect it". Reading the
+// number out of the captured text removes the pairing entirely -- there is no second input to
+// disagree with the first.
+//
+// THE ENGINE PRINTS GROUPED DIGITS. `2,195,189` is one number with two separators, and a reader
+// that handed that text to parse_int would get a refusal or, worse, a prefix. The separator is
+// removed before parsing and nothing else about the text is altered.
+data vllm_digit_group_separator: String = ","
+
+fn vllm_ungrouped_digits(text: String) -> String {
+  replace(s: text, pattern: vllm_digit_group_separator, replacement: "")
+}
+
+// `GPU KV cache size: 2,195,189 tokens, Maximum concurrency ...`
+//
+// The value is what sits between the marker and the ` tokens` that follows it. Both delimiters are
+// required: taking everything after the marker would swallow the concurrency clause printed on the
+// same line, which is the exact shape of the wrong-quantity-in-the-right-units failure this module's
+// header was written about.
+data vllm_kv_pool_tokens_suffix: String = " tokens"
+
+fn vllm_text_between(text: String, opening: String, closing: String) -> String? {
+  let after = split(s: text, delimiter: opening)
+  match after |> skip(1) |> first {
+    Absent => none
+    Present { value: tail } => {
+      let before = split(s: tail, delimiter: closing)
+      if count(before) < 2 {
+        none
+      } else {
+        match before.first() {
+          Absent => none
+          Present { value: middle } => Present { value: trim(s: middle) }
+        }
+      }
+    }
+  }
+}
+
+// ── THE NUMBER IS THREE-VALUED, BECAUSE "WRONG LINE" AND "UNREADABLE LINE" ARE DIFFERENT FACTS ─
+//
+// A FIRST CUT RETURNED `none` FOR BOTH, and a consumer then rendered that absence as "the engine has
+// not printed its KV lines yet" -- a true sentence for the first and a false one for the second. A
+// GpuKvCacheSize line whose number this parser cannot read is the engine HAVING SPOKEN in a shape the
+// reader does not understand, which is the present-and-wrong case the JSON member readers in this
+// same corpus exist to keep apart from missing.
+type VllmNumberReading<T>
+  = VllmNumberRead { value: T }
+  | VllmNumberNotThisLineClass { line: VllmStartupLine }
+  | VllmNumberUnreadable { captured_text: NonEmptyStr, cause: NonEmptyStr }
+
+fn vllm_kv_pool_tokens_in(reading: VllmStartupReading) -> VllmNumberReading<TokenCount> {
+  match reading.line {
+    GpuKvCacheSize => vllm_kv_pool_tokens_of(reading: reading)
+    MaximumConcurrency => VllmNumberNotThisLineClass { line: MaximumConcurrency }
+    ResolvedKvCacheFormat => VllmNumberNotThisLineClass { line: ResolvedKvCacheFormat }
+    MemoryProfileSummary => VllmNumberNotThisLineClass { line: MemoryProfileSummary }
+  }
+}
+
+// THE TEXT EXTRACTION IS ITS OWN STEP so the optional it returns is matched against the optional's
+// own variants rather than against this function's return type.
+fn vllm_kv_pool_tokens_of(reading: VllmStartupReading) -> VllmNumberReading<TokenCount> {
+  let digits = vllm_text_between(
+    text: reading.captured_text as String,
+    opening: vllm_startup_line_prefix(line: GpuKvCacheSize) as String,
+    closing: vllm_kv_pool_tokens_suffix,
+  )
+  match digits {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: "the KV-cache-size marker is present but no token count follows it before ` tokens`" as NonEmptyStr,
+    }
+    Present { value: text } => vllm_token_count_of(reading: reading, text: text)
+  }
+}
+
+fn vllm_token_count_of(reading: VllmStartupReading, text: String) -> VllmNumberReading<TokenCount> {
+  let parsed = parse_int(s: vllm_ungrouped_digits(text: text))
+  match parsed {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: join(["the KV-cache-size line carries `", text, "` where a token count was expected"], "") as NonEmptyStr,
+    }
+    Present { value: n } =>
+      if n < 0 {
+        VllmNumberUnreadable {
+          captured_text: reading.captured_text,
+          cause: join(["the KV-cache-size line reports ", to_string(n), " tokens"], "") as NonEmptyStr,
+        }
+      } else {
+        VllmNumberRead { value: token_count(count: n) }
+      }
+  }
+}
+
+// `Maximum concurrency for 262,144 tokens per request: 8.37x`
+//
+// THE FIGURE IS PRINTED TO TWO DECIMALS AND IS CARRIED AS HUNDREDTHS, which is what
+// std.measure ConcurrentRequestHundredths is and what extdeps.vllm.kv_layout compares against. A
+// fraction with any other number of decimal places is REFUSED rather than padded or truncated: the
+// printed precision is what makes the cross-check exact, so a three-decimal figure is a different
+// print format this reader has not been shown and must not guess the scale of.
+data vllm_max_concurrency_opening: String = "tokens per request: "
+data vllm_max_concurrency_suffix: String = "x"
+
+fn vllm_max_concurrency_in(reading: VllmStartupReading) -> VllmNumberReading<ConcurrentRequestHundredths> {
+  match reading.line {
+    MaximumConcurrency => vllm_max_concurrency_of(reading: reading)
+    GpuKvCacheSize => VllmNumberNotThisLineClass { line: GpuKvCacheSize }
+    ResolvedKvCacheFormat => VllmNumberNotThisLineClass { line: ResolvedKvCacheFormat }
+    MemoryProfileSummary => VllmNumberNotThisLineClass { line: MemoryProfileSummary }
+  }
+}
+
+fn vllm_max_concurrency_of(reading: VllmStartupReading) -> VllmNumberReading<ConcurrentRequestHundredths> {
+  let figure = vllm_text_between(
+    text: reading.captured_text as String,
+    opening: vllm_max_concurrency_opening,
+    closing: vllm_max_concurrency_suffix,
+  )
+  match figure {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: "the concurrency marker is present but no figure follows `tokens per request: ` before its `x`" as NonEmptyStr,
+    }
+    Present { value: text } => vllm_hundredths_of(reading: reading, text: text)
+  }
+}
+
+fn vllm_hundredths_of(reading: VllmStartupReading, text: String) -> VllmNumberReading<ConcurrentRequestHundredths> {
+  let parsed = vllm_hundredths_of_decimal(text: text)
+  match parsed {
+    Absent => VllmNumberUnreadable {
+      captured_text: reading.captured_text,
+      cause: join([
+        "the concurrency line carries `", text,
+        "`, which is not a figure printed to two decimal places; the scale of any other precision is not guessed",
+      ], "") as NonEmptyStr,
+    }
+    Present { value: c } => VllmNumberRead { value: c }
+  }
+}
+
+fn vllm_hundredths_of_decimal(text: String) -> ConcurrentRequestHundredths? {
+  let parts = split(s: vllm_ungrouped_digits(text: text), delimiter: ".")
+  if count(parts) != 2 {
+    none
+  } else {
+    match parts.first() {
+      Absent => none
+      Present { value: whole } =>
+        match parts |> skip(1) |> first {
+          Absent => none
+          Present { value: fraction } =>
+            if string_length(s: fraction) != 2 {
+              none
+            } else {
+              match parse_int(s: whole) {
+                Absent => none
+                Present { value: w } =>
+                  match parse_int(s: fraction) {
+                    Absent => none
+                    Present { value: f } =>
+                      if w < 0 || f < 0 {
+                        none
+                      } else {
+                        Present { value: concurrent_request_hundredths(count: w * 100 + f) }
+                      }
+                  }
+              }
+            }
+        }
+    }
   }
 }

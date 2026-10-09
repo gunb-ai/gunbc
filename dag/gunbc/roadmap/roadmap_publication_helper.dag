@@ -7,7 +7,14 @@ import std.content_hash { content_hash_atom }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_listing_names_entry,
+  filesystem_read_outcome,
+}
 import extdeps.languages.json.emit {
   JsonValue,
   json_string,
@@ -217,7 +224,15 @@ fn publication_request_decode_document(doc: JsonValue) -> PublicationRequestDeco
                   ReceiptMemberRead { value: worktree } => RequestDecoded { subject: subject, worktree: worktree }
                 }
             }
-          _ =>
+          JsonMemberAbsent =>
+            RequestUndecodable {
+              reason: "publication request subject member is absent or duplicated",
+            }
+          JsonMemberDuplicated { count: _ } =>
+            RequestUndecodable {
+              reason: "publication request subject member is absent or duplicated",
+            }
+          JsonMemberNotAnObject =>
             RequestUndecodable {
               reason: "publication request subject member is absent or duplicated",
             }
@@ -259,15 +274,16 @@ type PublicationAnswerRead
 
 fn publication_answer_read_at(path: String, expected: RoadmapPublicationSubject) -> PublicationAnswerRead {
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    AnswerUnreadable {
-      reason: join([
-        "a publication answer for this head was listed and then could not be read, so it exists and its content is unavailable: ",
-        path, " (", read.error, ")",
-      ], ""),
-    }
-  } else {
-    match publication_receipt_decode(receipt: read.content) {
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      AnswerUnreadable {
+        reason: join([
+          "a publication answer for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+          path, " (", error, ")",
+        ], ""),
+      }
+    FilesystemReadSucceeded { content } =>
+      match publication_receipt_decode(receipt: content) {
       ReceiptUndecodable { reason: r } =>
         AnswerUnreadable {
           reason: join([
@@ -904,21 +920,22 @@ fn publication_helper_entry_outcome(
       publication_request_dir(instance_root: instance_root), "/", entry,
     ], "")
     let read = Filesystem.Read(path: path)
-    if !read.success {
-      HelperRequestUnreadable {
-        entry: entry,
-        detail: join([
-          "a publication request was listed and then could not be read: ",
-          path, " (", read.error, ")",
-        ], ""),
-      }
-    } else {
-      publication_helper_answer_request(
-        instance_root: instance_root,
-        credential: credential,
-        entry: entry,
-        request_text: read.content,
-      )
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        HelperRequestUnreadable {
+          entry: entry,
+          detail: join([
+            "a publication request was listed and then could not be read: ",
+            path, " (", error, ")",
+          ], ""),
+        }
+      FilesystemReadSucceeded { content } =>
+        publication_helper_answer_request(
+          instance_root: instance_root,
+          credential: credential,
+          entry: entry,
+          request_text: content,
+        )
     }
   }
 }
@@ -974,7 +991,7 @@ fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> Stri
   ]))
 }
 
-// EXIT SEMANTICS, on the belt's own precedent (belt_run_once_cli_note): a recorded refusal is a
+// EXIT SEMANTICS, on the belt's own precedent (gunbc.roadmap_belt_tick_cli belt_run_once_cli): a recorded refusal is a
 // counted outcome and not a failure to run, so an answer recording an absent credential exits 0 --
 // the fact reached disk and the requester will read it. Nonzero is reserved for the helper failing
 // to do its job at all: a spool it cannot reach, a request it cannot read, an answer it cannot

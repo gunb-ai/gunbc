@@ -1,0 +1,73 @@
+module extdeps.ampere.mt_jade_getting_started_guide.chassis
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Percent, percent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_authority,
+  mt_jade_gsg_model_scope,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_gsg_authority
+data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope
+
+// WHAT TABLE 5 AND FIGURE 10 / TABLE 6 STATE. What they do not state is recorded as
+// UnstatedByThisDocument rather than inferred from Collins, Wiwynn SV328R, or IEC catalogues.
+//
+// WHY THESE FIGURES CARRY NO CLAIM OVER THEIR OWN VALUES -- rationale only; the coverage state
+// itself is NOT here. A claim reading a row and comparing it to the same literal is a change
+// detector, because both sides are authored in this tree. The figures ARE grounded in the GSG,
+// Issue 1.00, digest f6528f70, but the ground is the DOCUMENT and no claim in this corpus
+// executes it; provenance is claimed once by the citation-read receipt, not once per row.
+//
+// Which consumer each row waits on, and what retires it, is a fact about THIS REPOSITORY rather
+// than about Ampere's document, so DESIGN section 3 homes it downstream and section 4c requires a
+// typed carrier a fold can read: gunbc.machine_intake_mtjade1_coverage_frontier
+// mtjade1_gsg_document_frontier_rows, one std.roster_frontier FrontierRow per declaration below.
+
+type GsgUnstated {
+  topic: NonEmptyStr
+}
+
+data mt_jade_gsg_carton_power_cable_count: Nat = 2
+
+data mt_jade_gsg_carton_rail_kit_count: Nat = 1
+
+data mt_jade_gsg_rear_psu_count: Nat = 2
+
+data mt_jade_gsg_chassis_fan_count: Nat = 6
+
+data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
+
+// The unstated rows record that THIS document does not state the topic. They are inferred from
+// nothing -- not from Collins, Wiwynn SV328R, or IEC catalogues --. No row in this module has a
+// production consumer today; every one of them is on the frontier roster.
+data mt_jade_gsg_inlet_connector_face: GsgUnstated = GsgUnstated {
+  topic: "IEC inlet / cord face (C13, C14, or other). Table 5 and Table 12 name Power cable quantity 2 and do not name the connector.",
+}
+
+data mt_jade_gsg_chassis_weight: GsgUnstated = GsgUnstated {
+  topic: "Chassis or system mass. This GSG does not print a weight.",
+}
+
+data mt_jade_gsg_rail_kit_part_number: GsgUnstated = GsgUnstated {
+  topic: "Rail kit vendor part number. Table 5 quantity is 1 with description Rail Kit only.",
+}
+
+type GsgRearManagementEthernet
+  = NamedOnRearPanel { figure_or_table: NonEmptyStr }
+
+data mt_jade_gsg_bmc_ethernet_port: GsgRearManagementEthernet = NamedOnRearPanel {
+  figure_or_table: "Table 6 / Figure 1",
+}
+
+data mt_jade_gsg_bmc_ethernet_phy: GsgUnstated = GsgUnstated {
+  topic: "PHY and controller SKU. Table 6 names BMC Ethernet Port / Management Ethernet and does not name the PHY.",
+}
+
+// Appendix E, 2S1P / 2S2P-as-forced-1P without the 1P BMC image: "Fan will run at 100% speed".
+// That is a documented MegaRAC-package behaviour on this GSG, not a phosphor-pid-control row and
+// not a reading of the used unit's flash.
+data mt_jade_gsg_without_1p_bmc_image_fan_duty: Percent = percent(100)

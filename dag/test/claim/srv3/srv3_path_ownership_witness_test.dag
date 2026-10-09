@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ACROSS DECLARATION KINDS is.
 //
 // THE CONTROL AND THE CASE SHARE ONE CHECK, AND THAT IS READ OFF THE CHECK RATHER THAN INFERRED
-// FROM THE OUTPUT. `v1.05_emit_rust` `validate_workflow_param_defaults` is a `flat_map` over
+// FROM THE OUTPUT. `v1.05_emit_rust` `validate_workflow_param_defaults` (since deleted with the derived workflow CLI; read at the revision this was measured) was a `flat_map` over
 // every workflow func and a `flat_map` over every param, collecting errors -- no `first`, no
 // `any`, no early return -- so every parameter carrying a default is examined and every failure
 // is emitted. Its predicate is explicit about why a bare reference passes: the name must be

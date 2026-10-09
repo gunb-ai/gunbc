@@ -1,0 +1,69 @@
+module extdeps.namecheap.read_hosts
+
+import std.types { String, List, Bool }
+import std.algebra { trim }
+import std.decimal { decimal_digits_only }
+import extdeps.languages.xml.read { XmlElement, XmlAttribute, XmlParsed, XmlRefused, read_xml_subset, xml_attribute, xml_children, xml_leaf }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "www.namecheap.com/support/api/methods/domains-dns/get-hosts/" } }
+
+type NamecheapObservedHost { fields: List<XmlAttribute> }
+type NamecheapHostsRead = NamecheapHostsObserved { domain: String, hosts: List<NamecheapObservedHost>, result_fields: List<XmlAttribute> } | NamecheapHostsRefused { reason: String }
+
+fn nc_namespace_inherited(e: XmlElement) -> Bool {
+  !e.attributes.any(a => a.name == "xmlns" || string_contains(s: a.name, pattern: ":"))
+    && all(e.children, c => nc_namespace_inherited(e: c))
+}
+fn nc_host_valid(e: XmlElement) -> Bool {
+  e.name == "Host" && xml_leaf(e: e) && trim(s: e.text) == ""
+    && xml_attribute(e: e, name: "Name") != ""
+    && xml_attribute(e: e, name: "Type") != ""
+    && xml_attribute(e: e, name: "Address") != ""
+    && xml_attribute(e: e, name: "HostId") != ""
+    && decimal_digits_only(s: xml_attribute(e: e, name: "TTL")) && xml_attribute(e: e, name: "TTL") != ""
+}
+fn nc_result(e: XmlElement, domain: String) -> NamecheapHostsRead {
+  if xml_attribute(e: e, name: "Domain") != domain || xml_attribute(e: e, name: "IsUsingOurDNS") != "true" || trim(s: e.text) != "" {
+    NamecheapHostsRefused { reason: "Namecheap result does not confirm the requested domain on its DNS" }
+  } else if !all(e.children, h => nc_host_valid(e: h) && count(e.children.filter(other => xml_attribute(e: other, name: "HostId") == xml_attribute(e: h, name: "HostId"))) == 1) {
+    NamecheapHostsRefused { reason: "Namecheap host records are incomplete or contain unsupported result elements" }
+  } else {
+    NamecheapHostsObserved { domain: domain, hosts: map(e.children, h => NamecheapObservedHost { fields: h.attributes }), result_fields: e.attributes }
+  }
+}
+fn nc_command(e: XmlElement, domain: String) -> NamecheapHostsRead {
+  if xml_attribute(e: e, name: "Type") != "namecheap.domains.dns.getHosts" || count(e.children) != 1 || trim(s: e.text) != "" {
+    NamecheapHostsRefused { reason: "Namecheap command response is ambiguous or names another command" }
+  } else {
+    match e.children.first() {
+      Present { value: result } => if result.name == "DomainDNSGetHostsResult" { nc_result(e: result, domain: domain) } else { NamecheapHostsRefused { reason: "Namecheap result is not getHosts" } }
+      Absent => NamecheapHostsRefused { reason: "Namecheap result is missing" }
+    }
+  }
+}
+fn namecheap_read_hosts(body: String, domain: String) -> NamecheapHostsRead {
+  match read_xml_subset(s: body) {
+    XmlRefused => NamecheapHostsRefused { reason: "Namecheap returned malformed or unsupported XML" }
+    XmlParsed { element: root, next: _ } =>
+      let errors = xml_children(e: root, name: "Errors")
+      let commands = xml_children(e: root, name: "CommandResponse")
+      let requested = xml_children(e: root, name: "RequestedCommand")
+      if root.name != "ApiResponse" || xml_attribute(e: root, name: "Status") != "OK"
+        || xml_attribute(e: root, name: "xmlns") != "http://api.namecheap.com/xml.response"
+        || trim(s: root.text) != ""
+        || count(errors) != 1 || !all(errors, e => xml_leaf(e: e) && trim(s: e.text) == "")
+        || !all(xml_children(e: root, name: "Warnings"), e => xml_leaf(e: e) && trim(s: e.text) == "")
+        || count(requested) != 1 || !all(requested, e => xml_leaf(e: e) && trim(s: e.text) == "namecheap.domains.dns.getHosts")
+        || count(commands) != 1 || !all(root.children, c => nc_namespace_inherited(e: c))
+        || !all(root.children, c => c.name == "Errors" || c.name == "Warnings" || c.name == "RequestedCommand" || c.name == "CommandResponse" || c.name == "Server" || c.name == "GMTTimeDifference" || c.name == "ExecutionTime") {
+        NamecheapHostsRefused { reason: "Namecheap did not return an unambiguous successful getHosts envelope" }
+      } else {
+        match commands.first() {
+          Present { value: command } => nc_command(e: command, domain: domain)
+          Absent => NamecheapHostsRefused { reason: "Namecheap command response is missing" }
+        }
+      }
+  }
+}

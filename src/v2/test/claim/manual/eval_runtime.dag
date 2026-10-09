@@ -1,5 +1,6 @@
 module v2.test.manual.eval_runtime
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
@@ -17,14 +18,13 @@ import v2.compiler.infer {
   InferredTree
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_nth
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -84,7 +84,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -179,7 +179,10 @@ fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
@@ -292,7 +295,7 @@ fn eval_example_diagnostic(n: Node) -> Diagnostic {
 fn eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^eval_descent_dimension }
+    strict: v2.std.cardinality.RankingComponent { measured: ^eval_descent_dimension }
   }
 }
 
@@ -340,7 +343,8 @@ fn eval_empty_environment() -> EvaluationEnvironment {
 data witness_eval_add_accepts_five: Bool = match eval_actual() {
   Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
     (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 5)
-  _ => false
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => false
 }
 
 data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primitive(
@@ -349,7 +353,7 @@ data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primit
   _env: eval_empty_environment()
 ) {
   Rejected { diagnostics: _ } => true
-  _ => false
+  Accepted { value: _, diagnostics: _ } => false
 }
 
 fn eval_interpretation_structure_witness() -> InterpretationStructureWitness {

@@ -1,9 +1,8 @@
 module v2.std.coercion
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty }
-import v2.std.algebra { list_append, list_snoc_item }
-import v2.std.collection { List }
+import std.algebra { Empty, list_append, list_snoc_item }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v2.std.diagnostic {
   Accepted,
@@ -18,7 +17,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  outcome_rejected
+  outcome_rejected,
+  diagnostics_fatal_reason
 }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -32,9 +32,11 @@ import v2.std.find_witness {
   TargetDeclaredPriority,
   TargetSelection,
   TargetSelectionPolicy,
+  UniqueOnly,
   find_witness,
 }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import std.optional { Absent, Optional, Present }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -149,10 +151,10 @@ fn coercion_homomorphism_evidence_for_node(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_source }, target: source },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
       Edge {
-        label: Named { name: ^coercion_homomorphism_evidence_find_witness },
+        label: Authored { name: ^coercion_homomorphism_evidence_find_witness },
         target: fw.witness.evidence
       }
     ],
@@ -266,7 +268,7 @@ fn coercion_wrap_find_witness_rejection(
 ) -> Outcome<NonEmptyDiagnostics> {
   match find_witness_rejection_kind_from_reason(
     source: source,
-    reason: upstream.head.reason
+    reason: diagnostics_fatal_reason(d: upstream)
   ) {
     Accepted { value: fw_kind, diagnostics: _ } =>
       Accepted {
@@ -350,6 +352,124 @@ fn coercion_fold_exact_structural(
       }
   }
 }
+// A CAST'S CROSSING: does the source's grounding cross to the ONE type the cast names? It is the
+// fold's own question with the candidate set fixed by the author -- the singleton {target}, so the
+// multiplicity is UniqueOnly and no target-selection policy applies -- answered by the same
+// procedure (find_witness under exact structural equality) and refused with the same typed
+// mismatch (coercion_wrap_find_witness_rejection). Exact on the source's own type is Identity or
+// Exact.
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where string_non_empty`) is structurally equal
+// only to an operand whose derived type is that same refinement: v2.compiler.infer grounds a
+// parameter by its enclosing Arrow's declared type, so the identity cast `x as Pos` from `x: Pos` is
+// admitted, and a literal cast into Pos refuses (its predicate is not decided here).
+// A CAST FROM A REFINEMENT TO ITS DECLARED CARRIER (`x as Int` from `x: Pos`, `type Pos = Int where
+// positive`) is Widened, and it is TWO FACTS COMPOSED, not a rule: the declaration's own carrier edge
+// (every Pos value is an Int by declaration, so no predicate is evaluated and no value set is needed)
+// and then the SAME exact-structural find_witness from that carrier to the target. The caller reads
+// the carrier from the declaration (v2.compiler.infer refinement_declaration) and hands it in as
+// source_declared_carrier, so this module stays tree-free. It is not a second widening algebra beside
+// v2.std.refinement_widening_predicate: that rule answers value-set containment between two domains;
+// this one judges nothing but structural equality, which find_witness already owns, so no
+// preservation rule is added. ONE STEP: the carrier is read from the declaration as RESOLVED
+// (v2.compiler.resolve ResolvedTree resolved_declarations), so `type Pos2 = Pos where ..` states its
+// carrier as the declaration reference to Pos -- `x as Pos` from `x: Pos2` is Widened, and `x as Int`
+// from `x: Pos2` REFUSES: the carrier edge is not walked to a fixed point (a walk owes its own
+// termination argument over the declaration graph, and one step is all the declaration states).
+// A target that is not the declared carrier
+// refuses with the ORIGINAL mismatch located at the operand, so the widening arm never changes what a
+// refusal says. This is v2.compiler.infer's authority for `e as T`; the name-keyed std.coercion
+// dag_cast_rules is not consulted (gunbc.guarantee_stall coercion_two_algebras_answer_one_question_stall).
+fn coercion_cast_target_singleton(target: Node) -> CandidateSet {
+  CandidateSet {
+    candidates: [target],
+    closedness: StructuralPropertyWitness { property: ^coercion_cast_target_singleton_closed, evidence: target }
+  }
+}
+
+fn coercion_cast_exact_witness(source_type: Node, target: Node) -> Outcome<FindWitnessResult> {
+  find_witness(
+    source_facts: source_type,
+    candidates: coercion_cast_target_singleton(target: target),
+    predicate: PreservationPredicate {
+      algebra: source_type,
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: UniqueOnly
+  )
+}
+
+fn coercion_cast_refused(source: CanonicalGrounding, upstream: NonEmptyDiagnostics) -> Outcome<CoercionResult> {
+  match coercion_wrap_find_witness_rejection(source: source, upstream: upstream) {
+    Accepted { value: wrapped, diagnostics: _ } => Rejected { diagnostics: wrapped }
+    Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+  }
+}
+
+// The Widened arm, reached only after the exact crossing on the source's own type refused; its own
+// refusal is discarded for the original one, which is the mismatch the author wrote.
+fn coercion_cast_to_declared_carrier(
+  source: CanonicalGrounding,
+  source_declared_carrier: Optional<Node>,
+  target: Node,
+  exact_refusal: NonEmptyDiagnostics,
+) -> Outcome<CoercionResult> {
+  match source_declared_carrier {
+    Absent => coercion_cast_refused(source: source, upstream: exact_refusal)
+    Present { value: carrier } =>
+      match coercion_cast_exact_witness(source_type: carrier, target: target) {
+        Accepted { value: fw, diagnostics: fw_d } =>
+          Accepted {
+            value: CoercionResult {
+              target: fw.candidate,
+              quality: Widened,
+              witness: CoercionWitness {
+                homomorphism: HomomorphismWitness {
+                  rule: ^homomorphism_rule_refinement_declared_carrier,
+                  evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+                }
+              }
+            },
+            diagnostics: fw_d
+          }
+        Rejected { diagnostics: _ } => coercion_cast_refused(source: source, upstream: exact_refusal)
+      }
+  }
+}
+
+// source is the operand's grounding (its node is the operand, where a refusal is located),
+// source_type the type that grounding established, and source_declared_carrier the carrier its
+// refinement declaration states (Absent when source_type is not a refinement).
+fn coercion_cast_crossing(
+  source: CanonicalGrounding,
+  source_type: Node,
+  source_declared_carrier: Optional<Node>,
+  target: Node,
+) -> Outcome<CoercionResult> {
+  match coercion_cast_exact_witness(source_type: source_type, target: target) {
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: if fw.candidate == source_type { Identity } else { Exact },
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_exact_structural_equality,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
+          }
+        },
+        diagnostics: fw_d
+      }
+    Rejected { diagnostics: r } =>
+      coercion_cast_to_declared_carrier(
+        source: source,
+        source_declared_carrier: source_declared_carrier,
+        target: target,
+        exact_refusal: r
+      )
+  }
+}
+
 fn coercion_fold(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,

@@ -298,3 +298,46 @@ test fn w_every_expected_type_control_source_is_actually_censused() -> Bool {
     && census_ran(source: coproduct_at_record_parameter_red_source)
     && census_ran(source: coproduct_at_record_parameter_control_source)
 }
+
+// A TWO-ARM GENERIC COPRODUCT, the shape gunbc#12432 hit: about 35 helpers declared
+// `-> Outcome<Node>` returned an Outcome over a record, and one declared `-> Outcome<ResolvedTree>`
+// returned `Outcome<Node>` and failed only at runtime (`no field root on type Node`). Both
+// directions are enrolled because both were admitted. The judgment is
+// v1.compiler.infer_types nominal_coproduct_applied_argument_conflict; class, chain and rung:
+// gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return.
+data two_arm_coproduct_argument_red_source: String = "module probe_two_arm_coproduct_argument\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Beta { b: String }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_beta() -> Result<Beta> { Good { value: Beta { b: \"x\" } } }\nfn probe() -> Result<Alpha> { make_beta() }\n"
+
+data two_arm_coproduct_argument_reverse_red_source: String = "module probe_two_arm_coproduct_argument_rev\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Beta { b: String }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn probe() -> Result<Beta> { make_alpha() }\n"
+
+data two_arm_coproduct_argument_control_source: String = "module probe_two_arm_coproduct_argument_ok\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn wrap<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Alpha> { make_alpha() }\n"
+
+test fn w_a_wrong_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: two_arm_coproduct_argument_red_source) > 0
+    && refusing_count(source: two_arm_coproduct_argument_reverse_red_source) > 0
+}
+
+test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitted() -> Bool {
+  refusing_count(source: two_arm_coproduct_argument_control_source) == 0
+}
+
+// THE CONTROL THE WHOLE-CORPUS DIFFERENTIAL FORCED. A generic constructor call whose argument the
+// call site does not solve reads its parameter as Unit on the seed; five correct corpus sites of
+// this shape (v2.compiler.target_carriers fidelity_disposition_node_decode_fidelity among them)
+// refused on the first cut of the repair. This keeps that shape admitted.
+data two_arm_coproduct_unsolved_argument_control_source: String = "module probe_two_arm_coproduct_unsolved\nimport std.types { Int, String }\ntype Fidelity = Lossless | Lossy\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn good<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Fidelity> { good(Lossless) }\n"
+
+test fn w_an_unsolved_argument_of_a_two_arm_coproduct_call_is_admitted() -> Bool {
+  refusing_count(source: two_arm_coproduct_unsolved_argument_control_source) == 0
+}
+
+// THE PRICE OF THE CONTROL ABOVE, ENROLLED RED RATHER THAN LEFT SILENT. A GENUINE Result<Unit>
+// (read off a callee's declared return, not an unsolved call) returned where Result<Alpha> is
+// declared is a real mismatch, and the arm admits it, because it cannot tell a real Unit from the
+// seed's unsolved-parameter Unit. Held in v2.workflow.floor_expected_red until call-site generic
+// solving answers an unsolved parameter as unsolved rather than as Unit
+// (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
+data two_arm_coproduct_genuine_unit_red_source: String = "module probe_two_arm_coproduct_genuine_unit\nimport std.types { Int, String, Unit }\ntype Alpha { a: Int }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn from_unit(u: Unit) -> Result<Unit> { Good { value: u } }\nfn probe(u: Unit) -> Result<Alpha> { from_unit(u: u) }\n"
+
+test fn w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: two_arm_coproduct_genuine_unit_red_source) > 0
+}

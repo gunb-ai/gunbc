@@ -1,8 +1,8 @@
 module v2.std.concept_index
 
-import std.algebra { Empty }
-import v2.std.algebra { filter, list_map, list_snoc_item }
-import v2.std.collection { List }
+import std.types { List }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.algebra { filter, list_map }
 import v2.std.node {
   Conj,
   CoproductArm,
@@ -15,6 +15,7 @@ import v2.std.node_query {
   coproduct_arm_list_from_node,
   coproduct_arm_payload_pair_from_arm,
   edge_field_type_name,
+  member_edge_type_name,
   node_is_coproduct,
   node_labeled_child_edges
 }
@@ -60,7 +61,7 @@ fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
       xs: acc,
       item: FieldRef {
         field: named_edge_sort_key(e: e),
-        type_name: edge_field_type_name(target: e.target)
+        type_name: member_edge_type_name(e: e)
       }
     )
   })
@@ -74,7 +75,11 @@ fn field_refs_from_node(node: Node) -> List<FieldRef> {
         let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
         list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
       })
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 

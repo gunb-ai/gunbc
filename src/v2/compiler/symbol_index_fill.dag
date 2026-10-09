@@ -1,49 +1,67 @@
 module v2.compiler.symbol_index_fill
 
+import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list }
+import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection {
   Map,
   empty_map,
-  list_at_optional,
   map_insert
 }
-import v2.std.optional {
+import v2.std.node_query { binder_node_parts }
+import std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Conj,
   Disj,
   Edge,
-  Named,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  node_subtree_nodes
+  arrow_first_positional_target,
+  node_subtree_nodes,
+  StructuralLabel,
+  label_sort_key,
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
+  RecordTypePayload,
   SymbolIndex,
+  symbol_index_mark_namespace_body,
+  VariantArmPayload,
+  symbol_index_bind_at,
+  symbol_index_mark_module_root,
+  symbol_index_declaring_path_of,
   symbol_index_insert,
-  symbol_index_lookup
+  symbol_index_lookup,
+  symbol_index_mark_declared_payload,
+  symbol_index_mark_declared_resource,
+  symbol_index_mark_declared_type_params
 }
+import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
 import v2.extdeps.languages.dag {
   alias_binding_row_from_decl_node,
+  namespace_graft_node_is_module_body,
   dag_surface_module_header_metadata_edge,
-  namespace_graft_spine_segment_edge_optional,
+  namespace_graft_spine_body_optional,
   qualified_name_from_module_node
 }
-import v2.compiler.namespace_graft {
-  namespace_graft_parse_projection_edge
-}
+import v2.compiler.parse { parse_tree_projection_edge }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -63,37 +81,128 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
   }
 }
 
+// A GENERIC TYPE DECLARATION IS INDEXED AT ITS MEMBER. Its target is the wrapper
+// (v2.std.type_binder type_decl_wrapper); the index is the one place a declaration target is
+// unwrapped for its readers, through the typed view, so `Box` resolves to its Disj and `Box.Full` is a
+// declared variant, while the binders -- scoped by v2.compiler.resolve over the wrapper -- are never
+// declared identities.
+//
+// A GENERIC ALIAS OR BODYLESS DECLARATION DECLARES NO MEMBERS. Its name is bound to its wrapper --
+// which keeps the binders an instantiation of `List<Int>` must substitute through -- and the index does
+// not descend into it: an aliased expression's parts (a qualified head's spine, its arguments) are not
+// declarations of the alias, and a binder is never a declared identity.
+// The node a declared name binds to, and the member the index descends into when the declaration
+// declares members -- one dispatch on the view for both.
+// binders: a GENERIC declaration binds its member, which cannot carry its binders, so they ride
+// beside it (v2.std.symbol_index symbol_index_mark_declared_type_params). An alias or bodyless
+// declaration binds its wrapper and its binders are recorded beside it too, so every declaration that
+// binds type parameters answers v2.std.symbol_index symbol_index_declared_binders_at the same way --
+// the read resolve's type-application check (v2.std.type_binder type_application_conformance) takes.
+// Absent only for a plain member, which binds none.
+type SymbolIndexDeclared {
+  bound: Node
+  members: Optional<Node>
+  binders: Optional<Node>
+}
+
+fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: b, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_present(value: b) }
+    TypeAlias { binders: b, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    OpaqueTypeDecl { binders: b } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
+  }
+}
+
+fn symbol_index_mark_declared_binders(index: SymbolIndex, qualified_path: QualifiedName, binders: Optional<Node>) -> SymbolIndex {
+  match binders {
+    Present { value: b } => symbol_index_mark_declared_type_params(index: index, qualified_path: qualified_path, params: b)
+    Absent => index
+  }
+}
+
+// A labeled child declares a binding at path.segment and its members below it.
+fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, segment: Symbol, edge: Edge) -> SymbolIndex {
+  let child_path = qualified_name_snoc(qn: path, segment: segment)
+  let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
+  let with_binding = symbol_index_mark_namespace_body_if(
+    index: symbol_index_mark_declared_binders(
+      index: symbol_index_insert(
+        index: index,
+        qualified_path: child_path,
+        resolved: declared.bound
+      ),
+      qualified_path: child_path,
+      binders: declared.binders
+    ),
+    qualified_path: child_path,
+    target: edge.target
+  )
+  match declared.members {
+    Present { value: member } =>
+      symbol_index_fill_containment_node(
+        index: with_binding,
+        path: child_path,
+        node: member
+      )
+    Absent => with_binding
+  }
+}
+
+// A BINDER IS INDEXED AT ITS TYPE (XL-2 PR2b-3). A parameter's or field's edge targets a binder node
+// (v2.std.node_query binder_node_parts), which identifies itself by its own labels; the path binds the
+// binder's declared type, and an inline record type's fields are indexed under it as before. The binder
+// node is never itself indexed as a record, so its BinderTypeEdge and BinderDefaultEdge never become
+// path segments. Any other target is indexed as it is.
+fn symbol_index_binder_type_or_target(target: Node) -> Node {
+  match binder_node_parts(n: target) {
+    Present { value: parts } => parts.type_node
+    Absent => target
+  }
+}
+
+// A Named member whose target is a MARKED namespace body is a service-spine prefix (the module's own body is
+// the root this fill starts from, never a member), so its path is marked as a lookup boundary
+// (v2.std.symbol_index NamespaceBodyDeclared). Its members are still indexed under it.
+fn symbol_index_mark_namespace_body_if(index: SymbolIndex, qualified_path: QualifiedName, target: Node) -> SymbolIndex {
+  if namespace_graft_node_is_module_body(node: target) {
+    symbol_index_mark_namespace_body(index: index, qualified_path: qualified_path)
+  } else {
+    index
+  }
+}
+
+// A SERVICE'S REALIZATION IS NOT A DECLARATION (XL-2 PR3a; v2.compiler.service_realization). Its root
+// is unspellable and its entries mirror the operation paths they realize, so indexing them would bind a
+// second path no source can name and that could only shadow or collide with the operation's own. The
+// subtree indexes nothing.
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
   edge: Edge
 ) -> SymbolIndex {
   match edge.label {
-    Named { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
-        symbol_index_fill_containment_node(
-          index: index,
-          path: path,
-          node: edge.target
-        )
-      } else if namespace_graft_parse_projection_edge(name: sym) {
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
           node: edge.target
         )
       } else {
-        let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let with_binding = symbol_index_insert(
-          index: index,
-          qualified_path: child_path,
-          resolved: edge.target
-        )
+        symbol_index_fill_declared_child(index: index, path: path, segment: label_sort_key(label: edge.label), edge: edge)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
-          index: with_binding,
-          path: child_path,
+          index: index,
+          path: path,
           node: edge.target
         )
+      } else if sym == realization_root_label() {
+        index
+      } else {
+        symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge)
       }
     Positional =>
       symbol_index_fill_containment_node(
@@ -108,11 +217,25 @@ fn symbol_index_fill_containment_edge(
 // sequence/repeat spines) at the current qualified path — edges are still filtered by
 // symbol_index_fill_containment_edge (module-header metadata + _node_projection projections skip
 // path extension; post-graft containment spine segments descend at the current path via
-// namespace_graft_spine_segment_edge_optional). Conj/Disj/Arrow retain explicit semantics; this arm
+// namespace_graft_spine_body_optional). Conj/Disj/Arrow retain explicit semantics; this arm
 // is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain
 // reachable. New TypeNode connectives that carry real named bindings must get an explicit arm
 // before relying on this fallback.
+fn symbol_index_fill_containment_children(
+  index: SymbolIndex,
+  path: QualifiedName,
+  node: Node
+) -> SymbolIndex {
+  fold(node.children, init: index, f: fn(acc, edge) {
+    symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+  })
+}
 
+// AN ARROW'S DOMAIN IS A PARAMETER LIST, NEVER A NAMESPACE SPINE SEGMENT. The Arrow arm indexes the
+// domain's binders under the Arrow's path by label, directly, rather than handing the domain to the
+// Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
+// a record (an operation's ^operation_input, a fn of one record-typed parameter) as a dotted-name
+// segment, and indexed the record's fields at the Arrow's path with the binder's level erased.
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
   path: QualifiedName,
@@ -120,13 +243,11 @@ fn symbol_index_fill_containment_node(
 ) -> SymbolIndex {
   match node.kind {
     TypeNode { connective: Conj } =>
-      match namespace_graft_spine_segment_edge_optional(node: node) {
-        Present { value: spine_edge } =>
-          symbol_index_fill_containment_node(
-            index: index,
-            path: path,
-            node: spine_edge.target
-          )
+      match namespace_graft_spine_body_optional(node: node) {
+        Present { value: body } =>
+          fold(body.children, init: index, f: fn(acc, edge) {
+            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+          })
         Absent =>
           fold(node.children, init: index, f: fn(acc, edge) {
             symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
@@ -135,12 +256,17 @@ fn symbol_index_fill_containment_node(
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
-          Named { name: sym } =>
+          StructuralLabel { label: _ } => acc
+          Authored { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
-            let with_variant = symbol_index_insert(
-              index: acc,
+            let with_variant = symbol_index_mark_declared_payload(
+              index: symbol_index_insert(
+                index: acc,
+                qualified_path: variant_path,
+                resolved: edge.target
+              ),
               qualified_path: variant_path,
-              resolved: edge.target
+              kind: VariantArmPayload
             )
             symbol_index_fill_containment_node(
               index: with_variant,
@@ -151,19 +277,26 @@ fn symbol_index_fill_containment_node(
         }
       })
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node.children, index: 0) {
-        Present { value: domain_edge } =>
-          symbol_index_fill_containment_node(
-            index: index,
-            path: path,
-            node: domain_edge.target
-          )
-        Absent => index
+      match arrow_first_positional_target(children: node.children) {
+        FirstPositionalFound { target: domain } =>
+          match domain.kind {
+            TypeNode { connective: Conj } =>
+              fold(domain.children, init: index, f: fn(acc, edge) {
+                symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+              })
+            TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+          }
+        FirstPositionalAbsent => index
       }
-    _ =>
-      fold(node.children, init: index, f: fn(acc, edge) {
-        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
-      })
+    TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node)
   }
 }
 
@@ -186,7 +319,8 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Disj } =>
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => c
+              Authored { name: sym } =>
                 map_insert(
                   m: c,
                   key: sym,
@@ -195,30 +329,123 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
               Positional => c
             }
           })
-        _ => counts
+        TypeNode { connective: Atom { identity: _ } } => counts
+        TypeNode { connective: Conj } => counts
+        TypeNode { connective: Arrow } => counts
+        TypeNode { connective: Cardinality } => counts
+        TypeNode { connective: Instantiation } => counts
+        ComputationNode { behavior: _ } => counts
       }
     }
   )
 }
 
-fn symbol_index_fill_alias_binding(
-  index: SymbolIndex,
+
+
+
+// EVERY ROW THIS MODULE BINDS, AS VALUES, BEFORE ANY OF THEM IS APPLIED. Collecting is separated
+// from binding because a row cannot be bound until its target is present, and which rows are
+// bindable changes as other rows bind (see symbol_index_fill_bindings_to_fixed_point). A fold that
+// bound as it walked could only ever make one attempt per row.
+fn symbol_index_alias_rows_of(
   module_qn: QualifiedName,
-  root: Node,
-  decl: Node
-) -> SymbolIndex {
-  match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
-    Rejected { diagnostics: _ } => index
-    Accepted { value: row, diagnostics: _ } =>
-      match symbol_index_lookup(index: index, qualified_path: row.target) {
-        Present { value: resolved } =>
-          symbol_index_insert(
-            index: index,
-            qualified_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
-            resolved: resolved
-          )
-        Absent => index
+  root: Node
+) -> FreeMonoid<PendingBinding> {
+  fold(
+    node_subtree_nodes(root: root),
+    init: Empty,
+    f: fn(acc, n) {
+      match alias_binding_row_from_decl_node(decl: n, module_root: root) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: row, diagnostics: _ } =>
+          list_snoc_item(xs: acc, item: PendingBinding { module_qn: module_qn, row: row })
       }
+    }
+  )
+}
+
+fn symbol_index_pending_of_source(tree: ModuleBindingSource) -> FreeMonoid<PendingBinding> {
+  match qualified_name_from_module_node(root: tree.root) {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: module_qn, diagnostics: _ } =>
+      fold_list(
+        xs: tree.import_bindings,
+        empty: symbol_index_alias_rows_of(module_qn: module_qn, root: tree.root),
+        cons: fn(acc, row) {
+          list_snoc_item(xs: acc, item: PendingBinding { module_qn: module_qn, row: row })
+        }
+      )
+  }
+}
+
+// ONE ATTEMPT AT EVERY PENDING ROW, KEEPING THE ONES THAT COULD NOT BIND. A row whose target is not
+// in the index yet is DEFERRED, not dropped: its target may be another row's binding, and that row
+// may not have been reached yet.
+type BindRound {
+  index: SymbolIndex
+  deferred: FreeMonoid<PendingBinding>
+}
+
+fn symbol_index_bind_pending_round(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> BindRound {
+  fold_list(
+    xs: pending,
+    empty: BindRound { index: index, deferred: Empty },
+    cons: fn(acc, p) {
+      match symbol_index_lookup(index: acc.index, qualified_path: p.row.target) {
+        Present { value: resolved } =>
+          BindRound {
+            index: symbol_index_bind_at(
+              index: acc.index,
+              binding_path: qualified_name_snoc(qn: p.module_qn, segment: p.row.binding),
+              declaring_path: symbol_index_declaring_path_of(index: acc.index, target: p.row.target),
+              resolved: resolved
+            ),
+            deferred: acc.deferred
+          }
+        Absent =>
+          BindRound {
+            index: acc.index,
+            deferred: list_snoc_item(xs: acc.deferred, item: p)
+          }
+      }
+    }
+  )
+}
+
+// THE FIXED POINT IS WHAT MAKES ORDER-INDEPENDENCE TRUE ONE LEVEL UP, and one level up is where the
+// first version of this was wrong (review 69735 on gunbc#12009). Splitting declarations from
+// bindings removes the order dependence only for a row whose target is a DECLARATION -- pass A
+// writes every one of those before any row is tried. It does not remove it for a RE-EXPORT CHAIN,
+// where a row's target is another row's binding: `v2.std.collection` imports `Absent` from
+// `v2.std.optional` and declares it nowhere, and `v2.compiler.normalize` imports `Absent` from
+// `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
+// the roots resolves that pair in one root order and silently not in the other, and the loser binds
+// NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
+//
+// Retrying the deferred rows removes it for chains of any depth without needing the dependency
+// order computed: each round binds every row whose target has become available. It TERMINATES
+// because each recursion is entered only when the deferred list got strictly shorter, so the
+// measure decreases and the last round is either empty or made no progress. Rows still deferred at
+// the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
+// reference that wanted them refuses, located, at the reference site -- which is where
+// docs/plans/namespace-resolution-design.md section 13 puts that refusal.
+fn symbol_index_fill_bindings_to_fixed_point(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> SymbolIndex {
+  let round = symbol_index_bind_pending_round(index: index, pending: pending)
+  if is_empty(xs: round.deferred) {
+    round.index
+  } else if length(xs: round.deferred) == length(xs: pending) {
+    round.index
+  } else {
+    symbol_index_fill_bindings_to_fixed_point(
+      index: round.index,
+      pending: round.deferred
+    )
   }
 }
 
@@ -227,17 +454,9 @@ fn symbol_index_fill_alias_bindings(
   module_qn: QualifiedName,
   root: Node
 ) -> SymbolIndex {
-  fold(
-    node_subtree_nodes(root: root),
-    init: index,
-    f: fn(acc, n) {
-      symbol_index_fill_alias_binding(
-        index: acc,
-        module_qn: module_qn,
-        root: root,
-        decl: n
-      )
-    }
+  symbol_index_fill_bindings_to_fixed_point(
+    index: index,
+    pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
   )
 }
 
@@ -255,12 +474,17 @@ fn symbol_index_fill_unique_variant_aliases(
         TypeNode { connective: Disj } =>
           fold(n.children, init: acc, f: fn(a2, e) {
             match e.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => a2
+              Authored { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
-                  symbol_index_insert(
-                    index: a2,
+                  symbol_index_mark_declared_payload(
+                    index: symbol_index_insert(
+                      index: a2,
+                      qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                      resolved: e.target
+                    ),
                     qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
-                    resolved: e.target
+                    kind: VariantArmPayload
                   )
                 } else {
                   a2
@@ -268,24 +492,110 @@ fn symbol_index_fill_unique_variant_aliases(
               Positional => a2
             }
           })
-        _ => acc
+        TypeNode { connective: Atom { identity: _ } } => acc
+        TypeNode { connective: Conj } => acc
+        TypeNode { connective: Arrow } => acc
+        TypeNode { connective: Cardinality } => acc
+        TypeNode { connective: Instantiation } => acc
+        ComputationNode { behavior: _ } => acc
       }
     }
   )
 }
 
-fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
+// PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
+// so no other root can write it and the result does not depend on when this root is visited.
+// A RECORD IS MARKED FROM THE CARRIER, AND BY THE ARM THAT ALREADY DECIDED THE MODULE'S NAME.
+// Pass A cannot tell a record from a module container or a where-alias -- all three arrive through
+// symbol_index_fill_containment_edge as a Named edge to a Conj -- so the record half of the
+// declared-payload fact rides on ModuleBindingSource record_declarations (captured at normalize,
+// where the rehome still holds it) and is qualified here by the module's own name.
+//
+// IT IS MARKED INSIDE THIS FUNCTION, NOT BESIDE IT (review 70226). The first cut qualified the
+// records in its own fold, which re-asked qualified_name_from_module_node and therefore carried a
+// SECOND arm for a root whose name does not resolve -- a place to drop records for a module whose
+// declarations this arm had already dropped. Two arms deciding one thing is the fork; there is now
+// one. A root whose qualified name does not resolve contributes NOTHING here, records included,
+// which is this function's existing behaviour rather than a new drop: no entry is inserted for it,
+// so no reference can reach it and no binder can be widened by its absence.
+fn symbol_index_fill_module_declarations(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      symbol_index_fill_alias_bindings(
-        index: symbol_index_fill_unique_variant_aliases(
+      symbol_index_fill_resource_marks(
+        index: fold_list(
+        xs: record_declarations,
+        empty: symbol_index_fill_unique_variant_aliases(
           index: symbol_index_fill_containment_node(
-            index: index,
+            index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
             path: module_qn,
             node: root
           ),
           module_qn: module_qn,
           root: root
+        ),
+        cons: fn(acc, name) {
+          symbol_index_mark_declared_payload(
+            index: acc,
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: name),
+            kind: RecordTypePayload
+          )
+        }
+      ),
+        module_qn: module_qn,
+        resource_declarations: resource_declarations
+      )
+    Rejected { diagnostics: _ } => index
+  }
+}
+
+// A RESOURCE IS MARKED FROM THE CARRIER, AS A RECORD IS, by the module's own name: a lowered resource
+// has a service's Conj shape, so the containment walk cannot tell it apart (v2.compiler.body_lowering_fold
+// DeclaredResource). Its path is the containment path the walk already inserted.
+fn symbol_index_fill_resource_marks(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  resource_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
+  fold_list(
+    xs: resource_declarations,
+    empty: index,
+    cons: fn(acc, name) {
+      symbol_index_mark_declared_resource(index: acc, qualified_path: qualified_name_snoc(qn: module_qn, segment: name))
+    }
+  )
+}
+
+// THE SINGLE-ROOT DOOR: DECLARATIONS, RECORDS, AND THE ALIAS ROWS STILL IN THE TREE -- NO IMPORT
+// BINDINGS. Import rows are left out because a binding row's target may be another root's
+// declaration, so binding ONE root in isolation can only ever see what that root itself declares;
+// a caller holding the whole corpus goes through symbol_index_fill_module_roots, which binds them
+// to a fixed point. The records are NOT optional here (adhoc-68dc5afb-a90, from review 70544): an
+// index built without them answers Absent from v2.std.symbol_index symbol_index_declared_payload_at
+// for a RECORD, and a resolve-style reader would take the record for a binder. The grafted root
+// cannot supply them -- the record rehome erased the distinction -- so the caller hands over the
+// carrier captured at normalize (NormalizedTree record_declarations), and there is no door that
+// fills declarations without being handed it. The former multi-root Node door was deleted rather
+// than given the same parameter: it was symbol_index_fill_module_roots with import rows dropped,
+// and every caller of it held the NormalizedTrees that carry both.
+fn symbol_index_fill_module_root(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      symbol_index_fill_alias_bindings(
+        index: symbol_index_fill_module_declarations(
+          index: index,
+          root: root,
+          record_declarations: record_declarations,
+          resource_declarations: resource_declarations
         ),
         module_qn: module_qn,
         root: root
@@ -294,15 +604,44 @@ fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex 
   }
 }
 
+// DECLARATIONS FIRST, THEN EVERY BINDING ROW IN THE CORPUS TO A FIXED POINT. Two things make a
+// binding row's result depend on the order the roots arrived in, and they need different repairs.
+// A row whose target is a DECLARATION is fixed by the split: pass A writes every declaration in the
+// corpus before any row is tried. A row whose target is another row's BINDING -- a re-export chain
+// -- is not, because collecting rows per root and binding them as you go still gives each row one
+// attempt, in root order. That is the residue review 69735 found in the first version of this
+// function, and it is live in this corpus, not hypothetical: `v2.compiler.normalize` imports
+// `Absent` from `v2.std.collection`, which imports it from `v2.std.optional` and declares it
+// nowhere.
+//
+// So the rows are gathered from EVERY root before any of them is applied, and retried until no
+// further row can bind. Both order dependences are then gone for the same reason -- nothing is
+// decided by when a root was visited -- and the permutation control
+// (v2.test.claim.resolve.namespace_candidate_rule) carries a chained specimen so the claim is not
+// larger than its evidence.
 fn symbol_index_fill_module_roots(
   index: SymbolIndex,
-  roots: FreeMonoid<Node>
+  roots: FreeMonoid<ModuleBindingSource>
 ) -> SymbolIndex {
-  fold_list(
-    xs: roots,
-    empty: index,
-    cons: fn(acc, root) {
-      symbol_index_fill_module_root(index: acc, root: root)
-    }
+  symbol_index_fill_bindings_to_fixed_point(
+    index: fold_list(
+      xs: roots,
+      empty: index,
+      cons: fn(acc, tree) {
+        symbol_index_fill_module_declarations(
+          index: acc,
+          root: tree.root,
+          record_declarations: tree.record_declarations,
+          resource_declarations: tree.resource_declarations
+        )
+      }
+    ),
+    pending: fold_list(
+      xs: roots,
+      empty: Empty,
+      cons: fn(acc, tree) {
+        list_append(left: acc, right: symbol_index_pending_of_source(tree: tree))
+      }
+    )
   )
 }

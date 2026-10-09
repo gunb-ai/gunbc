@@ -1,0 +1,90 @@
+module test.claim.machine_intake.host_capture_sol_crlf_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.machine_intake_host_capture_envelope {
+  host_capture_bind, host_capture_section_reading, HostCaptureOpen, HostCaptureSectionReading, SectionComplete,
+}
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_terminal_verdict, MtCollins1BootTerminalVerdict, TerminalPending,
+}
+import gunbc.boot_medium { BootMedium }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
+// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor). Absent fails the claim that asked for it.
+fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
+}
+
+// SUPPLIED INPUT, REAL BYTES: lines of the SOL capture from mtcollins1_boot run 35793279839
+// (artifact mtcollins1-boot-receipts, mtcollins1-boot-sol.capture), each carrying the CR NL the
+// console's ONLCR discipline wrote. Trimmed to the begin marker and the three sections that run
+// refused with "exited 0"; boot-media and edac-before keep a subset of their output lines,
+// byte-for-byte, and nproc is whole. The envelope stays open (no end marker), as the run's was.
+data sol_crlf_capture_lines: List<String> = [
+    "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=8d112fe8-4fe1-48d8-b02b-64068f758b30 begin 2026-09-22T22:54:17Z=====\r\n",
+    "----SECTION boot-media----\r\n",
+    "----ARGV boot-media: ls -l /dev/disk/by-label; blkid\r\n",
+    "total 0\r\n",
+    "lrwxrwxrwx 1 root root 9 Sep 22 22:53 GUNBC_MTC1_CENSUS_2404_3 -> ../../sr0\r\n",
+    "----EXIT boot-media: 0\r\n",
+    "----SECTION nproc----\r\n",
+    "----ARGV nproc: nproc\r\n",
+    "80\r\n",
+    "----EXIT nproc: 0\r\n",
+    "----SECTION edac-before----\r\n",
+    "----ARGV edac-before: find /sys/devices/system/edac -type f -name '*count' | sort | while read -r f; do echo \"$f == $(cat \"$f\")\"; done\r\n",
+    "/sys/devices/system/edac/mc/mc0/ce_count == 0\r\n",
+    "/sys/devices/system/edac/mc/mc0/dimm8/dimm_ue_count == 0\r\n",
+    "/sys/devices/system/edac/mc/mc0/ue_count == 0\r\n",
+    "----EXIT edac-before: 0\r\n",
+]
+
+fn sol_crlf_capture() -> String {
+  join(sol_crlf_capture_lines, "")
+}
+
+fn completed_with_exit_zero(r: HostCaptureSectionReading) -> Bool {
+  match r { SectionComplete { exit_code: c, output: _ } => c == "0"  _ => false }
+}
+
+// THE ROUTE: every section framed from the CR NL bytes completes with exit code exactly "0" --
+// the terminator's CR reaches no reader. At main (split on NL alone) each reads "0\r".
+test fn sol_crlf_sections_complete_with_exit_zero() -> Bool {
+  match host_capture_bind(capture: sol_crlf_capture(), machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureOpen { envelope: e } =>
+      completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "nproc"))
+        && completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "boot-media"))
+        && completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "edac-before"))
+    _ => false
+  }
+}
+
+// THE VERDICT: no section the capture carries refuses, so the open envelope stays PENDING. nproc's
+// "80" is read exactly (no CR) and holds against the one-socket milestone's expectation
+// (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, bound to
+// mtcollins1_one_socket_milestone under the declared drop gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent);
+// boot-media names the census volume and edac-before is clean. The terminator's CR is what this
+// discriminates: read as "80\r" nproc would refuse against 80, and read as "0\r" every section would
+// refuse as "exited 0" -- either way the verdict would be TerminalRefused, never pending. The trimmed
+// capture never opens numa, workload or edac-after, which is why it pends rather than accepts.
+test fn sol_crlf_capture_refuses_nothing_it_carries() -> Bool {
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
+  match mtcollins1_boot_terminal_verdict(capture: sol_crlf_capture(), subject: subject) {
+    TerminalPending { reason: _ } => true
+    _ => false
+  }
+  }
+  }
+}

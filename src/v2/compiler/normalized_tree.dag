@@ -1,55 +1,323 @@
 module v2.compiler.normalized_tree
 
-import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
+import v2.compiler.body_lowering_fold {
+  BodyLoweredTree,
+  DeclaredTypeKind,
+  DeclaredTypeModifiers,
+  declared_record_names,
+  declared_resource_names,
+  wrapper_retention_diagnostic
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  diagnostics_singleton,
   Diagnostics,
-  ExternalContractUnknown,
+  node_locus,
   Outcome,
   Rejected,
-  bind_outcome,
-  diagnostics_singleton,
-  Unavailable,
-  node_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  UserInputBoundary,
+  Unavailable
 }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.node { Node }
+import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
+import v2.std.node { Edge, Node, Symbol, content_hash }
+import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
+import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
 // bare Node and was dropped there. Sealing the carrier makes the drop unwritable.
+//
+// `test_markers` is the authored `test` marker's channel (v2.std.declaration_marker), sealed
+// beside the root rather than inside it: `root` is byte-identical for a `test fn` and a plain `fn`,
+// and every consumer about Node structure reads `root` alone. Name resolution is the channel's
+// consumer, and refuses references to what it marks.
+// THE THIRD FIELD IS HERE FOR THE SAME REASON THE SECOND IS. The module graft dissolves an import
+// decl (v2.compiler.namespace_graft namespace_graft_unit_disposition, UnitDissolved) because an
+// import is not a declaration of this module and has no place in its containment tree. That is
+// right, and it erases the one fact docs/plans/namespace-resolution-design.md section 13 needs from
+// it: `import m.p { A }` BINDS `A` at this module's position. A `test` marker is erased by lowering
+// for an equally good reason and is carried here rather than recovered downstream; an import
+// binding is the same shape of fact and is carried the same way. Recovering it after the graft is
+// not an option -- the node is gone -- and re-reading the source at the index would be a second
+// read of a fact this carrier already passed.
+// THE FOURTH FIELD IS THE SAME SHAPE OF FACT AGAIN. Body lowering rehomes a record type_decl to
+// `Conj { R: payload }` (v2.compiler.body_lowering_fold body_lower_record_type_decl), which is the
+// shape a where-alias rehome writes and the shape the graft builds for a module spine, so after
+// normalize a record is indistinguishable from either -- and the pattern-binder classifier must
+// tell a record (a constructor) from a module (not one). The fact is read where it is still held,
+// by the same predicate the rehome uses, and carried here as the kind of each such declaration
+// (records among them); the symbol-index fill qualifies each by this module's own name, so the key the index
+// holds is a declaring path, never a bare spelling.
 type NormalizedTree sole_constructor {
   root: Node,
+  test_markers: TestMarkerChannel,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
 }
 
-// Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
-// — a root carrying wrapper-retention diagnostics presented as normalized — remains describable;
-// admit_normalized_tree is now the sole constructor, so no Accepted program reaches the carrier
-// while holding retention evidence. Next-rung trigger: the retention disposition riding in the
-// carrier's own type rather than decided at the door.
-
-fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
-    at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+// THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
+// (v2.compiler.body_lowering_fold WrapperRetention), gathered by v2.compiler.normalize into the
+// BodyLoweredTree it hands here. This is where that list is CONSUMED: an empty list releases the
+// Node; any retention refuses, located AT a retained shell rather than at the module root. Before MQ-4 this door decided by scanning diagnostic REASONS for the retention
+// reason -- a classifier over an encoding that a single `diagnostics: _` anywhere upstream could
+// empty. There is no reason to scan now: the retention is a value, and it has no arm that reaches
+// NormalizedTree except through this refusal.
+//
+// ONE FATAL, CHOSEN BY A STATED POLICY: THE FIRST RETENTION IN STRUCTURAL ORDER. A NonEmptyDiagnostics
+// is pending-then-one-fatal (v2.std.diagnostic diagnostics_fatal reads the LAST), so packing every
+// retention into the refusal would make the last one the cause and the rest read as pending
+// advisories -- appending an unrelated later retention would change the module's primary cause, and
+// traversal order would become policy without anyone choosing it. So the refusal carries exactly one
+// retention, the head of the retained list, which normalize builds in post-order (siblings in source
+// order, a node's own retention after its children's): the first retained shell that post-order
+// reaches. A retention appended after it never changes it. The full typed population is BodyLoweredTree.retained; it is
+// not re-encoded as diagnostics.
+//
+// Rung, stated honestly: the refusal is structural along the production route (normalize and
+// normalize_census cannot build a NormalizedTree or CensusTree without passing here), and
+// admit_normalized_tree / admit_census_tree take a bare Node, which a hand-built fixture supplies
+// and which by construction carries no retention. What is not structural is the absence of an
+// authored drop: .dag has no module-private declarations, so a discard stays writable wherever
+// BodyLoweredTree.node can be projected without .retained, and wherever a match arm names
+// BodyWrapperRetained and drops it -- never through a silent `diagnostics: _`.
+fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outcome<Node> {
+  match tree.retained {
+    Empty => Accepted { value: tree.node, diagnostics: diagnostics }
+    Cons { head: first, tail: _ } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: diagnostics,
+          rejected: diagnostics_singleton(d: wrapper_retention_diagnostic(r: first))
+        )
+      }
   }
 }
 
-fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<NormalizedTree> {
-  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
-    Rejected {
-      diagnostics: rejected_with_pending(
-        pending: diagnostics,
-        rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
+// THE ABSENCE HAS A NAME, for the same reason test_marker_channel_empty does. A caller holding a
+// hand-built root has no import decls to offer, and `Empty` at the call site says only "a list",
+// leaving a reader to guess whether the caller dropped something. This says what is true: this
+// input carries no import bindings.
+fn no_import_bindings() -> FreeMonoid<AliasBindingRow> {
+  Empty
+}
+
+// A hand-built root declares no records this carrier can see, for the same reason it has no import
+// bindings: the record rehome has already run, or never did.
+fn no_record_declarations() -> FreeMonoid<Symbol> {
+  Empty
+}
+
+// THE OCCURRENCE WALL. Within one admitted tree an occurrence names ONE node. Two refusals, each
+// located at the node that breaks it:
+//   * a node still OccurrencePending -- a lowering image was closed and never allocated, so its
+//     member has a cause and no id. Normalization allocates every pending member before admission,
+//     so reaching here means a tree was assembled outside that route.
+//   * a minted id carried by a second, STRUCTURALLY DIFFERENT node -- a lowering built several nodes
+//     from one source and its builder did not close the image (v2.std.node close_lowered_image). The
+//     allocation pass never repairs this: it converts only pending members, so a forgotten close
+//     stays visible here.
+// A structurally identical node reached at two positions is one node shared, not two nodes: a
+// function type's Arrow carries its codomain value twice, and both positions are the same authored
+// type. So a repeated id is compared structurally (v2.std.node content_hash, which ignores
+// occurrences) -- and ONLY a repeated id: the walk records the first node per id and hashes the two
+// nodes when a second one arrives, so an admission with no repeats pays one pre-order walk and no
+// hashing. The refusal names the first offending node in pre-order.
+fn occurrence_wall_refusal(root: Node) -> Optional<Diagnostic> {
+  occurrence_wall_walk(node: root, state: OccurrenceWallState { first: empty_map(), refusal: Absent }).refusal
+}
+
+type OccurrenceWallState {
+  first: Map<Int, Node>
+  refusal: Optional<Diagnostic>
+}
+
+fn occurrence_wall_walk(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent =>
+      let here = occurrence_wall_check(node: node, state: state)
+      fold(node.children, init: here, f: (acc, e) => occurrence_wall_walk(node: e.target, state: acc))
+  }
+}
+
+fn occurrence_wall_check(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
+  match node.occurrence_id {
+    OccurrencePending { caused_by: _ } =>
+      OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_pending_occurrence_survived, n: node) } }
+    OccurrenceMinted { id: id } =>
+      match map_lookup(m: state.first, key: id.value) {
+        Present { value: first } =>
+          if content_hash(n: first).digest == content_hash(n: node).digest {
+            state
+          } else {
+            OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_minted_occurrence_duplicated, n: node) } }
+          }
+        Absent => OccurrenceWallState { first: map_insert(m: state.first, key: id.value, value: node), refusal: Absent }
+      }
+    OccurrenceProjected { id: _, caused_by: _ } => state
+    OccurrenceSynthetic => state
+  }
+}
+
+fn occurrence_wall_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A hand-built root carries no declaration kinds, for the same reason it carries no record names.
+fn no_type_declaration_kinds() -> FreeMonoid<DeclaredTypeKind> {
+  Empty
+}
+
+// A hand-built root carries no declaration modifiers either: it has no parse to read the slot from.
+fn no_type_declaration_modifiers() -> FreeMonoid<DeclaredTypeModifiers> {
+  Empty
+}
+
+// THE KIND OF EACH PLAIN-CONJ TYPE THIS MODULE DECLARES, read at normalize by
+// v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional: after lowering, a record,
+// a where-refinement and a payload-bearing single variant share one shape. One list of one coproduct,
+// so a declaration has one kind or none; the symbol-index fill reads its record projection
+// (normalized_tree_record_declarations) and emission reads the whole (v2.compiler.emit_produced
+// emit_module_member). A caller holding no parse passes no_type_declaration_kinds().
+fn admit_normalized_tree(
+  root: Node,
+  test_markers: TestMarkerChannel,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
+  diagnostics: Diagnostics
+) -> Outcome<NormalizedTree> {
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: NormalizedTree {
+          root: root,
+          test_markers: test_markers,
+          import_bindings: import_bindings,
+          type_declaration_kinds: type_declaration_kinds,
+          type_declaration_modifiers: type_declaration_modifiers
+        },
+        diagnostics: diagnostics
+      }
+  }
+}
+
+fn normalized_tree_record_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_record_names(kinds: t.type_declaration_kinds)
+}
+
+fn normalized_tree_resource_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_resource_names(kinds: t.type_declaration_kinds)
+}
+
+// A hand-built root declares no resources this carrier can see, as it declares no records.
+fn no_resource_declarations() -> FreeMonoid<Symbol> {
+  Empty
+}
+
+// A MODULE OUTSIDE THE COMPILED CLOSURE, AT CENSUS GRADE (v2.compiler.normalize normalize_census):
+// every declaration, no fn body. It is a separate sealed carrier rather than a NormalizedTree with a
+// flag because what distinguishes it is what may consume it: resolution reads a non-member's
+// declaration paths and payload kinds through the symbol index, and nothing else may read it at all.
+// So its ONE projection is census_tree_binding_source, and no emission or body-resolution consumer
+// (all of which take NormalizedTree) can be handed one. Rung: structurally impossible to emit a
+// census-grade module -- the carrier has no route to the emitter. It carries no test-marker channel:
+// census mode leaves test fn declarations unlowered and runs none of a non-member's tests.
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). Production callers land in the gen-two door's
+// two sibling changes, both owned by the self-host closure frontier lane: PR-a's reference-derived
+// closure producer builds ONE SymbolIndex with symbol_index_fill_module_roots over the members'
+// normalized_tree_roots_to_binding_sources ++ census_tree_binding_source of every non-member, and
+// PR-c's door wiring (v2.compiler.self_host.closure_emission, called by v2.cli.compile_cli) calls normalize_census
+// for each parsed file outside the closure. TRIGGER: the gen-one emission of v2.compiler.compile
+// ingests a non-member through normalize_census -- until then this carrier is exercised only by
+// v2.test.claim.normalize.census_mode, and if that trigger is abandoned this carrier deletes.
+type CensusTree sole_constructor {
+  root: Node,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
+}
+
+// The census route refuses retention through admit_retention_free exactly as the full route does
+// (v2.compiler.normalize normalize_census). Census mode never visits a fn body, so retention there
+// can only be DECLARATION-level -- a signature, type or spine the lowering could not read -- and a
+// declaration census that silently dropped one would answer resolution with a confident "not
+// declared" (DESIGN section 5). A declaration that failed to PARSE never reaches this door: the
+// census entry takes a ParseTree.
+fn admit_census_tree(
+  root: Node,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
+  diagnostics: Diagnostics
+) -> Outcome<CensusTree> {
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: CensusTree {
+          root: root,
+          import_bindings: import_bindings,
+          record_declarations: record_declarations,
+          resource_declarations: resource_declarations
+        },
+        diagnostics: diagnostics
+      }
+  }
+}
+
+// The one reader of a census-grade module: the symbol-index fill, over the same ModuleBindingSource a
+// closure member projects to, so members and non-members enter one index by one route.
+fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
+  ModuleBindingSource {
+    root: t.root,
+    import_bindings: t.import_bindings,
+    record_declarations: t.record_declarations,
+    resource_declarations: t.resource_declarations
+  }
+}
+
+// Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
+// which attributes a resolve refusal to an import target the context refused at ingest.
+fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
+  tree.import_bindings
+}
+
+// Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
+// module binds and can import neither this carrier nor the stages beneath it. Order-preserving for
+// the same reason the Node projection is.
+fn normalized_tree_roots_to_binding_sources(
+  roots: FreeMonoid<NormalizedTree>
+) -> FreeMonoid<ModuleBindingSource> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, tree) {
+      list_snoc_item(
+        xs: acc,
+        item: ModuleBindingSource {
+          root: tree.root,
+          import_bindings: tree.import_bindings,
+          record_declarations: normalized_tree_record_declarations(t: tree),
+          resource_declarations: normalized_tree_resource_declarations(t: tree)
+        }
       )
     }
-  } else {
-    Accepted { value: NormalizedTree { root: root }, diagnostics: diagnostics }
-  }
+  )
 }
 
 // Projection out of the sealed carrier for consumers genuinely about Node structure, not admission
@@ -63,38 +331,36 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
   )
 }
 
-// The plural door: the same decision per element, refusing as a whole so a partially admitted list
-// has no representation.
+// THE UNMARKED DOOR, AND ITS NAME SAYS SO. Its roots arrive as already-lowered Nodes, from which
+// neither the authored `test` marker nor the module's import decls can be recovered (lowering erases
+// the first by design, the graft dissolves the second), so every root is admitted with an empty
+// marker channel and no import bindings. That is a statement about the caller's input, not a default: a caller
+// holding source goes through v2.compiler.normalize, which captures the channel from the parse tree.
 //
-// Threading is explicit rather than bind_outcome because bind_outcome MERGES the accumulated
-// diagnostics with each step's, and every step here carries the same shared diagnostics — threading
-// would accumulate N+1 copies of one set. The decision is still per element (the same verdict each
-// time, reading only the shared diagnostics), the refusal carries its pending set exactly once via
-// admit_normalized_tree, and the accepted diagnostics attach once at the end.
-fn admit_normalized_roots(
+// Nothing here can refuse: a hand-built Node carries no retention (retention exists only as the
+// body lowering's typed result, refused by admit_retention_free on the normalize route), so this is
+// a map. The Outcome is kept so the caller's diagnostics attach exactly once, at the end.
+fn admit_unmarked_normalized_roots(
   roots: FreeMonoid<Node>,
   diagnostics: Diagnostics
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
-  match fold_list(
-    xs: roots,
-    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
-    cons: fn(acc, root) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: admitted, diagnostics: _ } =>
-          match admit_normalized_tree(root: root, diagnostics: diagnostics) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: one, diagnostics: _ } =>
-              Accepted {
-                value: list_snoc_item(xs: admitted, item: one),
-                diagnostics: v2.std.diagnostic.None
-              }
+  Accepted {
+    value: fold_list(
+      xs: roots,
+      empty: Empty,
+      cons: fn(acc, root) {
+        list_snoc_item(
+          xs: acc,
+          item: NormalizedTree {
+            root: root,
+            test_markers: test_marker_channel_empty(),
+            import_bindings: no_import_bindings(),
+            type_declaration_kinds: no_type_declaration_kinds(),
+            type_declaration_modifiers: no_type_declaration_modifiers()
           }
+        )
       }
-    }
-  ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: all, diagnostics: _ } =>
-      Accepted { value: all, diagnostics: diagnostics }
+    ),
+    diagnostics: diagnostics
   }
 }

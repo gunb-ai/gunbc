@@ -1,0 +1,19 @@
+module fixture.closure.rustc_local_true_false_coproduct_probe
+
+// THE IDENTITY-KEYED CONTROL for native_bool_variant_probe. This module declares its OWN coproduct
+// whose arms are spelled True/False. It has no row in gunbc.rust_source_type_bindings
+// rust_source_variant_value_rows, so it renders its own enum and its arms keep their enum paths: a
+// lowering keyed on the arm spelling would rewrite them to `true`/`false` against an enum, and rustc
+// would refuse. (A local coproduct spelled Bool cannot be this control: see local_bool_coproduct_probe.)
+type Verdict = True | False
+
+fn verdict_negate(a: Verdict) -> Verdict {
+  match a {
+    True => False
+    False => True
+  }
+}
+
+fn verdict_top() -> Verdict {
+  True
+}

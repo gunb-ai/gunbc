@@ -13,7 +13,10 @@
     dead_code,  // 3
 )]
 
-use crate::cli_run::namespace_wave_admission::git_stdout;
+use crate::cli_run::generated_artifact_boundary_host::{
+    generated_artifact_body_for_path, generated_artifact_ctx, GeneratedArtifactPathBody,
+};
+use crate::cli_run::namespace_baseline::git_stdout;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
@@ -1671,107 +1674,6 @@ fn nondeterministic_call_functions(
         }
     }
     names
-}
-
-/// What the generated-artifact population says about one repo-relative path.
-///
-/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer --
-/// not in the generated-artifact population -- and routes a caller to the mirror-emit
-/// population. Folding it into `Refused` would say generation FAILED for an ordinary mirror,
-/// which is false and differently actionable.
-enum GeneratedArtifactPathBody {
-    Produced(String),
-    Refused(String),
-    NotGenerated,
-}
-
-/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
-///
-/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three
-/// authorities `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
-/// `artifact_generate` dispatch -- asked by path instead of by artifact. A per-artifact emitter
-/// would be the forked dispatch DESIGN §3 forbids.
-///
-/// COST SHAPE, and why this takes a CONTEXT rather than `source_roots`: the first draft resolved
-/// `generated_artifact_emit`'s whole closure inside the per-module loop (DESIGN §6's cost-shape
-/// defect, fixed regardless of realized n). The caller resolves once; each path is one
-/// interpreter call.
-/// The generated-artifact authority's evaluation context, resolved AT MOST ONCE per run and
-/// shared by every caller that needs it.
-///
-/// One cell: selection asks it for a module that yields no call, and the differential loop asks
-/// for every selected module. Two resolves would pay the corpus-sized cost twice.
-fn generated_artifact_ctx<'a>(
-    source_roots: &[String],
-    cell: &'a mut Option<crate::v1_interpreter::InterpContext>,
-) -> Result<&'a crate::v1_interpreter::InterpContext, String> {
-    if cell.is_none() {
-        let entry = "dag/gunbc/generated_artifact_emit.dag";
-        let (graph, indices) = crate::cli_run::resolve_entry_graph_shared(source_roots, entry)
-            .map_err(|e| format!("resolve {entry}: {e}"))?;
-        *cell = Some(crate::cli_run::make_eval_context(
-            &graph,
-            indices,
-            // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String
-            // -- so a host effect reached during it means a generator is doing something this
-            // gate must not perform on its behalf. Hermetic refuses there instead of carrying
-            // it out.
-            crate::v1_interpreter::ExecutionMode::Hermetic,
-        ));
-    }
-    Ok(cell.as_ref().expect("the context was just installed"))
-}
-
-fn generated_artifact_body_for_path(
-    ctx: &crate::v1_interpreter::InterpContext,
-    repo_rel_path: &str,
-) -> Result<GeneratedArtifactPathBody, String> {
-    use crate::v1_interpreter::Value;
-    let out = crate::v1_interpreter::run_in_context_with_args(
-        ctx,
-        "generated_artifact_body_for_path",
-        &[(
-            Some("path".to_string()),
-            Value::Str(repo_rel_path.to_string().into()),
-        )],
-        false,
-    )
-    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &out
-    else {
-        // No default arm: an unknown shape is ignorance, and guessing NotGenerated would silently
-        // route a real generated artifact to the mirror emit and refuse it there for the wrong
-        // reason.
-        return Err(format!(
-            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
-        ));
-    };
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
-        return Ok(GeneratedArtifactPathBody::NotGenerated);
-    }
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
-        return match ctx.field(fields, "content") {
-            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
-            _ => Err(format!(
-                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
-            )),
-        };
-    }
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
-        return match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
-            _ => Err(format!(
-                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
-            )),
-        };
-    }
-    Err(format!(
-        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
-    ))
 }
 
 /// Map an authority module path to the emitted mirror that declares it as its authority.

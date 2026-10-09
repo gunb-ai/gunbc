@@ -1,7 +1,8 @@
 module extdeps.linux.procfs
 
-import std.types { NonEmptyStr, List, Bool, Unit }
-import std.string_type { String }
+import std.types { NonEmptyStr, List, Bool, Unit, Int, String }
+import std.algebra { trim }
+import std.optional { Present, Absent }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -25,8 +26,39 @@ type ProcfsPath
   | ProcSelfStatus
   | ProcSelfCgroup
   | ProcNetUnix
+  | ProcNetTcp
+  | ProcNetTcp6
   | ProcSwaps
   | ProcSysKernelHostname
+  | ProcNetPnp
+  | ProcSelfMountinfo
+  | ProcUptime
+
+// A FILE UNDER ONE PROCESS'S DIRECTORY, /proc/<pid>/<file> (proc(5)): stat and cmdline are
+// world-readable; exe, fd and environ need ptrace-read access to the process, so only a reader running
+// as the process's own uid (or root) can take them.
+fn procfs_pid_file_path(pid: String, file: String) -> String {
+  "/proc/" + pid + "/" + file
+}
+
+data procfs_stat_path: String = "/proc/stat"
+
+// THE EFFECTIVE UID FROM /proc/<pid>/status (proc(5)): the `Uid:` line holds four tab-separated
+// decimal ids, real, effective, saved set and filesystem, in that order. The effective one is the
+// second. A missing line, a different field count or a non-decimal field is no uid, never uid 0.
+fn procfs_status_effective_uid(content: String) -> Int? {
+  fold(split(s: content, delimiter: "\n"), init: none, f: (acc, line) => match acc {
+    Present { value: _ } => acc
+    Absent => if !starts_with(s: line, prefix: "Uid:") { none } else {
+      let ids = split(s: trim(s: substring(s: line, start: 4, end: string_length(s: line))), delimiter: "\t") |> filter(f => f != "")
+      if length(ids) != 4 { none } else { match ids.skip(n: 1) |> first {
+        Absent => none
+        Present { value: e } =>
+          if e == "" || !all(e |> chars, cp => cp >= 48 && cp <= 57) { none } else { parse_int(s: e) }
+      } }
+    }
+  })
+}
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -35,8 +67,13 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
     ProcNetUnix => "/proc/net/unix"
+    ProcNetTcp => "/proc/net/tcp"
+    ProcNetTcp6 => "/proc/net/tcp6"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
+    ProcNetPnp => "/proc/net/pnp"
+    ProcSelfMountinfo => "/proc/self/mountinfo"
+    ProcUptime => "/proc/uptime"
   }
 }
 
@@ -48,6 +85,22 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // majflt is field 12 of that line (1-based, counting pid and comm), the count of page
 // faults that required reading a page back from disk — the process's own record of its
 // resident pages having been evicted and refaulted.
+// ProcNetPnp IS READ BY A GUEST THIS REPOSITORY BUILDS, NOT BY A PROCESS IT RUNS, and it is rostered
+// here because the read is one this repository CAUSES. The kernel's IP autoconfiguration
+// (Documentation/admin-guide/nfs/nfsroot.rst, "ip=" and the /proc/net/pnp section) exports the
+// <dns0-ip> field of the ip= boot directive to /proc/net/pnp under the prefix "nameserver ", in a
+// form DNS resolvers recognise, and states that /etc/resolv.conf is linked to it on such systems.
+// gunbc.runner_guest_image installs exactly that link, so every resolver library in a booted guest
+// reads this path. The file is synthesised by the kernel's ipconfig, not by proc.5's process table,
+// and exists only on a kernel built with CONFIG_IP_PNP. Supplying ip= on the command line does not
+// establish that its parser was compiled in, so whether the guest kernel this fleet boots provides
+// /proc/net/pnp is a fact the first NETWORKED boot must establish, and the resolver frontier
+// (gunbc.runner_microvm_network guest_resolver_configuration_frontier) waits on exactly that. That
+// bet is carried IN THE TYPE, not in this sentence: procfs_path_provision names the option, and
+// procfs_availability answers ProcfsConditionalOnKernelConfig for it rather than ProcfsAvailable
+// (review 68937 on #11760: rostering the path with no such arm made an executing witness assert
+// availability on Linux that this repository has not observed -- DESIGN 4d, a bet promoted to a
+// deduction by omission).
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStat,
@@ -56,6 +109,9 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
+  ProcSelfMountinfo,
+  ProcNetPnp,
+  ProcUptime,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
@@ -64,11 +120,24 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // operation with a shell transport, so gunbc.host_operation_exec can carry it over whichever
 // transport the caller holds (DESIGN 3: the transport is a realization bound to this shape, never
 // a fact about procfs). `cat` is the whole realization: procfs files are read-once text and the
-// kernel synthesizes them on open, so there is nothing to seek, follow or lock. Three operations
-// and not one generic ReadFile, so that the operation's identity says which file it reads and an
-// argv over an arbitrary path cannot be materialized from this service.
+// kernel synthesizes them on open, so there is nothing to seek, follow or lock. ONE OPERATION PER
+// FILE and not one generic ReadFile, so that the operation's identity says which file it reads and
+// an argv over an arbitrary path cannot be materialized from this service. ReadMeminfo serves the
+// host memory capacity and live availability a compute admission reads before it reserves
+// (gunbc.compute.host_capacity).
+// ReadUptime IS BOUND TO THE FILE TRANSPORT, NOT `cat` OVER THE SHELL TRANSPORT, because its reader
+// (extdeps.linux.proc_uptime proc_uptime_parse) has a byte-exact contract -- the record ends with one
+// newline -- and the shell transport's captured stdout is trimmed (bounded_shell_host_drain
+// retained_utf8_lossy_trimmed), which removes exactly that byte: the composition rostered as
+// gunbc.recurring_failure_mode a_termination_contract_is_met_by_a_trimming_transport. Every live
+// reading was therefore refused, while the hermetic mock (an authored string that keeps the newline)
+// stayed green. The file transport reads the kernel's bytes unaltered, so the mock and the live route
+// now carry the same record. Its one consumer reads the executing host's own clock; a read of ANOTHER
+// host's uptime would need an exact-bytes read over the fleet transport, which is that row's trigger,
+// not something this binding can supply.
 service linux.Procfs {
   operation ReadStat {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -85,7 +154,40 @@ service linux.Procfs {
     }
   }
 
+  operation ReadUptime {
+    requires none
+    input {}
+    output {
+      value: String from "content"
+      success: Bool from "read_success"
+    }
+    readonly
+    transport file { path: "/proc/uptime" }
+    mock_response {
+      0 => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
+    }
+  }
+
+  operation ReadMeminfo {
+    requires none
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/meminfo"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/meminfo read failed"
+    }
+    mock_response {
+      0 => { value: "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n", success: true } "hermetic linux.Procfs.ReadMeminfo"
+    }
+  }
+
   operation ReadPidStat {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -102,7 +204,44 @@ service linux.Procfs {
     }
   }
 
+  operation ReadNetTcp {
+    requires none
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp: a socket table with no rows"
+    }
+  }
+
+  operation ReadNetTcp6 {
+    requires none
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp6"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp6 read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp6: a socket table with no rows"
+    }
+  }
+
   operation ReadPidCgroup {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -130,13 +269,67 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
   }
 }
 
+// WHICH PATHS A LINUX KERNEL SYNTHESISES UNCONDITIONALLY, AND WHICH ONLY WHEN BUILT WITH AN
+// OPTION -- AND WHICH THIS REPOSITORY HAS NOT YET AUDITED. A path owned by an optional subsystem
+// exists only when that subsystem was compiled in: /proc/net/pnp needs CONFIG_IP_PNP (the kernel's
+// nfsroot guide, cited on nfsroot_ip_autoconfiguration_authority), and no reading this repository
+// has taken decides that for a kernel it has not booted. The option is spelled as the kernel spells
+// it (the NonEmptyStr convention gunbc.runner.runner_host_filtered_egress KernelFeatureRequirement
+// uses), so a host kernel-config readback can join on it.
+//
+// NOTHING IS CLASSIFIED UNCONDITIONAL HERE, BY DESIGN AND NOT BY OVERSIGHT. The first revision of
+// this fold (review 68937 / sunny-ant-606 on #11760) named every previously rostered path
+// ProvidedByEveryLinuxKernel and a witness then required each of them to be available on Linux --
+// ratifying the mapping rather than testing it -- while /proc/net/unix is in fact CONFIG_UNIX-
+// conditional upstream (net/unix is obj-$(CONFIG_UNIX), and its proc_create_net sits inside). So a
+// path is either qualified by a specific cited option, or it is ProvisionNotYetQualified, which
+// procfs_availability carries through as ProcfsProvisionUnqualified and never as ProcfsAvailable:
+// availability may not be minted from KernelFamily alone. DECLARED FRONTIER (DESIGN 3c):
+// ProvidedByEveryLinuxKernel has no inhabitant until a procfs census cites, per path, the kernel
+// source that synthesises it unconditionally under CONFIG_PROC_FS (and a conjunction carrier if a
+// path needs more than one option); that census is its own change, not the resolver PR that
+// surfaced the gap. Its consumer is the same procfs_availability fold, which already carries the
+// arm.
+type ProcfsPathProvision
+  = ProvidedByEveryLinuxKernel
+  | ProvidedWhenConfigured { option: NonEmptyStr }
+  | ProvisionNotYetQualified
+
+fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
+  match p {
+    ProcMeminfo => ProvisionNotYetQualified
+    ProcSelfStat => ProvisionNotYetQualified
+    ProcSelfStatus => ProvisionNotYetQualified
+    ProcSelfCgroup => ProvisionNotYetQualified
+    ProcNetUnix => ProvisionNotYetQualified
+    ProcSwaps => ProvisionNotYetQualified
+    ProcSysKernelHostname => ProvisionNotYetQualified
+    ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
+    ProcSelfMountinfo => ProvisionNotYetQualified
+    ProcUptime => ProvisionNotYetQualified
+    ProcNetTcp => ProvisionNotYetQualified
+    ProcNetTcp6 => ProvisionNotYetQualified
+  }
+}
+
+// ProcfsConditionalOnKernelConfig IS AN OBSERVATION OBLIGATION, NOT A THIRD KIND OF AVAILABILITY.
+// The kernel family can serve the path; whether THIS kernel does is decided by a config option the
+// repository has to read (or a boot that has to show the file). It answers false to
+// procfs_availability_is_available for that reason: a consumer that needs the path proceeds on a
+// reading, never on the family.
 type ProcfsAvailability
   = ProcfsAvailable
+  | ProcfsConditionalOnKernelConfig { path: ProcfsPath, option: NonEmptyStr }
+  | ProcfsProvisionUnqualified { path: ProcfsPath }
   | ProcfsAbsentOnKernel { kernel: KernelFamily, path: ProcfsPath }
 
 fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailability {
   if kernel_provides_procfs(kernel: kernel) {
-    ProcfsAvailable
+    match procfs_path_provision(p: path) {
+      ProvidedByEveryLinuxKernel => ProcfsAvailable
+      ProvidedWhenConfigured { option: o } => ProcfsConditionalOnKernelConfig { path: path, option: o }
+      ProvisionNotYetQualified => ProcfsProvisionUnqualified { path: path }
+    }
   } else {
     ProcfsAbsentOnKernel { kernel: kernel, path: path }
   }
@@ -167,6 +360,8 @@ fn procfs_absence_reason(kernel: KernelFamily, path: ProcfsPath) -> NonEmptyStr 
 fn procfs_availability_is_available(a: ProcfsAvailability) -> Bool {
   match a {
     ProcfsAvailable => true
+    ProcfsConditionalOnKernelConfig { path: _, option: _ } => false
+    ProcfsProvisionUnqualified { path: _ } => false
     ProcfsAbsentOnKernel { kernel: _, path: _ } => false
   }
 }
@@ -180,5 +375,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.linux.procfs.extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [nfsroot_ip_autoconfiguration_authority]
+}
+
+// /proc/net/pnp IS DOCUMENTED BY THE KERNEL'S NFS-ROOT GUIDE, NOT BY proc.5, so the roster's
+// ProcNetPnp row cites its own document rather than borrowing the anchor above.
+data nfsroot_ip_autoconfiguration_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/nfs/nfsroot.html"
+  }
 }

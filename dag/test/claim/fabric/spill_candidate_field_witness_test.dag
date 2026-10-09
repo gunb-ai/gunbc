@@ -2,14 +2,14 @@ module test.claim.fabric.spill_candidate_field_witness
 
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.nat { Nat }
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.measure {
-  MoneyRate, MoneyPerSecond, money_amount_micro,
+  MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro,
   Second, second,
   HardwareThreadCount, hardware_thread_count,
+  nanosecond, bandwidth, byte_size,
 }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
@@ -31,6 +31,9 @@ import product.fabric.provider_admission {
   DispositionStanding, DispositionCleared,
 }
 import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, RequireExercisedRoute, ExerciseOfRoute,
+}
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerHour, ObservedSupply,
   GrantDuration, ExactGrantDuration, StableRosterOrder, PlacementAffinityKey,
@@ -46,11 +49,29 @@ import product.fabric.selection {
 }
 import product.fabric.candidate_field {
   FieldRequest, CandidateField, FieldExclusion, FieldExclusionCause,
-  FieldRouteNotModeled, FieldRouteAmbiguous, FieldRouteFactsNameAnotherRoute,
-  FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
-  FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
+  FieldCapacityRefused, FieldDispatchInputsNameAnotherOffer,
   assemble_candidate_field,
 }
+import product.fabric.capacity_admission {
+  CapacityRefusal,
+  CapacityRouteNotModeled, CapacityRouteAmbiguous, CapacityRouteFactsNameAnotherRoute,
+  CapacitySupplyUnobserved, CapacityRouteNeverExercised, CapacityRouteExerciseExpired,
+  CapacityNodeNotQualified, CapacityDeliveryClaimNamesAnotherOffer, CapacityDeliveryClaimReceiptMismatch,
+  CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
+  CapacityPermitNamesAnotherRoute, CapacityPermitNamesAnotherWork, CapacityPermitNamesAnotherDemand,
+}
+import product.host_identity { HostIdentity }
+import product.fabric.node_qualification {
+  OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim, OfferClaimsNodeDelivery,
+  GroupQualified, CollectiveGroupReceipt, CollectiveGroupAdvertised,
+  GroupHostRosterComplete, CollectiveLatencyUnread, CollectiveBandwidthUnread,
+  RankSymmetryUnread, rank_symmetry_unread_awaits_rank_local_receipt,
+  WindowIsolated, CollectivePrimitiveSameRuntime, NcclLibraryVersion,
+  HostRegisteredIbFallbackCitedOnServingRuntime,
+  CollectiveProtocol, NcclTestsAllReducePerf, EachRankContributesTheSizeColumn,
+  NcclTestsHalf, supplied_historical_curve_unread,
+}
+import gunbc.spark.group_b_node_qualification { group_b_delivery_claim, group_b_claimed_offer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -105,6 +126,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // extdeps.cloud.hetzner, at which point this row is deleted and the citation moves upstream.
 data spill_hetzner_helsinki_region: NonEmptyStr = "spill-hetzner-region-helsinki"
 data spill_hetzner_nuremberg_region: NonEmptyStr = "spill-hetzner-region-nuremberg"
+// THE EXERCISE RECEIPT every witness route exercise cites. Like the region rows it is this witness's
+// declared input, not a reading of any real run on any real vendor.
+data spill_route_exercise: NonEmptyStr = "spill-route-exercise-witness-input"
 
 // THE THREE PROVIDERS WITH NO MODELED ROUTE. NO ROUTE FACTS ARE MODELED FOR ANY OF THESE THREE
 // ANYWHERE IN THIS CORPUS: no data-path closure, no downstream population, no contract terms. That
@@ -317,11 +341,11 @@ fn s_requirements() -> ExecutionRequirements {
   }
 }
 
-fn s_hourly(micros: Nat) -> OfferQuote {
-  QuotedPerHour(MoneyRate { amount: money_amount_micro(count: micros), currency: Usd })
+fn s_hourly(amount: MoneyAmountMicro) -> OfferQuote {
+  QuotedPerHour(MoneyRate { amount: amount, currency: Usd })
 }
 
-fn s_offer(key: OfferKey, route: ProviderRoute, micros: Nat) -> SupplierOffer<NonEmptyStr> {
+fn s_offer(key: OfferKey, route: ProviderRoute, amount: MoneyAmountMicro) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
@@ -332,7 +356,7 @@ fn s_offer(key: OfferKey, route: ProviderRoute, micros: Nat) -> SupplierOffer<No
     isolation: s_isolation(),
     quantity_bound: 1,
     ready_at: "2026-09-13T00:00:00Z",
-    quote: s_hourly(micros: micros),
+    quote: s_hourly(amount: amount),
     billing_quantum: second(count: 3600),
     evidence: ObservedSupply {
       observed_at: "2026-09-13T00:00:00Z",
@@ -359,8 +383,78 @@ fn s_inputs(key: OfferKey) -> DispatchInputs<NonEmptyStr> {
   }
 }
 
-fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<NonEmptyStr> {
-  FieldRequest { offer: s_offer(key: key, route: route, micros: micros), dispatch: s_inputs(key: key) }
+fn s_request_with_delivery(
+  key: OfferKey,
+  route: ProviderRoute,
+  amount: MoneyAmountMicro,
+  delivery: OfferDeliveryClaim<NonEmptyStr>,
+) -> FieldRequest<NonEmptyStr> {
+  FieldRequest {
+    offer: s_offer(key: key, route: route, amount: amount),
+    dispatch: s_inputs(key: key),
+    delivery: delivery,
+  }
+}
+
+fn s_request(key: OfferKey, route: ProviderRoute, amount: MoneyAmountMicro) -> FieldRequest<NonEmptyStr> {
+  s_request_with_delivery(
+    key: key, route: route, amount: amount, delivery: OfferDoesNotClaimNodeDelivery,
+  )
+}
+
+fn s_qualified_delivery(offer: FabricIdentity<NonEmptyStr, OfferKey>) -> OfferDeliveryClaim<NonEmptyStr> {
+  OfferClaimsNodeDelivery {
+    offer: offer,
+    admission: GroupQualified {
+      receipt: CollectiveGroupReceipt {
+        offer: offer,
+        advertised: CollectiveGroupAdvertised {
+          expected_ranks: ["spill-rank-0" as HostIdentity],
+          latency_ceiling: nanosecond(count: 1000),
+          latency_message_bytes: byte_size(count: 8),
+          all_reduce_protocol: CollectiveProtocol {
+            instrument: NcclTestsAllReducePerf,
+            size_semantics: EachRankContributesTheSizeColumn,
+            dtype: NcclTestsHalf,
+            rank_count: 1,
+          },
+          bandwidth_floor: bandwidth(count: 100),
+          bandwidth_message_bytes: byte_size(count: 8),
+          all_to_all_latency_ceiling: nanosecond(count: 1000),
+          all_to_all_message_bytes: byte_size(count: 8),
+          all_to_all_protocol: CollectiveProtocol {
+            instrument: NcclTestsAllReducePerf,
+            size_semantics: EachRankContributesTheSizeColumn,
+            dtype: NcclTestsHalf,
+            rank_count: 1,
+          },
+        },
+        host_roster: GroupHostRosterComplete { rank_count: 1 },
+        collective_latency: CollectiveLatencyUnread {
+          ceiling: nanosecond(count: 1000),
+          because: supplied_historical_curve_unread,
+        },
+        collective_bandwidth: CollectiveBandwidthUnread {
+          floor: bandwidth(count: 100),
+          because: supplied_historical_curve_unread,
+        },
+        all_to_all_latency: CollectiveLatencyUnread {
+          ceiling: nanosecond(count: 1000),
+          because: supplied_historical_curve_unread,
+        },
+        rank_symmetry: RankSymmetryUnread {
+          because: rank_symmetry_unread_awaits_rank_local_receipt,
+        },
+        host_registered_ib_fallback: HostRegisteredIbFallbackCitedOnServingRuntime {
+          nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+        },
+        window: WindowIsolated,
+        primitive_attribution: CollectivePrimitiveSameRuntime {
+          nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+        },
+      },
+    },
+  }
 }
 
 // THE ROSTER, CHEAPEST FIRST. Roster order is also the StableRosterOrder tie policy's order, so
@@ -368,10 +462,10 @@ fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<N
 // would win both on price and on order, and no tie-break accident could disguise the failure.
 fn s_requests() -> List<FieldRequest<NonEmptyStr>> {
   [
-    s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
-    s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
-    s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
-    s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000),
+    s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), amount: money_amount_micro(count: 1000)),
+    s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), amount: money_amount_micro(count: 2000)),
+    s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), amount: money_amount_micro(count: 3000)),
+    s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000)),
   ]
 }
 
@@ -386,10 +480,34 @@ fn s_modeled_routes() -> List<OfferRouteRow<NonEmptyStr>> {
   ]
 }
 
-fn s_field(
+// THE DECISION INSTANT every field below is taken at, and the Hetzner exercise that makes that
+// route ready at it. The claims about correspondence and admission are not about readiness, so they
+// run with every route exercised; the readiness claims supply their own exercises.
+data s_at: EpochSecs = 1000
+
+fn s_exercise(route: ProviderRoute, valid_through: EpochSecs) -> RouteExercise {
+  RouteExercise {
+    route: route,
+    exercised_at: 100,
+    valid_through: valid_through,
+    receipt: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_route_exercise"),
+  }
+}
+
+fn s_hetzner_exercise(valid_through: EpochSecs) -> RouteExercise {
+  s_exercise(route: s_hetzner_route(), valid_through: valid_through)
+}
+
+fn s_every_route_exercised() -> List<RouteExercise> {
+  map([s_scaleway_route(), s_oracle_route(), s_google_route(), s_hetzner_route()], r => s_exercise(route: r, valid_through: 2000))
+}
+
+fn s_field_with_readiness(
   routes: List<OfferRouteRow<NonEmptyStr>>,
   sanctions: List<RouteScopeSanction>,
   requests: List<FieldRequest<NonEmptyStr>>,
+  exercises: List<RouteExercise>,
+  readiness: RouteReadinessRequirement<NonEmptyStr>,
 ) -> CandidateField<NonEmptyStr> {
   assemble_candidate_field(
     routes: routes,
@@ -397,7 +515,25 @@ fn s_field(
     active: s_posture(),
     scope: s_scope(),
     decision_receipt: s_receipt(),
+    exercises: exercises,
+    readiness: readiness,
+    at: s_at,
+    requirements: s_requirements(),
     requests: requests,
+  )
+}
+
+fn s_field(
+  routes: List<OfferRouteRow<NonEmptyStr>>,
+  sanctions: List<RouteScopeSanction>,
+  requests: List<FieldRequest<NonEmptyStr>>,
+) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: routes,
+    sanctions: sanctions,
+    requests: requests,
+    exercises: s_every_route_exercised(),
+    readiness: RequireExercisedRoute,
   )
 }
 
@@ -431,7 +567,7 @@ fn s_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
 
 fn s_selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.key as NonEmptyStr)
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
     EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
   }
@@ -439,23 +575,39 @@ fn s_selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
 
 fn s_selected_permit(s: SupplySelection<NonEmptyStr>) -> List<ProviderUsePermit<NonEmptyStr>> {
   match s {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [o.permit]
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [sel.candidate.permit]
     NoAdmissibleOffer { considered: _ } => []
     EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }
 }
 
+// The tags are the ones this file has always asserted; they are read through the capacity refusal
+// now, because product.fabric.capacity_admission decides admissibility and the field's exclusion
+// cause IS its refusal.
+fn s_capacity_tag(r: CapacityRefusal<NonEmptyStr>) -> String {
+  match r {
+    CapacityRouteNotModeled { offer: _ } => "route-not-modeled"
+    CapacityRouteAmbiguous { offer: _, claimed: _ } => "route-ambiguous"
+    CapacityRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
+    CapacitySupplyUnobserved { offer: _, obligation: _ } => "supply-unobserved"
+    CapacityRouteNeverExercised { offer: _, route: _ } => "route-never-exercised"
+    CapacityRouteExerciseExpired { offer: _, route: _, latest_valid_through: _, at: _ } => "route-exercise-expired"
+    CapacityNodeNotQualified { offer: _, refusals: _ } => "node-not-qualified"
+    CapacityDeliveryClaimNamesAnotherOffer { offer: _, claim_names: _ } => "delivery-claim-names-another-offer"
+    CapacityDeliveryClaimReceiptMismatch { offer: _, claim_names: _, receipt_names: _ } => "delivery-claim-receipt-mismatch"
+    CapacityNotFungibleForWork { offer: _, fungibility: _ } => "not-fungible"
+    CapacityUseRefused { offer: _, cause: _ } => "use-refused"
+    CapacityPermitNamesAnotherOffer { offer: _, permit_names: _ } => "permit-names-another-offer"
+    CapacityPermitNamesAnotherRoute { offer: _ } => "permit-names-another-route"
+    CapacityPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
+    CapacityPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
+  }
+}
+
 fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
   match c {
-    FieldRouteNotModeled => "route-not-modeled"
-    FieldRouteAmbiguous { claimed: _ } => "route-ambiguous"
-    FieldRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
-    FieldUseRefused { cause: _ } => "use-refused"
+    FieldCapacityRefused { refusal: r } => s_capacity_tag(r: r)
     FieldDispatchInputsNameAnotherOffer { inputs_name: _ } => "inputs-name-another-offer"
-    FieldPermitNamesAnotherOffer { permit_names: _ } => "permit-names-another-offer"
-    FieldPermitNamesAnotherRoute => "permit-names-another-route"
-    FieldPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
-    FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
   }
 }
 
@@ -475,6 +627,63 @@ fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
 // a fixture in which nothing wins at all, and the file would assert nothing about admission.
 test fn w_the_one_modeled_route_survives_the_field() -> Bool {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_its_own_failing_group_qualified_arm_is_excluded() -> Bool {
+  let offer = FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }
+  let field = s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "spill-hetzner-cax41",
+        route: s_hetzner_route(),
+        amount: money_amount_micro(count: 4000),
+        delivery: s_qualified_delivery(offer: offer),
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {
+  let field = s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "spill-hetzner-cax41",
+        route: s_hetzner_route(),
+        amount: money_amount_micro(count: 4000),
+        delivery: group_b_delivery_claim,
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "delivery-claim-names-another-offer") == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_its_own_unqualified_node_delivery_is_excluded() -> Bool {
+  let field = s_field(
+    routes: [
+      OfferRouteRow {
+        offer: group_b_claimed_offer,
+        facts: s_facts(route: s_hetzner_route()),
+      },
+    ],
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "group-b-historical",
+        route: s_hetzner_route(),
+        amount: money_amount_micro(count: 4000),
+        delivery: group_b_delivery_claim,
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["group-b-historical"]
 }
 
 // RED - AN UNCLASSIFIED ROUTE REFUSES RATHER THAN DEFAULTING. Three of four providers have no
@@ -536,7 +745,7 @@ test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool {
     == s_selected_key(s: s_select(candidates: s_field(
          routes: s_modeled_routes(),
          sanctions: [s_sanction(route: s_hetzner_route())],
-         requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+         requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
        ).admitted))
 }
 
@@ -548,9 +757,9 @@ test fn w_a_field_of_unread_routes_selects_nothing() -> Bool {
     routes: s_modeled_routes(),
     sanctions: [s_sanction(route: s_hetzner_route())],
     requests: [
-      s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
-      s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
-      s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
+      s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), amount: money_amount_micro(count: 1000)),
+      s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), amount: money_amount_micro(count: 2000)),
+      s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), amount: money_amount_micro(count: 3000)),
     ],
   ).admitted)) == "none"
 }
@@ -569,7 +778,7 @@ test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool {
         },
       ],
       sanctions: [s_sanction(route: s_hetzner_sibling_route())],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "facts-name-another-route",
   ) == ["spill-hetzner-cax41"]
@@ -611,7 +820,7 @@ fn s_two_reading_field(first: ProviderRouteFacts, second: ProviderRouteFacts) ->
       OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: second },
     ],
     sanctions: [s_sanction(route: s_hetzner_route())],
-    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
   )
 }
 
@@ -655,7 +864,7 @@ test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool {
         },
       ],
       sanctions: [s_sanction(route: s_hetzner_route()), s_sanction(route: s_hetzner_sibling_route())],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "route-ambiguous",
   ) == ["spill-hetzner-cax41"]
@@ -671,7 +880,7 @@ test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool {
     field: s_field(
       routes: s_modeled_routes(),
       sanctions: [],
-      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), amount: money_amount_micro(count: 4000))],
     ),
     tag: "use-refused",
   ) == ["spill-hetzner-cax41"]
@@ -691,4 +900,52 @@ test fn w_the_surviving_permit_names_the_work_and_demand_it_was_admitted_for() -
     init: false,
     f: (acc, p) => (p.work.key as NonEmptyStr) == "spill-work-1" && (p.demand.key as NonEmptyStr) == "spill-demand-1",
   )
+}
+
+// ── READINESS: A SANCTIONED ROUTE THAT HAS NEVER RUN WORK IS NOT CAPACITY ─────────────────────────
+
+fn s_readiness_field(exercises: List<RouteExercise>, readiness: RouteReadinessRequirement<NonEmptyStr>) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: s_requests(),
+    exercises: exercises,
+    readiness: readiness,
+  )
+}
+
+// The discriminating red for the whole stage: the SAME modeled, sanctioned route that wins above
+// is refused by name once its exercise is removed, and the field then selects nothing.
+test fn w_a_sanctioned_route_never_exercised_is_not_capacity() -> Bool {
+  let field = s_readiness_field(exercises: [], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+    && s_selected_key(s: s_select(candidates: field.admitted)) == "none"
+}
+
+test fn w_an_expired_exercise_refuses_by_name() -> Bool {
+  let field = s_readiness_field(exercises: [s_hetzner_exercise(valid_through: 999)], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-exercise-expired") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+}
+
+// Readiness is monotone in the exercise set: an expired and a live exercise of one route admit in
+// either order.
+test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool {
+  let live = s_hetzner_exercise(valid_through: 2000)
+  let stale = s_hetzner_exercise(valid_through: 10)
+  s_admitted_keys(field: s_readiness_field(exercises: [stale, live], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: s_readiness_field(exercises: [live, stale], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+}
+
+// The exercise arm admits its own work onto its own route, and nothing wider: naming another work
+// falls back to requiring an exercise, which this route does not have.
+test fn w_an_exercise_admits_only_its_own_work_on_its_own_route() -> Bool {
+  let own = s_readiness_field(exercises: [], readiness: ExerciseOfRoute { route: s_hetzner_route(), work: s_work() })
+  let other_work = s_readiness_field(
+    exercises: [],
+    readiness: ExerciseOfRoute { route: s_hetzner_route(), work: FabricIdentity { principal: "gunbc", key: "some-other-work" } },
+  )
+  s_admitted_keys(field: own) == ["spill-hetzner-cax41"]
+    && s_excluded_keys(field: other_work, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
 }

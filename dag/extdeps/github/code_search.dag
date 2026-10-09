@@ -1,12 +1,15 @@
 module extdeps.github.code_search
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -61,6 +64,67 @@ type CodeSearchRepository {
   full_name: String
   private: Bool
   fork: Bool
+}
+
+// THE 1000-RESULT CEILING, AS A DECLARATION RATHER THAN A SENTENCE. The annotation at the head of
+// this module already says the endpoint caps a query at 1000 results however many exist, and a
+// number living only in prose cannot be folded, compared, or refused against -- which is exactly
+// what a consumer must do to know whether its query was fully enumerable. total_count is GitHub's
+// claim about how many results EXIST; this is the most any caller may retrieve. When the first
+// exceeds the second the query is SATURATED: its pages are a truncation of an answer whose size is
+// known, and the honest response is to subdivide the query rather than to report what came back as
+// a population.
+data retrievable_result_ceiling: Int = 1000
+
+// A PAGE SIZE IS ADMITTED BEFORE IT IS DIVIDED BY, AND AN EARLIER CUT DIVIDED BY WHATEVER ARRIVED.
+// deepest_retrievable_page took a bare Int and computed retrievable_result_ceiling / per_page, so a
+// caller supplying a size outside the endpoint's domain got a bound that looked derived and was
+// nonsense: per_page = 1000 yields a bound of ONE PAGE, and a walk that reads one page and finds it
+// short reports StoppedExhausted -- a partial first page presented as a complete population. GitHub
+// serves at most max_per_page results per page for this endpoint, and nothing refused above it.
+//
+// The domain is upstream's, so the admission lives here rather than in a consumer: this is the
+// endpoint's documented contract, not a policy any caller may choose. The admitted carrier is
+// sole_constructor, so it can be built only by the admission below -- an unadmitted Int cannot reach
+// the division at all, which is the difference between refusing a bad bound and being unable to
+// compute one.
+// The deepest retrievable page is derived HERE, at admission, and carried: Nat has no division, so
+// the Int quotient crosses into Nat through std.checked_arithmetic checked_int_to_nat once, on the
+// one path that can build this carrier, and a negative quotient refuses with the admission's own
+// typed arm rather than entering a Nat position unproven.
+type CodeSearchPageSize sole_constructor { size: Int, deepest_page: Nat }
+
+type CodeSearchPageSizeAdmission
+  = CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize }
+  | CodeSearchPageSizeRefused { observed: Int, cause: NonEmptyStr }
+
+fn admit_code_search_page_size(observed: Int) -> CodeSearchPageSizeAdmission {
+  if observed < 1 {
+    CodeSearchPageSizeRefused {
+      observed: observed,
+      cause: "a page size below one asks the endpoint for no results per page, and dividing the retrievable ceiling by it yields no usable bound" as NonEmptyStr,
+    }
+  } else if observed > max_per_page {
+    CodeSearchPageSizeRefused {
+      observed: observed,
+      cause: join(["code search serves at most ", to_string(max_per_page), " results per page, so a larger size is silently truncated upstream and the walk bound derived from it understates the pages that exist"], "") as NonEmptyStr,
+    }
+  } else {
+    match checked_int_to_nat(n: retrievable_result_ceiling / observed) {
+      Absent => CodeSearchPageSizeRefused {
+        observed: observed,
+        cause: "the retrievable ceiling divided by this page size is negative, so no walk bound exists" as NonEmptyStr,
+      }
+      Present { value: deepest } => CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize { size: observed, deepest_page: deepest } }
+    }
+  }
+}
+
+// The deepest page a caller may request without passing the ceiling, derived rather than authored
+// so that changing the ceiling or the page size cannot leave a stale bound behind. The Nat was
+// established by admit_code_search_page_size; this reads it rather than re-deriving an Int.
+fn deepest_retrievable_page(page_size: CodeSearchPageSize) -> Nat {
+  page_size.deepest_page
 }
 
 type CodeSearchHit {
@@ -129,7 +193,6 @@ data hermetic_code_search_name: String = "premerge.yaml"
 data hermetic_code_search_blob_sha: String = "9ba6fbbf627a0afdec053411e3382271588b372f"
 data hermetic_code_search_total_count: Int = 250
 data hermetic_code_search_incomplete: Bool = false
-data hermetic_code_search_outcome: RestOutcome = RestOk
 
 // THE QUERY IS AN INPUT AND NEVER A LITERAL HERE: which strings this repository searches for is a
 // fact about the scan being run, not about GitHub's API, and baking one in would be the
@@ -143,6 +206,7 @@ service github.CodeSearch {
   }
 
   operation SearchCode {
+    requires Network
     input {
       auth_token: Secret
       q: String
@@ -151,7 +215,6 @@ service github.CodeSearch {
     }
     output {
       page: CodeSearchPage
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -179,8 +242,7 @@ service github.CodeSearch {
               repository: hermetic_code_search_repository
             }
           ]
-        },
-        outcome: hermetic_code_search_outcome
+        }
       } "hermetic decoded-200 shape for GET /search/code, carrying the first real hit of the 2026-09-10 depot-arm query and that query's real total_count of 250. One item beside a total of 250 is ordinary pagination and demonstrates nothing about the cross-page anomaly, which no single page can show"
     }
   }

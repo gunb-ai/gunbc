@@ -1,14 +1,26 @@
 module extdeps.bootloader.grub
 
-import std.types { NonEmptyStr, String, Int, List, Seconds }
+import std.types { Bool, NonEmptyStr, String, Int, List, Seconds }
+import std.algebra { trim }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_arg_wire }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
+// GNU GRUB AT TAG grub-2.12, the boot loader the Ubuntu 24.04 install media carry. ONE upstream
+// product, so ONE module authority (DESIGN §3): both what we WRITE for GRUB (grub.cfg, whose
+// syntax is the manual's "Simple configuration" chapter, docs/grub.texi in this same tree) and
+// what GRUB WRITES to a console (the statements read below) are GRUB's vocabulary. The anchor is
+// the source tree rather than the rendered manual because it is the form that DECLARES ITS
+// VERSION, which the rendered page does not. Cited files, all at this tag: grub-core/normal/menu.c
+// prints "Failed to boot both default and fallback entries." when the selected entry and its
+// fallback both return without booting; grub-core/loader/arm64/linux.c (via grub_error
+// GRUB_ERR_BAD_ARGUMENT) prints "you need to load the kernel first" when a boot command runs
+// before a kernel was loaded; grub-core/kern/disk.c prints "failure reading sector 0x%llx from
+// `%s'" when the underlying disk read fails.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.gnu.org/software/grub/manual/grub/grub.html#Simple-configuration"
+    locator: "git.savannah.gnu.org/cgit/grub.git/tree/?h=grub-2.12"
   }
 }
 
@@ -67,4 +79,102 @@ fn grub_config_render(cfg: GrubConfig) -> String {
   )
   let body = join(map(cfg.entries, e => grub_menuentry_render(entry: e)), "\n")
   join([header, body], "\n")
+}
+
+data grub_console_banner_prefix: NonEmptyStr = "GNU GRUB  version "
+data grub_failed_default_and_fallback: NonEmptyStr = "Failed to boot both default and fallback entries."
+data grub_error_prefix: NonEmptyStr = "error: "
+data grub_kernel_not_loaded: NonEmptyStr = "you need to load the kernel first."
+data grub_disk_read_failure_prefix: NonEmptyStr = "failure reading sector "
+
+// WHAT A GRUB CONSOLE ESTABLISHED, read from the lines the boot loader printed. Only the
+// "failed both entries" statement is TERMINAL: GRUB returns to its menu and waits, so the boot
+// has ended without a kernel. A read failure or a kernel-not-loaded error may precede it or
+// stand alone while GRUB is still trying (a fallback entry can still succeed), so those are
+// carried as the loader's stated cause beside the terminal statement, never promoted to it.
+type GrubConsoleReport
+  = GrubNothingStated
+  | GrubBannerOnly
+  | GrubStillTrying { errors: List<GrubError> }
+  | GrubBootFailed { errors: List<GrubError> }
+
+// THE LOADER'S ERRORS AT THE GRAIN A REMEDY NEEDS: a sector read failure names the device GRUB
+// could not read (virtual-media delivery), kernel-not-loaded is the consequence of a failed
+// load, and anything else GRUB prints as an error is carried verbatim rather than guessed at.
+type GrubError
+  = GrubMediaReadFailed { device: NonEmptyStr, detail: NonEmptyStr }
+  | GrubKernelNotLoaded { detail: NonEmptyStr }
+  | GrubOtherError { detail: NonEmptyStr }
+
+fn grub_error_text(error: GrubError) -> String {
+  match error {
+    GrubMediaReadFailed { device: d, detail: t } => concat("media read failed on ", d as String, " (", t as String, ")")
+    GrubKernelNotLoaded { detail: t } => t as String
+    GrubOtherError { detail: t } => t as String
+  }
+}
+
+// The device is the text between the backquote and the closing quote of GRUB's
+// "failure reading sector 0x... from `cd0'." rendering.
+fn grub_device_of(detail: String) -> NonEmptyStr? {
+  match get(xs: split(s: detail, delimiter: "`"), index: 1) {
+    Absent => none
+    Present { value: tail } =>
+      match get(xs: split(s: tail, delimiter: "'"), index: 0) {
+        Absent => none
+        Present { value: d } => if d == "" { none } else { Present { value: d as NonEmptyStr } }
+      }
+  }
+}
+
+fn grub_error_statement(line: String) -> GrubError? {
+  let clean = trim(s: line)
+  if starts_with(s: clean, prefix: grub_error_prefix as String) {
+    let detail = trim(s: substring(s: clean, start: (grub_error_prefix as String).length(), end: clean.length())) as NonEmptyStr
+    if starts_with(s: detail as String, prefix: grub_disk_read_failure_prefix as String) {
+      match grub_device_of(detail: detail as String) {
+        Present { value: d } => Present { value: GrubMediaReadFailed { device: d, detail: detail } }
+        Absent => Present { value: GrubOtherError { detail: detail } }
+      }
+    } else if (detail as String) == (grub_kernel_not_loaded as String) {
+      Present { value: GrubKernelNotLoaded { detail: detail } }
+    } else {
+      Present { value: GrubOtherError { detail: detail } }
+    }
+  } else {
+    none
+  }
+}
+
+type GrubConsoleFold {
+  banner: Bool
+  failed: Bool
+  errors: List<GrubError>
+}
+
+fn grub_console_step(acc: GrubConsoleFold, line: String) -> GrubConsoleFold {
+  let clean = trim(s: line)
+  if starts_with(s: clean, prefix: grub_console_banner_prefix as String) {
+    GrubConsoleFold { banner: true, failed: acc.failed, errors: acc.errors }
+  } else if clean == (grub_failed_default_and_fallback as String) {
+    GrubConsoleFold { banner: acc.banner, failed: true, errors: acc.errors }
+  } else {
+    match grub_error_statement(line: clean) {
+      Absent => acc
+      Present { value: e } => GrubConsoleFold { banner: acc.banner, failed: acc.failed, errors: append(acc.errors, items: [e]) }
+    }
+  }
+}
+
+fn grub_console_report(lines: List<String>) -> GrubConsoleReport {
+  let f = fold(lines, init: GrubConsoleFold { banner: false, failed: false, errors: [] }, f: (acc, l) => grub_console_step(acc: acc, line: l))
+  if f.failed {
+    GrubBootFailed { errors: f.errors }
+  } else if count(f.errors) > 0 {
+    GrubStillTrying { errors: f.errors }
+  } else if f.banner {
+    GrubBannerOnly
+  } else {
+    GrubNothingStated
+  }
 }

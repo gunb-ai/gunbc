@@ -1,0 +1,46 @@
+module gunbc.rung_drop.network_requirement_unrepresented_after_uses_cut
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for a function's Network requirement, lowered by D13 cut (c) and its
+// final-base census (gunbc.plans.demand_restatement_follow_up; DESIGN 4b(3) no silent regression).
+// ============================================================================================
+//
+// WHAT THE CRITERION MEASURED, AND WHAT IT DID NOT. Cut (c) deleted an authored `uses` row when the
+// function's derived service demand (ItemInfo.service_names) was NONEMPTY. It did not ask whether the
+// derived set covers EACH resource the row named. For most resources the difference is invisible: a
+// direct resource operation surfaces in service_names under the resource's own name (Filesystem,
+// Clock, Urandom). Network never does. A Network effect surfaces only as the services that use it
+// (ssh.Session, http.Client, redfish.Http ...), so for every deleted `net: Network` identity the
+// function is still known to be effectful, but the Network requirement itself is represented
+// nowhere. Found by smart-tern-891 while modeling #12047's call contract, confirmed against the
+// census data, and ruled a silent rung loss by snappy-deer-443.
+//
+// WHY A DECLARED DROP AND NOT RESTORED ROWS. Restoring `uses net: Network` would re-author the
+// restatement D13 ruled deleted and put a second authority back beside the derived carrier; the
+// capability that closes the loss is derivation, so the drop names it.
+
+data network_requirement_unrepresented_after_uses_cut: RungDrop = RungDrop {
+  identity: "network_requirement_unrepresented_after_uses_cut" as NonEmptyStr,
+
+  subject: "a function's Network resource requirement: carried by its authored uses row until D13 cut (c) deleted the row, and not derived by ItemInfo.service_names, which names the services a Network effect reaches but never Network itself",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the authored uses rows whose alias bound std.resources.Network, deleted by D13 cut (c) under a nonempty-derived-demand criterion that never checked per-resource coverage; the requirement rode on the row, and the derived carrier has no Network entry to replace it" },
+    population: [
+      "every `net: Network` uses identity deleted by D13 cut (c) in gunbc#11993 (landed 4716b4c9954; 312 identities across 82 modules at that diff)",
+      "every `net: Network` uses identity deleted by the final-base census in gunbc#12125 (landed 1b2f64fd495; 165 identities across 31 modules at that diff)",
+      "every function called by or calling those functions whose resource contract is read from authored uses, which after the deletion sees no Network requirement where one was declared",
+    ],
+    restoration_trigger: "D13's DependencyDemand carrier derives each RESOURCE requirement keyed on the resource DECLARATION's identity (std.resources.Network, not a service that uses it), sufficient that for every identity in this population the derived demand of its function names Network, established by a census over the deleted identities of both diffs and not by the nonempty-demand criterion that caused the loss. Restoring authored uses rows does NOT discharge it; widening service_names to add Network by spelling does NOT discharge it.",
+  }
+}

@@ -1,7 +1,8 @@
 module extdeps.tools.sleep
 
-import std.types { NonEmptyStr, Bool, Unit }
-import std.string_type { String }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -16,8 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn sleep_program() -> ProgramIdentity = cataloged_program(invocation: "sleep")
+
 data sleep_cli_tool: CliTool = CliTool {
-  name: "sleep",
+  program: sleep_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -40,8 +43,32 @@ fn sleep_delay_seconds_second_carrier_projection(duration: Second) -> Bool {
   }
 }
 
+// ── THE SAME SHAPE, RENDERED AS ARGV FOR A HANDLER THAT IS NOT THIS PROCESS ───────────────────
+//
+// THE SERVICE BELOW RUNS THE SLEEP HERE. A caller that must wait on ANOTHER host sends words to a
+// remote execution leg instead, which is a second realization handler bound to this same shape --
+// not a reason to mint `["sleep", n]` in a product module, where the non-positive refusal above
+// would be dropped along with the citation.
+//
+// NON-POSITIVE REFUSES, exactly as the projection does. A zero or negative wait is a caller that
+// computed its interval wrongly, and rendering `sleep 0` would turn a polling bug into a busy loop
+// against a remote daemon.
+type SleepArgvRendering
+  = SleepArgv { words: List<String> }
+  | SleepDurationRefused { duration: Second }
+
+fn sleep_seconds_argv(duration: Second) -> SleepArgvRendering {
+  let seconds = second_count(s: duration)
+  if seconds <= 0 {
+    SleepDurationRefused { duration: duration }
+  } else {
+    SleepArgv { words: [sleep_cli_tool.program.invocation, to_string(seconds)] }
+  }
+}
+
 service sleep.Delay {
   operation Seconds {
+    requires none
     input { seconds: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sleep", "{seconds}"] }

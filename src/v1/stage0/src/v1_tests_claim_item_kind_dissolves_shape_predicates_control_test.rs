@@ -4,7 +4,6 @@
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::Bool;
-use crate::std_types::Bool::*;
 pub use crate::v1_compiler_emit_core_support::{is_leaf_type_item, is_type_def_item};
 pub use crate::v1_compiler_emit_python::emit_py_resource_def;
 pub use crate::v1_compiler_infer_env::empty_type_env;
@@ -13,11 +12,14 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::no_span;
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemResource, ModuleItemTypeDeclaration, NotAModuleItem,
 };
-pub use crate::v1_std_core::{Cardinality, Connective, ExprData, Node, ParsedModuleItemKind};
+pub use crate::v1_std_core::{
+    Cardinality, Connective, DeclarationMarker, ExprData, Node, ParsedModuleItemKind,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -44,6 +46,8 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
+        declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -69,6 +73,8 @@ pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
+        declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

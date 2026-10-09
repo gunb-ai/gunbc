@@ -1,0 +1,500 @@
+module gunbc.machine_intake_mtcollins1_census_member_readback
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.algebra { trim }
+import v2.std.algebra { filter }
+import std.content_hash { sha256_hex_digest }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.xorriso { xorriso_extract_command, xorriso_list_long_command }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import gunbc.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
+import gunbc.host_command_binding {
+  CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, HostTransportKind, FleetSshTransport, host_run,
+  ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
+  CreationNotRequested,
+}
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.boot_medium { BootImageExport, BootMedium }
+import gunbc.machine_intake_mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
+import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
+
+// THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
+// REMASTERED FROM. The census remaster (extdeps.provisioning.ubuntu_seeded_install_media_remaster)
+// maps in the NoCloud seed and rewrites grub.cfg; every other member is supposed to pass through the
+// replay unchanged. That is a claim about the builder, and a boot that failed in-kernel module
+// decompression makes it worth measuring rather than assuming: this reads the kernel and the initrd
+// out of BOTH served ISOs on the host that serves them and compares digests.
+//
+// SCOPE OF THE COMPARISON. If an initrd digest is equal, every member inside it -- every compressed
+// module -- is equal by construction, so the module members are not unpacked here: a per-module
+// comparison over identical bytes would re-derive a fact the outer digest already establishes. Only
+// a differing initrd owes a descent into its layers, and that descent is the declared frontier
+// named by BootChainFirstDifference below, not a guess made here.
+//
+// THE CONTROL IS IN THE SAME RUN. grub.cfg is the member the builder DOES rewrite (the census kernel
+// cmdline lives there), so a reading in which grub.cfg compares equal means the difference control
+// FAILED, and it refuses rather than reporting the boot chain identical. It does not choose the
+// cause: the census file may not have been the one read, or the published artifact may lack the
+// intended rewrite. Likewise equal kernel and initrd bytes establish the scoped stock-versus-published
+// comparison and nothing about what reached host memory or why a decoder refused.
+
+type CensusIsoMember
+  = CasperKernel
+  | CasperInitrd
+  | GrubConfig
+
+fn census_iso_member_path(member: CensusIsoMember) -> NonEmptyStr {
+  match member {
+    CasperKernel => "/casper/vmlinuz"
+    CasperInitrd => "/casper/initrd"
+    GrubConfig => "/boot/grub/grub.cfg"
+  }
+}
+
+fn census_iso_member_slug(member: CensusIsoMember) -> NonEmptyStr {
+  match member {
+    CasperKernel => "vmlinuz"
+    CasperInitrd => "initrd"
+    GrubConfig => "grub.cfg"
+  }
+}
+
+// Boot order: the loader reads grub.cfg, then the kernel, then the initrd. The first differing
+// boundary is the first member in this order that differs outside the builder's declared rewrite;
+// boot_chain_verdict walks them in that order.
+
+type IsoSide
+  = StockSide
+  | CensusSide
+
+fn iso_side_slug(side: IsoSide) -> NonEmptyStr {
+  match side {
+    StockSide => "stock"
+    CensusSide => "census"
+  }
+}
+
+type MemberReading
+  = MemberRead { digest: NonEmptyStr }
+  | MemberUnread { reason: String }
+
+type IsoReading
+  = IsoMeasured { digest: NonEmptyStr }
+  | IsoUnmeasured { reason: String }
+
+type MemberComparison
+  = MemberIdentical { member: CensusIsoMember, digest: NonEmptyStr }
+  | MemberDiffers { member: CensusIsoMember, stock: NonEmptyStr, census: NonEmptyStr }
+  | MemberNotCompared { member: CensusIsoMember, side: IsoSide, reason: String }
+
+fn compare_member(member: CensusIsoMember, stock: MemberReading, census: MemberReading) -> MemberComparison {
+  match stock {
+    MemberUnread { reason: r } => MemberNotCompared { member: member, side: StockSide, reason: r }
+    MemberRead { digest: s } =>
+      match census {
+        MemberUnread { reason: r } => MemberNotCompared { member: member, side: CensusSide, reason: r }
+        MemberRead { digest: c } =>
+          if (s as String) == (c as String) {
+            MemberIdentical { member: member, digest: s }
+          } else {
+            MemberDiffers { member: member, stock: s, census: c }
+          }
+      }
+  }
+}
+
+// THE OBSERVATION. Each ISO is first measured and admitted against the digest it is pinned to --
+// the stock against its SHA256SUMS row, the census against the boot medium row -- because a member
+// read out of an unpinned file is a reading of some other image.
+type CensusMemberReadback
+  = BootChainIdenticalToStock { stock_iso: NonEmptyStr, census_iso: NonEmptyStr, kernel: NonEmptyStr, initrd: NonEmptyStr }
+  | BootChainFirstDifference { stock_iso: NonEmptyStr, census_iso: NonEmptyStr, member: CensusIsoMember, stock: NonEmptyStr, census: NonEmptyStr }
+  | BootChainControlDidNotDiscriminate { grub_digest: NonEmptyStr }
+  | BootChainIsoNotPinned { side: IsoSide, expected: NonEmptyStr, observed: String }
+  | BootChainUnread { member: CensusIsoMember, side: IsoSide, reason: String }
+  | BootChainMediumNotCensus
+  | BootChainMediumExporterUnsupported { supported: BootImageExport, named: BootImageExport }
+  | BootChainHostUnreached { reason: String }
+  | BootChainWorkspaceUnavailable { reason: String }
+
+fn iso_pin_refusal(side: IsoSide, expected: NonEmptyStr, reading: IsoReading) -> CensusMemberReadback? {
+  match reading {
+    IsoUnmeasured { reason: r } => Present { value: BootChainIsoNotPinned { side: side, expected: expected, observed: concat("unmeasured: ", r) } }
+    IsoMeasured { digest: d } =>
+      if (d as String) == (expected as String) {
+        none
+      } else {
+        Present { value: BootChainIsoNotPinned { side: side, expected: expected, observed: d as String } }
+      }
+  }
+}
+
+fn boot_chain_verdict(stock_iso: NonEmptyStr, census_iso: NonEmptyStr, grub: MemberComparison, kernel: MemberComparison, initrd: MemberComparison) -> CensusMemberReadback {
+  match grub {
+    MemberNotCompared { member: m, side: s, reason: r } => BootChainUnread { member: m, side: s, reason: r }
+    MemberIdentical { member: _, digest: d } => BootChainControlDidNotDiscriminate { grub_digest: d }
+    MemberDiffers { member: _, stock: _, census: _ } =>
+      match kernel {
+        MemberNotCompared { member: m, side: s, reason: r } => BootChainUnread { member: m, side: s, reason: r }
+        MemberDiffers { member: m, stock: s, census: c } =>
+          BootChainFirstDifference { stock_iso: stock_iso, census_iso: census_iso, member: m, stock: s, census: c }
+        MemberIdentical { member: _, digest: k } =>
+          match initrd {
+            MemberNotCompared { member: m, side: s, reason: r } => BootChainUnread { member: m, side: s, reason: r }
+            MemberDiffers { member: m, stock: s, census: c } =>
+              BootChainFirstDifference { stock_iso: stock_iso, census_iso: census_iso, member: m, stock: s, census: c }
+            MemberIdentical { member: _, digest: i } =>
+              BootChainIdenticalToStock { stock_iso: stock_iso, census_iso: census_iso, kernel: k, initrd: i }
+          }
+      }
+  }
+}
+
+// THE PIN GATE, evaluated BEFORE any member is extracted: the producer measures both ISOs, and only
+// PinsAdmitted lets it acquire a workspace and read members. A refusal here is final.
+type CensusPinGate
+  = PinsAdmitted { stock_iso: NonEmptyStr, census_iso: NonEmptyStr }
+  | PinsRefused { readback: CensusMemberReadback }
+
+fn census_pin_gate(medium: BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => PinsRefused { readback: BootChainMediumNotCensus }
+    CensusMediumExporterUnsupported { supported: sup, named: n } => PinsRefused { readback: BootChainMediumExporterUnsupported { supported: sup, named: n } }
+    CensusMediumQualified { digest: census_pin, export: _ } =>
+      match iso_pin_refusal(side: StockSide, expected: noble_numbat_2404_3_live_server_arm64.content_sha256, reading: stock_iso) {
+        Present { value: refused } => PinsRefused { readback: refused }
+        Absent =>
+          match iso_pin_refusal(side: CensusSide, expected: census_pin, reading: census_iso) {
+            Present { value: refused } => PinsRefused { readback: refused }
+            Absent => PinsAdmitted { stock_iso: noble_numbat_2404_3_live_server_arm64.content_sha256, census_iso: census_pin }
+          }
+      }
+  }
+}
+
+fn census_member_verdict(stock_iso: NonEmptyStr, census_iso: NonEmptyStr, readings: CensusMemberReadings) -> CensusMemberReadback {
+  boot_chain_verdict(
+    stock_iso: stock_iso,
+    census_iso: census_iso,
+    grub: compare_member(member: GrubConfig, stock: readings.stock_grub, census: readings.census_grub),
+    kernel: compare_member(member: CasperKernel, stock: readings.stock_kernel, census: readings.census_kernel),
+    initrd: compare_member(member: CasperInitrd, stock: readings.stock_initrd, census: readings.census_initrd),
+  )
+}
+
+type CensusMemberReadings {
+  stock_grub: MemberReading
+  census_grub: MemberReading
+  stock_kernel: MemberReading
+  census_kernel: MemberReading
+  stock_initrd: MemberReading
+  census_initrd: MemberReading
+}
+
+// The pure join over pins and six readings, composed as the producer composes it.
+fn census_member_readback_from_readings(
+  medium: BootMedium,
+  stock_iso: IsoReading,
+  census_iso: IsoReading,
+  stock_grub: MemberReading, census_grub: MemberReading,
+  stock_kernel: MemberReading, census_kernel: MemberReading,
+  stock_initrd: MemberReading, census_initrd: MemberReading,
+) -> CensusMemberReadback {
+  match census_pin_gate(medium: medium, stock_iso: stock_iso, census_iso: census_iso) {
+    PinsRefused { readback: r } => r
+    PinsAdmitted { stock_iso: s, census_iso: c } =>
+      census_member_verdict(stock_iso: s, census_iso: c, readings: CensusMemberReadings {
+        stock_grub: stock_grub, census_grub: census_grub,
+        stock_kernel: stock_kernel, census_kernel: census_kernel,
+        stock_initrd: stock_initrd, census_initrd: census_initrd,
+      })
+  }
+}
+
+fn census_member_readback_holds(readback: CensusMemberReadback) -> Bool {
+  match readback {
+    BootChainIdenticalToStock { stock_iso: _, census_iso: _, kernel: _, initrd: _ } => true
+    BootChainFirstDifference { stock_iso: _, census_iso: _, member: _, stock: _, census: _ } => false
+    BootChainControlDidNotDiscriminate { grub_digest: _ } => false
+    BootChainIsoNotPinned { side: _, expected: _, observed: _ } => false
+    BootChainUnread { member: _, side: _, reason: _ } => false
+    BootChainMediumNotCensus => false
+    BootChainMediumExporterUnsupported { supported: _, named: _ } => false
+    BootChainHostUnreached { reason: _ } => false
+    BootChainWorkspaceUnavailable { reason: _ } => false
+  }
+}
+
+fn render_census_member_readback(readback: CensusMemberReadback) -> String {
+  match readback {
+    BootChainIdenticalToStock { stock_iso: s, census_iso: c, kernel: k, initrd: i } =>
+      concat("verdict=boot_chain_identical_to_stock\nstock_iso=", s as String, "\ncensus_iso=", c as String,
+        "\nvmlinuz=", k as String, "\ninitrd=", i as String, "\ngrub.cfg=differs (declared rewrite, control discriminated)\n")
+    BootChainFirstDifference { stock_iso: s, census_iso: c, member: m, stock: sd, census: cd } =>
+      concat("verdict=first_difference\nstock_iso=", s as String, "\ncensus_iso=", c as String,
+        "\nmember=", census_iso_member_path(member: m) as String, "\nstock_member=", sd as String, "\ncensus_member=", cd as String, "\n")
+    BootChainControlDidNotDiscriminate { grub_digest: g } =>
+      concat("verdict=control_did_not_discriminate\ngrub.cfg=", g as String, " on both sides: the difference control failed; cause not chosen (census file not the one read, or the published artifact lacks the rewrite)\n")
+    BootChainIsoNotPinned { side: s, expected: e, observed: o } =>
+      concat("verdict=iso_not_pinned\nside=", iso_side_slug(side: s) as String, "\nexpected=", e as String, "\nobserved=", o, "\n")
+    BootChainUnread { member: m, side: s, reason: r } =>
+      concat("verdict=unread\nmember=", census_iso_member_path(member: m) as String, "\nside=", iso_side_slug(side: s) as String, "\nreason=", r, "\n")
+    BootChainMediumNotCensus => "verdict=medium_not_census\n"
+    BootChainMediumExporterUnsupported { supported: sup, named: n } =>
+      concat("verdict=medium_exporter_unsupported (nothing read)\nnamed=", boot_image_export_text(export: n), "\nsupported=", boot_image_export_text(export: sup), "\n")
+    BootChainHostUnreached { reason: r } => concat("verdict=host_unreached\nreason=", r, "\n")
+    BootChainWorkspaceUnavailable { reason: r } => concat("verdict=workspace_unavailable (nothing extracted)\nreason=", r, "\n")
+  }
+}
+
+// ---- the one producer: read-only legs on srv2 over fleet SSH, like the medium readback ----
+//
+// srv2 has had no runner slots since 2026-09-19 (gunbc.boot_medium bmc_boot_image_export),
+// so this reaches the host that serves /srv/bmc the way the boot's medium readback does, as the fleet
+// principal over typed argv. ONE TRANSACTION PER ATTEMPT:
+//   1. measure both ISOs; a pin refusal ends the attempt before any extraction;
+//   2. create an EXCLUSIVELY OWNED workspace with mktemp -d (coreutils creates a new 0700 directory
+//      and never reuses an existing name), so concurrent dispatches -- the mode's concurrency key is
+//      the runner host, while the target is always srv2 -- never share a path; no workspace, no
+//      extraction;
+//   3. per member, extract under that workspace and hash only what extracted;
+//   4. remove that workspace, and report the cleanup outcome BESIDE the readback, never in place of
+//      it: an initiating failure and a cleanup failure are both retained. A creation or removal whose
+//      reply was lost is reported UNCONFIRMED with residue outstanding, never as "never created" or
+//      "not removed" (gunbc.host_command_binding ScratchOutcome).
+// Nothing under /srv/bmc is written.
+
+data census_member_readback_attempt_raw: String = "mtcollins1-census-member-readback"
+
+data census_member_readback_receipt_path: String = "target/mtcollins1-census-member-readback.txt"
+
+data census_member_workspace_prefix: String = "/tmp/gunbc-mtcollins1-census-member."
+
+data census_member_workspace_template: NonEmptyStr = concat(census_member_workspace_prefix, "XXXXXXXX") as NonEmptyStr
+
+// THE ATTEMPT: the readback and the workspace's outcome, both retained. It holds only when the boot
+// chain is identical to stock AND this attempt's workspace was removed.
+type CensusMemberReadbackAttempt {
+  readback: CensusMemberReadback
+  workspace: ScratchOutcome
+}
+
+fn census_member_attempt_holds(attempt: CensusMemberReadbackAttempt) -> Bool {
+  census_member_readback_holds(readback: attempt.readback) && scratch_removed(o: attempt.workspace)
+}
+
+fn render_workspace_outcome(w: ScratchOutcome) -> String {
+  render_scratch_outcome(label: "workspace", prefix: census_member_workspace_prefix, o: w)
+}
+
+fn render_census_member_attempt(attempt: CensusMemberReadbackAttempt) -> String {
+  concat(render_census_member_readback(readback: attempt.readback), render_workspace_outcome(w: attempt.workspace))
+}
+
+// THE ATTEMPT'S DECISIONS AS ONE FOLD over the legs that were issued, so the consumer-level controls
+// exercise the same composition the producer runs. `readings` is consulted only when a workspace was
+// acquired; `cleanup` is consulted only then too.
+fn census_member_attempt_of(kind: HostTransportKind, gate: CensusPinGate, creation: HostLeg, readings: fn(NonEmptyStr) -> CensusMemberReadings, cleanup: fn(NonEmptyStr) -> HostLeg) -> CensusMemberReadbackAttempt {
+  match gate {
+    PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+    PinsAdmitted { stock_iso: s, census_iso: c } =>
+      match scratch_acquisition_of(kind: kind, prefix: census_member_workspace_prefix, leg: creation) {
+        ScratchNotAcquired { outcome: o } =>
+          CensusMemberReadbackAttempt { readback: BootChainWorkspaceUnavailable { reason: render_workspace_outcome(w: o) }, workspace: o }
+        ScratchAcquired { dir: dir } => {
+          let readback = census_member_verdict(stock_iso: s, census_iso: c, readings: readings(dir))
+          CensusMemberReadbackAttempt { readback: readback, workspace: scratch_removal_of(kind: kind, dir: dir, leg: cleanup(dir)) }
+        }
+      }
+  }
+}
+
+fn member_scratch_path(dir: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> NonEmptyStr {
+  concat(dir as String, "/", iso_side_slug(side: side) as String, "-", census_iso_member_slug(member: member) as String) as NonEmptyStr
+}
+
+fn remote_first_field(stdout: String) -> String {
+  let tokens: List<String> = filter(split(s: trim(stdout), delimiter: " "), t => t != "")
+  match first(tokens) {
+    Absent => ""
+    Present { value: t } => t
+  }
+}
+
+fn digest_of_sha256sum(measure: RemoteAnswer) -> String? {
+  if measure.exit_code != 0 { none } else {
+    match sha256_hex_digest(hex: remote_first_field(stdout: measure.stdout)) {
+      Absent => none
+      Present { value: d } => Present { value: d.hex as String }
+    }
+  }
+}
+
+fn sha256sum_unread_reason(measure: RemoteAnswer) -> String {
+  if measure.exit_code != 0 {
+    concat("sha256sum exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr))
+  } else {
+    concat("sha256sum printed no digest: ", trim(s: measure.stdout))
+  }
+}
+
+// A failed extraction is never hashed: the measure leg is not run, so there is no answer to join.
+fn member_reading_after_extract(extract: RemoteAnswer) -> MemberReading? {
+  if extract.exit_code != 0 {
+    Present { value: MemberUnread { reason: concat("xorriso extract exit=", to_string(extract.exit_code), " ", trim(s: extract.stderr)) } }
+  } else { none }
+}
+
+fn member_reading_of_measure(measure: RemoteAnswer) -> MemberReading {
+  match digest_of_sha256sum(measure: measure) {
+    Absent => MemberUnread { reason: sha256sum_unread_reason(measure: measure) }
+    Present { value: d } => MemberRead { digest: d as NonEmptyStr }
+  }
+}
+
+fn iso_reading_of(measure: RemoteAnswer) -> IsoReading {
+  match digest_of_sha256sum(measure: measure) {
+    Absent => IsoUnmeasured { reason: sha256sum_unread_reason(measure: measure) }
+    Present { value: d } => IsoMeasured { digest: d as NonEmptyStr }
+  }
+}
+
+// ONE LEG ON ANY HOST, AS THE ANSWER THE READINGS JOIN OVER. A leg that was never dispatched carries no
+// exit code of its own; it is reported with -1 and its reason, so it reads as unread and never as a
+// remote status.
+fn answer_on(host: CommandHost, command: ArgvCommand) -> RemoteAnswer {
+  match host_run(host: host, command: command) {
+    LegNotDispatched { reason: r } => RemoteAnswer { exit_code: -1, stdout: "", stderr: concat("not dispatched: ", r) }
+    LegAnswered { exit_code: c, stdout: o, stderr: e } => RemoteAnswer { exit_code: c, stdout: o, stderr: e }
+  }
+}
+
+fn remote(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
+  answer_on(host: FleetSshCommandHost { target: target, context: context }, command: command)
+}
+
+fn read_member_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
+  let scratch = member_scratch_path(dir: dir, side: side, member: member)
+  let extract = answer_on(host: host, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch))
+  match member_reading_after_extract(extract: extract) {
+    Present { value: refused } => refused
+    Absent => member_reading_of_measure(measure: answer_on(host: host, command: sha256sum_file_command(path: scratch as String)))
+  }
+}
+
+// THE SIX READINGS OF ONE COMPARISON, on any host, into a directory the caller owns. The member readback
+// runs it on srv2 against the served images; the census publish's regression runs it against the image
+// it just rebuilt in its own scratch directory.
+fn census_member_readings_on(host: CommandHost, dir: NonEmptyStr, stock_path: NonEmptyStr, census_path: NonEmptyStr) -> CensusMemberReadings {
+  CensusMemberReadings {
+    stock_grub: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: GrubConfig),
+    census_grub: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: GrubConfig),
+    stock_kernel: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperKernel),
+    census_kernel: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperKernel),
+    stock_initrd: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperInitrd),
+    census_initrd: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperInitrd),
+  }
+}
+
+// THE CENSUS IMAGE'S MAPPED MEMBERS WITH THEIR ROCK RIDGE OWNER, GROUP AND MODE, read-only, as xorriso
+// lists them. Retained verbatim in the receipt: it is the reading that establishes which build user an
+// image's derivation baked in (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts).
+data census_mapped_member_paths: List<NonEmptyStr> = [install_media_remaster_grub_cfg_on_iso]
+
+data census_mapped_seed_path: NonEmptyStr = concat("/", mtcollins1_census_nocloud_dir as String) as NonEmptyStr
+
+fn census_mapped_attributes_on(host: CommandHost, iso_path: NonEmptyStr) -> String {
+  let listed = answer_on(host: host, command: xorriso_list_long_command(iso_path: iso_path, first_path: census_mapped_seed_path, more_paths: census_mapped_member_paths))
+  if listed.exit_code != 0 {
+    concat("UNREAD: xorriso -lsl exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr))
+  } else {
+    trim(s: listed.stdout)
+  }
+}
+
+fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> HostLeg {
+  host_run(host: FleetSshCommandHost { target: target, context: context }, command: command)
+}
+
+// THE MEDIUM IS QUALIFIED BEFORE ANY LEG IS DISPATCHED, and every leg goes to the export the qualification
+// returned: a medium naming an unsupported exporter is refused with nothing read, never measured on the
+// supported one. The read body lives inside the qualified arm, so no entry takes a medium and an export
+// as two separately supplied values.
+fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => CensusMemberReadbackAttempt { readback: BootChainMediumNotCensus, workspace: CreationNotRequested }
+    CensusMediumExporterUnsupported { supported: sup, named: n } =>
+      CensusMemberReadbackAttempt { readback: BootChainMediumExporterUnsupported { supported: sup, named: n }, workspace: CreationNotRequested }
+    CensusMediumQualified { digest: _, export: export } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+        FleetSshContextRefused { cause: c } =>
+          CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
+        FleetSshContextReady { context: context, receipt: _ } => {
+          let target = export.target
+          let stock_path = mtcollins1_census_image_stock_path()
+          let census_path = mtcollins1_census_medium_served_path(medium: medium)
+          let gate = census_pin_gate(
+            medium: medium,
+            stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
+            census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
+          )
+          match gate {
+            PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+            PinsAdmitted { stock_iso: _, census_iso: _ } =>
+              census_member_attempt_of(
+                kind: FleetSshTransport,
+                gate: gate,
+                creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
+                readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
+                cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
+              )
+          }
+        }
+      }
+  }
+}
+
+
+// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
+// which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
+// verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
+fn mtcollins1_census_member_readback_wet() -> ProcessExit {
+  let attempt = census_member_readback(medium: mtcollins1_boot_medium)
+  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium)
+  let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
+  let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("mtcollins1 census member readback: the receipt could not be written: ", written.error, "\n", rendered))
+  } else if census_member_attempt_holds(attempt: attempt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 census member readback did not hold:\n", rendered))
+  }
+}
+
+// The pinned census ISO's mapped members as the served image records them. A REPORT beside the
+// verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
+// boot chain matches stock.
+fn census_member_mapped_attributes(medium: BootMedium) -> String {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => "UNREAD: the medium is not the census image"
+    CensusMediumExporterUnsupported { supported: sup, named: n } =>
+      concat("UNREAD: the medium names the unsupported exporter ", boot_image_export_text(export: n), " (supported: ", boot_image_export_text(export: sup), ")")
+    CensusMediumQualified { digest: _, export: export } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+        FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
+        FleetSshContextReady { context: context, receipt: _ } =>
+          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
+      }
+  }
+}

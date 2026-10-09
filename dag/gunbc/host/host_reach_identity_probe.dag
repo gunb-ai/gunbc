@@ -26,7 +26,7 @@ import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_ke
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -193,7 +193,7 @@ fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentit
   fold(host_reach_identity_probe_receipts, init: none, f: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
-      _ => if r.host == host { Present { value: r } } else { none }
+      Absent => if r.host == host { Present { value: r } } else { none }
     }
   })
 }
@@ -213,7 +213,7 @@ fn classify_reach_probe_wire_with_expectation(
     ProbeHostKeyUnenrolled { transport_diagnostic: obs } =>
       match expected_fingerprint {
         Present { value: e } => ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: obs }
-        _ => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
+        Absent => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
       }
     other => other
   }
@@ -264,7 +264,7 @@ fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
 fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: reach_verdict_from_outcome(o: r.outcome) }
-    _ => none
+    Absent => none
   }
 }
 
@@ -302,7 +302,7 @@ fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String
 fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: identity_verdict_from_outcome(host: host, requested_principal: r.requested_principal, o: r.outcome) }
-    _ => none
+    Absent => none
   }
 }
 
@@ -387,7 +387,11 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
 // correction at fleet_host_key_enroll_apply): materialize the committed registry into
 // THIS process's known_hosts first, and carry its readback in the receipt.
 fn probe_fleet_reach_wet() -> ProcessExit {
-  let enroll_lines = fleet_host_key_enroll_apply()
+  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  let enroll_lines = fleet_host_key_enroll_apply(home: home)
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
     probed_at: probed_at_word(reading: now) as String,

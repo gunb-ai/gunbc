@@ -133,7 +133,7 @@ fn checkpoint_identity_keying_table_absent_native_source() -> String {
 // reference, unreachable through this surface's import-closure dependency discovery) before
 // v2.std.nat.Nat's own declaration is ever reached.
 fn checkpoint_identity_keying_cross_decl_source() -> String {
-  "module test.claim.checkpoint_identity_keying_cross_decl\nimport v2.std.nat { Nat }\n\ntype Wrapper {\n  field: Nat\n}\n"
+  "module test.claim.checkpoint_identity_keying_cross_decl\ntype Nat = ProbeZero | ProbeSucc { prev: Nat }\n\ntype Wrapper {\n  field: Nat\n}\n"
 }
 
 fn checkpoint_identity_keying_int_table_present_bypass_source() -> String {
@@ -152,12 +152,17 @@ fn w_table_present_name_renders_from_the_table() -> Bool {
   )
 }
 
+// SINCE THE Nat DE-FORK (operator ruling A, 2026-09-30) std.nat Nat is the inductive declaration,
+// realized as the kernel integer, rather than an alias whose name the emitter kept in field
+// positions -- so the field now renders the realization itself. The subject is unchanged: the std
+// declaration, which no Rust checkpoint row names, still realizes natively, and neither an enum
+// path nor a shared-layer wrap appears where its field is declared.
 fn w_table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
   compile_dag_rust_emit_check(
     checkpoint_identity_keying_table_absent_native_source(),
     "src/test_claim_checkpoint_identity_keying_table_absent_native.rs",
-    ["std_nat"],
-    ["i64"]
+    ["pub field: i64"],
+    ["Nat::", "Rc<Nat>"]
   )
 }
 

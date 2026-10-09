@@ -1,7 +1,7 @@
 module v2.test.provenance.occurrence_id_model
 
 import std.occurrence_identity { node_occurrence_identity_minted }
-import v2.std.diagnostic { ByteRange, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
@@ -81,6 +81,7 @@ test fn span_index_from_source_round_trip_holds() -> Bool {
             NodeLocus { anchor: _ } => false
             SourcePortLocus { anchor: _, file: _, extent: _ } => false
             InvariantPortLocus { anchor: _, invariant: _ } => false
+            DeclarationLocus { declaration: _ } => false
           }
         DerivedBy { producer: _, from: _ } => false
         GeneratedBy { generator: _, from: _ } => false

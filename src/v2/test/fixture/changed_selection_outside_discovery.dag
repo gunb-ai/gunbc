@@ -1,0 +1,33 @@
+module v2.test.fixture.changed_selection_outside_discovery
+
+import std.types { List }
+import v2.workflow.required_floor { ChangedSelectionDispositionRow, DeclinedChangedWitnessOutsideDiscovery }
+
+// ONE FIXTURE, READ BY BOTH SIDES. `test.claim.discovery_census_witness` asserts the modeled decider
+// (`v2.workflow.required_floor` `changed_selections_outside_discovery`) over these rows on the floor.
+// The seed's `required_floor_runner` `changed_selections_outside_discovery_mirror_tests` evaluates
+// the same rows through the .dag function and through its host mirror, and joins the two at identity
+// grain. The rows span every kind the decider separates: a changed identity the run declared (no
+// row), a declared identity nobody changed (no row), and undeclarable selections whose module is a
+// plain prefix, a v1 home, a dotless identity, an empty leading segment and a doubled separator.
+data changed_selection_fixture_changed: List<String> = [
+  "test.claim.alpha_witness.w_declared",
+  "v1.tests.claim.beta_witness.w_v1_home",
+  "solo",
+  ".lead",
+  "a..b",
+  "test.claim.gamma_witness.w_undeclared"
+]
+
+data changed_selection_fixture_declared: List<String> = [
+  "test.claim.alpha_witness.w_declared",
+  "test.claim.delta_witness.w_unchanged"
+]
+
+data changed_selection_fixture_expected: List<ChangedSelectionDispositionRow> = [
+  ChangedSelectionDispositionRow { identity: "v1.tests.claim.beta_witness.w_v1_home", disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1.tests.claim.beta_witness" } },
+  ChangedSelectionDispositionRow { identity: "solo", disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "solo" } },
+  ChangedSelectionDispositionRow { identity: ".lead", disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "" } },
+  ChangedSelectionDispositionRow { identity: "a..b", disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "a." } },
+  ChangedSelectionDispositionRow { identity: "test.claim.gamma_witness.w_undeclared", disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "test.claim.gamma_witness" } }
+]

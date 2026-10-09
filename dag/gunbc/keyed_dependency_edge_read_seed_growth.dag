@@ -1,0 +1,58 @@
+module gunbc.keyed_dependency_edge_read_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by exposing a KEYED read of the module dependency
+// edges to the substrate, enumerated because gunbc.seed_growth_admission makes unenumerated hand
+// growth in src/v1 a stop-line.
+//
+// WHAT THE CHANGE IS. v2.lens.module_graph dependency_closure_live_excluding answers "which modules
+// does this entry reach", and until this change it could only get edges from the population read
+// dependency_resolution_facts, so every closure folded the whole corpus's edges into an adjacency
+// map in the interpreter before walking its own slice. On the approval broker's closure wall
+// (test.claim.auth.approval_broker_closure_witness, gunbc#12523) the floor's [cross-claim-demand]
+// line attributed that fold, build_dependency_adjacency, as nearly all of each claim's cost, paid
+// for edges no walk would read. The keyed read lets the walk demand only the edges of modules it
+// has reached.
+//
+// WHAT IT IS NOT. It is not a second reader of the edges. dependency_resolution_facts_at composes,
+// for ONE importer, the same per-file halves dependency_resolution_facts composes for every file --
+// entry_resolve import_facts_for_file and reference_edges_for_file_on_demand, both of which the
+// population walks now call -- through the same strict filter and the same reference-first union;
+// any row it returns is the row the population read carries for that path, in the same order.
+// Its first form grouped the whole population union by importer, which made the first keyed read
+// in a process pay the whole-pool reference parse (the floor's reference_edges shared fill,
+// 15.7s charged to one claim on gunbc#12523); the per-file form demands the pool name index for
+// every readable importer, import-bearing or not, since a reference edge depends on other files' names.
+//
+// A FOURTH ITEM, with_module_path_index, is the borrowing reader of the SAME MODULE_PATH_INDEX_CACHE
+// build_module_path_index fills: the keyed reads above asked one entry of it per visited module and
+// per edge target, and build_module_path_index answered each ask with a clone of the whole index
+// (plus, in dependency_resolution_facts_at, a rebuilt set of every declared module). It lends the
+// cached entry for one closure under the same fill and hit accounting; build_module_path_index now
+// clones once through it. No new cache, key or fill.
+//
+// WHAT IS NOT COUNTED IN THE ROSTER BELOW, and is disclosed here rather than omitted: the
+// interpreter arm free_call.dependency_resolution_facts_at (a macro arm inside v1_interpreter's
+// v1_builtin_arms, not a citable declaration); the extraction of import_facts_for_file out of the
+// import_resolution_facts loop and of reference_edges_for_file_on_demand out of
+// reference_edges_for_file, whose bodies are the code those existing items carried (each existing
+// item now delegates to its half); and the pool-root refusal added to the EXISTING free_call.dependency_resolution_facts arm, which is an
+// existing seed item modified, not new growth. The generated files in the same diff --
+// v1_interpreter_dispatch_generated.rs and v1_compiler_infer_method.rs -- project
+// gunbc.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities change
+// with them.
+data keyed_dependency_edge_read_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "dependency_resolution_facts_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "import_facts_for_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "reference_edges_for_file_on_demand", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "with_module_path_index", field: WholeDeclaration }
+  ],
+  reason: "A keyed read of a host-produced edge census is a property of the host that holds it: the edges are produced by the seed's own source walk and parse, the population read that produces them is already native (dependency_resolution_facts, moved to the host because its interpreted union cost 104,943ms), and grouping them on the side of the seam where they still exist as host rows is the only place the grouping costs nothing. Running the grouping in the interpreter is precisely the corpus-wide fold being removed.\n\nTHE RETURN SHAPE IS THE POPULATION READ'S. It returns the same ModuleDependencyEdge rows the population read returns for that importer, including target_declared: false rows, so the demand walk applies the same edge law the adjacency fold did: an undeclared target contributes no path.\n\nA FILE PATH AS AN IMPORTER ROOT NOW REFUSES. Before this change a file passed to the population read's importer_roots reached cli_run anchor_source_root and aborted the process with a panic. Both arms now classify their directory roots with coproduct_reflection pool_root_defects first and refuse with InterpError PoolRootContributesNothing, naming the builtin and each offending root with its PoolRootDefect.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete when a SELF-EMITTED reader reaches the per-file dependency edges of a module: that is, when the edge census is produced by an emitted v2 fold over the source roots rather than by the seed's host walk, so the self-emitted closure walk can ask one importer's edges of that fold directly. Sufficient means the emitted reader answers dependency_closure_live_excluding for the approval broker entry and one compiler-reaching entry with the same closures this host read produces; an emitted population read that the walk would still have to fold whole does not satisfy it.",
+  current_boundary: "dependency_resolution_facts_at reads one importer file and composes its two per-file halves: import_facts_for_file against the process-cached build_module_path_index, and reference_edges_for_file_on_demand, which decides an unreadable file from its own bytes and builds the process-cached pool name index (reference_pool_names) for every readable importer, import-bearing or not. An importer outside every pool root, matched by an exclusion, or unreadable answers the empty list, as the population read carries no row for it. It adds no walk, no row, no field and no decision, and holds no state of its own: the two indexes it consults are the ones the population read already caches."
+}

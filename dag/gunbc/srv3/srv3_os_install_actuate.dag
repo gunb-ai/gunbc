@@ -1,5 +1,23 @@
 module gunbc.srv3_os_install_actuate
 
+// This module used to resolve every cross-module name through the bare channel. Pinning
+// `Filesystem` (the login-body write below) declares an import, and a module that declares
+// imports has its bare channel off -- so every provider name it reads is imported here
+// explicitly, each from the module the floor's UnimportedBareProvider refusals named as its
+// declarer. Filesystem itself is filesystem_io's service Write (input {path, content}, output
+// success/error), which is the operation the login-body write means; std.resources also declares
+// a Filesystem (a capability resource whose write returns {written}) and is transitively in
+// reach, so the bare read would have picked a declarer by scope precedence, which nothing in
+// this source authorizes.
+import std.process { ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
+import gunbc.nbd_proxy_virtual_media_install { ActuatorPlanRefused, srv3_os_install_actuator_plan_standing }
+import gunbc.seeded_install_media_publish { SeededImageResolution }
+import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_body_path }
+import gunbc.srv3_bmc_credential_resolve { BmcCredentialAccessUpsertRequired, BmcCredentialFetchRefused, BmcCredentialMaterialized, BmcCredentialResolution, CredentialResolutionRefused, UseFactoryCredential, UseRotatedSecretRef, bmcweb_login_body_content, materialize_bmc_login_password, observe_and_resolve_srv3_bmc_credential, srv3_os_install_actuate_credential_intent }
+import gunbc.srv3_host_effect_apply { srv3_apply_to_process_exit, srv3_bmcweb_session_login_apply, srv3_bmcweb_token_extract_apply, srv3_nbd_proxy_serve_apply }
+
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
@@ -40,13 +58,13 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
 }
 
 fn srv3_bmcweb_session_login() -> ProcessExit
-  uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
   return match resolution {
     CredentialResolutionRefused { reason: r } =>
       exit_failure(reason: concat("bmcweb-login: credential resolution refused: ", r))
-    _ => srv3_bmcweb_session_login_resolved(resolution: resolution)
+    UseFactoryCredential { login: _ } => srv3_bmcweb_session_login_resolved(resolution: resolution)
+    UseRotatedSecretRef { secret_ref: _ } => srv3_bmcweb_session_login_resolved(resolution: resolution)
   }
 }
 
@@ -57,7 +75,6 @@ fn srv3_bmcweb_session_login() -> ProcessExit
 // absent, null or blank token BEFORE Filesystem.Write, so a converged extract cannot have produced
 // an empty file and a second reading has nothing left to discover.
 fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: std.resources.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
   let password = match materialization {
@@ -91,7 +108,7 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
   )
   match login_exit {
     ExitSuccess => {}
-    _ => return login_exit
+    ExitFailure { code: _, reason: _ } => return login_exit
   }
 
   let extract_exit = srv3_apply_to_process_exit(
@@ -100,14 +117,13 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
   )
   match extract_exit {
     ExitSuccess => {}
-    _ => return extract_exit
+    ExitFailure { code: _, reason: _ } => return extract_exit
   }
 
   ExitSuccess
 }
 
 fn srv3_nbd_proxy_serve() -> ProcessExit
-  uses net: std.resources.Network
 {
   srv3_apply_to_process_exit(
     d: srv3_nbd_proxy_serve_apply(),
@@ -118,10 +134,14 @@ fn srv3_nbd_proxy_serve() -> ProcessExit
 // The step count was never the subject — that the plan is DERIVED from the solved mechanism was.
 // srv3's BMC upgrade propagates through that derivation and the plan now refuses, which is what
 // distinguishes a derived plan from a hardcoded three-step one: a hardcoded plan would still be Ready.
-fn srv3_os_install_actuator_plan_refuses_on_unestablished_path() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanRefused { cause: _ } => true
+// THE REFUSAL MUST BE THE MECHANISM'S. The plan is also a function of the served image, and an
+// unresolved image refuses the serve step on its own; a caller supplying a RESOLVED image isolates
+// the mechanism as the only thing left that can refuse.
+fn srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: SeededImageResolution) -> Bool {
+  match srv3_os_install_actuator_plan_standing(image: image) {
+    ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: _ } } => true
     ActuatorPlanReady { plan: _, intents: _ } => false
+    ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: _ } } => false
   }
 }
 

@@ -1,0 +1,800 @@
+module v2.test.claim.body_lowering_qualified_path
+
+import v2.compiler.body_lowering_fold {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  PostfixChainBare,
+  PostfixChainFound,
+  PostfixChainNotThisShape,
+  body_lower_postfix_method_suffix_optional,
+  is_empty_conj_root,
+  body_lower_postfix_repeat_head_optional,
+  PostfixChainSuffixCarried,
+  body_lower_dotted_chain_lowered_optional,
+  body_lower_find_captured,
+  body_lower_postfix_chain_read,
+  body_lower_pattern_first_atom_optional,
+  body_lower_postfix_expr,
+  body_lower_try_body_lowered
+}
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length, list_snoc_item }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  node_synthetic
+}
+import v2.std.node_query {
+  field_projection_optional,
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets
+}
+import std.optional { Absent, Present }
+import v2.std.qualified_name {
+  qualified_name_from_node,
+  qualified_name_to_dotted_string
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A QUALIFIED REFERENCE IN A FN BODY IS ONE MENTION AND MUST REACH THE ARROW BODY WHOLE. Three
+// spellings of the same reference -- a value chain in an expression body, a call through the
+// chain in an expression body, and the same call in a brace body -- each lowered to the bare
+// atom `wall` before the repair, dropping the rest of the path and the call with no diagnostic
+// (gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering and
+// call_expression_erased_at_v2_body_lowering). The consumer that needs the whole path is
+// v2.compiler.resolve try_resolve_qualified_name_node: a qualified reference to test code can
+// reach its refusal door only if lowering keeps the path.
+//
+// THE SUBJECT IS LOWERING, SO THE INPUTS ARE SUPPLIED AT THE LOWERING BOUNDARY (DESIGN section 3,
+// a witness discriminates at one interface; review 68361 on gunbc#11683). Every shape row below
+// hands a parser-shaped node it CONSTRUCTS to the door
+// v2.compiler.body_lowering_fold body_lower_dotted_chain_lowered_optional, or to the expression-
+// body and brace-body sites that consult it. Deriving those inputs by running
+// tokenize -> parse -> normalize re-executes three stages this claim does not discriminate at,
+// once per row. The fixture builders below are the whole mechanism: the substrate is a pure
+// dependency graph, so supplying a value IS constructing it.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY EXACTLY TWO ROUTE CLAIMS, AND THEY ARE NOT OPTIONAL.
+// body_lowering_real_parser_emits_the_supplied_dotted_shape runs the real tokenize -> parse over
+// `wall.peer.peer_leaf()` and feeds the PARSER'S OWN node to the same door, so the supplied shape
+// is a reading of what the producer emits rather than a hypothesis about it; and
+// body_lowering_qualified_value_reaches_arrow_body_whole runs the real normalize route end to end,
+// so the door is established to sit above the first-atom fallback ON THE ROUTE and not only in
+// the source order of the fold. Delete either integration and a control here goes red.
+//
+// THE MID-CALL TODAY-ROW WAS THE DISCRIMINATOR ALL ALONG, AND PR2 FLIPPED IT RATHER THAN DELETING
+// IT. It asserted that `a.f().b` reaches the expression body as the bare atom `a` -- the silent
+// drop -- and it was kept precisely so it would flip loudly the day the shape was lowered or
+// refused. That day is this change: body_lowering_call_before_end_keeps_every_step now asserts the
+// whole chain survives, and it is RED against the pre-repair fold, which is what makes it evidence
+// that the single-step reader is gone rather than merely evidence that a new fold works.
+// WHAT NO FIXTURE HERE REPRODUCES, stated rather than implied: that normalize still ACCEPTS the
+// four live corpus sites the decline exists to protect. Those are production modules, so the lanes
+// that compile them are the execution of that fact; a fixture copy of it would be a second,
+// weaker authority for something the corpus already establishes by being compiled.
+
+fn dotted_fixture_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn dotted_fixture_empty() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+// The sugar sequence pair v2.std.compilers.sugar sugar_sequence_pair_optional reads: the two
+// named children every dotted reader in the fold walks.
+fn dotted_fixture_seq(left: Node, right: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+    ]
+  )
+}
+
+// One repeat element of the postfix chain: `.segment` followed by its suffix slot, which is the
+// empty conj for a bare projection and a call suffix for `.segment(...)`.
+fn dotted_fixture_step(segment: Symbol, suffix: Node) -> Node {
+  dotted_fixture_seq(
+    left: dotted_fixture_atom(identity: ^dag_token_dot),
+    right: dotted_fixture_seq(left: dotted_fixture_atom(identity: segment), right: suffix)
+  )
+}
+
+fn dotted_fixture_bare_step(segment: Symbol) -> Node {
+  dotted_fixture_step(segment: segment, suffix: dotted_fixture_empty())
+}
+
+// `()` IS NOT seq(lparen, rparen), AND THIS FILE ASSERTED THAT IT WAS FOR AS LONG AS IT HAD NO
+// INHABITANCE CLAIM. The real prepared-grammar parse of `a.first()` emits an EMPTY ARGUMENT
+// INTERIOR between the parens -- seq(lparen, seq(<empty conj>, rparen)) -- which is why the
+// argument reader sees a readable empty list rather than an absent one. The shape here is DERIVED
+// from that parse by the probes below (right_is_a_sequence, inner_left_is_empty_conj, each with
+// a control asserting the walk found a suffix at all), not assumed, and
+// body_lowering_supplied_call_suffix_inhabits_the_parser holds it to the producer by content_hash
+// from here on. A one-argument list is the comma-list sequence(arg, sequence(empty repeat, no
+// trailing comma)), the shape #12108's comma-list walker reads.
+fn dotted_fixture_empty_arg_interior() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+fn dotted_fixture_call_suffix_no_args() -> Node {
+  dotted_fixture_seq(
+    left: dotted_fixture_atom(identity: ^dag_token_lparen),
+    right: dotted_fixture_seq(
+      left: dotted_fixture_empty_arg_interior(),
+      right: dotted_fixture_atom(identity: ^dag_token_rparen)
+    )
+  )
+}
+
+fn dotted_fixture_call_suffix_with_arg(arg_capture: Node) -> Node {
+  dotted_fixture_seq(
+    left: dotted_fixture_atom(identity: ^dag_token_lparen),
+    right: dotted_fixture_seq(
+      left: dotted_fixture_seq(
+        left: arg_capture,
+        right: dotted_fixture_seq(left: dotted_fixture_empty(), right: dotted_fixture_empty())
+      ),
+      right: dotted_fixture_atom(identity: ^dag_token_rparen)
+    )
+  )
+}
+
+fn dotted_fixture_repeat(elem: Node, rest: Node) -> Node {
+  dotted_fixture_seq(left: elem, right: rest)
+}
+
+fn dotted_fixture_chain(head: Symbol, repeat_capture: Node) -> Node {
+  dotted_fixture_seq(left: dotted_fixture_atom(identity: head), right: repeat_capture)
+}
+
+// The production shell v2.compiler.body_lowering_fold body_lower_unwrap_captured opens, so the
+// expression-body site can be exercised over a supplied node exactly as the route hands it one.
+fn dotted_fixture_shell(captured: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
+    ]
+  )
+}
+
+// `wall.peer.peer_leaf`
+fn dotted_fixture_qualified_value() -> Node {
+  dotted_fixture_chain(
+    head: ^wall,
+    repeat_capture: dotted_fixture_repeat(
+      elem: dotted_fixture_bare_step(segment: ^peer),
+      rest: dotted_fixture_repeat(
+        elem: dotted_fixture_bare_step(segment: ^peer_leaf),
+        rest: dotted_fixture_empty()
+      )
+    )
+  )
+}
+
+// `wall.peer.peer_leaf()` -- the call is on the FINAL segment.
+fn dotted_fixture_qualified_call() -> Node {
+  dotted_fixture_chain(
+    head: ^wall,
+    repeat_capture: dotted_fixture_repeat(
+      elem: dotted_fixture_bare_step(segment: ^peer),
+      rest: dotted_fixture_repeat(
+        elem: dotted_fixture_step(
+          segment: ^peer_leaf,
+          suffix: dotted_fixture_call_suffix_no_args()
+        ),
+        rest: dotted_fixture_empty()
+      )
+    )
+  )
+}
+
+// `x.step(a: 1)` -- the local-receiver method call. THE CLAIM OVER IT ASSERTS THE CALLEE ONLY: the
+// argument row is the open half of gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering and is not this PR's subject, so the argument capture
+// here is supplied as a one-argument list in the parser's own shape; what an argument lowers to is
+// measured on the real route by v2.test.claim.namespace_xl0.call_argument_mention_survival.
+fn dotted_fixture_local_receiver_call() -> Node {
+  dotted_fixture_chain(
+    head: ^x,
+    repeat_capture: dotted_fixture_repeat(
+      elem: dotted_fixture_step(
+        segment: ^step,
+        suffix: dotted_fixture_call_suffix_with_arg(
+          arg_capture: dotted_fixture_atom(identity: ^a)
+        )
+      ),
+      rest: dotted_fixture_empty()
+    )
+  )
+}
+
+// `a.f().b` -- a call BEFORE the end of the chain. Live corpus idiom (review 68280 on gunbc#11683
+// named four sites, among them v2.workflow.floor_terminal_ledger_wire ledger_wire_field_at
+// `fields.skip(n: index).first()`). The door names it and DECLINES it, so the pre-existing arms
+// keep running and normalize of those modules keeps Accepting.
+fn dotted_fixture_call_before_end() -> Node {
+  dotted_fixture_chain(
+    head: ^a,
+    repeat_capture: dotted_fixture_repeat(
+      elem: dotted_fixture_step(segment: ^f, suffix: dotted_fixture_call_suffix_no_args()),
+      rest: dotted_fixture_repeat(
+        elem: dotted_fixture_bare_step(segment: ^b),
+        rest: dotted_fixture_empty()
+      )
+    )
+  )
+}
+
+data body_lowering_qualified_path_dotted: String = "wall.peer.peer_leaf"
+
+data body_lowering_local_receiver_dotted: String = "x.step"
+
+fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
+  match qualified_name_from_node(root: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: qn, diagnostics: _ } =>
+      (length(xs: qn) > 1) && (qualified_name_to_dotted_string(qn: qn) == dotted)
+  }
+}
+
+// A Transform whose first positional child is the whole path: the path is the operator, never an
+// argument, and no segment is dropped. This reads the LOWERED tree, before resolve replaces the
+// spine with its canonical atom, so it reads the positional row directly rather than through
+// node_query node_is_call (whose callee reading is the post-resolve Arrow-or-Atom shape).
+fn body_lowering_body_callee_is_path(body: Node, dotted: String) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: callee, tail: _ } => body_lowering_body_is_path(body: callee, dotted: dotted)
+        Empty => false
+      }
+    _ => false
+  }
+}
+
+fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: callee, tail: args } =>
+          body_lowering_body_is_path(body: callee, dotted: dotted) && (length(xs: args) == 0)
+        Empty => false
+      }
+    _ => false
+  }
+}
+
+fn body_lowering_door_lowers_to_path(node: Node, dotted: String) -> Bool {
+  match body_lower_dotted_chain_lowered_optional(node: node) {
+    Accepted { value: Present { value: lowered }, diagnostics: _ } =>
+      body_lowering_body_is_path(body: lowered, dotted: dotted)
+    _ => false
+  }
+}
+
+fn body_lowering_door_lowers_to_call_through_path(node: Node, dotted: String) -> Bool {
+  match body_lower_dotted_chain_lowered_optional(node: node) {
+    Accepted { value: Present { value: lowered }, diagnostics: _ } =>
+      body_lowering_body_is_call_through_path(body: lowered, dotted: dotted)
+    _ => false
+  }
+}
+
+// THE SHAPE ROWS. Each hands the door a supplied node and reads what it returns.
+
+test fn body_lowering_qualified_value_lowers_to_the_whole_path() -> Bool {
+  body_lowering_door_lowers_to_path(
+    node: dotted_fixture_qualified_value(),
+    dotted: body_lowering_qualified_path_dotted
+  )
+}
+
+test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
+  body_lowering_door_lowers_to_call_through_path(
+    node: dotted_fixture_qualified_call(),
+    dotted: body_lowering_qualified_path_dotted
+  )
+}
+
+// THE LOCAL-RECEIVER METHOD CALL IS PINNED, BECAUSE THE DOOR SITS ABOVE THE RECEIVER-METHOD ARM AT
+// ALL THREE SITES (review 68231 on gunbc#11683). Measured on main's fold: `{ x.step(a: 1) }`
+// reached the arrow body as Transform(x) -- operator `x`, method AND argument erased -- and
+// `= x.step(a: 1)` as the atom `x`. So no executing lowering of this shape is replaced; it now
+// lowers through the same admitted final-segment-call door, to a Transform whose operator is the
+// spine x.step (a call on a NON-final segment is named and declined instead, as this file's own
+// call_before_end rows demonstrate), and
+// what `x` denotes is the resolver's (a local head refuses Unbound there, loud where the route
+// was silent).
+test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
+  match body_lower_dotted_chain_lowered_optional(node: dotted_fixture_local_receiver_call()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: Absent, diagnostics: _ } => false
+    Accepted { value: Present { value: lowered }, diagnostics: _ } =>
+      body_lowering_body_callee_is_path(
+        body: lowered,
+        dotted: body_lowering_local_receiver_dotted
+      )
+  }
+}
+
+// THE DECLINED ARM IS GONE, AND THIS ROW IS ITS DISCRIMINATOR. `a.f().b` -- a call before the end
+// of the chain -- used to be NAMED and DECLINED by the walk, which handed it to arms that read one
+// step and erased the rest. It is now read as a chain of STEPS and lowered whole. The row asserts
+// the walk's own verdict (the chain is FOUND, with both steps present) so that a reader which
+// simply stopped recognising the shape cannot satisfy it by answering NotThisShape.
+test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
+  match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
+    PostfixChainNotThisShape => false
+    PostfixChainSuffixCarried { at: _ } => false
+    PostfixChainBare { segments: _ } => false
+    PostfixChainFound { steps: steps } => length(xs: steps) == 2
+  }
+}
+
+// THE ALL-BARE ARM IS THE READ'S OWN ANSWER (review 70331). `wall.peer.peer_leaf` carries no call,
+// so the read answers PostfixChainBare with both segments, and a chain with a call (the row above)
+// answers PostfixChainFound. The two rows together discriminate the decision the read makes once;
+// a read that answered Found for every chain fails this one.
+test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
+  match body_lower_postfix_chain_read(node: dotted_fixture_qualified_value()) {
+    PostfixChainNotThisShape => false
+    PostfixChainSuffixCarried { at: _ } => false
+    PostfixChainFound { steps: _ } => false
+    PostfixChainBare { segments: segments } =>
+      length(xs: segments) == 2
+        && fold(segments, init: Empty, f: fn(acc, n) {
+          match node_atom_identity_optional(node: n) {
+            Present { value: s } => list_snoc_item(xs: acc, item: s)
+            Absent => acc
+          }
+        }) == [^peer, ^peer_leaf]
+  }
+}
+
+// THE POSITIVE CONTROL: a bare local name is not a chain, the door does not claim it, and the
+// first-atom arm below keeps it the atom it was. The fixture is the PAIR form -- a head with an
+// EMPTY repeat capture -- rather than a naked atom, on purpose: the pair drives the walk to
+// tail.segments Empty and exercises body_lower_dotted_chain_read's own guard converting a found
+// tail with no segments into DottedChainTailNotThisShape. A naked atom declines one step earlier,
+// at sugar_sequence_pair_optional, and never reaches that guard, so it would establish less.
+test fn body_lowering_bare_local_is_not_claimed_by_the_door() -> Bool {
+  match body_lower_dotted_chain_lowered_optional(
+    node: dotted_fixture_chain(
+      head: ^peer_leaf,
+      repeat_capture: dotted_fixture_empty()
+    )
+  ) {
+    Accepted { value: Absent, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn body_lowering_bare_local_stays_an_atom() -> Bool {
+  match body_lower_postfix_expr(
+    shell: dotted_fixture_shell(captured: dotted_fixture_atom(identity: ^peer_leaf))
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match node_atom_identity_optional(node: body) {
+        Present { value: id } => id == ^peer_leaf
+        Absent => false
+      }
+  }
+}
+
+// THE SITE ROWS. The two expression sites are exercised over supplied nodes, because "the door is
+// consulted before the first-atom fallback" is a fact about each SITE and not about the door.
+
+test fn body_lowering_expression_body_site_keeps_the_whole_path() -> Bool {
+  match body_lower_postfix_expr(
+    shell: dotted_fixture_shell(captured: dotted_fixture_qualified_value())
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      body_lowering_body_is_path(body: body, dotted: body_lowering_qualified_path_dotted)
+  }
+}
+
+test fn body_lowering_block_body_site_keeps_the_whole_call() -> Bool {
+  match body_lower_try_body_lowered(node: dotted_fixture_qualified_call()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: lowered_opt, diagnostics: _ } =>
+      match lowered_opt {
+        Absent => false
+        Present { value: body } =>
+          body_lowering_body_is_call_through_path(
+            body: body,
+            dotted: body_lowering_qualified_path_dotted
+          )
+      }
+  }
+}
+
+// THE COUNTERFACTUAL THE TWO SITE ROWS DISCRIMINATE AGAINST. Handed the same supplied chain, the
+// fallback the door sits above answers the HEAD ATOM -- the truncation the two rows above assert
+// is gone. Without this row "the door runs first" would be an assumption about source order; with
+// it, the two readings are established to differ on one input.
+test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
+  match body_lower_pattern_first_atom_optional(node: dotted_fixture_qualified_value()) {
+    Absent => false
+    Present { value: atom } =>
+      match node_atom_identity_optional(node: atom) {
+        Present { value: id } => id == ^wall
+        Absent => false
+      }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE SILENT DROP, AND IT IS THE ROW THAT USED TO ASSERT THE DROP.
+//
+// Until gunbc#12033's PR2 this row was body_lowering_call_before_end_is_erased_today_holds and it
+// asserted, as a today-row, that `a.f().b` reaches the expression body as the bare atom `a`: the
+// call and the trailing projection gone, with no diagnostic. That is silent wrongness, which
+// DESIGN section 4b places BELOW the ladder rather than on it, and it was the more serious half of
+// the single-step reader's damage -- the refusal half at least printed something.
+//
+// The row now asserts the whole chain survives, and it is the control that can DETECT the
+// single-step reader: run it against the pre-repair fold and it is RED, because the pre-repair
+// answer is the atom `a` and this predicate demands a projection whose base is a call. A row
+// asserting only that the repaired fold builds a good tree would be green either way once the
+// fold exists, which is why the subject here is the shape the OLD reader could not produce.
+// Per DESIGN section 4b(4) it stays enrolled now that it greens: it is the regression control for
+// the fold, not a migration step that retires.
+//
+// The expected shape, left to right: `a.f()` closes the spine `a.f` into a Transform through it,
+// and `.b` is then a FIELD PROJECTION off that computed receiver -- the construct that exists
+// because v2.std.qualified_name QualifiedName is FreeMonoid<Symbol> and therefore has no slot for
+// a computed root at all.
+test fn body_lowering_call_before_end_keeps_every_step() -> Bool {
+  match body_lower_postfix_expr(
+    shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match field_projection_optional(n: body) {
+        Absent => false
+        Present { value: projection } =>
+          (projection.field == ^b)
+            && body_lowering_body_callee_is_path(
+                 body: projection.base,
+                 dotted: body_lowering_call_before_end_callee_dotted
+               )
+      }
+  }
+}
+
+data body_lowering_call_before_end_callee_dotted: String = "a.f"
+
+// THE NEGATIVE HALF OF THE SAME DISCRIMINATOR, STATED SO THE ROW ABOVE CANNOT BE SATISFIED BY A
+// FOLD THAT MERELY WRAPS THE HEAD. The pre-repair answer was the atom `a`; this row asserts the
+// lowered body is NOT an atom at all, so a fold that produced a projection off the bare head
+// instead of off the call would still fail the row above, and a fold that regressed to the head
+// atom fails this one too.
+test fn body_lowering_call_before_end_is_not_the_head_atom() -> Bool {
+  match body_lower_postfix_expr(
+    shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match node_atom_identity_optional(node: body) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// ROUTE EVIDENCE (1 of 2): THE REAL PARSER EMITS THE SUPPLIED SHAPE. The parser's OWN postfix node
+// for `wall.peer.peer_leaf()` is handed to the same door, and the door must lower it to the VERY
+// NODE the supplied fixture lowers to -- compared by content_hash, not by both happening to
+// satisfy the same predicate. Agreeing on a verdict is weaker than agreeing on the answer, and the
+// point of this row is that the constructed chain is the parser's own shape rather than a
+// plausible neighbour of it. content_hash folds node kind and edge labels only, so the parser's
+// real occurrence ids and the fixture's synthetic ones cannot make two identical lowerings differ.
+// This asserts EXECUTION of the producer, not shape agreement with it: a fixture that had drifted
+// from what the parser emits would leave this row red while every shape row above stayed green.
+
+// A SINGLE-FN MODULE, AND THAT IS LOAD-BEARING. body_lower_find_captured returns the FIRST
+// postfix capture in the tree, so a sibling declaration ahead of the one under test would hand
+// this row the wrong body with no diagnostic.
+data body_lowering_single_segment_call_source: String = "module wall.peer\n\nfn uses_one_call(a: Bool) -> Bool = a.first()\n"
+
+data body_lowering_qualified_call_source: String = "module wall.peer\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+fn body_lowering_source_parsed(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn body_lowering_qualified_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_qualified_call_source,
+    file: ^body_lowering_qualified_call_file
+  )
+}
+
+fn body_lowering_lowered_callee_optional(node: Node) -> Node? {
+  match body_lower_dotted_chain_lowered_optional(node: node) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: Absent, diagnostics: _ } => Absent
+    Accepted { value: Present { value: lowered }, diagnostics: _ } =>
+      match node_positional_child_targets(node: lowered) {
+        Cons { head: callee, tail: _ } => Present { value: callee }
+        Empty => Absent
+      }
+  }
+}
+
+// The parser's node and the supplied fixture must lower to the same SPINE, not merely to two nodes
+// that answer the same question. The comparison is on the CALLEE subnode rather than the whole
+// Transform, because a real parenthesised argument capture populates an argument row a zero-arg
+// fixture does not have, and the spine is what this claim is about. content_hash folds node kind
+// and edge labels only, so the parser's real occurrence ids and the fixture's synthetic ones
+// cannot make two identical spines differ.
+fn body_lowering_door_lowerings_agree(parsed_node: Node, supplied_node: Node) -> Bool {
+  match body_lowering_lowered_callee_optional(node: parsed_node) {
+    Absent => false
+    Present { value: from_parser } =>
+      match body_lowering_lowered_callee_optional(node: supplied_node) {
+        Absent => false
+        Present { value: from_fixture } =>
+          content_hash(n: from_parser) == content_hash(n: from_fixture)
+      }
+  }
+}
+
+test fn body_lowering_real_parser_emits_the_supplied_dotted_shape() -> Bool {
+  match body_lowering_qualified_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeAbsent => false
+        ParseSubtreeFound { captured: captured } =>
+          body_lowering_door_lowers_to_call_through_path(
+            node: captured,
+            dotted: body_lowering_qualified_path_dotted
+          )
+            && body_lowering_door_lowerings_agree(
+              parsed_node: captured,
+              supplied_node: dotted_fixture_qualified_call()
+            )
+      }
+  }
+}
+
+// ROUTE EVIDENCE (2 of 2): THE REAL NORMALIZE ROUTE REACHES THE DOOR BEFORE THE FIRST-ATOM
+// FALLBACK. End to end -- tokenize, parse, normalize -- the arrow body of `uses_qual` is the whole
+// path. body_lowering_first_atom_fallback_would_truncate_the_chain establishes that the fallback
+// answers `wall` for this shape, so this row can hold only if the door was reached first ON THE
+// ROUTE. Delete this claim and nothing executes lowering inside normalize; the site rows above
+// would keep passing over supplied nodes while the route silently truncated again.
+
+data body_lowering_qualified_value_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual() -> Bool = wall.peer.peer_leaf\n"
+
+fn body_lowering_qualified_value_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_qualified_value_source,
+    file: ^body_lowering_qualified_value_file
+  )
+}
+
+fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: captured, diagnostics: _ } =>
+      match find_named_child(root: captured, name: ^wall) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: wall_n, diagnostics: _ } =>
+          find_named_child(root: wall_n, name: ^peer)
+      }
+  }
+}
+
+// The real parse and normalize of the fixture, as one nullary producer rostered WARM in
+// v2.workflow.floor_pure_producer_share: the front end is preparation's fill, and the claim below
+// is charged only its own reads. The route still executes for real -- this is the inhabitance
+// claim, and supplying its tree would remove the last execution of it.
+fn body_lowering_qualified_value_normalized() -> Outcome<NormalizedTree> {
+  conserved_normalize_of_text(
+    path: "body_lowering_qualified_value_file",
+    text: body_lowering_qualified_value_source,
+    explained: no_explained_drops()
+  )
+}
+
+test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
+  match body_lowering_qualified_value_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lowering_qualified_members(root: tree.root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: members, diagnostics: _ } =>
+          match find_named_child(root: members, name: ^uses_qual) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: member, diagnostics: _ } =>
+              match find_arrow_body_child(root: member) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: body, diagnostics: _ } =>
+                  body_lowering_body_is_path(
+                    body: body,
+                    dotted: body_lowering_qualified_path_dotted
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE ARM-SEPARATOR FOR THE ZERO-ARG CALL SUFFIX (quick-bat-813, 2026-09-22).
+//
+// body_lowering_real_parser_emits_the_supplied_dotted_shape CONJOINS two facts -- that the PARSED
+// node lowers to a call through its path, and that parsed and supplied agree -- so a FALSE from it
+// cannot say which failed. That distinction is the whole question here: whether the refusal of an
+// absent paren interior (body_lowering_reason_call_args_unlowered) is reachable FROM SOURCE, or
+// only from this file's hand-built `()` shape. This row asserts the FIRST conjunct alone over the
+// real parser's own node for `wall.peer.peer_leaf()`, a zero-argument dotted call.
+//
+// FALSE here means the production route loses a zero-arg call and the refusal is real.
+// TRUE here, with the supplied-shape row red, means this file's fixture does not inhabit the real
+// producer and the repair is to the fixture -- DESIGN section 3's pairing obligation, where a
+// supplied input is a hypothesis and the inhabitance claim is what makes it a reading.
+test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool {
+  match body_lowering_qualified_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeAbsent => false
+        ParseSubtreeFound { captured: captured } =>
+          body_lowering_door_lowers_to_call_through_path(
+            node: captured,
+            dotted: body_lowering_qualified_path_dotted
+          )
+      }
+  }
+}
+
+// The supplied half of the same pair, alone. Run beside the row above, the two SEPARATE the arms:
+// both TRUE is no defect; parsed TRUE and supplied FALSE is an unfaithful fixture; parsed FALSE is
+// a real loss on the production route whatever the fixture does.
+test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
+  body_lowering_door_lowers_to_call_through_path(
+    node: dotted_fixture_qualified_call(),
+    dotted: body_lowering_qualified_path_dotted
+  )
+}
+
+// THE INHABITANCE CLAIM THIS FILE OWED AND DID NOT HAVE (quick-bat-813, 2026-09-22).
+//
+// Every supplied-node row here is a hypothesis about what the parser emits, and DESIGN section 3
+// says a supplied input owes ONE inhabitance claim that the real producer emits that shape. This
+// file had none for the CALL SUFFIX, and the hypothesis was wrong: dotted_fixture_call_suffix_no_args
+// built `()` as seq(lparen, rparen), a shape the parser does not produce, so every row through it
+// exercised an arm the production route never reaches. It cost a cross-session round and a
+// high-priority report against code that was not defective.
+//
+// This row compares the CONSTRUCTED suffix against the one the real prepared-grammar parse emits
+// for `wall.peer.peer_leaf()`, by content_hash rather than by both satisfying a predicate. It is
+// the wall that would have caught the drift, and it stays enrolled so the fixture cannot drift
+// again silently.
+fn parsed_single_segment_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_single_segment_call_source,
+    file: ^body_lowering_single_call_file
+  )
+}
+
+fn parsed_zero_arg_call_suffix_optional() -> Optional<Node> {
+  match parsed_single_segment_call_parsed() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeAbsent => Absent
+        ParseSubtreeFound { captured: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Absent => Absent
+            Present { value: pair } =>
+              match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
+                Absent => Absent
+                Present { value: elem } =>
+                  body_lower_postfix_method_suffix_optional(repeat_elem: elem)
+              }
+          }
+      }
+  }
+}
+
+test fn body_lowering_supplied_call_suffix_inhabits_the_parser() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: parsed_suffix } =>
+      content_hash(n: parsed_suffix)
+        == content_hash(n: dotted_fixture_call_suffix_no_args())
+  }
+}
+
+// SHAPE PROBES, so the fixture is DERIVED from the producer rather than guessed a second time.
+// Each asks one structural question of the suffix the real parser emits for a zero-arg call, and
+// together they say how `()` is actually nested. They are kept rather than deleted once the
+// fixture is corrected: they are cheap, and they name the facts the corrected fixture depends on,
+// so a grammar change that moves the shape reddens them beside the inhabitance row.
+test fn probe_parsed_zero_arg_suffix_right_is_a_sequence() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: suffix } =>
+      match sugar_sequence_pair_optional(node: suffix) {
+        Absent => false
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
+  }
+}
+
+test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: suffix } =>
+      match sugar_sequence_pair_optional(node: suffix) {
+        Absent => false
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => false
+            Present { value: inner } => is_empty_conj_root(n: inner.left)
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE PROBES ABOVE, and it is the reason they can be read at all.
+// A Bool probe over an extraction answers false for TWO different reasons -- the shape differs,
+// or the walk never found a suffix to look at -- and those are not the same fact. Without this
+// row a false above is uninterpretable, which is the absent-versus-unreadable conflation this
+// very slice has now produced three times in three places. This row asserts the walk FOUND a
+// suffix; only then does a false from a shape probe mean the shape.
+test fn probe_parsed_zero_arg_suffix_is_found_at_all() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: _ } => true
+  }
+}

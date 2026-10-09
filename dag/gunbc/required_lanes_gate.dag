@@ -14,7 +14,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_flat_map }
+import v2.std.algebra { FreeSemigroup, fold_list, list_flat_map }
+import std.algebra { list_append }
 import gunbc.floor_attempt_standing {
   floor_attempt_receipt_prefix,
   floor_attempt_receipt_measured_head_label,
@@ -35,6 +36,7 @@ import gunbc.floor_attempt_standing {
 import gunbc.ci_failure_class { floor_outcome_wire_infra, floor_outcome_wire_structural }
 import v2.std.node { Node }
 import std.types { String, List }
+import gunbc.witness_floor_lanes { RequiredLane }
 
 // THE REQUIRED AGGREGATOR'S REFUSAL, CONSTRUCTED AS NODES RATHER THAN SPELLED AS TEXT.
 //
@@ -206,58 +208,6 @@ fn required_lanes_head_standing_stmts(
       ]
     )
   ]
-}
-
-// THE REQUIRED LANE, AS ONE CONCEPT WITH N INSTANCES RATHER THAN N NAMED PARAMETERS.
-//
-// This axis was a HARDCODED PAIR -- `build_var` beside `floor_var`, threaded through four
-// functions and spelled 28 times -- which is one concept given one name per instance, the fork
-// DESIGN section 2 horizontal exists to delete. The tell was mechanical: promoting a third job
-// into the aggregate was described by `gunbc.witness_floor_workflow` as a one-row edit, and was
-// in fact a signature change in four places plus a step-name rewrite, because the gate could not
-// say "a lane" at all -- only "the build one" and "the floor one".
-//
-// A LANE IS THREE FACTS AND NOT ONE, and each is read by a different surface: the JOB ID is what
-// the workflow's `needs.<id>.result` expression names, the VARIABLE is what the emitted shell
-// reads, and the LABEL is what the receipt prints. They are genuinely distinct strings -- the job
-// id is `required-witnesses-build`, the variable `BUILD`, the label `build` -- so collapsing any
-// two would force one surface to derive its spelling from another's, which is a nickname for a
-// fact the caller already holds. Carrying all three is what lets the gate AND the step's `env`
-// block be projections of one roster instead of two hand-kept lists whose agreement nothing
-// checks.
-//
-// NON-EMPTY BY CONSTRUCTION, and that is the whole safety argument for the shape. The verdict is
-// an OR-fold over the lanes, and an or-fold over nothing is FALSE -- so an empty lane list would
-// publish the required context GREEN over a gate that read no lane at all, which is section 5's
-// fail-open in its purest form. `FreeSemigroup` has no empty representation, so that state is
-// UNWRITABLE rather than validated: the structurally-impossible rung of section 4b rather than
-// the mechanically-preventable one, and no refusal arm is owed because there is no arm to write.
-//
-// THE BOUNDARY THAT GUARANTEE HOLDS AT, stated because section 4b says unwritable in the ACCEPTED
-// CORPUS and unwritable as SOURCE HANDED TO THE COMPILER are different claims and only the second
-// decides whether a RED is authorable. MEASURED, not reasoned: a fixture module authoring
-// `FreeSemigroup { tail: [] }` was handed to the compiler on 2026-09-02 and refused with
-// `error: missing required field 'head' in literal of type 'FreeSemigroup'`, located at the
-// literal -- one blocking error. So the empty roster is authorable as fixture source and is
-// refused there, which is the stronger of the two boundaries.
-//
-// WHAT THAT DOES NOT ESTABLISH, AND THE TRIGGER IS OWNED ELSEWHERE. The refusal is the compiler's
-// GENERAL record-completeness wall, not anything this roster authored, and the roadmap node
-// `floor-record-construction-wall` (rn_ILWLG34LVL5SAS6QPN5GZDPMFY) records that wall's own
-// evidence as NOT YET ENROLLED -- in its words, a construction wall "currently rests on
-// record-completeness enforcement that is itself unmeasured" -- the refusal measured here is
-// recorded as that node's executed RED specimen rather than restated. So this roster's rung is section
-// 4b(4) CONDITIONAL ON that wall, and its next-rung trigger is that node's probe-pairing rather
-// than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
-// NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
-// duplication declining a sixth NonEmpty carrier avoids.
-// It is deliberately not a fresh NonEmptyRequiredLanes carrier — that would re-invent
-// std.algebra FreeSemigroup.
-type RequiredLane {
-  job_id: String,
-  label: String,
-  var_name: String,
-  class_var_name: String
 }
 
 // THE OR-FOLD OVER THE LANES, left-associated so that the two-lane case is the exact node the

@@ -3,9 +3,12 @@ module gunbc.quarantine_probe_disposition
 import gunbc.explicit_witness_admission { ExplicitWitnessAdmission }
 import std.witness_admission { WitnessConsumerCadence, QuarantineProbeExpectRed }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Present }
 import v2.std.text { String }
+import std.types { NonEmptyStr, List }
+import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline }
+import std.algebra { Cons, Empty }
 
 // WHICH MECHANISM HOLDS A QUARANTINE PROBE, DERIVED TOTALLY -- NOT "IS IT IN THE ROSTER".
 //
@@ -131,6 +134,7 @@ type QuarantineProbeHolder =
   | NeverRunDeclinedByHomePolicy { matched_prefix: String }
   | NeverRunDeclinedByLiveTreeRead { entry: String }
   | NeverRunPathExcluded { matched_substring: String }
+  | NeverRunDeclinedOutsideGate { module: String, trigger: NonEmptyStr }
 
 // THE SUBJECT: one probe, named the way the floor names it.
 //
@@ -151,6 +155,8 @@ type QuarantineProbeHoldingFacts {
   home_prefixes: List<String>
   live_tree_declined_entries: List<String>
   path_exclusion_substrings: List<String>
+  outside_gate_declines: List<QuarantineOutsideGateDecline>
+  gate_admits: fn(String) -> Bool
 }
 
 // THE ALARM IS AN ARM OF THE OUTCOME, NEVER A STABLE DISPOSITION.
@@ -189,6 +195,7 @@ fn quarantine_probe_verification_standing(holder: QuarantineProbeHolder) -> Quar
     NeverRunDeclinedByHomePolicy { matched_prefix: p } => WitnessNeverRuns {}
     NeverRunDeclinedByLiveTreeRead { entry: e } => WitnessNeverRuns {}
     NeverRunPathExcluded { matched_substring: sub } => WitnessNeverRuns {}
+    NeverRunDeclinedOutsideGate { module: m, trigger: t } => WitnessNeverRuns {}
   }
 }
 
@@ -198,6 +205,34 @@ fn quarantine_probe_identity(module: String, function: String) -> String {
 
 fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> String {
   quarantine_probe_identity(module: subject.module, function: subject.function)
+}
+
+// THE TWO QUALIFIED-NAME ROSTERS, KEYED ONCE PER POPULATION. The join is still exact identity
+// (a key either equals the probe's identity or is absent), but it is keyed rather than scanned:
+// scanning each roster once per probe made the fold rows x roster, and the live claim paid that
+// product on every run (DESIGN section 6, bare minimum cost). quarantine_probe_dispositions
+// builds the index once and every subject reads it.
+type QuarantineProbeRosterIndex {
+  expected_red: Map<String, Bool>
+  route_gap: Map<String, Bool>
+}
+
+fn exact_key_set(population: List<String>) -> Map<String, Bool> {
+  fold_list(xs: population, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row, value: true) })
+}
+
+fn quarantine_probe_roster_index(facts: QuarantineProbeHoldingFacts) -> QuarantineProbeRosterIndex {
+  QuarantineProbeRosterIndex {
+    expected_red: exact_key_set(population: facts.expected_red_roster),
+    route_gap: exact_key_set(population: facts.route_gap_roster)
+  }
+}
+
+fn exact_key_member(needle: String, keys: Map<String, Bool>) -> Bool {
+  match map_lookup(m: keys, key: needle) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // EXACT MEMBERSHIP, NEVER CONTAINMENT. Both populations joined this way -- the two qualified-name
@@ -256,17 +291,18 @@ fn first_matching_substring(entry: String, substrings: List<String>) -> List<Str
 // two-mechanisms case entirely, which is the one case the ruling says must refuse.
 fn quarantine_probe_holders(
   subject: QuarantineProbeSubject,
-  facts: QuarantineProbeHoldingFacts
+  facts: QuarantineProbeHoldingFacts,
+  index: QuarantineProbeRosterIndex
 ) -> List<QuarantineProbeHolder> {
   let identity = quarantine_probe_subject_identity(subject: subject)
   let floor_held =
-    if exact_member(needle: identity, population: facts.expected_red_roster) {
+    if exact_key_member(needle: identity, keys: index.expected_red) {
       Cons { head: FloorExpectedRedHeld {}, tail: Empty {} }
     } else {
       Empty {}
     }
   let route_held =
-    if exact_member(needle: identity, population: facts.route_gap_roster) {
+    if exact_key_member(needle: identity, keys: index.route_gap) {
       Cons { head: RouteGapHeldNoVerdict {}, tail: Empty {} }
     } else {
       Empty {}
@@ -287,16 +323,43 @@ fn quarantine_probe_holders(
     empty: Empty {},
     cons: fn(acc, needle) { Cons { head: NeverRunPathExcluded { matched_substring: needle }, tail: acc } }
   )
+  let outside_gate = outside_gate_holders(subject: subject, facts: facts)
   concat_holders(
     a: floor_held,
     b: concat_holders(
       a: route_held,
       b: concat_holders(
         a: home_declined,
-        b: concat_holders(a: live_declined, b: path_excluded)
+        b: concat_holders(a: live_declined, b: concat_holders(a: path_excluded, b: outside_gate))
       )
     )
   )
+}
+
+// NeverRunDeclinedOutsideGate -- the probe has a row in gunbc.quarantine_outside_gate_decline AND
+// the floor's own admission decision (supplied as gate_admits, v2.workflow.required_floor
+// required_gate_admits in production) refuses the probe's authored module. BOTH halves are joined
+// on identity: the row's module and function must equal the subject's, and the module must be
+// outside the gate. A row naming a module the gate admits derives no holder, so a probe the
+// floor would run cannot be parked here; the probe then derives NowPassing and reds the witness.
+// The arm is WitnessNeverRuns: it names an unenforced red, it is never coverage.
+fn outside_gate_holders(subject: QuarantineProbeSubject, facts: QuarantineProbeHoldingFacts) -> List<QuarantineProbeHolder> {
+  let admits = facts.gate_admits
+  if admits(subject.module) {
+    Empty {}
+  } else {
+    fold_list(
+      xs: facts.outside_gate_declines,
+      empty: Empty {},
+      cons: fn(acc, row) {
+        if row.module == subject.module && row.function == subject.function {
+          Cons { head: NeverRunDeclinedOutsideGate { module: row.module, trigger: row.trigger }, tail: acc }
+        } else {
+          acc
+        }
+      }
+    )
+  }
 }
 
 fn concat_holders(a: List<QuarantineProbeHolder>, b: List<QuarantineProbeHolder>) -> List<QuarantineProbeHolder> {
@@ -313,7 +376,15 @@ fn quarantine_probe_disposition(
   subject: QuarantineProbeSubject,
   facts: QuarantineProbeHoldingFacts
 ) -> QuarantineProbeDisposition {
-  let holders = quarantine_probe_holders(subject: subject, facts: facts)
+  quarantine_probe_disposition_indexed(subject: subject, facts: facts, index: quarantine_probe_roster_index(facts: facts))
+}
+
+fn quarantine_probe_disposition_indexed(
+  subject: QuarantineProbeSubject,
+  facts: QuarantineProbeHoldingFacts,
+  index: QuarantineProbeRosterIndex
+) -> QuarantineProbeDisposition {
+  let holders = quarantine_probe_holders(subject: subject, facts: facts, index: index)
   match holders {
     Empty {} => QuarantineProbeNowPassing {
       identity: quarantine_probe_subject_identity(subject: subject),
@@ -346,11 +417,12 @@ fn quarantine_probe_dispositions(
   subjects: List<QuarantineProbeSubject>,
   facts: QuarantineProbeHoldingFacts
 ) -> List<QuarantineProbeDisposition> {
+  let index = quarantine_probe_roster_index(facts: facts)
   fold_list(
     xs: subjects,
     empty: Empty {},
     cons: fn(acc, subject) {
-      Cons { head: quarantine_probe_disposition(subject: subject, facts: facts), tail: acc }
+      Cons { head: quarantine_probe_disposition_indexed(subject: subject, facts: facts, index: index), tail: acc }
     }
   )
 }
@@ -373,7 +445,15 @@ fn quarantine_probe_dispositions_all_hold(
 fn admission_is_quarantine_probe(row: ExplicitWitnessAdmission) -> Bool {
   match row.cadence {
     QuarantineProbeExpectRed => true
-    _ => false
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    LocalRepoWetLane => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
   }
 }
 

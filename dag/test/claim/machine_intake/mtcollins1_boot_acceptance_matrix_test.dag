@@ -1,0 +1,920 @@
+module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
+
+import gunbc.build_cache_instance { ProcessIdentity }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
+import std.measure { Second, second }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
+import v2.std.operation_argv { InputText, InputTextList }
+import v2.std.operation_realization { DispatchRecord, virtual_clock_origin }
+import v2.std.witness_evaluation {
+  WitnessEvaluation, WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.bmc_model { BmcWorld, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
+import gunbc.process_environment_model { ModeledVariable }
+import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
+import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
+import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
+import gunbc.machine_intake_mtcollins1_boot_dry_realization {
+  MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
+  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process, healthy_kvm_viewer,
+}
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
+  DispatchWorkerKilled,
+}
+import gunbc.machine_intake_mtcollins1_boot_run {
+  MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
+  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
+}
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
+import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
+  BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission,
+  TreeAdmission, TreeAdmitted, TreeAbsent, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
+  runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
+}
+import gunbc.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12423, operator ruling 2026-09-27). Every case runs THE
+// REAL ENTRY -- gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_on_srv1_resolving_toolchain, which the
+// wet entry mtcollins1_boot_wet_on_srv1 is a single call into, unchanged -- over
+// a dry realization of its whole effect demand (gunbc.machine_intake_mtcollins1_boot_dry_realization):
+// the one BMC model, its virtual-media subsystem, the worker's filesystem, processes, environment and
+// clocks, the SSH agent and srv2. Nothing in the orchestrator is replaced. Each case asserts the ROUTE
+// the dispatcher logged -- which effects, in what order, under which hold -- and the typed outcome.
+//
+// EVIDENCE BOUNDARY, for every case here: the deepest real layer is the orchestration and every
+// production decoder above the transport observation; the first substituted layer is the transport
+// observation. None of these cases is evidence about what the physical controller, the ipmitool or
+// curl clients, the SOL collector process or the host firmware do -- those are the companion transport
+// controls and live acceptance -- and every modeled answer is grounded where the corpus retains one
+// (extdeps.bmc.ipmitool_observed_output, extdeps.bmc.megarac_observed_output).
+data realization_identity: NonEmptyStr = "mtcollins1-boot-matrix" as NonEmptyStr
+
+data credential_path: String = "/run/bmc-credential"
+
+data sol_capture_path: String = "/run/sol.capture"
+
+data sol_pid_path: String = "/run/sol.pid"
+
+fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant { verb: verb, root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }, binding: ModeledRealization { realization: realization_identity as String }, lifecycle: LifecycleByConstruction }
+}
+
+// The services the entry's effect demand reaches, each granted to the dry realization for reading and
+// writing. An operation of any other service refuses as uncovered.
+data matrix_services: List<String> = [
+  "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
+  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path",
+  "gunbc.owned_process.launch", "sha256sum.Sha256",
+]
+
+fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  matrix_frame_over(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin()))
+}
+
+fn matrix_frame_over(realization: OperationRealization<MtCollins1BootWorld>) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
+      grants: concat(map(matrix_services, s => matrix_grant(service: s, verb: Read)), map(matrix_services, s => matrix_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: realization }
+  }
+}
+
+// THE RUNNER'S BROWSER TOOLCHAIN IS SUPPLIED, NOT READ BACK (ruling of eager-owl-205 on gunbc#12533).
+// The wet entry resolves it with runner_browser_toolchain_here_wet -- a full readback of the installed
+// tree against its pin, the host libraries, the versions and a launch probe -- which is a different
+// subject with its own witnesses. The matrix supplies each resolution arm the boot can meet, built from
+// the production location and probe values, and the inner entry calls it where the observer starts.
+// PAIRING (DESIGN s3): the real resolution is executed by
+// test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
+// a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound, whose rig calls
+// runner_browser_toolchain_here_wet on the floor pool and returns false on every arm but Ready, so
+// deleting that integration turns it red; it also launches the real observer over the resolved location.
+fn srv1_toolchain_location() -> RunnerBrowserToolchainLocation? {
+  match runner_browser_toolchain_host_admission(host: "srv1" as NonEmptyStr) {
+    BrowserToolchainHostAdmitted { deploy: _, location: loc } => Present { value: loc }
+    BrowserToolchainHostRefused { host: _, cause: _ } => none
+  }
+}
+
+fn toolchain_standing(loc: RunnerBrowserToolchainLocation, tree: TreeAdmission) -> RunnerBrowserToolchainStanding {
+  RunnerBrowserToolchainStanding {
+    host: "srv1" as NonEmptyStr, location: loc, tree: tree,
+    versions: [
+      VersionMatches { subject: "node" as NonEmptyStr, observed: runner_browser_toolchain_node.version as String },
+      VersionMatches { subject: "playwright-core" as NonEmptyStr, observed: runner_browser_toolchain_automation.version as String },
+    ],
+    libraries: [HostLibrariesResolved { binary: loc.headless_shell }, HostLibrariesResolved { binary: loc.chromium }],
+    launch: BrowserLaunchRendered { title: browser_toolchain_probe_title, rendered_width: browser_toolchain_probe_width_px, resolved_module: loc.playwright_module as String },
+    after: tree,
+  }
+}
+
+fn ready_toolchain() -> RunnerBrowserToolchainResolution {
+  match srv1_toolchain_location() {
+    Present { value: loc } => BrowserToolchainReady { location: loc, standing: toolchain_standing(loc: loc, tree: TreeAdmitted) }
+    Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
+  }
+}
+
+fn not_ready_toolchain() -> RunnerBrowserToolchainResolution {
+  match srv1_toolchain_location() {
+    Present { value: loc } => BrowserToolchainNotReady { standing: toolchain_standing(loc: loc, tree: TreeAbsent { tree: loc.root }) }
+    Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
+  }
+}
+
+fn unresolved_toolchain() -> RunnerBrowserToolchainResolution {
+  BrowserToolchainUnresolved { cause: "runner_browser_toolchain: hostname -s returned empty output" }
+}
+
+fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
+  mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() { toolchain })
+}
+
+fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) })
+}
+
+// ─── THE HEALTHY WORLD, and the facts it is built from ───────────────────────────────────────────
+fn selected_digest() -> String {
+  mtcollins1_boot_medium.digest as String
+}
+
+fn healthy_srv2() -> ModeledRemoteHost {
+  ModeledRemoteHost { endpoint: "srv2", files: match mtcollins1_census_image {
+    Mtcollins1CensusImageDerived { input: input } => [
+      ModeledRemoteFile { path: mtcollins1_census_record_path(input: input) as String, content: Present { value: concat(selected_digest(), "\n") }, sha256: none },
+      ModeledRemoteFile { path: mtcollins1_census_medium_served_path(medium: mtcollins1_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
+    ]
+    _ => []
+  } }
+}
+
+fn healthy_media() -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [], next_session: 1,
+    share: MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" },
+    mount_cd: 1, cd_error_code: 0,
+    images: [MegaRacImage { image_name: mtcollins1_boot_medium.image_name as String, image_index: 5 }],
+    cd: megarac_cleared_cd(),
+    ready_after: second(count: 12),
+    withdraw_at: none,
+    withdraw_after_ready: none,
+    error_after_ready: none,
+    error_clears_on_stop: false, stop_at_ready: none,
+  }
+}
+
+// The worker host's boot, and the boot worker's own process (pid, start tick) as procfs shows it.
+data worker_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data worker_pid_namespace: String = "pid:[4026531836]"
+data first_worker_pid: Int = 3100
+data first_worker_start: Int = 5000
+
+fn worker_filesystem() -> ModeledFilesystem {
+  worker_process_started(
+    fs: ModeledFilesystem {
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+      files: [ModeledFile { path: credential_path, content: "secret" }],
+      refused_reads: [],
+    },
+    boot_id: worker_boot_id, pid_namespace: worker_pid_namespace, pid: first_worker_pid, start_ticks: first_worker_start,
+  )
+}
+
+fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
+  with_notice_watcher(capture_path: sol_capture_path, token: "matrix-notice-token", w: MtCollins1BootWorld {
+    bmc: bmc_world(power: BmcPowerOff),
+    fs: worker_filesystem(),
+    environment: [
+      ModeledVariable { name: "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE", value: credential_path },
+      ModeledVariable { name: "GUNBC_MTCOLLINS1_SOL_CAPTURE", value: sol_capture_path },
+      ModeledVariable { name: "GUNBC_MTCOLLINS1_SOL_PID_FILE", value: sol_pid_path },
+      ModeledVariable { name: "GITHUB_RUN_ID", value: "4242" },
+      ModeledVariable { name: "SSH_AUTH_SOCK", value: "/run/ssh-agent.sock" },
+      ModeledVariable { name: "GITHUB_SHA", value: "0123456789abcdef0123456789abcdef01234567" },
+    ],
+    agent: ModeledSshAgent { socket: "/run/ssh-agent.sock", holds_fleet_key: true },
+    remote_hosts: [healthy_srv2()],
+    clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] },
+    worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
+    console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
+    media: healthy_media(),
+    screen: healthy_kvm_viewer(),
+  })
+}
+
+// A census image that boots one socket and completes: the capture test.claim.machine_intake.mtcollins1_boot_run_witness_test
+// `clean` shows reaching TerminalAccepted, printed a minute into the boot and closed at four minutes.
+data one_socket_census_capture: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z====="
+
+fn console_of(capture: String, begin_after: Int, end_after: Int) -> List<TimedConsoleLine> {
+  map(filter(split(s: capture, delimiter: "\n"), l => l != ""), l => TimedConsoleLine {
+    after: second(count: if starts_with(s: l, prefix: "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end") { end_after } else { begin_after }),
+    text: l,
+  })
+}
+
+// ─── ROUTE READING ─────────────────────────────────────────────────────────────────────────────
+fn operation_name(r: DispatchRecord) -> String {
+  join([r.invocation.at.service, ".", r.invocation.at.operation], "")
+}
+
+fn record_path(r: DispatchRecord) -> String {
+  fold(r.invocation.bindings, init: "", f: fn(acc, b) {
+    if acc != "" { acc } else if b.name == "path" { match b.value { InputText { text: t } => t InputTextList { items: _ } => "" } } else { "" }
+  })
+}
+
+fn is_hold_write(r: DispatchRecord) -> Bool {
+  r.invocation.at.service == "Filesystem" && starts_with(s: r.invocation.at.operation, prefix: "WriteCreateNew")
+    && starts_with(s: record_path(r: r), prefix: unit_hold_store_root as String)
+}
+
+// The effects that change the controller or start a process against it.
+data controller_writes: List<String> = [
+  "diagnostic.ipmi.Tool.ChassisPowerControl", "diagnostic.ipmi.Tool.ChassisBootDevWithOptions",
+  "megarac.Media.StartMedia", "megarac.Media.StopMedia", "diagnostic.ipmi.Tool.SolDeactivate",
+  "gunbc.machine_intake.sol_hold.ActivateHeld",
+]
+
+fn is_controller_write(r: DispatchRecord) -> Bool {
+  !all(controller_writes, w => w != operation_name(r: r))
+}
+
+fn ordinals_where(route: List<DispatchRecord>, keep: fn(DispatchRecord) -> Bool) -> List<Int> {
+  map(filter(route, r => keep(r)), r => r.ordinal)
+}
+
+fn count_named(route: List<DispatchRecord>, name: String) -> Int {
+  count(filter(route, r => operation_name(r: r) == name))
+}
+
+// EVERY CONTROLLER WRITE HAPPENS UNDER THE UNIT HOLD: after the hold's first commit and before its
+// last (the release). The hold writes are the only WriteCreateNew calls under the hold root.
+fn controller_writes_are_under_the_hold(route: List<DispatchRecord>) -> Bool {
+  let holds = ordinals_where(route: route, keep: is_hold_write)
+  let writes = ordinals_where(route: route, keep: is_controller_write)
+  match holds.first() {
+    Absent => count(writes) == 0
+    Present { value: acquired } => match holds.last() {
+      Absent => false
+      Present { value: released } => count(holds) >= 2 && all(writes, o => o > acquired && o < released)
+    }
+  }
+}
+
+fn first_ordinal(route: List<DispatchRecord>, name: String) -> Int {
+  match ordinals_where(route: route, keep: fn(r) { operation_name(r: r) == name }).first() { Present { value: o } => o Absent => 0 - 1 }
+}
+
+fn outcome_reason(a: MtCollins1BootAttempt) -> String {
+  mtcollins1_boot_exit_reason(outcome: a.outcome)
+}
+
+fn census_ended(a: MtCollins1BootAttempt) -> Bool {
+  match a.stage {
+    ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true
+    _ => false
+  }
+}
+
+// ─── CASES ───────────────────────────────────────────────────────────────────────────────────────
+
+// THE HOST NEVER PRINTS A CENSUS. The attempt goes all the way through -- media converged and ready,
+// cdrom override set, power on -- and refuses at the terminal deadline with exactly the outcome the
+// real attempt of 2026-09-27 recorded (run 36335369059). Route: the collector is started before any
+// other controller write; the media start precedes the boot override, which precedes the one power
+// action; every controller write is under the hold; the collector is torn down last.
+test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
+  match run_attempt(world: world_with_console(lines: [])) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 1
+        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// A HEALTHY HOST REPORTS SUCCESS, AND THE TEARDOWN RELEASES ONLY WHAT IT OWNS. The census closes and
+// is accepted, and the attempt completes. This case was pinned as a defect -- the collector's pid file
+// read as stale after the deactivate -- until #12434 made the release identity-checked and retiring; it
+// is now the control that the repair holds. Route: the SOL deactivate, then the hold's ReleaseHeld
+// of the recorded instance, then the retirement of its pid file and activation receipt; every
+// controller write under the unit hold.
+test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
+  match run_attempt(world: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))) {
+    WitnessReturned { value, route } =>
+      census_ended(a: value)
+        && outcome_reason(a: value) == "ok"
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld")
+        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld") < first_ordinal(route: route, name: "Filesystem.Delete")
+        && count_named(route: route, name: "Filesystem.Delete") == 2
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE RUNNER'S BROWSER TOOLCHAIN IS NOT READY, OR CANNOT BE RESOLVED (operator-accepted ruling A: the
+// matrix supplies the resolution). The observer is REQUIRED for the handoff, so neither arm starts a
+// viewer with a toolchain it could not vouch for: no observer directory is made, no process is launched,
+// and the handoff refuses with the toolchain's own standing as its cause -- before any boot override or
+// power action.
+fn run_attempt_with_toolchain(world: MtCollins1BootWorld, toolchain: RunnerBrowserToolchainResolution) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: toolchain) })
+}
+
+fn no_observer_and_no_power_action(route: List<DispatchRecord>) -> Bool {
+  count_named(route: route, name: "shell.Mkdir.Parents") == 0
+    && count_named(route: route, name: "gunbc.owned_process.launch.LaunchOwned") == 0
+    && reached_no_power_action(route: route)
+}
+
+test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -> Bool {
+  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: not_ready_toolchain()) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
+        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is not ready")
+        && no_observer_and_no_power_action(route: route)
+    _ => false
+  }
+}
+
+test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool {
+  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: unresolved_toolchain()) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
+        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is unresolved")
+        && no_observer_and_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE SAME UNIT HELD BY ANOTHER RUN. Before this attempt starts, a different run's boot holds the
+// unit (acquired through the production file_hold_acquire, into the same store). This attempt is
+// refused at the hold with the controller untouched: no controller write of any kind appears in its
+// route, and it never starts a SOL collector. The other run is still running -- its process is in
+// procfs -- so it is a live holder, not a dead one to recover.
+test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool {
+  let base = world_with_console(lines: [])
+  let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
+  let prior = evaluate_in_witness_frame(
+    frame: matrix_frame(world: other_running),
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
+  )
+  match prior {
+    WitnessReturned { state } => match state {
+      Absent => false
+      Present { value: held } => match run_attempt(world: held) {
+        WitnessReturned { value, route } =>
+          string_contains(s: outcome_reason(a: value), pattern: "is held by 'boot-run:4141@")
+            && string_contains(s: outcome_reason(a: value), pattern: "which is alive")
+            && count(filter(route, r => is_controller_write(r: r))) == 0
+            && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 0
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+// ─── MEDIA VARIATION ───────────────────────────────────────────────────────────────────────────────
+fn media_varied(media: MegaRacMediaWorld) -> MtCollins1BootWorld {
+  with_media(w: world_with_console(lines: []), media: media)
+}
+
+fn media_with(images: List<MegaRacImage>, share: MegaRacShare, cd: MegaRacCdRow, ready_after: Int, withdraw_after_ready: Second?) -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [], next_session: 1, share: share, mount_cd: 1, cd_error_code: 0, images: images, cd: cd,
+    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none,
+  }
+}
+
+fn no_withdrawal() -> Second? {
+  none
+}
+
+fn desired_image() -> String {
+  mtcollins1_boot_medium.image_name as String
+}
+
+data real_share: MegaRacShare = MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" }
+
+fn reached_no_power_action(route: List<DispatchRecord>) -> Bool {
+  count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 0
+    && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
+}
+
+// THE IMAGE IS ALREADY PRESENTED AND READY. Convergence has nothing to do: no stop, no start, and the
+// attempt proceeds to the boot exactly as from a fresh attach.
+test fn an_already_presented_image_is_not_attached_again() -> Bool {
+  let presented = MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// READINESS SLOWER THAN THE WAIT. The controller keeps the row connecting past the readiness budget;
+// the attempt refuses without setting the boot override or touching power.
+test fn media_that_never_becomes_ready_refuses_before_any_power_action() -> Bool {
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 600, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
+        && string_contains(s: outcome_reason(a: value), pattern: "No boot-device or power handoff was made")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE SAME FILENAME ON THE WRONG SHARE. The listing offers an image with the desired name, but the
+// controller's CD share is bound to another server. It refuses before any power action; a start, if
+// one is issued, must not be followed by the boot.
+test fn the_right_filename_on_the_wrong_share_refuses_before_any_power_action() -> Bool {
+  let wrong = MegaRacShare { server: "192.168.1.99", source_path: "/srv/bmc", share_type: "nfs" }
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: wrong, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "remote-media share is not this unit's boot share")
+        && string_contains(s: outcome_reason(a: value), pattern: "observed 192.168.1.99:/srv/bmc")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE LISTING NAMES THE IMAGE TWICE. Taking either row would let the controller's order choose which
+// file is attached, so nothing is started and nothing is powered. The cause is its own and names both
+// offered identities; the red is the old "not valid JSON" label (finding 5, repaired in #12553).
+test fn a_listing_that_names_the_image_twice_starts_nothing() -> Bool {
+  let twice = [MegaRacImage { image_name: desired_image(), image_index: 5 }, MegaRacImage { image_name: desired_image(), image_index: 6 }]
+  match run_attempt(world: media_varied(media: media_with(images: twice, share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "more than once (image_index 5, 6)")
+        && !string_contains(s: outcome_reason(a: value), pattern: "not valid JSON")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE PRESENTATION IS LOST FIVE SECONDS AFTER IT BECAME READY: after the attach saw it ready and before
+// the handoff. Measured window: a loss 3 to 8 seconds after readiness falls here; 1 second falls between
+// two readiness looks (the attach never sees it ready), and 12 seconds or more falls after the handoff.
+// The pre-handoff re-observation must see it gone and refuse without the boot override or power.
+test fn a_presentation_lost_after_readiness_stops_the_handoff() -> Bool {
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 5) }))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A PRESENTATION LOST AFTER THE HANDOFF IS THE NAMED CAUSE (finding 4, repaired in #12554). Lost
+// twenty seconds after readiness -- after the boot override and the power action -- the watch still
+// reaches its deadline, but a post-handoff look (after-handoff, or end-of-attempt when the handoff
+// finished before the withdrawal) affirmed the loss, so the outcome names it and keeps the deadline
+// beside it; which look sees it is the unit witnesses' subject, not this case's (#12423 media: presentation withdrawal). The red is the bare deadline.
+test fn a_presentation_lost_after_the_handoff_is_the_reported_cause() -> Bool {
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 20) }))) {
+    WitnessReturned { value, route } =>
+      (string_contains(s: outcome_reason(a: value), pattern: "media presentation lost at after-handoff (")
+        || string_contains(s: outcome_reason(a: value), pattern: "media presentation lost at end-of-attempt ("))
+        && string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+    _ => false
+  }
+}
+
+// ─── OBSERVATION FAILURES ─────────────────────────────────────────────────────────────────────────
+
+// ANOTHER CLIENT ALREADY HOLDS THE SOL SESSION. The collector starts and exits at once with the
+// controller's refusal on its stderr, and the attempt refuses with that typed cause -- read from the
+// client diagnostics, never the host capture -- before any other controller write, and without
+// deactivating a session this hold did not establish.
+test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
+  let w = world_with_console(lines: [])
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_sol_session(world: w.bmc, open: true))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "SOL collector not established: the SOL payload is already active on another session")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// SOL IS LOST THIRTY SECONDS AFTER THE HOST STARTS BOOTING WHILE MANAGEMENT KEEPS ANSWERING, and the
+// census would have printed at sixty. The drop is armed by the host's own boot in the model, so it
+// follows the route's real power-on. The loss is reported when it is observed, not at the terminal
+// deadline (#12423): a typed ObservationChannelLost, the incident frozen, the BMC shown answering, and
+// the teardown within sixty seconds of the power action -- before the census could have printed. This
+// case was pinned as reporting the loss only at the deadline until #12434's watch detected it. The final
+// world shows the drop fired, so the case is not green on a run where the loss never happened.
+fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
+  bmc_sol_drop_fired(world: w.bmc)
+}
+
+fn first_dispatch_second(route: List<DispatchRecord>, name: String) -> Int? {
+  match filter(route, r => operation_name(r: r) == name).first() { Present { value: r } => Present { value: std.measure.second_count(s: r.dispatched_at) as Int } Absent => none }
+}
+
+// The teardown's delay after the power action, required to exist on both ends -- an absent deactivate
+// or power action is not a zero -- and to be nonnegative and at most `bound` seconds (review of #12533
+// at bd99cbb489: a -1 sentinel let an absent or early teardown pass).
+fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
+  match first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") {
+    Absent => false
+    Present { value: power } => match first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") {
+      Absent => false
+      Present { value: torn } => torn - power >= 0 && torn - power <= bound
+    }
+  }
+}
+
+test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+  let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
+  let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
+  match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+    WitnessReturned { value, route, state } =>
+      string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
+        && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
+        && string_contains(s: outcome_reason(a: value), pattern: "BMC answered mc info")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
+        && teardown_within(route: route, bound: 60)
+        && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
+    _ => false
+  }
+}
+
+// ─── RESOURCE VARIATION ───────────────────────────────────────────────────────────────────────────
+
+// TWO SOCKETS ANSWER. The census reports 160 CPUs over two NUMA nodes; the declared expectation for
+// this unit is one socket and 80 CPUs, so the terminal verdict refuses on topology and reports what it
+// observed -- the thread count and the per-node placement -- rather than a transport failure. The
+// refused terminal is reported at the powered-on stage, not as a census that ended.
+data two_socket_census_capture: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159\n----EXIT numa: 0\n----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z====="
+
+test fn a_two_socket_answer_is_a_truthful_topology_refusal() -> Bool {
+  match run_attempt(world: world_with_console(lines: console_of(capture: two_socket_census_capture, begin_after: 60, end_after: 240))) {
+    WitnessReturned { value, route } =>
+      !census_ended(a: value)
+        && string_contains(s: outcome_reason(a: value), pattern: "nproc observed 160, qualification expects 80")
+        && string_contains(s: outcome_reason(a: value), pattern: "node 0=80, node 1=80")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+    _ => false
+  }
+}
+
+// ─── INTERRUPTION ─────────────────────────────────────────────────────────────────────────────────
+
+// THE WORKER DIES RIGHT AFTER THE START-MEDIA WRITE COMMITS, before its reply. The realization is the
+// matrix's own with that one handler wrapped: the controller takes the start, and the worker is gone.
+// THE WORKER DIES RIGHT AFTER StartMedia COMMITS: the dispatch reports it killed, and the kernel
+// removes the dead process's /proc entry. stopped_after_start_media is the same interruption with the
+// worker's process STILL RUNNING (the dispatch stopped being observed; the holder did not exit) -- the
+// live-holder control.
+fn interrupted_after_start_media(realization: OperationRealization<MtCollins1BootWorld>, process_exits: Bool) -> OperationRealization<MtCollins1BootWorld> {
+  OperationRealization {
+    identity: realization.identity, initial: realization.initial, epoch: realization.epoch, advance: realization.advance,
+    bindings: map(realization.bindings, b => if b.at.operation == "StartMedia" {
+      OperationBinding { at: b.at, handler: fn(state, call) {
+        let inner = b.handler
+        match inner(state, call) {
+          OperationObserved { observation: _, state: after, elapsed: _ } =>
+            OperationWorkerKilled { committed: true, state: if process_exits { with_fs(w: after, fs: worker_process_killed(fs: after.fs, pid: first_worker_pid)) } else { after } }
+          other => other
+        }
+      } }
+    } else { b }),
+  }
+}
+
+fn killed_after_start_media(realization: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+  interrupted_after_start_media(realization: realization, process_exits: true)
+}
+
+fn stopped_after_start_media(realization: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+  interrupted_after_start_media(realization: realization, process_exits: false)
+}
+
+// THE NEXT RUN IS A NEW WORKER PROCESS on the same host: a new run id, and its own pid and start tick
+// in procfs. The first worker's /proc entry is left as the interruption left it.
+fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld {
+  as_another_run_in(w: w, run_id: run_id, pid_namespace: worker_pid_namespace)
+}
+
+fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
+  let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
+  let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+}
+
+// THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
+// never released the unit; its process is gone from procfs, so the next run observes the holder dead,
+// frees the hold and proceeds to the controller -- no operator step (#12423: interrupted operations are
+// reconciled without undocumented preparation). The red is the old lockout: "is held by" with no write.
+// The two controls beside it differ only in what procfs says of the holder: still running, and a stat
+// read the host refuses. Neither is ever recovered, and neither writes to the controller.
+fn resumed_after(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
+  resumed_in(realization: realization, refuse_holder_stat: refuse_holder_stat, pid_namespace: worker_pid_namespace)
+}
+
+fn resumed_in(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool, pid_namespace: String) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
+  match evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+    WitnessInterrupted { at, state, now: interrupted_clock } => {
+      let another = as_another_run_in(w: state, run_id: "4243", pid_namespace: pid_namespace)
+      let next = if refuse_holder_stat { with_fs(w: another, fs: fs_refusing_reads_of(fs: another.fs, path: proc_stat_path(pid: first_worker_pid))) } else { another }
+      if at.invocation.at.operation != "StartMedia" { none } else {
+        Present { value: evaluate_in_witness_frame(
+          frame: matrix_frame_over(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: next, epoch: interrupted_clock)),
+          subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }
+        ) }
+      }
+    }
+    _ => none
+  }
+}
+
+fn fresh_realization() -> OperationRealization<MtCollins1BootWorld> {
+  mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin())
+}
+
+test fn an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() -> Bool {
+  match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
+    Present { value: WitnessReturned { value, route } } =>
+      !string_contains(s: outcome_reason(a: value), pattern: "is held by")
+        && count(filter(route, r => is_controller_write(r: r))) > 0
+    _ => false
+  }
+}
+
+test fn a_live_holder_still_blocks_the_next_attempt() -> Bool {
+  match resumed_after(realization: stopped_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "which is alive")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+test fn an_unobservable_holder_is_refused_not_recovered() -> Bool {
+  match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: true) {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "whose liveness could not be observed")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+// A SUCCESSOR IN ANOTHER PID NAMESPACE CANNOT LOOK (review 72326). The holder is dead and its
+// /proc entry gone, exactly as in the recovery case above; the only difference is that the next run
+// reads a different /proc/self/ns/pid. From there a missing pid proves nothing, so the hold is
+// refused, never recovered, and nothing is written. The red is recovery across namespaces.
+test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() -> Bool {
+  match resumed_in(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false, pid_namespace: "pid:[4026532999]") {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "its pid cannot be looked up from here")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+// ─── TIME ─────────────────────────────────────────────────────────────────────────────────────────
+// The media readiness wait is bounded by the WALL clock (gunbc.machine_intake_megarac_media_attach
+// megarac_await_readiness over extdeps.clock clock_unix_millis_read). In this scenario the attach's
+// readiness looks run from t=16 to t=35 of virtual time, so a jump at t=20 lands inside the wait.
+fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
+    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_snoc_item(xs: w.clock.jumps, item: ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
+    worker: w.worker, console: w.console, media: w.media, screen: w.screen,
+  }
+}
+
+// THE WALL CLOCK STEPS BACK A MINUTE DURING THE READINESS WAIT. Virtual time keeps moving; the wall
+// reading goes backwards. The wait refuses as unable to bound itself -- the production
+// ReadinessClockIncoherent arm -- rather than waiting on a window it can no longer measure, and
+// nothing after the attach is written.
+test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bool {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 0 - 60)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the clock cannot bound the readiness wait")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE WALL CLOCK JUMPS TEN MINUTES FORWARD DURING THE READINESS WAIT. The window reads as closed at the
+// next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
+// buys an unbounded one. The look count follows the route's own schedule before the media wait -- it
+// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it, and from 3 to 2 when the
+// power-on account's pre-power hpm check read (one virtual second, after admission) joined the prefix
+// -- so a later change to that prefix moves it again; what the case holds is the refusal at the look
+// after the jump.
+test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
+        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// ─── CD ERROR CODE ────────────────────────────────────────────────────────────────────────────────
+// cd_error_code on the general route: 16 is the value the Mt. Collins MegaRAC answered on 2026-09-27
+// with nothing presented (test.claim.machine_intake.megarac_media_convergence_witness_test
+// mtcollins1_media_general_2026_09_27). Its meaning is the vendor's: extdeps.bmc.megarac
+// megarac_rmedia_status_0_32 names it "Device Ejected", and the vendor UI reads the code only while the
+// row is stopped, so beside a Started row it is a latched last-stop reason, recorded and never
+// withheld on. Whether a stop clears it is not observed, so the stale-image cases run both arms of the
+// model's parameter.
+fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [], next_session: 1, share: real_share, mount_cd: 1, cd_error_code: code,
+    images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], cd: cd,
+    ready_after: second(count: 12), withdraw_at: none, withdraw_after_ready: none,
+    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none,
+  }
+}
+
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO STOPPED WITH `code` where it would have read Started.
+fn media_stopping(code: Int) -> MegaRacMediaWorld {
+  let w = media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd())
+  MegaRacMediaWorld {
+    sessions: w.sessions, next_session: w.next_session, share: w.share, mount_cd: w.mount_cd, cd_error_code: w.cd_error_code,
+    images: w.images, cd: w.cd, ready_after: w.ready_after, withdraw_at: w.withdraw_at, withdraw_after_ready: w.withdraw_after_ready,
+    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code },
+  }
+}
+
+fn no_error_after_ready() -> Int? {
+  none
+}
+
+// Another census image of this lane: the same name stem with a different digest prefix.
+data stale_lane_image: String = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0000000000000000.iso"
+
+fn presenting(image_name: String) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: image_name, redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
+}
+
+// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state, and boot run 36721915217's.
+// 16 is a named stop reason, so the attach proceeds with no stop; the presentation reaches Started with
+// 16 still read, which the vendor does not consult beside a Started row, so it is recorded and the
+// attempt proceeds to the boot.
+test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// A CODE OUTSIDE THE VENDOR'S TABLE WITH THE HOST ALREADY ON. 99 names nothing in rmedia:status_1..17, so
+// it is a knowledge refusal; the fresh-presentation experiment that could settle it would stop the
+// medium the host may be running from, so it is not admitted and nothing is written at all.
+test fn an_uncatalogued_cd_error_with_the_host_on_writes_nothing() -> Bool {
+  let w = media_varied(media: media_errored(code: 99, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the host is powered on; stopping the medium would withdraw what it may be running from")
+        && count(filter(route, r => is_controller_write(r: r) && r.invocation.at.service == "megarac.Media")) == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A CODE THAT APPEARS WITH READINESS. The presentation reads Started while the general route reports
+// 16 at readiness: a Started row is ready whatever the code says, so the attempt proceeds to the boot.
+test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Mount Error". The attempt refuses by the
+// vendor's name, as a presentation failure, with no handoff.
+test fn a_start_that_stops_with_mount_error_refuses_by_name() -> Bool {
+  match run_attempt(world: media_varied(media: media_stopping(code: 11))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Mount Error (cd_error_code 11; a presentation failure")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Device Ejected". 16 is a no-fault stop --
+// the consumer let the medium go -- but nothing is presented, so there is nothing to boot from: the
+// attempt refuses by name, classed no-fault, with no handoff.
+test fn a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() -> Bool {
+  match run_attempt(world: media_varied(media: media_stopping(code: 16))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Device Ejected (cd_error_code 16; no fault")
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A STALE IMAGE OF THIS LANE IS PRESENTED WITH CODE 16 AND THE HOST OFF, AND THE STOP CLEARS THE CODE.
+// The attempt stops the stale image, attaches the desired one, and proceeds to the boot: stop, then
+// start, then the override, then power.
+test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE SAME STALE IMAGE, BUT THE STOP DOES NOT CLEAR THE CODE. The replacement reaches Started with the
+// code still 16, a latched reason beside a Started row, and the attempt proceeds to the boot.
+test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// A FOREIGN IMAGE IS PRESENTED -- not a census image of this lane. It is not this workflow's to stop:
+// the attempt refuses and writes nothing to the media.
+test fn a_foreign_presented_image_is_not_stopped() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: "gunbc-mtcollins1-census-older.iso")))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "it is not this workflow's to stop, so nothing was written")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A NAMED RECEIPT THAT REFUSES READS NOTHING FROM THE CONTROLLER AND WRITES NOTHING: admission
+// (gunbc.host_boot_attempt_admission) runs under the unit hold and before the SDR/SEL baseline, so a
+// receipt path outside artifacts/receipts/ refuses before any BMC read or power action.
+fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs,
+    environment: concat(w.environment, [ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_RECEIPT", value: path }, ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_NONCE", value: nonce }]),
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen,
+  }
+}
+
+test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool {
+  match run_attempt(world: with_named_receipt(w: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240)), path: "artifacts/receipts/../escape.json", nonce: "n1")) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "attempt receipt refused")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SdrDumpAuthenticated") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticated") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticatedCached") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}

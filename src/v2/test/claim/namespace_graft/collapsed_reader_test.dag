@@ -6,13 +6,13 @@ import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge,
   qualified_name_from_graft_spine,
-  qualified_name_from_module_node
+  qualified_name_from_module_node,
+  dag_surface_edge,
 }
 import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.compiler.namespace_graft { module_header_containment_graft }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string
@@ -52,7 +52,7 @@ fn cr_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
 
 fn cr_export_edge(name: Symbol) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: cr_sym_node(sym: name)
   }
 }
@@ -65,12 +65,10 @@ fn cr_pre_graft_module_root(
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: cr_qn_spine(segments: qn)
         )
       ],

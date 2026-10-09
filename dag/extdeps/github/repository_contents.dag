@@ -7,7 +7,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -92,7 +93,6 @@ data hermetic_repository_file_blob_sha: String = "99f1255bbfa20a11197716a8fdb4c4
 data hermetic_repository_file_size: Int = 5172
 data hermetic_repository_file_encoding: String = "base64"
 data hermetic_repository_file_content: String = "aGVybWV0aWMtZml4dHVyZS1ub3QtdGhlLXJlYWwtZmlsZQ=="
-data hermetic_repository_file_outcome: RestOutcome = RestOk
 
 service github.RepositoryContents {
   config {
@@ -102,6 +102,7 @@ service github.RepositoryContents {
   }
 
   operation GetContent {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -111,7 +112,6 @@ service github.RepositoryContents {
     }
     output {
       file: RepositoryFileContent
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -135,8 +135,7 @@ service github.RepositoryContents {
           size: hermetic_repository_file_size,
           encoding: hermetic_repository_file_encoding,
           content: hermetic_repository_file_content
-        },
-        outcome: hermetic_repository_file_outcome
+        }
       } "hermetic decoded-200 shape for the repository-contents read. The path, blob sha and size are the real 2026-09-10 reading for biomejs/biome at 47d7383d; the CONTENT is deliberately a fixture marker rather than the real file, because a mock that carried 5172 real bytes would make a workflow reader look as if it had read GitHub when it had read a constant"
     }
   }

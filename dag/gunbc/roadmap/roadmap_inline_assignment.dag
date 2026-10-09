@@ -1,0 +1,71 @@
+module gunbc.roadmap_inline_assignment
+
+import gunbc.auth.session { AuthenticatedSession }
+import gunbc.auth.profile_projection { PrincipalProfile }
+import gunbc.principal_projection { principal_ref_label, principal_ref_eq, fabric_workflow_principal }
+import gunbc.roadmap.roadmap_event_log {
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, RoadmapEventEnvelope,
+  event_principal_label,
+}
+import gunbc.roadmap_page { issue_chain_head_id, event_principal_display_with_profile, issue_assign_suggestions, issue_assignee_chip_node, issue_assign_form_nodes }
+import std.markup { Fragment }
+import gunbc.roadmap_issue_command { IssueFormContext }
+import gunbc.site.markup { el_class }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_string, json_bool }
+
+// The picker submits established principal references. Display names never mint identity.
+// Fabric is pinned first, then self, then distinct authenticated recents in ledger order.
+// Legacy email-only recents remain visible but disabled: no email can mint a principal.
+fn inline_assignment_choices(session: AuthenticatedSession, recents: List<EventPrincipal>) -> List<EventPrincipal> {
+  issue_assign_suggestions(viewer: principal_ref_label(p: session.principal), recents: recents)
+}
+
+// THE CHIP_HTML rides the profile-bound chip (owner ask 2026-09-28): the picker's row shows the
+// person's real identity — the avatar chip PLUS the issue-assignee-text span when the store knows
+// the principal — serialized inside one wrapper span.
+fn inline_assignment_chip_html(p: EventPrincipal, profiles: List<PrincipalProfile>) -> String {
+  match try_serialize_html_source(node: el_class_wrap(nodes: issue_assignee_chip_node(holder: p, profiles: profiles))) {
+    EmitOk { html } => html
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn el_class_wrap(nodes: List<Fragment>) -> Fragment {
+  el_class("span", "issue-assignee-chipset", nodes)
+}
+
+fn inline_assignment_option(session: AuthenticatedSession, p: EventPrincipal, profiles: List<PrincipalProfile>) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "value", value: json_string(s: event_principal_label(p: p))),
+    json_kv(key: "disabled", value: json_bool(b: match p {
+      EventPrincipalAuthenticated { ref: _ } => false
+      LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => true
+    })),
+    json_kv(key: "chip_html", value: json_string(s: inline_assignment_chip_html(p: p, profiles: profiles))),
+    json_kv(key: "label", value: json_string(s: match p {
+      EventPrincipalAuthenticated { ref } =>
+        if principal_ref_eq(a: ref, b: fabric_workflow_principal) { "fabric@gunb.ai" }
+        else if principal_ref_eq(a: ref, b: session.principal) { "Me" }
+        else { event_principal_display_with_profile(p: p, profiles: profiles).name }
+      LegacyEmailPrincipal { email, authentication_unestablished: _ } => join([email as String, " (unverified identity)"], "")
+    })),
+  ])
+}
+
+// THE PICKER CONTEXT BODY: csrf + expected_revision + the choices + the operation identity. The
+// profiles roster is the read-once auth profile projection the serve caller passes (the picker's
+// chip_html and labels project real identity; an empty roster renders every fallback exactly as
+// before — the never-blocks law), and the operation parameter rides Cut 1's retry idempotency.
+fn inline_assignment_context_body(session: AuthenticatedSession, events: List<RoadmapEventEnvelope>, recents: List<EventPrincipal>, profiles: List<PrincipalProfile>, operation: String = "", node_id: String = "") -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "picker_html", value: json_string(s: if node_id == "" { "" } else { match try_serialize_html_source(node: el_class_wrap(nodes: issue_assign_form_nodes(node_id: node_id, profiles: profiles, viewer: principal_ref_label(p: session.principal), recents: recents, expected_revision: issue_chain_head_id(envs: events), current_assignee: "", command_context: IssueFormContext { operation: operation, csrf: session.csrf.token as String }))) {
+      EmitOk { html } => html EmitRejected { reason: _ } => ""
+    } })),
+    json_kv(key: "key", value: json_string(s: operation)),
+    json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
+    json_kv(key: "expected_revision", value: json_string(s: issue_chain_head_id(envs: events))),
+    json_kv(key: "options", value: json_array(elements: map(inline_assignment_choices(session: session, recents: recents), p => inline_assignment_option(session: session, p: p, profiles: profiles)))),
+  ]))
+}

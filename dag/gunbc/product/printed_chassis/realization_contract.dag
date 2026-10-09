@@ -67,16 +67,17 @@ import product.printed_chassis.coupon {
 // The geometry is carried in FULL. Diameter alone was the sidecar in another costume: a handler that
 // realized the right diameters at the wrong centres, or on a plate of the wrong thickness, passed a
 // wall whose entire purpose was to catch exactly that.
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
 type RawOperationRow sole_constructor {
   kind: NonEmptyStr
-  diameter_um: Int
+  diameter_um: Micrometer
   center_x_um: Int
   center_y_um: Int
 }
 
 fn raw_operation_row(
   kind: NonEmptyStr,
-  diameter_um: Int,
+  diameter_um: Micrometer,
   center_x_um: Int,
   center_y_um: Int,
 ) -> RawOperationRow {
@@ -103,18 +104,18 @@ fn raw_operation_row(
 // twelve rows and find them equal.
 type RawRealizationEnvelope sole_constructor {
   schema_version: NonEmptyStr
-  plate_x_um: Int
-  plate_y_um: Int
-  plate_z_um: Int
+  plate_x_um: Micrometer
+  plate_y_um: Micrometer
+  plate_z_um: Micrometer
   orientation_datum: RawOperationRow
   ladder_holes: List<RawOperationRow>
 }
 
 fn raw_realization_envelope(
   schema_version: NonEmptyStr,
-  plate_x_um: Int,
-  plate_y_um: Int,
-  plate_z_um: Int,
+  plate_x_um: Micrometer,
+  plate_y_um: Micrometer,
+  plate_z_um: Micrometer,
   orientation_datum: RawOperationRow,
   ladder_holes: List<RawOperationRow>,
 ) -> RawRealizationEnvelope {
@@ -243,7 +244,7 @@ type OperationScan sole_constructor {
 
 fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
   OpThroughHole {
-    diameter: micrometer(count: row.diameter_um),
+    diameter: row.diameter_um,
     center_x: micrometer(count: row.center_x_um),
     center_y: micrometer(count: row.center_y_um),
   }
@@ -277,26 +278,29 @@ fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
         }
       }
     )
-    if scan.unknown.length() != 0 {
-      EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
-    } else if envelope.ladder_holes.length() == 0 {
-      EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
-    } else {
-      EnvelopeDecodedV0 {
-        decoded: DecodedRealizationV0 {
-          geometry: hole_diameter_coupon_geometry(
-            plate: plate_dimensions(
-              size_x: micrometer(count: envelope.plate_x_um),
-              size_y: micrometer(count: envelope.plate_y_um),
-              size_z: micrometer(count: envelope.plate_z_um),
-            ),
-            orientation_datum: decode_operation_row(row: envelope.orientation_datum),
-            ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
-              concat(acc, [decode_operation_row(row: row)])
-            }),
-          ),
-        },
-      }
+    match scan.unknown.first() {
+      Present { value: unknown_kind } =>
+        EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: unknown_kind } }
+      Absent =>
+        if envelope.ladder_holes.length() == 0 {
+          EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
+        } else {
+          EnvelopeDecodedV0 {
+            decoded: DecodedRealizationV0 {
+              geometry: hole_diameter_coupon_geometry(
+                plate: plate_dimensions(
+                  size_x: envelope.plate_x_um,
+                  size_y: envelope.plate_y_um,
+                  size_z: envelope.plate_z_um,
+                ),
+                orientation_datum: decode_operation_row(row: envelope.orientation_datum),
+                ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
+                  concat(acc, [decode_operation_row(row: row)])
+                }),
+              ),
+            },
+          }
+        }
     }
   }
 }

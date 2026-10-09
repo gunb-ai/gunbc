@@ -1,0 +1,131 @@
+module v2.test.claim.arrow_order_edge.admission_wall
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { validate_module_roots }
+import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.compiler.resolve { ResolvedTree, resolve }
+import v2.extdeps.languages.dag { dag_language_model_void }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic { Accepted, None, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, well_formed }
+import v2.std.node_query { binder_edge }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.collection { empty_map }
+
+// A4: AN ARROW WHOSE DOMAIN BINDS A NAME OWES ITS DECLARED ORDER, AT NODE ADMISSION. Since Program P
+// (gunbc#12625) a Named edge in an Arrow's domain is a parameter binder, and only
+// ^arrow_signature_order_edge carries its position, so v2.std.node well_formed now refuses a
+// Named-binder domain with no order edge (arrow_domain_binds_a_name). This reverses #12361's "an
+// Arrow with no order edge is well formed": the class moves from the binding-time refusal
+// (rung 1, v2.test.claim.declared_parameter_order dpo_binding_refuses_an_arrow_without_order,
+// still enrolled) to Node admission (rung 3). No source can author the bad state -- every lowering
+// mints the order through declared_signature -- so each RED below SUPPLIES the Arrow at the
+// admission boundary it discriminates, and the rung is the minimum across these paths.
+
+fn aoe_atom(sym: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn aoe_binder() -> Edge {
+  binder_edge(name: ^aoe_x, type_node: aoe_atom(sym: ^aoe_int))
+}
+
+// THE RED: a Named-binder domain, no order edge. Deliberately hand-built; it has no producer.
+fn aoe_named_domain_without_order() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [aoe_binder()], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// POSITIVE CONTROL: the same signature through the one constructor, carrying its order.
+fn aoe_named_domain_with_order() -> Node {
+  let signature = declared_signature(params: [aoe_binder()], source: aoe_atom(sym: ^aoe_int))
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [signature.domain, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }, signature.order],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// POSITIVE CONTROL: a positional, no-binder, no-order Arrow owes no order and is admitted.
+fn aoe_positional_no_binder() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A module root holding one declaration whose value is `arrow`.
+fn aoe_module_root(arrow: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^aoe_decl }, target: arrow }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
+  !well_formed(n: aoe_named_domain_without_order())
+    && well_formed(n: aoe_named_domain_with_order())
+    && well_formed(n: aoe_positional_no_binder())
+}
+
+// PATH: infer, entered directly with a ResolvedTree.
+fn aoe_infer_reason(arrow: Node) -> Symbol {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [] }) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: _, diagnostics: _ } => ^aoe_accepted
+  }
+}
+
+test fn aoe_infer_refuses_a_named_domain_without_order() -> Bool {
+  (aoe_infer_reason(arrow: aoe_named_domain_without_order()) == ^infer_reason_malformed_tree)
+    && (aoe_infer_reason(arrow: aoe_named_domain_with_order()) != ^infer_reason_malformed_tree)
+    && (aoe_infer_reason(arrow: aoe_positional_no_binder()) != ^infer_reason_malformed_tree)
+}
+
+// PATH: resolve, over an admitted NormalizedTree.
+fn aoe_resolve_reason(arrow: Node) -> Symbol {
+  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
+    Rejected { diagnostics: _ } => ^aoe_not_admitted
+    Accepted { value: tree, diagnostics: _ } =>
+      match resolve(tree: tree, lm: dag_language_model_void()) {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+        Accepted { value: _, diagnostics: _ } => ^aoe_accepted
+      }
+  }
+}
+
+test fn aoe_resolve_refuses_a_named_domain_without_order() -> Bool {
+  (aoe_resolve_reason(arrow: aoe_named_domain_without_order()) == ^resolve_reason_malformed_tree)
+    && (aoe_resolve_reason(arrow: aoe_named_domain_with_order()) != ^resolve_reason_malformed_tree)
+    && (aoe_resolve_reason(arrow: aoe_positional_no_binder()) != ^resolve_reason_malformed_tree)
+}
+
+// PATH: assemble_program_from_ingest, at its root gate. Every ingested root reaches resolution through
+// v2.compiler.name_resolve validate_module_roots, whose well_formed check is where this path refuses.
+fn aoe_assembly_gate_reason(arrow: Node) -> Symbol {
+  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
+    Rejected { diagnostics: _ } => ^aoe_not_admitted
+    Accepted { value: tree, diagnostics: _ } =>
+      match validate_module_roots(roots: Cons { head: tree, tail: Empty }) {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+        Accepted { value: _, diagnostics: _ } => ^aoe_accepted
+      }
+  }
+}
+
+test fn aoe_assembly_gate_refuses_a_named_domain_without_order() -> Bool {
+  (aoe_assembly_gate_reason(arrow: aoe_named_domain_without_order()) == ^resolve_reason_malformed_imported_root)
+    && (aoe_assembly_gate_reason(arrow: aoe_named_domain_with_order()) != ^resolve_reason_malformed_imported_root)
+    && (aoe_assembly_gate_reason(arrow: aoe_positional_no_binder()) != ^resolve_reason_malformed_imported_root)
+}

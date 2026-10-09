@@ -184,11 +184,11 @@ data ci_cost_floor_exempt_step_names_note: String = "Cost-floor roster BY STEP N
 data ci_cost_floor_exempt_step_names: List<String> = [
   "Isolate toolchain dirs",
   "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-  "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)",
+  "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)",
   "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 ]
 
-data ci_native_cache_root_exempt_note: String = "Fourth exempt entry (CI2-0 capsule 1, 2026-08-08): the GUNBC_NATIVE_CACHE_ROOT derivation now runs in build, regen, AND ci — GITHUB_ENV is job-scoped, so each job that spawns native emit-host transports must derive its own root, and the three sites' LCA is the workflow isolation boundary. The script is one rustc -V plus a mkdir and a GITHUB_ENV append — a sub-second environment write whose store-tier discharge would cost more than the recompute it saves, the exact class the first two roster entries name. Dissolve-on: the same typed-toolchain-probe trigger the step's own 🟡 marker carries (#5828 / shell→intent Phase 2)."
+data ci_native_cache_root_exempt_note: String = "Fourth exempt entry (CI2-0 capsule 1, 2026-08-08): the GUNBC_NATIVE_CACHE_ROOT derivation now runs in build, regen, AND ci — GITHUB_ENV is job-scoped, so each job that spawns native emit-host transports must derive its own root, and the three sites' LCA is the workflow isolation boundary. The script is one rustc -V plus a mkdir and a GITHUB_ENV append — a sub-second environment write whose store-tier discharge would cost more than the recompute it saves, the exact class the first two roster entries name. Dissolve-on: the same typed-toolchain-probe trigger the step's own 🟡 marker carries (v2.workflow.ci_workflow_run_emit ci_native_cache_root_shell_emit_dissolution_trigger)."
 
 // C0 (operator ruling, 2026-07-09): this provider row is DERIVED from the cited catalog, never
 // hand-typed. extdeps.cache.sccache owns what sccache IS (NativeInternal content hashing over
@@ -380,14 +380,14 @@ fn warm_without_provider_receipt(r: ResolveRealization) -> Bool {
   match r {
     SatisfiedFromSharedPool { obligation: _, provider: p, receipt: rec } =>
       p.provider_id == "" || rec.provider_id == "" || rec.provider_id != p.provider_id
-    _ => false
+    ColdResolvePerformed { obligation: _, receipt: _ } => false
   }
 }
 
 fn cold_without_resolve_receipt(r: ResolveRealization) -> Bool {
   match r {
     ColdResolvePerformed { obligation: _, receipt: rec } => nanosecond_count(rec.resolve_nanos) == 0
-    _ => false
+    SatisfiedFromSharedPool { obligation: _, provider: _, receipt: _ } => false
   }
 }
 

@@ -1,11 +1,22 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, List }
+import extdeps.languages.json.emit { json_object }
+import gunbc.harness.harness_wire { WireToolUseBlock }
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, harness_tool_wire_name,
+}
 import std.measure { character_count, character_count_value }
+import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
 import gunbc.roadmap_provider_events {
+  CodexItemActivity, CodexRunningCommand, CodexEditingFiles, CodexUsingConnectedTool, CodexSearching,
+  CodexUpdatingPlan, CodexReasoningItem, CodexReporting, HarnessReadingFile, HarnessWritingFile,
+  HarnessEditingFile, HarnessRefusingUnrecognizedTool, CodexUnclassifiedItem,
+  CodexItemStarted, CodexItemCompleted,
   CodexEventsParsed,
   CodexEventsRefused,
   ProviderRunning,
+  ProviderAwaitingSeat,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
@@ -269,21 +280,6 @@ test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
   forged == "Agent working · reporting" && genuine == "Agent working · editing files"
 }
 
-test fn roadmap_provider_events_keystone_holds() -> Bool {
-  codex_stream_classifies_running_activity()
-    && codex_agent_message_completed_is_finishing_not_complete()
-    && codex_completed_is_terminal_only_from_provider_event()
-    && codex_completed_state_is_terminal()
-    && codex_turn_failed_preserves_raw_provider_evidence()
-    && codex_error_is_not_absorbed_into_spawned()
-    && truncated_line_refuses_with_location_and_raw()
-    && unknown_event_refuses_instead_of_guessing_progress()
-    && nested_type_token_cannot_fabricate_terminal_success()
-    && braced_but_invalid_json_cannot_fabricate_terminal_success()
-    && oversized_event_refuses_without_echoing_payload()
-    && refusal_marks_prior_activity_as_historical()
-}
-
 // The agent REPORT members of the projection filter, pinned as a string contract because the filter
 // is a jq program the substrate assembles but does not itself interpret
 // (codex_projection_filter_scaffold_note). Nothing downstream of the shell can prove what the
@@ -323,4 +319,126 @@ test fn agent_report_declares_truncation_from_original_length() -> Bool {
 test fn agent_report_does_not_disturb_the_item_type_anchor() -> Bool {
   string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type,\"message\":agent_report}")
     && string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type}")
+}
+
+// A WORKER WAITING IN LINE FOR A SEAT IS READ AS WAITING, NOT AS A TURN THAT NEVER STARTED. The line
+// is the harness's own producer (gunbc.harness.harness_turn harness_event_placement_waiting), so the
+// pair below is the real producer into the real reader: the reason it was refused a seat reaches the
+// dashboard detail, and the wait counter with it. Before the arm existed the line classified as an
+// unknown event type and the whole stream was refused.
+fn waiting_line(wait: Int, reason: String) -> String {
+  concat(harness_event_placement_waiting(wait: wait, wait_cap: 1440, reason: reason), "\n")
+}
+
+test fn a_placement_wait_is_awaiting_seat_with_its_reason() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: waiting_line(wait: 2, reason: "group-b: the engine reports 12 occupant(s)"))) {
+    ProviderAwaitingSeat { detail } =>
+      string_contains(s: detail, pattern: "group-b: the engine reports 12 occupant(s)")
+        && string_contains(s: detail, pattern: "wait 2 of 1440")
+    _ => false
+  }
+}
+
+test fn a_placement_wait_is_labelled_awaiting_seat_and_carries_its_detail() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: waiting_line(wait: 1, reason: "group-a unavailable")))
+  provider_execution_state_label(state: state) == "awaiting_seat"
+    && string_contains(s: provider_execution_detail(state: state), pattern: "group-a unavailable")
+}
+
+// The wait is not sticky: once placed, the first provider event moves the attempt on.
+test fn a_placed_turn_leaves_the_wait_behind() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: join([
+    waiting_line(wait: 1, reason: "busy"),
+    "{\"type\":\"turn.started\"}\n",
+  ], ""))) {
+    ProviderRunning { activity: _ } => true
+    _ => false
+  }
+}
+
+// And it is pinned through the projector: an unknown type is projected to {"type"} alone, which
+// would deliver the wait with its reason stripped.
+test fn the_projector_keeps_the_wait_reason() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)}")
+}
+
+// THE TOOL A ROUND DISPATCHED IS THE ACTIVITY THE READER REPORTS, real emitter into real reader.
+// Each stream below is what gunbc.harness.harness_turn harness_tool_round_events writes for one
+// tool use, and each is read by parse_codex_jsonl with nothing supplied in between, so deleting the
+// derivation at either end reddens these: an emitter that writes one kind for every tool collapses
+// the four tags to one, and a reader that re-spells a kind the emitter does not write falls to
+// "other". The tag is this file's own exhaustive discriminator over the typed activity, so the
+// claims read the arm and not the operator-facing label.
+fn activity_tag(activity: CodexItemActivity) -> String {
+  match activity {
+    CodexRunningCommand => "run"
+    HarnessReadingFile => "read"
+    HarnessWritingFile => "write"
+    HarnessEditingFile => "edit"
+    HarnessRefusingUnrecognizedTool => "undeclared"
+    CodexEditingFiles => "other"
+    CodexUsingConnectedTool => "other"
+    CodexSearching => "other"
+    CodexUpdatingPlan => "other"
+    CodexReasoningItem => "other"
+    CodexReporting => "other"
+    CodexUnclassifiedItem => "other"
+  }
+}
+
+fn tool_use_round_tags(name: String) -> String {
+  let lines = harness_tool_round_events(
+    uses: [WireToolUseBlock { id: "toolu_1", name: name, input: json_object([]) }],
+  )
+  match parse_codex_jsonl(text: concat(join(lines, "\n"), "\n")) {
+    CodexEventsRefused { events_before_refusal: _, line_number: _, raw: _, reason: _ } => "refused"
+    CodexEventsParsed { events } =>
+      join(
+        fold(
+          events,
+          init: [],
+          f: (acc, e) => concat(acc, [
+            match e.kind {
+              CodexItemStarted { activity } => join(["started:", activity_tag(activity: activity)], "")
+              CodexItemCompleted { activity } => join(["completed:", activity_tag(activity: activity)], "")
+              _ => "not-an-item"
+            },
+          ]),
+        ),
+        ",",
+      )
+  }
+}
+
+fn harness_tool_round_tags(tool: HarnessTool) -> String {
+  tool_use_round_tags(name: harness_tool_wire_name(tool: tool) as String)
+}
+
+test fn a_harness_command_round_is_read_back_as_running_a_command() -> Bool {
+  harness_tool_round_tags(tool: RunCommandTool) == "started:run,completed:run"
+}
+
+test fn a_harness_file_read_round_is_read_back_as_reading_not_running() -> Bool {
+  harness_tool_round_tags(tool: ReadFileTool) == "started:read,completed:read"
+}
+
+test fn a_harness_file_write_round_is_read_back_as_writing() -> Bool {
+  harness_tool_round_tags(tool: WriteFileTool) == "started:write,completed:write"
+}
+
+test fn a_harness_file_edit_round_is_read_back_as_editing_apart_from_writing() -> Bool {
+  harness_tool_round_tags(tool: EditFileTool) == "started:edit,completed:edit"
+}
+
+// A NAME THE HARNESS DOES NOT DECLARE IS NEVER REPORTED AS A COMMAND. The dispatcher refuses such a
+// use; the stream says it was an undeclared tool rather than guessing a kind for it.
+test fn an_undeclared_tool_round_is_read_back_as_undeclared_not_as_a_command() -> Bool {
+  tool_use_round_tags(name: "delete_everything") == "started:undeclared,completed:undeclared"
+}
+
+test fn a_harness_tool_round_reaches_the_operator_as_its_own_activity() -> Bool {
+  let read_line = concat(join(harness_tool_round_events(
+    uses: [WireToolUseBlock { id: "toolu_1", name: harness_tool_wire_name(tool: ReadFileTool) as String, input: json_object([]) }],
+  ), "\n"), "\n")
+  activity_of(text: read_line) == "Agent working · reading file"
 }

@@ -1,11 +1,11 @@
 module v2.workflow.floor_diff_observe
 
-import gunbc.ci_spec {
+import gunbc.ci_diff_policy {
   DiffMode,
   DiffPolicy,
   DiffMergeBase,
   DiffTwoDot,
-  gunbc_ci_spec
+  gunbc_ci_diff_policy
 }
 import gunbc.diff_baseline {
   CiDiffEvent,
@@ -21,6 +21,9 @@ import gunbc.diff_baseline {
   PushBeforeInputRefused,
   ExactReplayBoundary,
   MergeTarget,
+  MergeGroupBaseInput,
+  MergeGroupBaseSha,
+  MergeGroupBaseInputRefused,
   resolve_diff_baseline,
   diff_baseline_ref,
   diff_baseline_diff_base,
@@ -31,7 +34,7 @@ import gunbc.diff_baseline {
 import std.types { String, NonEmptyStr, GitRef, FilePath, Map }
 import std.logic { Bool }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import extdeps.git
 import extdeps.git.inspect
@@ -48,8 +51,15 @@ import extdeps.git {
   git_diff_name_status_field_separator,
   git_remote_ref_parts
 }
-import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push, github_event_path_env }
+import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push, github_event_name_merge_group, github_event_path_env }
 import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.github.merge_group_event {
+  merge_group_base_from_event_path,
+  MergeGroupBaseObserved,
+  MergeGroupBaseAbsent,
+  MergeGroupBaseMalformed,
+  MergeGroupEventPayloadReadRefused
+}
 import extdeps.github.push_event {
   push_before_from_event_path,
   PushBeforeObserved,
@@ -92,7 +102,7 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
 // (push self-compare refusal), push before from GITHUB_EVENT_PATH (extdeps.github.push_event), and
 // exact replay from GUNBC_DIFF_WINDOW_PATH (gunbc.git_diff_change_window). pull_request with branch
 // base → MergeTarget (triple-dot); diff window → ExactReplayBoundary (two-dot, typed GitObjectIds);
-// push → PushBefore; other CI events → PushParent. Unrecognized events and malformed diff-window
+// push → PushBefore; merge_group → MergeGroupBase (the group parent, two-dot); other CI events → PushParent. Unrecognized events and malformed diff-window
 // wire REFUSE — never widen. When both GUNBC_DIFF_WINDOW_PATH and GUNBC_CI_DIFF_BASE are set,
 // resolve_diff_baseline refuses with BaselineSourceConflict.
 
@@ -156,6 +166,36 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
   }
 }
 
+fn floor_merge_group_base_refusal(detail: String) -> MergeGroupBaseInput {
+  MergeGroupBaseInputRefused {
+    reason: concat(concat("merge_group event base_sha unobservable — ", detail), "; halting the floor (AFFECTED-SET REFUSAL)")
+  }
+}
+
+// The merge group's parent, from the same GITHUB_EVENT_PATH payload the push arm reads. Only a
+// merge_group event observes it; every unobservable state is a typed refusal the resolver carries.
+fn floor_observe_merge_group_base_input(event_name: String) -> MergeGroupBaseInput? {
+  if event_name != github_event_name_merge_group {
+    none
+  } else {
+    match floor_env_optional(env_name: github_event_path_env) {
+      Absent => Present { value: floor_merge_group_base_refusal(detail: "GITHUB_EVENT_PATH is unset") }
+      Present { value: path } =>
+        if path == "" {
+          Present { value: floor_merge_group_base_refusal(detail: "GITHUB_EVENT_PATH is empty") }
+        } else {
+          match merge_group_base_from_event_path(path: path) {
+            MergeGroupBaseObserved { sha: sha } => Present { value: MergeGroupBaseSha { sha: sha as String } }
+            MergeGroupBaseAbsent { detail: d } => Present { value: floor_merge_group_base_refusal(detail: d) }
+            MergeGroupBaseMalformed { detail: d } => Present { value: floor_merge_group_base_refusal(detail: d) }
+            MergeGroupEventPayloadReadRefused { path: p, cause: c } =>
+              Present { value: floor_merge_group_base_refusal(detail: join(["payload unreadable at ", p, ": ", c], "")) }
+          }
+        }
+    }
+  }
+}
+
 fn floor_observe_diff_window() -> GitDiffWindowObservation? {
   match floor_env_optional(env_name: gunbc_diff_window_path_env) {
     Absent => none
@@ -170,23 +210,34 @@ fn floor_observe_diff_window() -> GitDiffWindowObservation? {
 
 fn floor_observe_ci_diff_event() -> CiDiffEvent {
   let event_name = floor_env_override_or(env_name: github_event_name_env, default: "")
+  let override_ref = floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr)
+  let base_ref = floor_env_optional(env_name: github_base_ref_env)
+  let push_before = floor_observe_push_before_input(event_name: event_name)
+  let head_sha = floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
+  let diff_window = floor_observe_diff_window()
+  let merge_group_base = floor_observe_merge_group_base_input(event_name: event_name)
   CiDiffEvent {
-    override_ref: floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr),
+    override_ref: override_ref,
     event_name: event_name,
-    base_ref: floor_env_optional(env_name: github_base_ref_env),
-    push_before: floor_observe_push_before_input(event_name: event_name),
-    head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr),
-    diff_window: floor_observe_diff_window()
+    base_ref: base_ref,
+    push_before: push_before,
+    head_sha: head_sha,
+    diff_window: diff_window,
+    merge_group_base: merge_group_base
   }
 }
 
 fn floor_resolve_baseline(policy: DiffPolicy) -> DiffBaselineResolution {
   let push_parent = policy.base as GitRef
-  resolve_diff_baseline(
-    event: floor_observe_ci_diff_event(),
-    push_parent_ref: push_parent,
-    default_remote_name: git_remote_ref_parts(ref: push_parent).remote
-  )
+  match git_remote_ref_parts(ref: push_parent) {
+    Present { value: parts } =>
+      resolve_diff_baseline(
+        event: floor_observe_ci_diff_event(),
+        push_parent_ref: push_parent,
+        default_remote_name: parts.remote
+      )
+    Absent => BaselineRefused { reason: "diff policy base ref names no remote" }
+  }
 }
 
 fn floor_resolved_head(policy: DiffPolicy) -> String {
@@ -199,6 +250,7 @@ fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> D
     ExactReplayBoundary { base: _, head: _, observed_relation: _ } => DiffTwoDot
     MergeTarget { ref: _ } => policy.mode
     PushParent { ref: _ } => policy.mode
+    MergeGroupBase { ref: _ } => DiffTwoDot
     OperatorOverride { ref: _ } => policy.mode
   }
 }
@@ -250,7 +302,7 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
 }
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
-  floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_unified(policy: gunbc_ci_diff_policy)
 }
 
 data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline FOR DIAGNOSTICS ONLY — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). Its consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them.
@@ -284,7 +336,7 @@ fn floor_observe_diff_baseline_readout(policy: DiffPolicy) -> FloorDiffBaselineR
 }
 
 fn floor_observe_diff_baseline_readout_for_ci() -> FloorDiffBaselineReadout {
-  floor_observe_diff_baseline_readout(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_diff_baseline_readout(policy: gunbc_ci_diff_policy)
 }
 
 data floor_diff_comparison_readout_law: String = "THE PROJECTION A DECIDING CONSUMER MUST TAKE, and the defect that produced it. The baseline readout above answers 'which ref' and nothing else, which is exactly enough to LOCATE a diagnostic and not nearly enough to COMPARE two trees. gunbc#7953 took that lossy projection into the frozen-roster monotonicity gate and then reconstructed the missing half in Rust by imposing merge-base on every arm — deleting the origin/main source fork and immediately re-forking the RELATION instead. That is a fail-open, not a cosmetic slip: PushBefore and ExactReplayBoundary are exact two-dot comparisons, so a non-fast-forward push whose before SHA is not an ancestor gets compared against the common ancestor instead, and a frozen row REINTRODUCED by that push reads as no addition at all. Executed counterexample: roster A=\{X\}, push before B=\{\} (X removed), pushed head H=\{X\} off A; the true two-dot answer H minus B is \{X\} and must refuse, while merge-base(B,H)=A gives H minus A=\{\} and passes real growth.
@@ -345,7 +397,7 @@ fn floor_observe_diff_comparison_readout(policy: DiffPolicy) -> FloorDiffCompari
 }
 
 fn floor_observe_diff_comparison_readout_for_ci() -> FloorDiffComparisonReadout {
-  floor_observe_diff_comparison_readout(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_diff_comparison_readout(policy: gunbc_ci_diff_policy)
 }
 
 fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
@@ -413,7 +465,7 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
-  floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_name_status(policy: gunbc_ci_diff_policy)
 }
 
 // BASE-REVISION TEST-DECLARATION CENSUS.
@@ -463,6 +515,35 @@ fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
       }
     }
   )
+}
+
+// ONE FILE AT THE RESOLVED DIFF BASE, read through the same listing + show effects the
+// test-declaration census uses: absent at base is its own arm (a file the diff adds), never an
+// empty file, and a failed listing or show refuses. Consumer: the required floor's typed
+// non-fold-residue check, which compares the gunbc.non_fold_residue roster at base and head so a
+// row the diff adds or deletes brings its subject module into the typed scope.
+type FloorBaseFileRead
+  = BaseFileAbsent
+  | BaseFileRead { content: String }
+  | BaseFileReadRefused { reason: String }
+
+fn floor_run_base_file_read(base: String, path: String) -> FloorBaseFileRead {
+  let listed = git.Inspect.ListTreePathsAtRevision(ref: base as GitRef)
+  if !listed.success {
+    BaseFileReadRefused { reason: listed.stderr }
+  } else {
+    match map_lookup(m: floor_base_paths_present(paths_nul: listed.paths_nul), key: path) {
+      Absent => BaseFileAbsent
+      Present { value: _ } => {
+        let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+        if shown.success {
+          BaseFileRead { content: shown.content }
+        } else {
+          BaseFileReadRefused { reason: shown.stderr }
+        }
+      }
+    }
+  }
 }
 
 fn floor_base_census_acc_append(

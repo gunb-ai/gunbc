@@ -1,0 +1,175 @@
+module v2.test.execution.dag_grammar_backward_round_trip
+
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_round_trip_parse, dag_round_trips }
+import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root }
+import std.algebra { list_snoc_item }
+import v2.std.algebra { length }
+import std.types { List }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
+import v2.std.fn_index { non_empty_diagnostics_list }
+import v2.std.grammar { GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_emit_parse_tree, grammar_expr_terminal, node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, Authored, Edge, Node, Symbol, TypeNode }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE GRAMMAR, BOTH DIRECTIONS (docs/plans/dag-emit-one-grammar-backward.md). The round trip and the
+// missing-production red run the real ingest route -- dag_prepared_grammar, the dag lexer,
+// parse_module_prepared -- and emit the parse tree the parser actually built, by reading
+// dag_grammar_root backward. Identity is v2.std.node content_hash, which does not read occurrence
+// ids, so spans may move. Only the duplicated-projection pair supplies its tree, because no parse
+// mints the malformed capture that pair is about.
+
+// The parse and the round trip are the instrument's own helpers
+// (gunbc.instruments.dag_emit_real_grammar_round_trips), so the floor claim and the off-floor cases
+// run one route, not two copies of it.
+fn rt_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } => dag_round_trip_parse(prepared: prepared, residue: residue, text: text)
+  }
+}
+
+fn rt_emit_of(text: String) -> Outcome<String> {
+  bind_outcome(o: rt_parse(text: text), f: fn(tree) { dag_emit_parse_tree(tree: tree) })
+}
+
+data rt_data_decl_source: String = "module rt.data_decl\ndata m: Int = 1\n"
+
+// ONE ROUND TRIP IS ENROLLED; THE REST RUN AS A NAMED INSTRUMENT, DECLARED. Two parses of any construct
+// larger than a one-line data declaration exceed the new-witness eval-step budget, and several cross
+// the wall clock. So this data declaration is the floor's inhabitance claim for the real
+// ingest -> emit -> re-ingest path. It is over its budget, which is declared in
+// gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost. The per-construct round trips are
+// the cases of `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`, whose roster is the
+// population of the declared drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor.
+// Their discriminating content is claimed at its own interfaces, under budget, in
+// v2.test.execution.dag_emit_interface.
+test fn a_data_declaration_round_trips_holds() -> Bool { dag_round_trips(text: rt_data_decl_source) }
+
+// THE RED: A PRODUCTION WITH NO ROW REFUSES, TYPED AND LOCATED. The same parse tree is emitted
+// against dag_grammar_root with the data-declaration production removed. The refusal names the
+// unknown production and sits at the stamped data_decl capture the parser built, not at the root.
+fn rt_root_without(production: Symbol) -> GrammarRoot {
+  let root = dag_grammar_root()
+  GrammarRoot {
+    start: root.start,
+    productions: fold(root.productions, init: [], f: fn(acc, p) { if p.name == production { acc } else { list_snoc_item(xs: acc, item: p) } }),
+    sync_tokens: root.sync_tokens
+  }
+}
+
+fn rt_stamp_of(node: Node) -> Optional<Symbol> {
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: t } => node_atom_identity_optional(node: t)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+fn rt_first_stamped(node: Node, emitted: Symbol) -> Optional<Node> {
+  match rt_stamp_of(node: node) {
+    Present { value: s } =>
+      if s == emitted {
+        optional_present(value: node)
+      } else {
+        rt_first_stamped_in_children(node: node, emitted: emitted)
+      }
+    Absent => rt_first_stamped_in_children(node: node, emitted: emitted)
+  }
+}
+
+fn rt_first_stamped_in_children(node: Node, emitted: Symbol) -> Optional<Node> {
+  fold(
+    node.children,
+    init: optional_absent(),
+    f: fn(found, e) {
+      match found {
+        Present { value: n } => optional_present(value: n)
+        Absent => rt_first_stamped(node: e.target, emitted: emitted)
+      }
+    }
+  )
+}
+
+fn rt_refused_at(ds: List<Diagnostic>, reason: Symbol, at: Node) -> Bool {
+  fold(ds, init: false, f: fn(acc, d) { acc || ((d.reason == reason) && (d.at == node_locus(node: at))) })
+}
+
+test fn a_production_missing_its_row_refuses_located_at_its_capture_holds() -> Bool {
+  match rt_parse(text: rt_data_decl_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rt_first_stamped(node: tree, emitted: ^dag_surface_data_decl) {
+        Absent => false
+        Present { value: capture } =>
+          match dag_emit_parse_tree_with_root(root: rt_root_without(production: ^dag_production_data_decl), tree: tree) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: ds } => rt_refused_at(ds: non_empty_diagnostics_list(d: ds), reason: ^grammar_emit_production_unknown, at: capture)
+          }
+      }
+  }
+}
+
+// A DUPLICATED PROJECTION EDGE REFUSES; IT IS NEVER READ AS AN ARM THAT DOES NOT FIT. The tree is
+// supplied, because the subject is the walk's reading of a malformed capture, which no parse mints.
+// The real-route round trip above, and the instrument's cases, are this boundary's inhabitance claims. One production reads `a b`, and its
+// capture carries two left edges.
+fn rt_edge(name: Symbol, target: Node) -> Edge { Edge { label: Authored { name: name }, target: target } }
+
+fn rt_conj(children: List<Edge>) -> Node { Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic } }
+
+fn rt_probe_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^rt_probe_production,
+    productions: [
+      GrammarProduction {
+        name: ^rt_probe_production,
+        expression: Sequence { left: grammar_expr_terminal(token_class: ^rt_probe_a), right: grammar_expr_terminal(token_class: ^rt_probe_b) },
+        emitted: grammar_atom(identity: ^rt_probe_emitted)
+      }
+    ],
+    sync_tokens: []
+  }
+}
+
+fn rt_probe_left() -> Edge { rt_edge(name: ^grammar_sequence_left_node_projection, target: grammar_atom(identity: ^rt_probe_a)) }
+
+fn rt_probe_right() -> Edge { rt_edge(name: ^grammar_sequence_right_node_projection, target: grammar_atom(identity: ^rt_probe_b)) }
+
+fn rt_probe_tree(captured: Node) -> Node {
+  rt_conj(children: [
+    rt_edge(name: ^grammar_production_identity_node_projection, target: grammar_atom(identity: ^rt_probe_emitted)),
+    rt_edge(name: ^grammar_production_captured_node_projection, target: captured)
+  ])
+}
+
+test fn a_duplicated_projection_edge_refuses_as_ambiguous_holds() -> Bool {
+  let captured = rt_conj(children: [rt_probe_left(), rt_probe_left(), rt_probe_right()])
+  match grammar_emit_parse_tree(root: rt_probe_root(), tree: rt_probe_tree(captured: captured)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => rt_refused_at(ds: non_empty_diagnostics_list(d: ds), reason: ^grammar_emit_projection_ambiguous, at: captured)
+  }
+}
+
+// Its positive control: the same capture with one left edge walks to its two terminals.
+test fn a_single_projection_edge_walks_holds() -> Bool {
+  match grammar_emit_parse_tree(root: rt_probe_root(), tree: rt_probe_tree(captured: rt_conj(children: [rt_probe_left(), rt_probe_right()]))) {
+    Accepted { value: ts, diagnostics: _ } => length(xs: ts) == 2
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The same tree against the whole root is the red's positive control: the refusal is caused by the
+// missing row, not by the fixture.
+test fn the_unmutated_root_emits_the_red_fixture_holds() -> Bool {
+  match rt_emit_of(text: rt_data_decl_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

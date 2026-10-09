@@ -1,8 +1,8 @@
 module gunbc.fleet_fan_wiring
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.operator_fan_declaration {
   DeclarationCoversHeader,
   arctic_p8_2u_chassis_declaration,
@@ -21,12 +21,7 @@ import gunbc.fleet_fan_tach_expectation {
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
 //

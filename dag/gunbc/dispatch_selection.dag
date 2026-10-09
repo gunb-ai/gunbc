@@ -1,7 +1,7 @@
 module gunbc.dispatch_selection
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
-import v2.std.optional { optional_absent, optional_present }
+import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
   ProviderModelSelection,
   ProviderAccountDefaultModel,
@@ -46,17 +46,12 @@ import gunbc.codex_provider_runtime_receipt {
 }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import gunbc.roadmap_model {
-  NodeSizing,
-  Sized,
-  Unsized,
-  Volume,
-  VolumeMedium,
-  Intricacy,
-  IntricacyHigh,
-  PrsMerged,
+import gunbc.claude_code_credential { claude_code_oauth_harness_secret_ref }
+import gunbc.roadmap_sizing {
+  NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
+  IntricacyHigh, VolumeMedium,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_capacity_control {
   fleet_capacity_admission, fleet_capacity_admission_in, fleet_capacity_admission_admits,
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
@@ -86,8 +81,26 @@ import gunbc.provider_account {
 // Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01).
 // This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same
 // semantics ExecutionPreference — see dispatch_execution_preference_alias_note. Provider offers are
-// a per-provider coproduct; volume and intricacy from NodeSizing never flow into model or effort
-// selection. Every dispatch records requested_selection beside resolved_execution bound fields in
+// a per-provider coproduct; SIZE ENTERS AS A DECLARED EXPECTATION AND NEVER AS A SILENT DEFAULT.
+// Until the sizing unbundling this module threaded a hand-authored NodeSizing through every resolve
+// function and recorded it on the receipt, and the note here claimed volume and intricacy never
+// flow into model or effort. The claim was true and the parameter was unread by every branch and by
+// every consumer of the receipt -- a passenger, which is the shape that lets a later edit quietly
+// start reading an authored guess. Sizing is derived now (gunbc.roadmap_sizing), and this module is
+// the consumer that legitimately wants one, because choosing an execution profile is exactly the
+// decision a size would inform. So the passenger becomes a DECLARED, TWO-ARM-HONEST input:
+// SizingProfileExpectation is either a derived cell or the explicit absence of one, and there is no
+// third spelling in which a stub answer arrives looking derived.
+//
+// WHAT THE ABSENT ARM DOES TODAY, stated rather than implied: nothing. Live selection is
+// ProfileAutomatic for every request, so NoDerivedSizingExpectation and a derived cell resolve to
+// the same provider, model and effort, and the expectation is recorded on the receipt as the fact
+// it is -- what was known about the task's size when it was dispatched. That is deliberate, and it
+// is the operator ruling of 2026-09-10: a missing size is not a reason to refuse a correctly
+// bounded task, because dispatch safety comes from the execution contract, the path boundary, the
+// oracle and publication confinement, never from how big the work is. The day a profile policy
+// reads the derived arm it reads THIS field, and the absent arm is already there for it to refuse
+// on or fall back from explicitly. Every dispatch records requested_selection beside resolved_execution bound fields in
 // DispatchExecutionReceipt so what was REQUESTED is never displayed as proof of what RAN.
 
 data dispatch_execution_preference_alias_note: String = "Naming authority: ExecutionProfile. Operator synonym: ExecutionPreference. Both denote the same closed coproduct Automatic | Deep | ExactOverride with identical semantics."
@@ -245,8 +258,24 @@ type DispatchResolvedExecution {
   attempt_identity: DispatchAttemptIdentity
 }
 
+// THE TASK'S SIZE AS SELECTION SEES IT. Two arms and no more: a size was derived, or none was --
+// whether because the deriver could not answer or because this dispatch has no task subject at all
+// (a harness probe selecting a provider is not sizing anything). Collapsing those two into one
+// absent arm is deliberate: to a profile decision they are the same fact, "no derived expectation",
+// and WHY a size is missing is the sizing authority's business and is recorded there.
+type SizingProfileExpectation
+  = NoDerivedSizingExpectation
+  | DerivedSizingExpectation { sizing: NodeSizing }
+
+fn sizing_profile_expectation(d: NodeSizingDerivation) -> SizingProfileExpectation {
+  match d {
+    SizingDerived { subject: _, sizing } => DerivedSizingExpectation { sizing: sizing }
+    SizingNotDerivable { subject: _, detail: _ } => NoDerivedSizingExpectation
+  }
+}
+
 type DispatchExecutionReceipt {
-  node_sizing: NodeSizing
+  sizing_expectation: SizingProfileExpectation
   requested_selection: ProviderSelectionRequest
   resolved_selection: ResolvedProviderSelection
   resolved_execution: DispatchResolvedExecution
@@ -257,7 +286,7 @@ type DispatchExecutionReceipt {
 type DispatchSelectionResult
   = DispatchSelectionResolved { receipt: DispatchExecutionReceipt }
   | DispatchSelectionRefused {
-      node_sizing: NodeSizing
+      sizing_expectation: SizingProfileExpectation
       requested_selection: ProviderSelectionRequest
       reason: NonEmptyStr
     }
@@ -404,12 +433,14 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
-// PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted
-// from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still
-// delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it
-// — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls
-// (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude
-// standing is selectable.
+// PRODUCTION WIRING (the deferral under operator ruling msg_3b291a6a / msg_0ec68b71 -- "OfferClaude is
+// omitted until the WorkerTurn PR" -- is discharged, 2026-10-05): the srv1 live inventory now
+// carries OfferClaude, appended AFTER Codex, credential claude_dispatch_credential(), at declared
+// inventory-unobserved standing. That standing admits no draw, so the automatic path still cannot
+// pick Claude; the only route that reaches it is the operator's explicit executor request
+// (gunbc.roadmap_dispatch_actuator DispatchExecutorRequest), which observes the credential first and
+// selects over inventory_with_observed_standing. The custody file the attempt snapshots exists on
+// srv1 only, so the row is offered on srv1's live instance only.
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -492,14 +523,14 @@ fn dispatch_resolved_execution_from_selection(
 }
 
 fn dispatch_execution_receipt(
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
   requested_selection: ProviderSelectionRequest,
   resolved_selection: ResolvedProviderSelection,
   provider_kind: ProviderKind,
   applied_effort: ReasoningEffort,
 ) -> DispatchExecutionReceipt {
   DispatchExecutionReceipt {
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
     requested_selection: requested_selection,
     resolved_selection: resolved_selection,
     resolved_execution: dispatch_resolved_execution_from_selection(resolved: resolved_selection),
@@ -644,6 +675,115 @@ fn fixture_inventory_claude_then_codex(
   }
 }
 
+// THE ONE ANSWER TO WHICH CLAUDE CREDENTIAL A DISPATCHED CLAUDE ATTEMPT RUNS UNDER: the inventory
+// offer carries it and the actuator's spawn reads it, so the credential the selection judged and
+// the credential the process receives cannot diverge. It is the subscription setup-token secret
+// (gunbc.claude_code_credential), never the ambient ~/.claude profile tree -- a profile on disk is
+// not the authority to act (CARRIER-SHAPE note below).
+// ONE CREDENTIAL IDENTITY FROM REQUEST TO RECEIPT TO PROCESS (review 76871). The resolved selection
+// carries the REQUESTED credential into the receipt's credential_binding, so a request that names a
+// different credential than the offer binds would produce a receipt naming one credential while the
+// spawn runs under another -- what was requested presented as what ran. Selection therefore refuses
+// a Claude request whose credential is not the offer's.
+fn claude_credential_ref_same(a: ClaudeCredentialRef, b: ClaudeCredentialRef) -> Bool {
+  match a {
+    ClaudeStateRootRef { root: ra } =>
+      match b {
+        ClaudeStateRootRef { root: rb } => ra == rb
+        ClaudeOAuthTokenSecretRef { secret_ref: _ } => false
+        ClaudeApiKeySecretRef { secret_ref: _ } => false
+      }
+    ClaudeOAuthTokenSecretRef { secret_ref: sa } =>
+      match b {
+        ClaudeOAuthTokenSecretRef { secret_ref: sb } =>
+          sa.project == sb.project && sa.secret == sb.secret && sa.version == sb.version
+        ClaudeStateRootRef { root: _ } => false
+        ClaudeApiKeySecretRef { secret_ref: _ } => false
+      }
+    ClaudeApiKeySecretRef { secret_ref: sa } =>
+      match b {
+        ClaudeApiKeySecretRef { secret_ref: sb } =>
+          sa.project == sb.project && sa.secret == sb.secret && sa.version == sb.version
+        ClaudeStateRootRef { root: _ } => false
+        ClaudeOAuthTokenSecretRef { secret_ref: _ } => false
+      }
+  }
+}
+
+fn claude_credential_ref_wire(c: ClaudeCredentialRef) -> String {
+  match c {
+    ClaudeStateRootRef { root } => join(["state root ", root as String], "")
+    ClaudeOAuthTokenSecretRef { secret_ref } => join(["oauth token secret ", secret_ref.secret as String], "")
+    ClaudeApiKeySecretRef { secret_ref } => join(["api key secret ", secret_ref.secret as String], "")
+  }
+}
+
+fn claude_dispatch_credential() -> ClaudeCredentialRef {
+  ClaudeOAuthTokenSecretRef { secret_ref: claude_code_oauth_harness_secret_ref }
+}
+
+// AN OBSERVED STANDING REPLACES THE DECLARED ROW'S, ON THE NAMED PROVIDER'S OFFER ONLY. A declared
+// inventory row carries inventory-unobserved standing, which no draw admits; an explicit vendor draw
+// observes its credential (for Claude, gunbc.claude_code_limit_standing) and substitutes that reading
+// here, so selection judges the same row with evidence rather than a second row being minted. Every
+// other provider's offer passes through unchanged.
+fn inventory_with_observed_standing(inventory: ProviderInventory, kind: ProviderKind, standing: ProviderStanding) -> ProviderInventory {
+  ProviderInventory {
+    offers: map(inventory.offers, offer =>
+      match offer {
+        OfferClaude { offer: o } =>
+          match kind {
+            ClaudeCliProvider =>
+              OfferClaude {
+                offer: ClaudeOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            CodexCliProvider => offer
+            CursorCliProvider => offer
+          }
+        OfferCodex { offer: o } =>
+          match kind {
+            CodexCliProvider =>
+              OfferCodex {
+                offer: CodexOffer {
+                  instance: o.instance,
+                  account_state_root: o.account_state_root,
+                  account_binding: o.account_binding,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CursorCliProvider => offer
+          }
+        OfferCursor { offer: o } =>
+          match kind {
+            CursorCliProvider =>
+              OfferCursor {
+                offer: CursorOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_model: o.default_model,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CodexCliProvider => offer
+          }
+      }
+    ),
+  }
+}
+
 fn claude_offer_for_instance_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
@@ -659,7 +799,7 @@ fn claude_offer_for_instance_with_standing(
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
       state_directory: ProviderInstanceFieldUnobserved {
-        reason: "ClaudeStateRootRef is the credential reference" as NonEmptyStr,
+        reason: "the credential is a managed secret reference, not a state root" as NonEmptyStr,
       },
       credential_storage_method: ProviderInstanceFieldUnobserved {
         reason: "claude credentials live under explicit state root or managed secret" as NonEmptyStr,
@@ -668,7 +808,7 @@ fn claude_offer_for_instance_with_standing(
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
     },
-    credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+    credential: claude_dispatch_credential(),
     standing: standing,
     default_effort: ReasoningMedium,
     deep: DeepUnavailable,
@@ -815,8 +955,17 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    ProviderInventory {
-      offers: codex_inventory_offers_for_instance(instance: instance),
+    if instance.instance_id == srv1_live_dashboard_instance().instance_id {
+      ProviderInventory {
+        offers: concat(
+          codex_inventory_offers_for_instance(instance: instance),
+          [OfferClaude { offer: claude_offer_for_instance(instance: instance) }],
+        ),
+      }
+    } else {
+      ProviderInventory {
+        offers: codex_inventory_offers_for_instance(instance: instance),
+      }
     }
   }
 }
@@ -844,7 +993,7 @@ fn codex_effort_for_profile(
       }
       DispatchSelectionResolved {
         receipt: dispatch_execution_receipt(
-          node_sizing: Unsized,
+          sizing_expectation: NoDerivedSizingExpectation,
           requested_selection: SelectAutomatically { profile: ProfileAutomatic },
           resolved_selection: resolved,
           provider_kind: CodexCliProvider,
@@ -867,7 +1016,7 @@ fn codex_effort_for_profile(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: Unsized,
+              sizing_expectation: NoDerivedSizingExpectation,
               requested_selection: SelectAutomatically { profile: ProfileDeep },
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -877,14 +1026,14 @@ fn codex_effort_for_profile(
         }
         DeepUnavailable =>
           DispatchSelectionRefused {
-            node_sizing: Unsized,
+            sizing_expectation: NoDerivedSizingExpectation,
             requested_selection: SelectAutomatically { profile: ProfileDeep },
             reason: "provider offer has no configured Deep realization" as NonEmptyStr,
           }
       }
     ProfileExactOverride =>
       DispatchSelectionRefused {
-        node_sizing: Unsized,
+        sizing_expectation: NoDerivedSizingExpectation,
         requested_selection: SelectAutomatically { profile: ProfileExactOverride },
         reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
       }
@@ -894,12 +1043,12 @@ fn codex_effort_for_profile(
 fn resolve_codex_offer(
   offer: CodexOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   match codex_offer_observed_process_fingerprint(offer: offer) {
     Absent =>
       DispatchSelectionRefused {
-        node_sizing: node_sizing,
+        sizing_expectation: sizing_expectation,
         requested_selection: request,
         reason: dispatch_codex_process_fingerprint_unobserved_selection_refusal,
       }
@@ -908,7 +1057,7 @@ fn resolve_codex_offer(
         offer: offer,
         observed_fingerprint: observed_fingerprint,
         request: request,
-        node_sizing: node_sizing,
+        sizing_expectation: sizing_expectation,
       )
   }
 }
@@ -917,7 +1066,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
   offer: CodexOffer,
   observed_fingerprint: NonEmptyStr,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -929,16 +1078,16 @@ fn resolve_codex_offer_with_observed_fingerprint(
         DispatchSelectionResolved { receipt } =>
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: receipt.resolved_selection,
               provider_kind: receipt.provider_kind,
               applied_effort: receipt.applied_effort,
             ),
           }
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
           DispatchSelectionRefused {
-            node_sizing: node_sizing,
+            sizing_expectation: sizing_expectation,
             requested_selection: request,
             reason: reason,
           }
@@ -958,7 +1107,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -981,7 +1130,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  node_sizing: node_sizing,
+                  sizing_expectation: sizing_expectation,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CodexCliProvider,
@@ -991,7 +1140,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                node_sizing: node_sizing,
+                sizing_expectation: sizing_expectation,
                 requested_selection: request,
                 reason: "provider offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1009,7 +1158,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -1022,7 +1171,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
     }
     _ =>
       DispatchSelectionRefused {
-        node_sizing: node_sizing,
+        sizing_expectation: sizing_expectation,
         requested_selection: request,
         reason: "selection request shape does not match Codex offer" as NonEmptyStr,
       }
@@ -1032,7 +1181,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
 fn resolve_claude_offer(
   offer: ClaudeOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -1050,7 +1199,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1073,7 +1222,7 @@ fn resolve_claude_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  node_sizing: node_sizing,
+                  sizing_expectation: sizing_expectation,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: ClaudeCliProvider,
@@ -1083,19 +1232,30 @@ fn resolve_claude_offer(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                node_sizing: node_sizing,
+                sizing_expectation: sizing_expectation,
                 requested_selection: request,
                 reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
               }
           }
         ProfileExactOverride =>
           DispatchSelectionRefused {
-            node_sizing: node_sizing,
+            sizing_expectation: sizing_expectation,
             requested_selection: request,
             reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
           }
       }
     SelectClaude { profile, credential, model, effort, workflow_mode } =>
+      if !claude_credential_ref_same(a: credential, b: offer.credential) {
+        DispatchSelectionRefused {
+          sizing_expectation: sizing_expectation,
+          requested_selection: request,
+          reason: join([
+            "the requested Claude credential (", claude_credential_ref_wire(c: credential),
+            ") is not the credential this offer binds (", claude_credential_ref_wire(c: offer.credential),
+            "); a receipt must name the credential the process receives",
+          ], "") as NonEmptyStr,
+        }
+      } else {
       match profile {
         ProfileAutomatic => {
           let resolved = ResolvedClaude {
@@ -1110,7 +1270,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1133,7 +1293,7 @@ fn resolve_claude_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  node_sizing: node_sizing,
+                  sizing_expectation: sizing_expectation,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: ClaudeCliProvider,
@@ -1143,7 +1303,7 @@ fn resolve_claude_offer(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                node_sizing: node_sizing,
+                sizing_expectation: sizing_expectation,
                 requested_selection: request,
                 reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1161,7 +1321,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1169,6 +1329,7 @@ fn resolve_claude_offer(
             ),
           }
         }
+      }
       }
     SelectCodex {
       profile: _,
@@ -1178,13 +1339,13 @@ fn resolve_claude_offer(
       operator_asserted_native_limit_bucket: _,
     } =>
       DispatchSelectionRefused {
-        node_sizing: node_sizing,
+        sizing_expectation: sizing_expectation,
         requested_selection: request,
         reason: "Codex selection request does not match a Claude offer" as NonEmptyStr,
       }
     SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
       DispatchSelectionRefused {
-        node_sizing: node_sizing,
+        sizing_expectation: sizing_expectation,
         requested_selection: request,
         reason: "Cursor selection request does not match a Claude offer" as NonEmptyStr,
       }
@@ -1194,18 +1355,18 @@ fn resolve_claude_offer(
 fn resolve_provider_offer(
   offer: ProviderOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   match offer {
     OfferCodex { offer: codex } => resolve_codex_offer(
       offer: codex,
       request: request,
-      node_sizing: node_sizing,
+      sizing_expectation: sizing_expectation,
     )
     OfferClaude { offer: claude } => resolve_claude_offer(
       offer: claude,
       request: request,
-      node_sizing: node_sizing,
+      sizing_expectation: sizing_expectation,
     )
     OfferCursor { offer: cursor } =>
       match request {
@@ -1221,7 +1382,7 @@ fn resolve_provider_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              node_sizing: node_sizing,
+              sizing_expectation: sizing_expectation,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CursorCliProvider,
@@ -1243,7 +1404,7 @@ fn resolve_provider_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  node_sizing: node_sizing,
+                  sizing_expectation: sizing_expectation,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CursorCliProvider,
@@ -1253,7 +1414,7 @@ fn resolve_provider_offer(
             }
             ProfileDeep =>
               DispatchSelectionRefused {
-                node_sizing: node_sizing,
+                sizing_expectation: sizing_expectation,
                 requested_selection: request,
                 reason: "Cursor offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1269,7 +1430,7 @@ fn resolve_provider_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  node_sizing: node_sizing,
+                  sizing_expectation: sizing_expectation,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CursorCliProvider,
@@ -1280,7 +1441,7 @@ fn resolve_provider_offer(
           }
         _ =>
           DispatchSelectionRefused {
-            node_sizing: node_sizing,
+            sizing_expectation: sizing_expectation,
             requested_selection: request,
             reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
           }
@@ -1301,7 +1462,7 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
     ClaudeCliProvider =>
       SelectClaude {
         profile: ProfileAutomatic,
-        credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+        credential: claude_dispatch_credential(),
         model: dispatch_claude_default_model,
         effort: ReasoningMedium,
         workflow_mode: dispatch_claude_default_workflow_mode,
@@ -1478,11 +1639,11 @@ fn dispatch_selection_refusal_reason_for_miss(
 fn resolve_dispatch_selection(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   if list_length(items: inventory.offers) == 0 {
     DispatchSelectionRefused {
-      node_sizing: node_sizing,
+      sizing_expectation: sizing_expectation,
       requested_selection: request,
       reason: "provider inventory is empty" as NonEmptyStr,
     }
@@ -1492,11 +1653,11 @@ fn resolve_dispatch_selection(
         resolve_provider_offer(
           offer: offer,
           request: request,
-          node_sizing: node_sizing,
+          sizing_expectation: sizing_expectation,
         )
       Absent =>
         DispatchSelectionRefused {
-          node_sizing: node_sizing,
+          sizing_expectation: sizing_expectation,
           requested_selection: request,
           reason: dispatch_selection_refusal_reason_for_miss(
             inventory: inventory,
@@ -1510,12 +1671,12 @@ fn resolve_dispatch_selection(
 fn dispatch_selection_for_instance(
   instance: HostDashboardInstance,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
   resolve_dispatch_selection(
     inventory: provider_inventory_for_instance(instance: instance),
     request: request,
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
   )
 }
 
@@ -1613,11 +1774,8 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
       match resolve_dispatch_selection(
         inventory: inventory,
         request: default_provider_selection_request(),
-        node_sizing: Sized {
-          intricacy: IntricacyHigh,
-          volume: VolumeMedium,
-          repo: "gunbc",
-          acceptance: PrsMerged,
+        sizing_expectation: DerivedSizingExpectation {
+          sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeMedium },
         },
       ) {
         DispatchSelectionResolved { receipt } =>
@@ -1628,7 +1786,7 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
               resolved: receipt.resolved_selection,
               codex_default_effort: shell.default_effort,
             )
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
       }
     }
   }
@@ -1656,7 +1814,7 @@ fn fixture_claude_offer(standing: ProviderStanding) -> ProviderOffer {
           reason: "fixture claude inventory row" as NonEmptyStr,
         },
       },
-      credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+      credential: claude_dispatch_credential(),
       standing: standing,
       default_effort: ReasoningMedium,
       deep: DeepUnavailable,

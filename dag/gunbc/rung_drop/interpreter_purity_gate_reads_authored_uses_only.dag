@@ -1,0 +1,56 @@
+module gunbc.rung_drop.interpreter_purity_gate_reads_authored_uses_only
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the interpreter's purity gate, lowered by D13 cut (c)
+// (gunbc.plans.demand_engine_program D13; DESIGN 4b(3) no silent regression).
+// ============================================================================================
+//
+// WHAT THE GATE IS. The seed interpreter routes a named call through its pure path -- the eval
+// memo and the cross-claim memo -- when `fn_node.uses.is_empty()`, and through the effectful path
+// otherwise. It reads the AUTHORED requirement and nothing else: it is the one consumer of `uses`
+// that does not also read derived service demand. Every emitter consumer reads the union, which is
+// D13's terminal split -- derived for transparent bodies, authored for binders, opaque declarations
+// and policy.
+//
+// WHAT CUT (c) DOES TO IT. Cut (c) deletes the `uses` rows that restate derived demand. Before it,
+// the gate's decision agreed with the carrier across the corpus, because every effectful function
+// carried an authored row. After it, a function whose effects are DERIVED -- it calls a service, and
+// its authored row is gone -- reads as pure at the gate and is routed to the pure path. The outcome
+// stays correct, and only because the memo is guarded independently: both memo stores run only when
+// `effect_dispatch_count` is unchanged across the call, so an effectful call is never memoized. That
+// is correctness supplied by a neighbour, not by the gate's decision, which is why it is declared
+// here rather than left to that guard in silence.
+//
+// WHY THE GATE IS NOT SIMPLY SWITCHED TO THE UNION IN THE SAME CUT. The interpreter holds a
+// LEAF-keyed projection of the registry (bare name to ItemInfo, last write wins), and its own
+// service-detection note forbids gating on a name-keyed lookup because homonyms collapse -- the
+// `std.resources` resource `Filesystem` and the `extdeps.filesystem` service `Filesystem` are its
+// named case, and the same homonym D13's carrier repair turned on. Reading derived demand by callee
+// IDENTITY needs the callee's owning module and the identity-keyed registry, and the call gate holds
+// neither. Supplying them is new hand-Rust plumbing in a component D10 retires from the production
+// route, so building it here would be investment in the frozen side (v1_seed_standing), and a
+// spelling-keyed read would be a worse defect than the one this row declares.
+
+data interpreter_purity_gate_reads_authored_uses_only: RungDrop = RungDrop {
+  identity: "interpreter_purity_gate_reads_authored_uses_only" as NonEmptyStr,
+
+  subject: "the seed interpreter's purity routing decision for a named call (fn_node.uses.is_empty() in v1_interpreter), which reads the authored uses requirement alone while every other consumer reads derived demand OR authored",
+
+  declared: "2026-09-18",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the authored uses rows that restate derived service demand, deleted by D13 cut (c); the gate's agreement with the demand carrier rode on their presence, and the deletion census accounts for the rows, not for the gate that read them" },
+    population: [
+      "interpreted calls to a function whose effects are derived from its body (it reaches a service operation) and which carries no authored uses row after cut (c)",
+    ],
+    restoration_trigger: "the interpreter's purity decision agrees with the D13 demand carrier for every function WITHOUT the effect-dispatch guard carrying correctness -- sufficient that deleting that guard could not route an effectful call into a memo. Any one of three capabilities discharges it: (1) the call gate reads derived demand by callee IDENTITY (owning module plus declaration, against the identity-keyed registry), never by a leaf-keyed name; (2) the interpreter consumes the bound-handler interface of D11/D13, so effectfulness is a property of the handler it is handed rather than a row it reads; or (3) D10 removes the interpreter from the production route, demoting it to an offline oracle whose memo routing no production answer depends on. Widening the gate to the leaf-keyed name lookup does NOT discharge it.",
+  }
+}

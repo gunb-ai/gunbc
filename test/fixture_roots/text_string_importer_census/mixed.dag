@@ -1,0 +1,6 @@
+module fixture.text_string_importer_census.mixed
+import v2.std.text { String, string_join }
+fn joined(xs: List<String>, sep: String) -> Int {
+  let j = string_join(fields: xs, separator: sep)
+  string_length(s: sep)
+}

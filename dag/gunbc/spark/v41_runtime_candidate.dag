@@ -2,21 +2,21 @@ module gunbc.spark.v41_runtime_candidate
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, TypeParameter }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value, byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.gpu.types {
   GpuComputeCapability, GpuCapabilityLabelOk, GpuCapabilityLabelRejected, gpu_compute_capability_sm_label,
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
-  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_d2d649e6_revision,
+  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_recipe_with_flashinfer, vllm_d2d649e6_revision,
 }
 import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
-  flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels,
+  flashinfer_0_7_1rc1, flashinfer_0_7_1rc1_wheels, flashinfer_0_7_1rc1_version,
   FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel,
   FlashInferWheelFilenameFields, flashinfer_wheel_filename_fields,
 }
@@ -26,15 +26,30 @@ import extdeps.safetensors.format {
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
+  deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+  v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_build_key_inputs,
 }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
+import gunbc.spark.v41_engram_row_store {
+  V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
+  v41_row_store_encoding_key, v41_published_span_readings, v41_published_store_readings, v41_live_head_sizes,
+  V41StoreReadback, V41StoreReadbackVerified, V41StoreReadbackUnread, V41StoreReadbackRefused,
+  V41StoreReadbackReadingsUnread, V41StoreReadbackRead, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
+  v41_store_readback, v41_row_store_spec, v41_published_store_readback_readings,
+}
+import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 
 // ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
 //
@@ -104,10 +119,6 @@ type V41IdentityStanding
   | V41IdentityUnestablished { obligations: List<NonEmptyStr> }
   | V41IdentityRefused { defects: List<NonEmptyStr> }
 
-fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
-  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
-}
-
 // THE KERNELS THE KEY NAMES MUST BE THE KERNELS THE RECIPE INSTALLS. main already carries one defect
 // of this shape -- a flashinfer version keyed and never passed to the build -- so a candidate whose
 // acquisition names a version other than the recipe's refuses rather than keying a pin nothing honours.
@@ -117,10 +128,22 @@ fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
 // counted.
 data v41_jit_cache_package: NonEmptyStr = "flashinfer-jit-cache" as NonEmptyStr
 
+// FROM 0.7.x THE JIT-CACHE IS A SHIM PLUS ONE PROVIDER PER ARCHITECTURE: the 0.7.1rc1 shim wheel's own
+// METADATA (extdeps.flashinfer.flashinfer flashinfer_0_7_1rc1_wheels) Requires-Dist names these eight at
+// the shim's version, so `flashinfer-jit-cache==<version>` installs all nine and the closure carries all
+// nine. Every one of them is platform-specific, so the build-target gate below covers the family.
 data v41_required_kernel_packages: List<NonEmptyStr> = [
   "flashinfer-python" as NonEmptyStr,
   "flashinfer-cubin" as NonEmptyStr,
   v41_jit_cache_package,
+  "flashinfer-jit-cache-sm80" as NonEmptyStr,
+  "flashinfer-jit-cache-sm89" as NonEmptyStr,
+  "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+  "flashinfer-jit-cache-sm121a" as NonEmptyStr,
 ]
 
 // THE JIT-CACHE WHEEL IS THE ONE PLATFORM-SPECIFIC MEMBER OF THIS CLOSURE, and its package name plus the
@@ -145,7 +168,7 @@ type V41KernelBuildTarget sole_constructor {
 }
 
 data v41_jit_cache_build_target: V41KernelBuildTarget = V41KernelBuildTarget {
-  version: "0.6.18.post1+cu130" as NonEmptyStr,
+  version: "0.7.1rc1+cu130" as NonEmptyStr,
   python: "cp39" as NonEmptyStr,
   abi: "abi3" as NonEmptyStr,
   platform: "manylinux_2_28_aarch64" as NonEmptyStr,
@@ -158,7 +181,7 @@ fn v41_kernel_field_defect(field: String, actual: String, expected: NonEmptyStr,
 }
 
 fn v41_jit_cache_target_defects(wheels: List<FlashInferWheel>, target: V41KernelBuildTarget) -> List<NonEmptyStr> {
-  flat_map(v41_wheels_named(wheels: wheels, package: v41_jit_cache_package), w =>
+  flat_map(filter(wheels, w => starts_with(s: w.package as String, prefix: v41_jit_cache_package as String)), w =>
     match flashinfer_wheel_filename_fields(filename: w.filename as String) {
       Absent => [join(["the jit-cache wheel ", w.filename as String, " does not parse as a wheel filename, so the build target it installs is unknown"], "") as NonEmptyStr]
       Present { value: f } =>
@@ -320,14 +343,11 @@ fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramRes
 
 // ── THE ENGRAM RESIDENCY PARTITION ──────────────────────────────────────────────────────────────
 
-// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT. Admitted against the
-// cited population in extdeps.deepseek.deepseek_v4_1_flash: the two sets must be disjoint and together
-// name every tensor exactly once, and nothing outside the population. The storage-backed byte total is
-// DERIVED from the cited spans, never written down.
-type V41EngramResidencyPartition {
-  storage_backed: List<NonEmptyStr>
-  resident: List<NonEmptyStr>
-}
+// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT
+// (gunbc.spark.v41_identity_input V41EngramResidencyPartition). Admitted against the cited population
+// in extdeps.deepseek.deepseek_v4_1_flash: the two sets must be disjoint and together name every tensor
+// exactly once, and nothing outside the population. The storage-backed byte total is DERIVED from the
+// cited spans, never written down.
 
 type V41PartitionAdmission
   = V41PartitionAdmitted { partition: V41EngramResidencyPartition }
@@ -415,9 +435,14 @@ fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizat
 
 // A MANIFEST IS OBSERVED AS ONE DIGEST OVER ITS FILE POPULATION, OR IT IS NOT YET AN IDENTITY. The
 // checkpoint revision alone is an upstream name, not bytes this repository has read.
+// AN OBLIGATION IS NOT A DEFECT. Unestablished names something still to be read or written (a
+// digest not yet taken); refused names a population the authority admits is WRONG (a duplicated
+// shard, a role with two carriers), which no reading discharges. The candidate carries them apart
+// so a defect never reads as pending work.
 type V41ManifestStanding
   = V41ManifestObserved { digest: Sha256Digest }
   | V41ManifestUnestablished { obligation: NonEmptyStr }
+  | V41ManifestRefused { first: NonEmptyStr, rest: List<NonEmptyStr> }
 
 type V41ModelSourceInputs {
   checkpoint_revision: NonEmptyStr
@@ -429,6 +454,24 @@ fn v41_manifest_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
   match m {
     V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
     V41ManifestUnestablished { obligation: o } => [o]
+    V41ManifestRefused { first: _, rest: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// A refusal carries at least one defect BY CONSTRUCTION (first, rest), so an empty refusal that
+// would fall through to keying is not writable.
+fn v41_manifest_defects(m: V41ManifestStanding) -> List<NonEmptyStr> {
+  match m {
+    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
+    V41ManifestUnestablished { obligation: _ } => [] as List<NonEmptyStr>
+    V41ManifestRefused { first: f, rest: r } => concat([f], r)
+  }
+}
+
+fn v41_manifest_refused(defects: List<NonEmptyStr>, subject: String) -> V41ManifestStanding {
+  match first(defects) {
+    Present { value: f } => V41ManifestRefused { first: f, rest: defects |> skip(n: 1) }
+    Absent => V41ManifestRefused { first: join([subject, ": refused with no defect named -- the admission's refusal carried an empty population"], "") as NonEmptyStr, rest: [] as List<NonEmptyStr> }
   }
 }
 
@@ -436,12 +479,16 @@ fn v41_manifest_value(m: V41ManifestStanding) -> String {
   match m {
     V41ManifestObserved { digest: d } => d.hex as String
     V41ManifestUnestablished { obligation: _ } => ""
+    V41ManifestRefused { first: _, rest: _ } => ""
   }
 }
 
 fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
+  let defects = concat(v41_manifest_defects(m: s.weights), v41_manifest_defects(m: s.tokenizer))
   let obligations = concat(v41_manifest_obligations(m: s.weights), v41_manifest_obligations(m: s.tokenizer))
-  if length(obligations) != 0 {
+  if length(defects) != 0 {
+    V41IdentityRefused { defects: defects }
+  } else if length(obligations) != 0 {
     V41IdentityUnestablished { obligations: obligations }
   } else {
     V41IdentityKeyed { key: artifact_realization_digest(inputs: [
@@ -462,7 +509,7 @@ fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
 type V41EngramRealizationInputs {
   partition: V41EngramResidencyPartition
   population: SafetensorsPopulationStanding
-  row_store_encoding: V41ManifestStanding
+  row_store_encoding: V41PublishedRowStoreKey
   route: DeclarationRef
 }
 
@@ -479,6 +526,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
   match f {
     WholeDeclaration => "*"
     NamedField { field_name: n } => n as String
+    TypeParameter { name: t } => concat("<", concat(t as String, ">"))
   }
 }
 
@@ -486,26 +534,40 @@ fn v41_decl_field_wire(f: DeclField) -> String {
 // membership residual alone hid the row-store encoding's obligation, so a reader of the live candidate saw
 // one missing axis where there were two -- a partial answer that looks complete, which is worse than the
 // silence it replaced because it would be read as the full list.
-fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
-  match m {
-    V41ManifestUnestablished { obligation: o } => [o]
-    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
+fn v41_row_store_obligations(k: V41PublishedRowStoreKey) -> List<NonEmptyStr> {
+  match k {
+    V41PublishedRowStoreUnestablished { obligation: o } => [o]
+    V41PublishedRowStoreKeyed { digest: _ } => [] as List<NonEmptyStr>
+    V41PublishedRowStoreRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// A REFUSED ROW STORE WITH NO DEFECT NAMED STILL REFUSES, naming that, rather than falling through.
+fn v41_row_store_key_defects(k: V41PublishedRowStoreKey) -> List<NonEmptyStr> {
+  match k {
+    V41PublishedRowStoreRefused { defects: d } => if length(d) != 0 { d } else { ["the row-store encoding refused with no defect named" as NonEmptyStr] }
+    V41PublishedRowStoreKeyed { digest: _ } => [] as List<NonEmptyStr>
+    V41PublishedRowStoreUnestablished { obligation: _ } => [] as List<NonEmptyStr>
   }
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
-// no key is minted for an axis with a hole in it. The checkpoint's Engram population closes against the
-// twelve rows that were READ rather than against the revision's 96085-name index, so a thirteenth Engram
-// tensor at this revision would be neither reconciled nor refused -- and a partition can be total and
-// disjoint over the twelve while missing it entirely. Keying here would hash "the Engram tensors we
+// no key is minted for an axis with a hole in it. A population closed only against the rows that were
+// READ, rather than against the revision's full index, would let a thirteenth Engram tensor pass
+// neither reconciled nor refused -- and a partition can be total and disjoint over the twelve while
+// missing it entirely. (The live population is gunbc.spark.v41_index_engram_selection v41_engram_population_observed:
+// closed only once a reading of the pinned index is transcribed; a scoped closure lands here.) Keying here would hash "the Engram tensors we
 // happen to have read" and call it the Engram realization, and two different future candidates over
 // different readings of the same checkpoint would share it. So the residual the population carries is
 // folded onto this axis as an obligation, and it is the only one of the three standings that can be
 // discharged by reading the index rather than by writing something.
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
   let membership = safetensors_population_closure_obligations(s: e.population)
-  if length(membership) != 0 {
-    V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(m: e.row_store_encoding)) }
+  let row_store_defects = v41_row_store_key_defects(k: e.row_store_encoding)
+  if length(row_store_defects) != 0 {
+    V41IdentityRefused { defects: row_store_defects }
+  } else if length(membership) != 0 {
+    V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(k: e.row_store_encoding)) }
   } else {
   match v41_admit_partition(p: e.partition, standing: e.population) {
     V41PartitionRefused { defects: d } => V41IdentityRefused { defects: d }
@@ -514,10 +576,11 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
         V41IdentityRefused { defects: [join(["route ", e.route.decl_name as String, " is not a storage-backed token-time route this candidate admits (B or D)"], "") as NonEmptyStr] }
       } else {
         match e.row_store_encoding {
-          V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
-          V41ManifestObserved { digest: d } =>
+          V41PublishedRowStoreUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+          V41PublishedRowStoreRefused { defects: d } => V41IdentityRefused { defects: d }
+          V41PublishedRowStoreKeyed { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
-              v41_input(identity: "row_store_encoding", value: d.hex as String),
+              v41_input(identity: "row_store_encoding", value: serialize_content_hash(hash: d) as String),
               v41_input(identity: "route.module_path", value: e.route.module_path as String),
               v41_input(identity: "route.decl_name", value: e.route.decl_name as String),
               v41_input(identity: "route.field", value: v41_decl_field_wire(f: e.route.field)),
@@ -542,8 +605,29 @@ type V41CandidateInputs {
 // with arbitrary hashes in it is writable too -- which would defeat the whole module: the point is that a
 // key exists only when every axis was established. Consumers therefore take this record, which only
 // v41_candidate_standing mints. The input records stay constructible; they are what a caller supplies.
+// THE DERIVATION EVIDENCE RIDES BESIDE THE STANDING AND OUTSIDE EVERY KEY (proud-deer-538, 2026-09-24):
+// the boundary-stratified readback of the produced row stores says the stores were DERIVED correctly,
+// which is evidence about the key's referent and not a coordinate of it, so it enters none of the five
+// ContentHashes. A readback that REFUSED refuses the candidate (a store proven wrong is not a candidate);
+// one still UNREAD leaves a keyed candidate keyed and is an obligation deployment authorization must
+// consume (gunbc.spark.pair_serving_d0_authorization d0_subject_of_candidate refuses over it).
 type V41CandidateVerdict sole_constructor {
   standing: V41CandidateStanding
+  derivation: V41DerivationEvidence
+}
+
+type V41DerivationEvidence {
+  row_store_readback: V41StoreReadback
+}
+
+// WHAT THE DERIVATION EVIDENCE STILL OWES before anything may be authorized to run the candidate. A
+// refused readback owes nothing here: it has already refused the standing.
+fn v41_derivation_obligations(d: V41DerivationEvidence) -> List<NonEmptyStr> {
+  match d.row_store_readback {
+    V41StoreReadbackUnread { obligation: o } => [o]
+    V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => [] as List<NonEmptyStr>
+    V41StoreReadbackRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
 }
 
 type V41CandidateStanding
@@ -606,8 +690,20 @@ fn v41_standing_obligations(s: V41IdentityStanding) -> List<NonEmptyStr> {
 
 // REFUSALS DOMINATE OBLIGATIONS. A candidate that is both malformed and incomplete reports what is
 // wrong, because finishing it would not make it right.
-fn v41_candidate_standing(c: V41CandidateInputs) -> V41CandidateVerdict {
-  V41CandidateVerdict { standing: v41_candidate_standing_of(c: c) }
+fn v41_candidate_standing(c: V41CandidateInputs, readback: V41StoreReadback) -> V41CandidateVerdict {
+  let standing = v41_candidate_standing_of(c: c)
+  V41CandidateVerdict {
+    standing: match readback {
+      V41StoreReadbackRefused { defects: rd } => match standing {
+        V41CandidateRefused { defects: d } => V41CandidateRefused { defects: concat(d, rd) }
+        V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => V41CandidateRefused { defects: rd }
+        V41CandidateUnestablished { obligations: _ } => V41CandidateRefused { defects: rd }
+      }
+      V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => standing
+      V41StoreReadbackUnread { obligation: _ } => standing
+    },
+    derivation: V41DerivationEvidence { row_store_readback: readback },
+  }
 }
 
 fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
@@ -659,13 +755,22 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
 
 // UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED ARCH OVERRIDE (12.1).
 // Parallelism on a dedicated builder is upstream's own max_jobs (16), not the Spark-sharing cap of 6.
+// THE KERNEL RELEASE IS THE CANDIDATE'S, NOT THE BASE'S. d2d649e6 pins FlashInfer 0.6.18.post1, whose
+// SM120 sparse-MLA decode exists only at 64-token pages; with the 64-token kernel page the V4.1 indexer
+// needs on SM12x (member sm120_64_token_kernel_pages), a ratio-2 layer's extra pages are 32 tokens, which
+// only 0.7.1rc1 serves (extdeps.flashinfer.flashinfer flashinfer_0_7_1rc1_version). The build argument
+// FLASHINFER_VERSION carries it to the jit-cache install; the requirements member carries it to
+// flashinfer-python and flashinfer-cubin, so the image holds one FlashInfer release, not two.
 fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
-  vllm_recipe_targeting(
-    base: vllm_d2d649e6_aarch64_release_recipe,
-    torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
-    install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
-    max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
-    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+  vllm_recipe_with_flashinfer(
+    base: vllm_recipe_targeting(
+      base: vllm_d2d649e6_aarch64_release_recipe,
+      torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+      install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
+      max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
+      nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+    ),
+    flashinfer_version: flashinfer_0_7_1rc1_version,
   )
 }
 
@@ -687,27 +792,89 @@ data v41_candidate_partition: V41EngramResidencyPartition = V41EngramResidencyPa
 data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   runtime: V41RuntimeArtifactInputs {
     recipe: v41_candidate_recipe(),
-    kernel_acquisition: flashinfer_0_6_18_post1,
-    kernel_wheels: flashinfer_0_6_18_post1_wheels,
+    kernel_acquisition: flashinfer_0_7_1rc1,
+    kernel_wheels: flashinfer_0_7_1rc1_wheels,
     patches: v41_storage_backed_patch_population(),
   },
   model_source: V41ModelSourceInputs {
     checkpoint_revision: deepseek_v4_1_flash_revision,
-    weights: V41ManifestUnestablished { obligation: "the weight manifest at dba1be0a is not read: extdeps.deepseek.deepseek_v4_1_flash carries sha256 for the two Engram shards only, not the other 46" as NonEmptyStr },
-    tokenizer: V41ManifestUnestablished { obligation: "the tokenizer file population and digests at dba1be0a are not read" as NonEmptyStr },
+    weights: v41_weight_manifest_standing(),
+    tokenizer: v41_tokenizer_standing(),
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
-    population: deepseek_v4_1_flash_engram_population,
-    row_store_encoding: V41ManifestUnestablished { obligation: "no published-shard row-store content digest exists; fixture correspondence over eight rows is a different subject and does not identify the materialized tables" as NonEmptyStr },
+    population: v41_engram_population_observed(),
+    row_store_encoding: v41_row_store_encoding_standing(),
     route: engram_route_b_identity,
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
   device: gb10_observed_compute_capability,
 }
 
+// A MANIFEST AXIS IS KEYED BY THE DIGEST OF AN ADMITTED POPULATION'S CANONICAL TEXT. The rows are
+// the publisher's declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash
+// carries them with their provenance); the candidate never digests the raw row list -- it consumes
+// the module's admission (exact shard cover, index reconciliation, role cover), so a defective
+// population is a REFUSED model source naming its defects -- not an obligation and never a
+// differently keyed one.
+// The canonical text is order-free (sorted by path), so a shard digest, a file size or a path
+// that changes changes the key and a reordering does not. The digest is taken through the
+// sha256sum realization; unavailable is a typed obligation, never a structural fallback.
+fn v41_weight_manifest_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_weight_manifest_standing() {
+    WeightManifestRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr), subject: "the weight manifest")
+    WeightManifestAdmitted { files: _, index: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted weight manifest (48 shards at dba1be0a)")
+  }
+}
+
+fn v41_tokenizer_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_tokenizer_standing() {
+    TokenizerPopulationRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr), subject: "the tokenizer population")
+    TokenizerPopulationAdmitted { files: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted tokenizer population at dba1be0a")
+  }
+}
+
+fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
+  match sha256sum_stdin_digest_via_shell(content: text) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => V41ManifestUnestablished { obligation: join([subject, " could not be digested: ", r], "") as NonEmptyStr }
+    Sha256FileDigest { digest: d } =>
+      match sha256_hex_digest(hex: d.hex as String) {
+        Absent => V41ManifestUnestablished { obligation: join([subject, ": sha256sum did not answer a sha256 digest"], "") as NonEmptyStr }
+        Present { value: h } => V41ManifestObserved { digest: h }
+      }
+  }
+}
+
+// THE ROW-STORE ENCODING AXIS, KEYED BY THE ENCODED STORES (gunbc.spark.v41_engram_row_store
+// v41_row_store_encoding_key): the spec key and the sha256 of each of the eight (layer, rank) stores the
+// encoder produced -- the whole-file digests the file-backed patch checks on open, which are D1's
+// "row-store identities" -- admitted by v41_identify_row_store. The published spans are the encoder's
+// input and are joined to the span plan before a key is minted, but they do not key the axis.
+fn v41_row_store_encoding_standing() -> V41PublishedRowStoreKey {
+  v41_row_store_encoding_key(
+    partition: v41_candidate_partition,
+    sharded: deepseek_v4_1_flash_engram_sharded_entries,
+    shards: deepseek_v4_1_flash_engram_shard_files,
+    spans: v41_published_span_readings,
+    stores: v41_published_store_readings,
+    head_sizes: fn() { v41_live_head_sizes(tables: deepseek_v4_1_flash_engram) },
+  )
+}
+
+// THE LIVE READBACK over the live spec. An unread readback costs no bucket-layout search.
+fn v41_live_store_readback() -> V41StoreReadback {
+  match v41_published_store_readback_readings {
+    V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+    V41StoreReadbackRead { host: _, observed_at: _, readings: _ } =>
+      match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+        V41RowStoreSpecRefused { defects: d } => V41StoreReadbackRefused { defects: d }
+        V41RowStoreSpecAdmitted { spec: spec } => v41_store_readback(spec: spec, readings: v41_published_store_readback_readings)
+      }
+  }
+}
+
 fn v41_candidate() -> V41CandidateVerdict {
-  v41_candidate_standing(c: v41_candidate_inputs)
+  v41_candidate_standing(c: v41_candidate_inputs, readback: v41_live_store_readback())
 }
 
 data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr
@@ -720,10 +887,12 @@ fn v41_digest_declared_patch(path: NonEmptyStr) -> Sha256Digest? {
   }
 }
 
-// V41PatchesObserved HERE MEANS THE PATCH FILES WERE DIGESTED, not that Engram lookup is
-// storage-backed. The overlay adds FileBackedEngramStorage. The second member imports those
-// names into engram.py and does not rebind ParallelEngramEmbedding._allocate_weights; that
-// dispatch is the wiring trigger.
+// V41PatchesObserved HERE MEANS THE PATCH FILES WERE DIGESTED, not that a launch serves Engram
+// file-backed. The overlay adds FileBackedEngramStorage and the design-B FileBackedLookup. The second
+// member binds them in engram.py: Engram._create_embedding builds FileBackedParallelEngramEmbedding
+// for every layer when the launch names a row-store manifest (GUNBC_ENGRAM_ROW_STORE_MANIFEST, derived
+// by gunbc.spark.v41_engram_store_manifest), with no pinned or DPShared table reachable; without a
+// manifest the image serves upstream's pinned storage.
 fn v41_storage_backed_patch_population() -> V41PatchPopulation {
   match v41_digest_declared_patch(path: v41_engram_file_backed_overlay_path) {
     Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the file-backed overlay patch at dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr }
@@ -734,11 +903,107 @@ fn v41_storage_backed_patch_population() -> V41PatchPopulation {
           match v41_digest_declared_patch(path: v41_engram_storage_hook_path) {
             Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the engram.py import member at dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr }
             Present { value: hook_digest } =>
-              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "import of file-backed overlay symbols into engram.py; ParallelEngramEmbedding._allocate_weights is not rebound" as NonEmptyStr) {
+              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "binding of the file-backed overlay in engram.py: FileBackedParallelEngramEmbedding for every Engram layer when the launch names a row-store manifest" as NonEmptyStr) {
                 Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
-                Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
+                Present { value: hook } => v41_with_sm120_members(engram: [overlay, hook])
               }
           }
+      }
+  }
+}
+
+// THE SM120 MEMBERS. The population is the image's whole patch list, applied in order, and these two
+// follow the Engram pair; neither touches a file the Engram members touch.
+//   1. The SWA cache's page size. vllm/models/deepseek_v4_1/attention.py constructs DeepseekV4SWACache
+//      with the literal block_size=32 (V4 passes the SWA cache's own default, 64). FlashInfer's SM120 DSv4
+//      decode kernel is instantiated for 64-token pages only (flashinfer.mla._sparse_mla_sm120
+//      _DECODE_DSV4_PAGE_BLOCK_SIZE) and every call with 64 or fewer query tokens must take it, with the
+//      SWA cache as its primary pool -- so on this tree every decode step is refused, whatever its topk.
+//      No engine argument reaches that literal. The member lifts it to a class attribute,
+//      swa_block_size, default 32, and DeepseekV4FlashInferSM120Attention sets 64: the other platform
+//      classes keep the page they had.
+//   2. The control. It creates vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest, which takes a
+//      rank's own engine argv, builds the ModelConfig vLLM's serve parser derives from it, and calls
+//      FlashInfer's DSv4 entry point at every shape with 64 or fewer query tokens that rank reaches, every
+//      deciding figure read off the installed tree. Its consumer is the launch's pre-staging gate,
+//      gunbc.spark.v41_group_a_launch v41_sm120_gate, which runs it on each rank's host in the image
+//      over that rank's argv and stops the launch on anything short of SELFTEST PASS. The member applies
+//      alone to the unpatched tree, which is how its RED was taken (fleet-converge 36857198484: refused
+//      unpatched; refused at 1152 without the text-only request; passed with both).
+data v41_sm120_swa_page_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr
+data v41_sm120_decode_selftest_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr
+
+fn v41_with_sm120_members(engram: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_sm120_swa_page_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 SWA page member at dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr }
+    Present { value: page_digest } =>
+      match v41_engine_patch(path: v41_sm120_swa_page_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: page_digest.hex as String, purpose: "SM120 SWA cache page of 64 tokens: DeepseekV4FlashInferSM120Attention.swa_block_size, the only page FlashInfer's SM120 DSv4 decode kernel takes" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 SWA page member was not a sha256 digest" as NonEmptyStr }
+        Present { value: page } =>
+          match v41_digest_declared_patch(path: v41_sm120_decode_selftest_patch_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 decode-shape self-test member at dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr }
+            Present { value: test_digest } =>
+              match v41_engine_patch(path: v41_sm120_decode_selftest_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: test_digest.hex as String, purpose: "SM120 decode-shape self-test: FlashInfer's DSv4 entry point at the TP4 launch's decode and short-prefill shapes" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 self-test member was not a sha256 digest" as NonEmptyStr }
+                Present { value: control } => v41_with_sm120_kernel_page_members(applied: concat(engram, [page, control]))
+              }
+          }
+      }
+  }
+}
+
+// THE TWO MEMBERS THE GB10 INDEXER NEEDS, after the SM120 pair (neither touches a file those touch
+// except flashinfer_sparse.py, whose hunk sits apart from the SWA member's):
+//   3. 64-token kernel pages on SM12x for the V4.1 sparse-MLA, FlashInfer sparse-MLA and indexer
+//      backends -- vllm-project/vllm#57292 adapted to this tree. Without it the cache page is 128 tokens,
+//      a ratio-1 indexer page holds 128 states, and DeepGEMM's SM120 paged-MQA metadata asserts
+//      `block_kv == 32 or block_kv == 64` (fleet-converge run 36921450575, on every rank, in
+//      DeepseekV32IndexerMetadataBuilder.build during CUDA-graph capture). With it a ratio-1 page holds
+//      64 states and a ratio-2 page 32 -- and the ratio-2 layer's 32-token extra page needs:
+//   4. FlashInfer 0.7.1rc1 for flashinfer-python and flashinfer-cubin in requirements/cuda.txt, the
+//      release carrying flashinfer-ai/flashinfer#5197 (runtime SM120 page sizes).
+data v41_sm120_kernel_page_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_64_token_kernel_pages.patch" as NonEmptyStr
+data v41_flashinfer_requirements_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/flashinfer_0_7_1rc1_requirements.patch" as NonEmptyStr
+
+fn v41_with_sm120_kernel_page_members(applied: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_sm120_kernel_page_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 kernel-page member at dag/gunbc/spark/patches/d2d649e6/sm120_64_token_kernel_pages.patch" as NonEmptyStr }
+    Present { value: kp_digest } =>
+      match v41_engine_patch(path: v41_sm120_kernel_page_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: kp_digest.hex as String, purpose: "SM12x 64-token kernel pages for the V4.1 sparse-MLA, FlashInfer sparse-MLA and indexer backends (vllm-project/vllm#57292), so a ratio-1 indexer page holds 64 states and DeepGEMM's SM120 paged-MQA admits it" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 kernel-page member was not a sha256 digest" as NonEmptyStr }
+        Present { value: kernel_pages } =>
+          match v41_digest_declared_patch(path: v41_flashinfer_requirements_patch_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the FlashInfer requirements member at dag/gunbc/spark/patches/d2d649e6/flashinfer_0_7_1rc1_requirements.patch" as NonEmptyStr }
+            Present { value: rq_digest } =>
+              match v41_engine_patch(path: v41_flashinfer_requirements_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: rq_digest.hex as String, purpose: "FlashInfer 0.7.1rc1 for flashinfer-python and flashinfer-cubin (flashinfer-ai/flashinfer#5197: runtime SM120 sparse-MLA page sizes, including the 32-token pages of V4.1 ratio-2 layers)" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the FlashInfer requirements member was not a sha256 digest" as NonEmptyStr }
+                Present { value: requirements } => v41_with_deepgemm_page32_member(applied: concat(applied, [kernel_pages, requirements]))
+              }
+          }
+      }
+  }
+}
+
+//   5. DeepGEMM's SM120 FP8 paged-MQA logits at 32-state pages. With 64-token kernel pages a ratio-2
+//      indexer page holds 32 states, and the image's DeepGEMM (deepseek-ai/DeepGEMM nv_dev 8b1392b, the
+//      d2d649e6 pin) admits only 64 for an FP8 cache on SM12x: fleet-converge run 36945738911 asserted
+//      `(arch_major == 12 and ((is_fp4 and (block_kv == 32 or block_kv == 64)) or (not is_fp4 and
+//      block_kv == 64)))` in fp8_fp4_paged_mqa_logits on every rank, after the metadata call member 3
+//      fixed had passed. vllm-project/DeepGEMM#14 (merged 2026-09-22, 17ca18f73e) relaxes exactly that
+//      host check and the launcher's, keeping the device kernel; this pin's kernel is templated on
+//      BLOCK_KV with FP8_MMA_M = 16, so 32 rows is 2 warps x 4 groups = SPLIT_KV 128. The fork's newer
+//      pin (vllm#59385, 6901431) is diverged from 8b1392b (17 ahead, 95 behind), so the member carries
+//      #14's two host hunks ported to 8b1392b and has deepgemm.cmake apply them after FetchContent --
+//      idempotent, and a tree it cannot apply to stops the build.
+data v41_deepgemm_page32_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/deepgemm_sm120_fp8_page32.patch" as NonEmptyStr
+
+fn v41_with_deepgemm_page32_member(applied: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_deepgemm_page32_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the DeepGEMM page32 member at dag/gunbc/spark/patches/d2d649e6/deepgemm_sm120_fp8_page32.patch" as NonEmptyStr }
+    Present { value: dg_digest } =>
+      match v41_engine_patch(path: v41_deepgemm_page32_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: dg_digest.hex as String, purpose: "DeepGEMM SM120 FP8 paged-MQA logits at 32-state pages (vllm-project/DeepGEMM#14 host changes ported to 8b1392b), applied by deepgemm.cmake after fetch" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the DeepGEMM page32 member was not a sha256 digest" as NonEmptyStr }
+        Present { value: deepgemm } => V41PatchesObserved { patches: concat(applied, [deepgemm]), partition: PartitionByLaunchConfiguration }
       }
   }
 }

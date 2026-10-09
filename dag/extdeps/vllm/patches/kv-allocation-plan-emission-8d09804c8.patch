@@ -1,0 +1,225 @@
+KV allocation plan emission patch — vllm @ 8d09804c877c48165c6ba69bc9dc02d09bae0b83
+
+Pinned base revision (github.com/vllm-project/vllm):
+  full_revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83
+  engine self-report v0.1.dev1+g8d09804c8 — the GLM-5.3-Flash arm's serving
+  runtime (gunbc.spark.serving_arm glm53_derived_row, image gunbc-vllm-glm53-gb10
+  tag derived-c99be081f219d123).
+
+Files touched, with sha256 of each file AT THE BASE REVISION (pre-patch):
+  vllm/envs.py            sha256:1a2c6121ef54aa4b7f8769db462a01446d012f3e99dfba249d4fa0576b373627
+  vllm/v1/engine/core.py  sha256:ef709a037077f48db65d381305a0427c25749bd5dc7997f3dec5b5539f1f0dc4
+
+Apply from the vllm repository root (the patch file lives in the gunbc corpus at
+dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch):
+  git apply --check dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch
+  git apply dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch
+
+WHAT THE PATCH DOES (introspection only; it tunes nothing):
+
+1. vllm/v1/engine/core.py — EngineCore._initialize_kv_caches, immediately after
+   the scheduler KV cache config is final (num_gpu_blocks set, global
+   block_size resolved, the "GPU KV cache size" line printed) and before the
+   workers allocate: emit one "kv-allocation-plan/v1" JSON record per engine.
+   Channels, in priority order for a capture route:
+     a. one startup log line:  KV_ALLOCATION_PLAN_JSON <compact-json>
+     b. if VLLM_KV_ALLOCATION_PLAN_PATH is set: the identical canonical line
+        (sort_keys, compact separators, trailing newline) written via tmp file
+        + os.replace, best-effort, never fatal.
+   The record carries: the runtime self-report (vllm.__version__, whose
+   trailing +g<sha> names the source revision), an optional deployment-supplied
+   image digest (VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST; a self-report beside the
+   observer's authoritative launch reading), the resolved cache format
+   (cache_config.cache_dtype), allocator_blocks (scheduler num_blocks),
+   requested_length (max_model_len), scheduler_block_size, per-group rows
+   (identity, upstream spec kind, layer identities, block size, page size
+   bytes, tokens per state, sliding window, max memory usage bytes, blocks at
+   the requested length), and a grouping/padding statement quoted from the
+   resolved spec fields (group count, rostered layer count, per-layer
+   page-size padding notes).
+   Per-group figures are read through the engine's own spec methods:
+   max_memory_usage_bytes(vllm_config) at max_model_len and
+   cdiv(usage, page_size_bytes) — the exact arithmetic of
+   get_max_concurrency_for_kv_cache_config — so the emission reproduces the
+   printed capacity by construction, which is the independent control the
+   corpus-side mint (extdeps.vllm.kv_layout ResolvedKvAllocationPlan) checks.
+   tokens_per_state normalizes the mamba sentinel (-1, a not-token-keyed
+   recurrent state) to 1, matching get_num_kernel_states' one-state-per-block
+   charge.
+2. vllm/envs.py — declares the two environment variables.
+
+Emission point chosen over EngineCore.get_kv_cache_group_metadata (the
+corpus's named surface for today's emission): that method is a lazy query
+returning kind/block_size/sliding_window only, and it runs after the
+scheduler exists; the allocation plan is COMPLETE at the end of
+_initialize_kv_caches, in the head EngineCore process, on every code path
+that prints the capacity line. The head/rank split is survived by tagging the
+record with engine_dp_rank and by the fact that only the engine that printed
+the capacity line is the control's subject; a capture route binds the
+dp_rank 0 record.
+
+diff --git a/vllm/envs.py b/vllm/envs.py
+index a3ef86d1b6..ad72eee696 100755
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -245,6 +245,8 @@ if TYPE_CHECKING:
+         Literal["LBNHC", "LBHNC", "LHBNC", "NHD", "HND", "BLHNC", "BLNHC", "BHLNC"]
+         | None
+     ) = None
++    VLLM_KV_ALLOCATION_PLAN_PATH: str | None = None
++    VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST: str | None = None
+     VLLM_SSM_CONV_STATE_LAYOUT: Literal["SD", "DS"] | None = None
+     VLLM_COMPUTE_NANS_IN_LOGITS: bool = False
+     VLLM_RAISE_ON_LOGIT_NANS: bool = False
+@@ -1806,6 +1808,17 @@ environment_variables: dict[str, Callable[[], Any]] = {
+         None,
+         ["LBNHC", "LBHNC", "LHBNC", "NHD", "HND", "BLHNC", "BLNHC", "BHLNC"],
+     ),
++    # Startup KV allocation plan emission (introspection only; never gates
++    # serving): when set, the resolved plan record is also written to this
++    # path (tmp file + atomic rename) in addition to the startup log line.
++    "VLLM_KV_ALLOCATION_PLAN_PATH": lambda: os.getenv(
++        "VLLM_KV_ALLOCATION_PLAN_PATH", None
++    ),
++    # Optional deployment self-report carried verbatim in the plan record;
++    # the observer's launch reading remains the authoritative image identity.
++    "VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST": lambda: os.getenv(
++        "VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST", None
++    ),
+     # SSM conv state layout used for Mamba models.
+     # - SD: (state_len, dim) — dim contiguous (default)
+     # - DS: (dim, state_len) — TP-sharded dim on dim1,
+diff --git a/vllm/v1/engine/core.py b/vllm/v1/engine/core.py
+index 06ebfb7305..9e3e6dcf0c 100644
+--- a/vllm/v1/engine/core.py
++++ b/vllm/v1/engine/core.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ import gc
++import json
+ import os
+ import queue
+ import signal
+@@ -42,6 +43,7 @@ from vllm.utils.gc_utils import (
+     maybe_attach_gc_debug_callback,
+ )
+ from vllm.utils.hashing import get_hash_fn_by_name
++from vllm.utils.math_utils import cdiv
+ from vllm.utils.network_utils import make_zmq_socket
+ from vllm.utils.system_utils import decorate_logs, set_process_title
+ from vllm.v1.attention.backends.utils import resolve_kv_cache_layout
+@@ -101,6 +103,104 @@ HANDSHAKE_TIMEOUT_MINS = 5
+ 
+ _R = TypeVar("_R")  # Return type for collective_rpc
+ 
++# Stable marker for the startup allocation-plan line. A capture route keys on
++# this substring, not on a line number or the log prefix around it.
++KV_ALLOCATION_PLAN_LOG_MARKER = "KV_ALLOCATION_PLAN_JSON "
++
++
++def _build_kv_allocation_plan_record(
++    vllm_config: VllmConfig,
++    scheduler_kv_cache_config: KVCacheConfig,
++) -> dict[str, Any]:
++    """Build the resolved KV allocation plan record.
++
++    Introspection only: every figure is read from the scheduler's resolved
++    config or computed with the engine's own spec methods, so the record
++    reproduces the startup capacity print by construction.
++    """
++    groups: list[dict[str, Any]] = []
++    for group_idx, group in enumerate(scheduler_kv_cache_config.kv_cache_groups):
++        spec = group.kv_cache_spec
++        max_usage = spec.max_memory_usage_bytes(vllm_config)
++        page_bytes = spec.page_size_bytes
++        tokens_per_state = spec.tokens_per_state
++        if not isinstance(tokens_per_state, int) or tokens_per_state <= 0:
++            # Mamba recurrent state is not token-keyed; the engine's
++            # get_num_kernel_states charges one state per block, and the plan
++            # carries that per-sequence unit count.
++            tokens_per_state = 1
++        groups.append(
++            {
++                "identity": f"group-{group_idx}:{get_kv_cache_spec_kind(spec).value}",
++                "kind": get_kv_cache_spec_kind(spec).value,
++                "layer_identities": list(group.layer_names),
++                "block_size": spec.block_size,
++                "page_size_bytes": page_bytes,
++                "tokens_per_state": tokens_per_state,
++                "sliding_window": getattr(spec, "sliding_window", None),
++                "max_memory_usage_bytes": max_usage,
++                "blocks_at_requested_length": (
++                    cdiv(max_usage, page_bytes) if page_bytes > 0 else 0
++                ),
++            }
++        )
++
++    padding_notes = []
++    for group in scheduler_kv_cache_config.kv_cache_groups:
++        spec = group.kv_cache_spec
++        unpadded = getattr(spec, "unpadded_page_size_bytes", None)
++        padded = getattr(spec, "page_size_padded", None)
++        if unpadded is not None and padded is not None and padded != unpadded:
++            padding_notes.append(f"{unpadded}->{padded}B")
++    total_layers = sum(
++        len(group.layer_names)
++        for group in scheduler_kv_cache_config.kv_cache_groups
++    )
++    padding_text = "; ".join(padding_notes) if padding_notes else "none"
++    grouping_padding = (
++        f"{len(groups)} cache groups, one block table per group; "
++        f"{total_layers} layers rostered; page-size padding: {padding_text}"
++    )
++
++    return {
++        "schema": "kv-allocation-plan/v1",
++        "runtime": {"package_version": VLLM_VERSION},
++        "engine_dp_rank": vllm_config.parallel_config.data_parallel_rank,
++        "image_digest": envs.VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST,
++        "cache_format": str(vllm_config.cache_config.cache_dtype),
++        "allocator_blocks": scheduler_kv_cache_config.num_blocks,
++        "requested_length": vllm_config.model_config.max_model_len,
++        "scheduler_block_size": vllm_config.cache_config.block_size,
++        "groups": groups,
++        "grouping_padding": grouping_padding,
++    }
++
++
++def _emit_kv_allocation_plan(
++    vllm_config: VllmConfig,
++    scheduler_kv_cache_config: KVCacheConfig,
++) -> None:
++    """Emit the plan once per engine at startup; failures never gate serving."""
++    try:
++        record = _build_kv_allocation_plan_record(
++            vllm_config, scheduler_kv_cache_config
++        )
++    except Exception:
++        logger.exception("Failed to build the KV allocation plan record")
++        return
++    line = json.dumps(record, sort_keys=True, separators=(",", ":"))
++    logger.info("%s%s", KV_ALLOCATION_PLAN_LOG_MARKER, line)
++    path = envs.VLLM_KV_ALLOCATION_PLAN_PATH
++    if path:
++        try:
++            tmp_path = f"{path}.tmp"
++            with open(tmp_path, "w", encoding="utf-8") as f:
++                f.write(line)
++                f.write("\n")
++            os.replace(tmp_path, path)
++        except OSError:
++            logger.exception("Failed to write the KV allocation plan to %s", path)
++
+ 
+ class EngineCore:
+     """Inner loop of vLLM's Engine."""
+@@ -351,6 +451,8 @@ class EngineCore:
+ 
+         vllm_config.validate_block_size()
+ 
++        _emit_kv_allocation_plan(vllm_config, scheduler_kv_cache_config)
++
+         self.model_executor.initialize_from_config(kv_cache_configs)
+         if not envs.VLLM_ELASTIC_EP_SCALE_UP_LAUNCH:
+             self.model_executor.compile_or_warm_up_model()

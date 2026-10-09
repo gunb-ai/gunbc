@@ -1,6 +1,6 @@
 module extdeps.git.versioning
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
@@ -67,6 +67,6 @@ fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Order
   if a == b { Equal } else { Greater }
 }
 
-data git_release_version_scheme: VersionScheme = {
+data git_release_version_scheme: VersionScheme = VersionScheme {
   compare: git_release_compare_identity
 }

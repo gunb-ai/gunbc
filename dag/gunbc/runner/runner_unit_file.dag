@@ -2,12 +2,12 @@ module gunbc.runner_unit_file
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
-import std.disposition { Disposition, SingleAuthority }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_makeflags_env_name }
@@ -26,7 +26,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   StartLimitIntervalSec,
-  ServiceType,
+  ServiceType, SimpleMode,
   ServiceUser,
   WorkingDirectory,
   Environment,
@@ -59,8 +59,9 @@ import gunbc.runner_host_deploy {
 import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
-import gunbc.ci_fleet { fleet_compute_offer_for }
-import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.runner_registration_labels {
+  runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+}
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache_unit {
   sccache_endpoint_env_assignment,
@@ -68,14 +69,14 @@ import gunbc.build_cache_unit {
   sccache_cache_dir_env_assignment,
 }
 
-data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
+data gunbc_runner_unit_file_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE RUNNER UNIT, MODELLED RATHER THAN COPIED.
 //
 // `gunbc.runner_unit` already owns what a runner unit is NAMED and, since #9235, what its teardown
-// must GUARANTEE -- `RunnerUnitLifecycleIntent` plus `lifecycle_intent_cannot_orphan`, which proves
-// that a stop cannot leave a live process behind only when the kill reaches the whole cgroup AND
-// systemd does not call the service finished while processes remain. That intent was declared and
+// must GUARANTEE -- `RunnerUnitLifecycleIntent` plus `lifecycle_intent_stops_finished_incarnation`, which holds
+// only when a finished incarnation makes systemd ISSUE a stop (the main process exits under
+// ExitType=main) AND that stop reaches the whole cgroup (KillMode=control-group). That intent was declared and
 // UNROUTED: nothing rendered a unit, so the fleet's live template still carries `KillMode=process`
 // and no `ExitType=` at all, and the property the repository had proved was true of nothing.
 //
@@ -115,8 +116,8 @@ data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
 //   this shape. Removing it would look like tidying and would stop the fleet under load.
 //
 //   TimeoutStopSec=5min -- how long a stop is allowed before SIGKILL. It becomes MORE load-bearing
-//   under the teardown fix below, not less: `ExitType=cgroup` means the stop now waits on the whole
-//   cgroup, so this is the bound on that wait.
+//   under the teardown fix below, not less: once the stop reaches the whole cgroup, this is the bound
+//   after which a survivor that ignores SIGTERM is SIGKILLed (measured on srv1 2026-09-18).
 
 // THE ON-HOST APP KEY PATH, WHICH IS THE MATERIALIZATION OF A SECRET THAT ALREADY HAS AN AUTHORITY.
 //
@@ -140,8 +141,13 @@ fn runner_slot_instance_directory() -> String {
 // A runner registers with a label set and a workflow's `runs-on` selects on it. If the unit spelled
 // its own list, the failure of a disagreement would be a job that is queued forever against a label
 // nothing advertises -- no diagnostic anywhere, because neither side is wrong on its own terms. So
-// the render takes the `RunnerSpec` that `gunbc.ci_deploy_target_host` `host_pinned_runner_spec`
-// derives, and this module spells no label literal.
+// the render takes its labels from `gunbc.runner_registration_labels` `runner_registration_labels`
+// -- the host's offer-derived platform labels, the slot's class label (gunbc-heavy) and the label of
+// the host the runner executes on -- and this module spells no label literal. The host-pinned selectors
+// (`gunbc.ci_deploy_target_host` `host_pinned_runner_spec`, the fleet-converge host input) spell the
+// host through the same `runner_host_label`, and a selector is satisfied by SET MEMBERSHIP
+// (`runner_labels_satisfy_selector`), so the registration carries every label each selector names
+// without the two being one list.
 //
 // THE TWO NON-SELF-HOSTED SPECS REFUSE, AND THEY REFUSE SEPARATELY, because they are different
 // facts with different remedies. A hosted-runner spec names a machine GitHub owns -- there is no
@@ -254,7 +260,7 @@ fn runner_unit_jobserver_wants(scope: CompileParallelismRealization) -> List<Sys
 //
 // Taking the intent as an argument is what lets a witness render the fleet's CURRENT teardown --
 // `ExitType=main` implied by its absence, `KillMode=process` -- and show that the same renderer
-// produces a unit whose property `lifecycle_intent_cannot_orphan` REFUSES. Fixing the pair here as a
+// produces a unit whose property `lifecycle_intent_stops_finished_incarnation` REFUSES. Fixing the pair here as a
 // constant would leave the discriminating case unauthorable, which §4b calls a check that cannot go
 // red.
 fn runner_unit_teardown_directives(intent: RunnerUnitLifecycleIntent) -> List<SystemdServiceDirective> {
@@ -315,7 +321,7 @@ fn runner_unit_file(
           service: concat(
             concat(
               [
-                ServiceType { mode: "simple" as NonEmptyStr },
+                ServiceType { mode: SimpleMode },
                 ServiceUser { name: deploy.runner_user },
                 WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
               ],
@@ -418,6 +424,7 @@ fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) ->
   match figure.evidence {
     TranscribedUncited { read_obligation: _ } => none
     CitedToAuthority { authority: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
+    ObservedByReceipt { observed: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
   }
 }
 
@@ -479,17 +486,43 @@ fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIden
   )
 }
 
-fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
-  match fleet_compute_offer_for(host: host) {
-    Absent =>
-      RunnerUnitTextRefused {
-        reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
+// THE READINESS LABEL REACHES THE RUNNER AS A TEMPLATE DROP-IN, NOT A SECOND FRAGMENT. systemd reads
+// actions-runner@.service.d after the fragment, and a later Environment= assignment of the same
+// name wins, so this drop-in replaces LABELS_JSON for every instance on the host with the host's set
+// plus gunbc-browser-ready. It uses the fragment's own quoted-environment rule and JSON serializer,
+// so the two cannot disagree about how a label set is spelled. Its only writer is the
+// browser-toolchain converge (gunbc.runner_browser_toolchain browser_ready_labels_converge_wet).
+fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUnitTextRendering {
+  match runner_browser_ready_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: _, cause: c } =>
+      RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+    RegistrationLabelsResolved { labels: labels } =>
+      match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+        RunnerUnitLabels { json_text: labels_json } =>
+          RunnerUnitText {
+            text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json)] }],
+            }),
+          }
+        RunnerUnitLabelsHostedRunner =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+        RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
       }
-    Present { value: offer } =>
+  }
+}
+
+fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
+  match runner_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: _, cause: c } =>
+      RunnerUnitTextRefused {
+        reason: concat("runner_unit_file: ", c as String) as NonEmptyStr,
+      }
+    RegistrationLabelsResolved { labels: labels } =>
       runner_unit_text(
         rendering: gunbc_runner_unit_file(
           deploy: deploy,
-          spec: host_pinned_runner_spec(offer: offer, host: host),
+          spec: SelfHosted { labels: labels },
           permit_scope: gunbc_fleet_runner_permit_scope(),
         ),
       )

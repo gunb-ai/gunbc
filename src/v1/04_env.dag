@@ -2,12 +2,12 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
-import std.types { SourceSpan, is_kernel_type }
-import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent }
-import std.decl_ref { decl_ref, DeclarationRef }
+import std.types { SourceSpan, is_kernel_type, is_container_type }
+import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
@@ -39,10 +39,15 @@ type TypeEnv {
   unit_variant_index_observed: Bool
 }
 
+// `alias_rhs` is the alias's RIGHT-HAND-SIDE REFERENCE, retained when this binding is a transparent alias
+// (`type A = B` or `type A = B<C>`), so a reader asking what the alias names reads it from the reference
+// that names it, never by re-resolving the spelling (quiet-gull-780 ruling B). Its Node.declaration is
+// the head B's identity, resolved in the ALIAS's declaring scope. Absent for every non-alias binding.
 type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
+  alias_rhs: Node?
 }
 
 // Precomputed phantom-variant relation over the env's VISIBLE bindings (locals shadowing
@@ -708,7 +713,7 @@ fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding
             value: TypeBinding {
               name: name,
               resolved: resolved,
-              provenance: SubValueUnknown
+              provenance: SubValueUnknown, alias_rhs: none
             }
           }
         Absent => Absent
@@ -899,6 +904,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
     && name != ""
     && !contains(name, ".")
     && !is_kernel_type(name: name)
+    && !is_container_type(name: name)
     && !map_has(excluded, name)
     && !is_type_var
   let owner_hit = if rewrite {
@@ -917,7 +923,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
           body: n.body, transport: n.transport, properties: n.properties,
           type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
           has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-          module_item_kind: n.module_item_kind, expr_data: n.expr_data
+          module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
         }
       }
     Absent => node_with_children(n: n, children: qualified_children)
@@ -932,7 +938,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    module_item_kind: n.module_item_kind, expr_data: n.expr_data
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
   }
 }
 
@@ -944,7 +950,7 @@ fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    module_item_kind: n.module_item_kind, expr_data: n.expr_data
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
   }
 }
 
@@ -992,7 +998,19 @@ fn record_global_bare_ambiguous_silent_pick(
   }
 }
 
+// A KERNEL SPELLING NEVER BINDS A CORPUS DECLARATION THROUGH THE GLOBAL BARE FALLBACK -- kernel
+// precedence (v1.compiler.infer direct_import_export_precedence_note) applied to the last tier. The
+// outcome for String used to hold by accident: std.string_type and v2.std.text both declared it,
+// the entry was ambiguous, and nearest-ancestor containment answered nothing for any module outside
+// those two. Deleting std.string_type's duplicate (gunbc.rung_drop text_boundary_identity_wall) left
+// one candidate, which a unique entry binds from anywhere -- so every service output field spelled
+// `String` became v2.std.text's code-point sequence. The rule is stated here so it no longer depends
+// on how many modules happen to reuse a kernel spelling.
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
+  if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
+}
+
+fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
@@ -1066,10 +1084,10 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 // cycle -- had to re-derive the same question inside declaration_provenance_of. So the ruling's
 // "exists once" was true of the name and false of the fact. The body that stood here inlined
 // `concat("<kernel:", name, ">")`, reproducing kernel_span's output by hand, which made it a second
-// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. Both
-// consumers this module used to supply -- the infer-side rewire guard
-// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision -- now import it from
-// v1.std.core directly, so they cite the authority's real home rather than this waypoint. The
+// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. This
+// module used to supply two consumers. The infer-side rewire guard (ancestry_binding_is_kernel_identity)
+// is deleted along with the import-str identity rewire it guarded. The emit-side use-line decision now
+// imports it from v1.std.core directly, citing the authority's real home rather than this waypoint. The
 // emitter's additional condition -- that the kernel node is a host-realized structureless scalar
 // (NoConnective, zero children), which excludes structural kernels like Bool = True | False whose
 // use-line IS the path to the realization -- is unchanged: a SEPARATE fact composed beside this
@@ -1131,11 +1149,71 @@ fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: Stri
   (a_segs |> count) > 0 && segment_lcp_len(a: a_segs, b: d_segs) == (a_segs |> count)
 }
 
+// Phantom unit-variant resolution reads the env's precomputed unit_variant_index (built and
+// maintained beside visible_str_bindings in v1.compiler.infer_env). The former shape re-merged
+// every parent's str_bindings and re-scanned every visible binding PER LOOKUP — one call per
+// bare-variant reference over an environment of thousands — measured 2026-08-28 at ~66% of the
+// whole-corpus compile.reconcile wall (92 of 148 gdb stack samples over strict preparation).
+// The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
+// several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
+// the scan's multiple appended matches did.
+type UnitVariantPhantomLookup
+  = UnitVariantPhantomPresent { variant: Node }
+  | UnitVariantPhantomAbsent
+  | UnitVariantPhantomEvidenceUnavailable
+
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
+  if !env.unit_variant_index_observed {
+    UnitVariantPhantomEvidenceUnavailable
+  } else {
+    match map_get(env.unit_variant_index, variant_name) {
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        if total == 1 {
+          match filter(contribs |> map_values, c => c.count == 1) |> first {
+            Present { value: single } => UnitVariantPhantomPresent { variant: single.variant }
+            Absent => UnitVariantPhantomAbsent
+          }
+        } else { UnitVariantPhantomAbsent }
+      Absent => UnitVariantPhantomAbsent
+    }
+  }
+}
+
+// THE THIRD ARM: A UNIT VARIANT IS BOUND EXACTLY WHEN THE RESOLVER WOULD RESOLVE IT. A bare leaf that
+// names a zero-payload variant -- std.measure's Measure<Memory, One, Nat> passes its own Quantity and
+// scale variants as phantom type arguments -- carries no binding of its own; its binding is the
+// coproduct that declares it. Without this arm the measure charged every such use to a missing import,
+// so a census of a source importing std.measure alone reported 147 blocking UnresolvedType rows for
+// leaves the unmeasured resolve admitted. The arm consumes lookup_unit_variant_phantom_type -- the ONE
+// exact-one judgment over the visible contributions, which the resolver and the Rust emitter already
+// consume -- so the measure binds exactly the population resolve resolves: zero contributions, many
+// (two visible coproducts declaring the leaf, or one declaring it twice), and a shadow that empties
+// the key all answer unbound, and an unobserved index answers unbound. The judgment lives here because
+// this module owns unit_variant_index; it moved down from v1.compiler.infer_resolve so the measure could
+// consume it without an import cycle.
+//
+// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing; instance
+// DefectRepairDiagnosticsMayMove), recorded beside the change it admits (gunbc#12132). It serves the v2
+// self-host program because two routes of this compiler answered one question oppositely -- the
+// measured compile refused leaves the unmeasured resolve admitted -- and the census that arms the
+// measure is a gate consumer, so every census whose closure reached std.measure read red for a reason
+// that was not its subject (this is how the App Attest stack's file_hold_plan census went red). The
+// repair adds no exemption, no admission row and no seed feature. PUBLIC SURFACE, stated rather than
+// denied: no new declaration is emitted -- the arm is inlined here -- and lookup_unit_variant_phantom_type
+// and UnitVariantPhantomLookup are RELOCATED from v1.compiler.infer_resolve, so the emitted pub set moves
+// and does not grow.
 fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
   match lookup_binding_on_chain(env: env, name: name) {
     Present { value: _ } => true
-    Absent =>
-      if contains(name, ".") {
+    Absent => {
+      let variant_resolves = match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
+        UnitVariantPhantomPresent { variant: _ } => true
+        UnitVariantPhantomAbsent => false
+        UnitVariantPhantomEvidenceUnavailable => false
+      }
+      if variant_resolves { true }
+      else if contains(name, ".") {
         let prefix = qualified_all_but_last(name: name)
         if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
           match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
@@ -1148,6 +1226,7 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
       } else {
         false
       }
+    }
   }
 }
 
@@ -1312,8 +1391,8 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
-      provenance: SubValueUnknown
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      provenance: SubValueUnknown, alias_rhs: none
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
     let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding, source_indices: e.source_indices)
@@ -1457,11 +1536,70 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // operand read), where it was measured to confirm the wrong homonym for an operand; here it fires
 // only after both exact hops decline, and its answer still has to survive the same census join,
 // so a pool-precedence homonym with a non-agreeing span or prefix answers none rather than wrong.
-fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+//
+// v1's ONE type-identity derivation FOR PRODUCTION READERS. The Optional below is a PROJECTION of the
+// typed reading, so the unidentified population a census counts and the population a classifier
+// sees are one set by construction, and every Absent carries the cause it was declined for.
+// ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
+// 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
+// field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
+// `inferred` as resolved structure. NO READER IN THIS MODULE CONSUMES Node.declaration YET, so the
+// type-identity readings below never have two sources for one fact. Its production readers are in
+// the Rust emitter: v1.compiler.infer_emit_info resolve_type_decl_routed, which keys the
+// type-declaration index and the Clone-bound and map-key fixpoints of v1.compiler.trait_derive_emit
+// on it, and v1.compiler.emit_rust expr_realizes_as_refusing_int. The census
+// (v1.tests.claim.carrier_realization_census) reads it in the recorded_declaration column and
+// records, in emitter_decl_route, which emitter resolutions still fall past it.
+// THE TRANSITION TRIGGER IS MEASURED. On that census, over the self-host and dag closures, the
+// recorded_declaration column must name a declaration at every position this reading identifies,
+// at identity grain. Type-variable binders (cause 3) are excluded by type, not by count. Then ONE
+// transition switches every reader to Node.declaration and deletes, together, the reference-side
+// joins below, the qualified-name arm and the spelling fallbacks, with the census before and after
+// as its receipt.
+type TypeNodeDeclarationReading
+  = TypeNodeNamesDeclaration { declaration: DeclarationRef }
+  | TypeNodeUnidentified { cause: TypeNodeUnidentifiedCause }
+
+// Why the join declined, one arm per hop that can fail. KERNEL AND TYPE-VARIABLE ARE NOT CAUSES
+// HERE: whether a kernel spelling or a binder counts as identified is a question about the
+// REFERENCE (v1.compiler.infer_env type_reference_declaration_reading), not about this join.
+type TypeNodeUnidentifiedCause
+  = TypeNodeAuthoredNameEmpty
+  | TypeNodeNameDeclaredNowhere { name: String }
+  | TypeNodeSpanDeclaresNothing { name: String }
+  | TypeNodeCarriesNoSpan { name: String }
+  | TypeNodeQualifierMatchesNoDeclarer { qualified: String }
+
+fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeNodeDeclarationReading {
   let authored = authored_name_at(source_indices: source_indices, node: rt)
   let decl_name = qualified_last_segment(name: authored)
+  if decl_name == "" { return TypeNodeUnidentified { cause: TypeNodeAuthoredNameEmpty } }
+  let entry = map_get(env.symbol_index.global_bare, decl_name)
+  let by_span = declaration_ref_of_declaration_node(decl: rt, source_indices: source_indices, env: env)
+  match by_span {
+    Present { value: d } => TypeNodeNamesDeclaration { declaration: d }
+    Absent =>
+      match operand_declaration_from_qualified_name(qualified: authored, env: env) {
+        Present { value: od } => TypeNodeNamesDeclaration { declaration: od.declaration }
+        Absent =>
+          if entry == none { TypeNodeUnidentified { cause: TypeNodeNameDeclaredNowhere { name: decl_name } } }
+          else if qualified_all_but_last(name: authored) != "" { TypeNodeUnidentified { cause: TypeNodeQualifierMatchesNoDeclarer { qualified: authored } } }
+          else if rt.ident_span == none { TypeNodeUnidentified { cause: TypeNodeCarriesNoSpan { name: decl_name } } }
+          else { TypeNodeUnidentified { cause: TypeNodeSpanDeclaresNothing { name: decl_name } } }
+      }
+  }
+}
+
+// THE MINT: the DeclarationRef of a DECLARATION node, read from the declaration index. A
+// declaration node carries its own declaring span, and the index row whose binding declares that
+// span names the module that declares it, so this is the definition of the identity, not a
+// reading of a spelling. It answers none for a node whose span declares nothing, as any reference
+// does. The one writer of Node.declaration (v1.compiler.infer_resolve field_inferred_with_declaration)
+// mints through this and through nothing else: not the qualified-name arm, not a by-name lookup.
+fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: decl))
   if decl_name == "" { return none }
-  let by_span = match rt.ident_span {
+  match decl.ident_span {
     Absent => none
     Present { value: sp } =>
       match map_get(env.symbol_index.global_bare, decl_name) {
@@ -1475,13 +1613,52 @@ fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineInd
         Absent => none
       }
   }
-  match by_span {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      match operand_declaration_from_qualified_name(qualified: authored, env: env) {
-        Present { value: od } => Present { value: od.declaration }
-        Absent => none
+}
+
+fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match declaration_reading_of_type_node(rt: rt, source_indices: source_indices, env: env) {
+    TypeNodeNamesDeclaration { declaration: d } => Present { value: d }
+    TypeNodeUnidentified { cause: _ } => none
+  }
+}
+
+// THE IDENTITY OF A TYPE-REFERENCE POSITION as the resolver left it: the authored node's own join,
+// then the node resolve bound (`inferred Resolved`). Both hops are the one derivation above; neither
+// consults the caller's env by name. A kernel spelling and a type-variable binder are identified by
+// the kernel and by the binder respectively, and are reported as such rather than counted as
+// unidentified -- they are not corpus declarations and no DeclarationRef names them.
+// v1.tests.claim.carrier_realization_census records it per authored reference position, and
+// text_representation_by_identity reads it at checker text boundaries.
+type TypeReferenceDeclarationReading
+  = TypeReferenceNamesDeclaration { declaration: DeclarationRef }
+  | TypeReferenceIsKernelType { name: String }
+  | TypeReferenceIsTypeVariable { id: String }
+  | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
+
+fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
+  match declaration_reading_of_type_node(rt: n, source_indices: source_indices, env: env) {
+    TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
+    TypeNodeUnidentified { cause: authored_cause } =>
+      match n.inferred {
+        Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
+        Present { value: Resolved { node: r } } =>
+          match declaration_reading_of_type_node(rt: r, source_indices: source_indices, env: env) {
+            TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
+            TypeNodeUnidentified { cause: resolved_cause } =>
+              kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+          }
+        _ => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
       }
+  }
+}
+
+fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  match n.inferred {
+    Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
+    _ =>
+      if is_kernel_type(name: nm) { TypeReferenceIsKernelType { name: nm } }
+      else { TypeReferenceUnidentified { authored: authored, resolved: resolved } }
   }
 }
 
@@ -1503,19 +1680,31 @@ fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineInd
 // in the tree. The binding already holds the resolved NODE, so the provenance is read from the node
 // directly and nothing is projected through a string on the way.
 fn declaration_provenance_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeDeclarationProvenance {
+  match declaration_node_of_ref(d: d, env: env) {
+    Present { value: decl } => declaration_provenance_of(item: decl)
+    Absent => DeclarationIdentityAbsent
+  }
+}
+
+// THE DECLARATION A DeclarationRef NAMES, joined through the symbol index by declaring module AND
+// name -- the one join declaration_provenance_of_ref above already made, returned as the node so a
+// consumer that needs the declaration's SHAPE (v1.compiler.infer ground_kernel_views reads a
+// kernel-grounded carrier's constructors) does not repeat it by spelling. Absent when the closure
+// holds no declaration of that name in that module; never answered from a homonym elsewhere.
+fn declaration_node_of_ref(d: DeclarationRef, env: TypeEnv) -> Node? {
   let want_name = d.decl_name as String
   let want_module = d.module_path as String
   match map_get(env.symbol_index.global_bare, want_name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
       if mp == want_module {
-        declaration_provenance_of(item: b.resolved)
-      } else { DeclarationIdentityAbsent }
+        Present { value: b.resolved }
+      } else { none }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match cands |> filter(c => c.module_path == want_module) |> first {
-        Present { value: c } => declaration_provenance_of(item: c.binding.resolved)
-        Absent => DeclarationIdentityAbsent
+        Present { value: c } => Present { value: c.binding.resolved }
+        Absent => none
       }
-    Absent => DeclarationIdentityAbsent
+    Absent => none
   }
 }
 
@@ -1528,6 +1717,219 @@ fn declaration_provenance_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeDeclara
 // census (module prefix must equal the census row's declarer); a BARE authored name answers none
 // here — no prefix, and the occurrence span matches no declaration — so every unqualified
 // destination takes exactly the hops it took before this arm existed.
+// TEXT REPRESENTATION BY DECLARATION IDENTITY (gunbc.rung_drop text_boundary_identity_wall; XL-0T
+// ruling B; review 72252). A type node's representation is decided by WHICH DECLARATION it resolves
+// to, never by its spelling:
+//   - HostText: the kernel String mint, identified by declaration_provenance_of (the exact kernel_span
+//     constructor test), on the node or on its resolved node.
+//   - CodePointSequence: the declaration std.algebra FreeMonoid applied to the declaration std.types
+//     Char, reached directly or through a chain of transparent aliases.
+//   - NotText: any other identified declaration.
+//   - TextRepresentationUnidentified: no identity could be read. Never defaulted.
+// IDENTITY IS READ IN THE AUTHORING MODULE'S TERMS, NEVER RE-RESOLVED IN THE CONSUMER'S SCOPE: only by
+// the node's declaring span in the corpus-wide index or by its qualified name
+// (declaration_ref_of_type_node), and on the node the resolver already produced in the declaring
+// module (its inferred Resolved node). The by-name fallbacks of type_reference_declaration_ref
+// (lookup_type_for / lookup_type_by_name in the caller's env) are deliberately NOT used: re-reading
+// a callee's bare `String` in a foreign caller's scope is the caller-re-resolution escape.
+fn text_identity_std_algebra_free_monoid() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid") }
+fn text_identity_std_types_char() -> DeclarationRef { decl_ref(module_path: "std.types", decl_name: "Char") }
+
+// A kernel mint that names no corpus declaration (Int, Bool, the seed's Hash, ...) is identified by
+// the kernel itself as a distinct nominal type: not text. It is consulted only AFTER the identity
+// read, so a stand-in the resolver minted for a qualified corpus reference is still read as the
+// declaration it names.
+fn node_is_kernel_mint(n: Node) -> Bool {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: _ } => true
+    CorpusDeclared { decl_file: _ } => false
+    DeclarationIdentityAbsent => false
+  }
+}
+
+fn node_is_kernel_mint_named(n: Node, name: String) -> Bool {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: m } => m == name
+    CorpusDeclared { decl_file: _ } => false
+    DeclarationIdentityAbsent => false
+  }
+}
+
+fn declaration_binding_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeBinding? {
+  match map_get(env.symbol_index.global_bare, d.decl_name as String) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if mp == (d.module_path as String) { Present { value: b } } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == (d.module_path as String)) |> first {
+        Present { value: c } => Present { value: c.binding }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// THE IDENTITY A TEXT CLASSIFICATION READS is v1's one type-reference derivation
+// (type_reference_declaration_reading, neat-boar-16 ruling), so the unidentified sides this wall
+// declines to judge are exactly the population carrier_realization_census counts at those positions.
+fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
+  match n.children |> first {
+    Absent => TextRepresentationUnidentified
+    Present { value: ch } =>
+      let el = match ch.inferred { Present { value: Resolved { node: r } } => r  _ => ch }
+      match type_reference_declaration_reading(n: el, source_indices: env.source_indices, env: env) {
+        TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
+        TypeReferenceIsKernelType { name: _ } => NotText
+        TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
+      }
+  }
+}
+
+fn text_representation_by_identity(n: Node, env: TypeEnv) -> TextRepresentation {
+  text_representation_by_identity_bounded(n: n, env: env, fuel: 16, visited: [])
+}
+
+// A declaration with no body, or whose resolved form is itself, is opaque: a type of its own
+// (v2.std.node Symbol), and not text. A generic type variable is a slot, not a declaration, and a
+// compiler-error type already carries its own diagnostic, so neither is text and neither is refused
+// here a second time.
+fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, visited: List<String>) -> TextRepresentation {
+  let resolved = match n.inferred { Present { value: Resolved { node: r } } => Present { value: r }  _ => none }
+  let kernel_string = node_is_kernel_mint_named(n: n, name: "String") || match resolved {
+    Present { value: r } => node_is_kernel_mint_named(n: r, name: "String")
+    Absent => false
+  }
+  let generic_or_error = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    Present { value: CompilerError { message: _, span: _ } } => true
+    _ => false
+  }
+  let kernel_other = node_is_kernel_mint(n: n) || match resolved {
+    Present { value: r } => node_is_kernel_mint(n: r)
+    Absent => false
+  }
+  if kernel_string { HostText }
+  else if generic_or_error { NotText }
+  else if fuel <= 0 { TextRepresentationUnidentified }
+  else if is_where_refinement_node(n: n) {
+    match n.children |> first {
+      Present { value: base } => text_representation_by_identity_bounded(n: base, env: env, fuel: fuel - 1, visited: visited)
+      Absent => TextRepresentationUnidentified
+    }
+  }
+  else {
+    match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
+      TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
+      TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
+      TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceNamesDeclaration { declaration: d } =>
+        if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
+          text_element_is_char(n: n, env: env)
+        } else {
+          let key = declaration_ref_display_key(ref: d)
+          if visited |> any(v => v == key) { TextRepresentationUnidentified }
+          else {
+            match declaration_binding_of_ref(d: d, env: env) {
+              Absent => TextRepresentationUnidentified
+              Present { value: b } =>
+                let decl = b.resolved
+                let is_alias = decl.connective == NoConnective && (decl.children |> count) == 0
+                if is_where_refinement_node(n: decl) {
+                  text_representation_by_identity_bounded(n: decl, env: env, fuel: fuel - 1, visited: concat(visited, [key]))
+                }
+                else if !is_alias { NotText }
+                else {
+                  match decl.inferred {
+                    Present { value: Resolved { node: target } } =>
+                      let target_is_itself = match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
+                        TypeReferenceNamesDeclaration { declaration: t } => declaration_ref_eq(a: t, b: d)
+                        _ => false
+                      }
+                      if target_is_itself { NotText }
+                      else { text_representation_by_identity_bounded(n: target, env: env, fuel: fuel - 1, visited: concat(visited, [key])) }
+                    _ => NotText
+                  }
+                }
+            }
+          }
+        }
+    }
+  }
+}
+
+// REFINEMENT PEELING IS A CLASSIFICATION RULE (not a reader fallback): a where-refinement
+// `T where p` has T's representation -- a refinement narrows which values inhabit a type, it does
+// not change how they are represented. So std.types NonEmptyStr (`String where non_empty`) is host
+// text exactly as String is, and a NonEmptyStr at a code-point formal unfolds or refuses exactly
+// like a String would (test.claim.text_boundary_identity_wall_witness_test's refinement rows).
+fn is_where_refinement_node(n: Node) -> Bool {
+  n.connective == Conj && n.type_annotation != none && (n.children |> count) == 1
+}
+
+fn text_representation_is_unidentified(r: TextRepresentation) -> Bool {
+  match r { TextRepresentationUnidentified => true  HostText => false  CodePointSequence => false  NotText => false }
+}
+
+fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
+  match r { HostText => true  CodePointSequence => true  NotText => false  TextRepresentationUnidentified => false }
+}
+
+// A CROSSING: both sides are identified, one as each representation. An UNIDENTIFIED side makes no
+// judgment here -- measured, most v1 type references carry no readable declaration identity yet, so
+// refusing them refused thousands of correct host-text sites; that population is a declared drop
+// (gunbc.rung_drop text_boundary_identity_wall) whose trigger is the resolver recording declaration
+// identity on every type reference.
+// HOST TEXT AT A STRUCTURAL SEQUENCE OF ANY ELEMENT. text_crossing_by_identity judges two TEXT
+// readings, and a FreeMonoid<T> whose element is an unbound type variable is not text by that reading
+// (its element is not std.types Char), so the crossing never registered -- and the direct-call check
+// stops judging a formal that carries an unbound variable before it would ask. But host text is not a
+// FreeMonoid at all: whatever T becomes, a kernel String handed to a std.algebra FreeMonoid formal is a
+// representation crossing with no implicit route, so it is refused whatever the element (reported by
+// neat-boar-16: std.effect_grant passed a host String to v2.std.algebra length and only rustc caught
+// it). The declaration read is the same one text_representation_by_identity uses, so an alias of
+// FreeMonoid is judged through its declaration, never its spelling. The argument is HOST TEXT only when
+// its peeled type reads as host AND its unpeeled type does not read as a code-point sequence: peeling a
+// qualified v2.std.text String alias yields a node that reads as host, while an unpeeled kernel String
+// reference reads as nothing at all, so each reading alone is wrong in one direction (measured at
+// target_model apply_emit_spelling_escapes, refused falsely when peeled alone, and at the fixture
+// r_host_string_into_generic_free_monoid_formal_refuses, admitted when unpeeled alone). The caller
+// also skips callable formals: a callable's return carrier is not the formal.
+fn host_text_into_structural_sequence(formal: Node, actual: Node, unpeeled_actual: Node, env: TypeEnv) -> Bool {
+  let unpeeled_is_structural = match text_representation_by_identity(n: unpeeled_actual, env: env) {
+    CodePointSequence => true
+    HostText => false
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+  if unpeeled_is_structural {
+    false
+  } else {
+    match text_representation_by_identity(n: actual, env: env) {
+      HostText =>
+        match type_reference_declaration_reading(n: formal, source_indices: env.source_indices, env: env) {
+          TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid())
+          _ => false
+        }
+      _ => false
+    }
+  }
+}
+
+fn text_crossing_by_identity(left: Node, right: Node, env: TypeEnv) -> Bool {
+  text_representations_cross(a: text_representation_by_identity(n: left, env: env), b: text_representation_by_identity(n: right, env: env))
+}
+
+// THE ONE CROSSING RULE: host text against a code-point sequence, in either order. Every other pair,
+// including one with an unidentified side, is not a crossing.
+fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> Bool {
+  match a {
+    HostText => match b { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
+    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+}
+
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let from_authored = declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
   if from_authored != none { return from_authored }

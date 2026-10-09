@@ -1,13 +1,12 @@
 module v2.lens.enforcement.gate
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.text { String }
 import v2.std.algebra { for_all, any, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
 import v2.lens.registry { LensRegistryEntryV0, LensIdV0, lens_id_v0_eq }
 import v2.lens.enforcement.vocab {
   SubjectRoster,
-  EnforcementMode, Advisory, AuditOnly, Blocking, enforcement_mode_satisfies,
+  EnforcementMode, AuditOnly, Blocking, enforcement_mode_satisfies,
   ConsumerKind, ConsumerRequirement, WitnessOnly, consumer_is_live, consumer_satisfies,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
   subject_roster_covers,
@@ -140,7 +139,6 @@ fn scope_leg(intent: StandingIntent, s: ScopeSatisfaction) -> LegVerdict {
         match intent.default_mode {
           Blocking => LegFails { reason: "blocking intent narrowed by a reason not on the allow-list" }
           AuditOnly => LegHolds
-          Advisory => LegHolds
         }
       }
   }
@@ -222,7 +220,6 @@ fn contract_internally_consistent(c: LensContract, receipts: List<EnrollmentDisc
       ReceiptAbsent => false
     }
     AuditOnly => true
-    Advisory => true
   }
 }
 
@@ -238,15 +235,11 @@ fn lenses_self_apply_or_exempt_holds(receipts: List<EnrollmentDiscoveryReceipt>)
   for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
 }
 
-fn non_empty_string(s: String) -> Bool {
-  !(s == "")
-}
-
 fn intent_admissible(i: StandingIntent) -> Bool {
   i.recurring
     && i.receiptable
-    && non_empty_string(s: i.displaced_cost)
-    && non_empty_string(s: i.mechanism_class)
+    && non_empty(xs: i.displaced_cost)
+    && non_empty(xs: i.mechanism_class)
     && non_empty(xs: i.desired_scope.roots)
 }
 

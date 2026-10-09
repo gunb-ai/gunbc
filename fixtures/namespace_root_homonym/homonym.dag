@@ -1,0 +1,3 @@
+module nsroot_decl.homonym
+
+fn nsroot() -> Int { 0 }

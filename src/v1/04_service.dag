@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }
 
-import v1.std.core {
+import v1.std.core { Unmarked,
   call_semantics_target, callable_identity, DeclaredCallableIdentity,
   CallSemantics, FunctionValueCallSemantics,
   CallTargetIdentity, SourceDeclarationCall, RuntimePrimitiveCall, CallableTargetUndetermined, LocallyBoundCall,
@@ -19,7 +19,8 @@ import v1.std.core {
   unit_type,
   expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base,
   method_receiver, param_node_type_expr,
-  authored_name_at
+  authored_name_at,
+  is_rest_transport
 }
 
 import v1.compiler.infer_types {
@@ -41,15 +42,19 @@ type OpEntry {
   name: String
   outputs: List<Node>
   params: List<Node>
+  rest: Bool
 }
 
 type ServiceMethodResult {
   result_type: Node
   op_params: List<Node>
+  rest: Bool
 }
 
-// THE JUDGMENT IS READ, NOT RE-DERIVED. service_spine_projection resolved this occurrence against
-// the service registry and stamped ServiceValueBinding on the result; this fn asks for that stamp
+// THE JUDGMENT IS READ, NOT RE-DERIVED. Resolution stamped ServiceValueBinding on the receiver --
+// service_spine_projection for a dotted occurrence (`shell.Exec`), and
+// v1.compiler.infer infer_var_binding_kind for a service reached through its bare name
+// (`Filesystem`), both deciding against the one service registry -- and this fn asks for that stamp
 // and nothing else. It cannot be wrong about a name it does not read.
 //
 // WHY NOT CONSULT THE REGISTRY HERE, which is the obvious alternative: the emitters cannot reach
@@ -64,6 +69,19 @@ type ServiceMethodResult {
 // admitted bare namespace roots like `cargo`, which are not services at all. Requiring a dot
 // reproduced the previous behaviour exactly and was still a semantic fact inferred from a
 // character. The stamp ends the sequence rather than adding a fourth spelling to it.
+//
+// THE BARE-NAME STAMP IS NOT THE REJECTED SECOND SHAPE, though it reaches the same `Filesystem`
+// outcome, and the difference is the whole point. That shape decided by a spelling property -- a
+// name equal to its own resolved type name -- which is why it admitted `cargo`. The bare-name arm
+// decides by the REGISTRY: infer_var_binding_kind stamps a local only when the service registry
+// holds that exact name AND the local's resolved type is the nominal reference the scope fold
+// inserted for it (local_is_service_root_binding). The registry is keyed on each service's authored
+// name while the root locals are keyed on its namespace root, so `shell` (root of `shell.Exec`)
+// misses the registry and stays a local, and `Filesystem` (a service declared bare) hits it. And the
+// refusal that shape deleted is no longer owed for this case: the fn it protected is effectful by
+// derivation once the call is seen, so signature and call site agree and the realized arm is correct
+// (v1.compiler.emit_rust rust_unrealized_service_op_refusal records this, and
+// gunbc.recurring_failure_mode bare_imported_service_invisible_to_derived_demand the defect).
 // THE VARIANT IS MATCHED IN ITS OWN match RATHER THAN NESTED IN THE OUTER PATTERN, and that is an
 // emission constraint rather than a style choice: spelling it as
 // `ExprVar { binding_kind: Present { value: ServiceValueBinding } }` emits Rust that matches a bare
@@ -120,12 +138,20 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
 // A callee edge is the resolved answer to "which declaration does this call reach", carried as a
 // value so that not-knowing is representable. Collapsing the third arm into an absence is what
 // makes an incomplete effect summary indistinguishable from a complete empty one.
+//
+// EVERY TRACKED ARM CARRIES ITS CALL SITE. An edge is derived from one `ExprCall` node, whose span
+// names the file and range the call was authored at, and that position used to be dropped here --
+// so every refusal raised over an edge was rendered at `no_span()` and printed as `<synthetic>`,
+// naming the caller and callee but no place to look. The span is a required field rather than an
+// optional one, so a cause raised over an edge has no constructor that omits where the call is.
+// Edges are deduplicated per item by target, so the site carried is the FIRST call to that target
+// in the body's traversal order. `PrimitiveCallee` carries none because it is never reported.
 type CalleeEdge
-  = ResolvedCallee { identity: DeclaredCallableIdentity }
+  = ResolvedCallee { identity: DeclaredCallableIdentity, call_site: SourceSpan }
   | PrimitiveCallee
-  | FunctionValueCallee
-  | LocalBindingCallee { name: String }
-  | UnresolvedCallee { spelling: String }
+  | FunctionValueCallee { call_site: SourceSpan }
+  | LocalBindingCallee { name: String, call_site: SourceSpan }
+  | UnresolvedCallee { spelling: String, call_site: SourceSpan }
 
 type CalleeAccum {
   seen: Map<String, Bool>
@@ -160,17 +186,17 @@ type CalleeAccum {
 // different facts with different repairs: an unresolved spelling names nothing and must
 // BLOCK; a local binding names something whose effects this pass cannot join through, which
 // is the same epistemic state as a function value and is reported the same advisory way.
-fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge {
+fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String, call_site: SourceSpan) -> CalleeEdge {
   match cs {
-    Present { value: FunctionValueCallSemantics } => FunctionValueCallee
-    Absent => UnresolvedCallee { spelling: spelling }
+    Present { value: FunctionValueCallSemantics } => FunctionValueCallee { call_site: call_site }
+    Absent => UnresolvedCallee { spelling: spelling, call_site: call_site }
     _ =>
       match call_semantics_target(cs: cs) {
         SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-          ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl } }
+          ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl }, call_site: call_site }
         RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => PrimitiveCallee
-        LocallyBoundCall { name: n } => LocalBindingCallee { name: n }
-        CallableTargetUndetermined => UnresolvedCallee { spelling: spelling }
+        LocallyBoundCall { name: n } => LocalBindingCallee { name: n, call_site: call_site }
+        CallableTargetUndetermined => UnresolvedCallee { spelling: spelling, call_site: call_site }
       }
   }
 }
@@ -204,10 +230,10 @@ type CalleeEdgeDedup
 
 fn callee_edge_dedup_key(edge: CalleeEdge) -> CalleeEdgeDedup {
   match edge {
-    ResolvedCallee { identity: identity } => Tracked { key: concat("d:", callable_identity(id: identity)) }
-    UnresolvedCallee { spelling: spelling } => Tracked { key: concat("u:", spelling) }
-    FunctionValueCallee => Tracked { key: "v:" }
-    LocalBindingCallee { name: n } => Tracked { key: concat("l:", n) }
+    ResolvedCallee { identity: identity, call_site: _ } => Tracked { key: concat("d:", callable_identity(id: identity)) }
+    UnresolvedCallee { spelling: spelling, call_site: _ } => Tracked { key: concat("u:", spelling) }
+    FunctionValueCallee { call_site: _ } => Tracked { key: "v:" }
+    LocalBindingCallee { name: n, call_site: _ } => Tracked { key: concat("l:", n) }
     PrimitiveCallee => NotTracked
   }
 }
@@ -215,7 +241,7 @@ fn callee_edge_dedup_key(edge: CalleeEdge) -> CalleeEdgeDedup {
 fn collect_callee_edges_into(texpr: Node, acc: CalleeAccum, source_indices: Map<String, NewlineIndex>) -> CalleeAccum {
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
-      let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices))
+      let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices), call_site: texpr.span)
       match callee_edge_dedup_key(edge: edge) {
         NotTracked => acc
         Tracked { key: key } =>
@@ -294,15 +320,15 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
           let called = entry.called
           let extra = called |> flat_map(edge =>
             match edge {
-              ResolvedCallee { identity: callee_identity } =>
+              ResolvedCallee { identity: callee_identity, call_site: _ } =>
                 match map_get(reg2, callable_identity(id: callee_identity)) {
                   Present { value: callee_info } => callee_info.service_names
                   Absent => []
                 }
               PrimitiveCallee => []
-              FunctionValueCallee => []
-              LocalBindingCallee { name: _ } => []
-              UnresolvedCallee { spelling: _ } => []
+              FunctionValueCallee { call_site: _ } => []
+              LocalBindingCallee { name: _, call_site: _ } => []
+              UnresolvedCallee { spelling: _, call_site: _ } => []
             }
           )
           let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
@@ -317,7 +343,7 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
               module_name: info.module_name,
               kind: info.kind,
               service_names: merged,
-              resource_names: info.resource_names,
+              resource_requirements: info.resource_requirements,
               params: info.params,
               is_self_recursive: info.is_self_recursive,
               has_non_tail_self_call: info.has_non_tail_self_call
@@ -390,11 +416,11 @@ type ServiceEffectAnalysis
 // is indistinguishable from "this callee has no effects". Absence of instances is not absence of
 // effects, so both are now REPRESENTED and both make the analysis incomplete.
 type EffectIncompleteness
-  = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String }
+  = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String, call_site: SourceSpan }
   | ExpansionBudgetExhausted { remaining_delta: Int }
-  | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity }
-  | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity }
-  | LocalBindingEffectsUnresolved { caller: DeclaredCallableIdentity, name: String }
+  | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity, call_site: SourceSpan }
+  | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity, call_site: SourceSpan }
+  | LocalBindingEffectsUnresolved { caller: DeclaredCallableIdentity, name: String, call_site: SourceSpan }
 
 // The unresolved edges are a property of the PRECOMPUTED callee lists, not of any iteration, so
 // they are read once from the same structure the fold consumes rather than re-derived per pass.
@@ -403,12 +429,12 @@ fn unresolved_callee_edges(module_callees: List<ModuleCallees>) -> List<EffectIn
     m.items |> flat_map(entry =>
       entry.called |> flat_map(edge =>
         match edge {
-          UnresolvedCallee { spelling: spelling } =>
-            [UnresolvedCalleeEdge { item_identity: entry.item_identity, spelling: spelling }]
-          ResolvedCallee { identity: _ } => []
+          UnresolvedCallee { spelling: spelling, call_site: call_site } =>
+            [UnresolvedCalleeEdge { item_identity: entry.item_identity, spelling: spelling, call_site: call_site }]
+          ResolvedCallee { identity: _, call_site: _ } => []
           PrimitiveCallee => []
-          FunctionValueCallee => []
-          LocalBindingCallee { name: _ } => []
+          FunctionValueCallee { call_site: _ } => []
+          LocalBindingCallee { name: _, call_site: _ } => []
         }
       )
     )
@@ -433,15 +459,15 @@ fn unjoinable_callee_edges(module_callees: List<ModuleCallees>, registry: Map<St
           else {
             entry.called |> flat_map(edge =>
               match edge {
-                ResolvedCallee { identity: callee_identity } =>
+                ResolvedCallee { identity: callee_identity, call_site: call_site } =>
                   match map_get(registry, callable_identity(id: callee_identity)) {
                     Present { value: _ } => []
-                    Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity }]
+                    Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity, call_site: call_site }]
                   }
-                FunctionValueCallee => [FunctionValueEffectsUnresolved { caller: entry.item_identity }]
-                LocalBindingCallee { name: n } => [LocalBindingEffectsUnresolved { caller: entry.item_identity, name: n }]
+                FunctionValueCallee { call_site: call_site } => [FunctionValueEffectsUnresolved { caller: entry.item_identity, call_site: call_site }]
+                LocalBindingCallee { name: n, call_site: call_site } => [LocalBindingEffectsUnresolved { caller: entry.item_identity, name: n, call_site: call_site }]
                 PrimitiveCallee => []
-                UnresolvedCallee { spelling: _ } => []
+                UnresolvedCallee { spelling: _, call_site: _ } => []
               }
             )
           }
@@ -554,16 +580,17 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
         match matching |> first {
           Present { value: op } =>
             if op.outputs |> count == 0 {
-              Present { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
+              Present { value: ServiceMethodResult { result_type: unit_type, op_params: op.params, rest: op.rest } }
             } else {
               Present { value: ServiceMethodResult {
                 result_type: Node {
                   occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none,
-                  children: map(op.outputs, f => Node { occurrence_identity: OccurrenceSynthetic, name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }),
+                  children: map(op.outputs, f => Node { occurrence_identity: OccurrenceSynthetic, name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }),
                   connective: Conj,
-                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
+                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
                 },
-                op_params: op.params
+                op_params: op.params,
+                rest: op.rest
               } }
             }
           Absent => none
@@ -573,6 +600,20 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
   } else { none }
 }
 
-fn service_op_entry(child: Node, source_indices: Map<String, NewlineIndex>) -> OpEntry {
-  OpEntry { name: authored_name_at(source_indices: source_indices, node: child), outputs: inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params }
+// WHETHER AN OPERATION IS A REST EXCHANGE, read from the transport it actually runs under: its own
+// when it declares one, the service's otherwise. A REST operation's call yields
+// extdeps.transports.rest RestResult over its declared output, so this is the one fact the call
+// site needs beside the output record.
+fn service_operation_is_rest(op: Node, service: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match op.transport {
+    Present { value: t } => is_rest_transport(t: t, source_indices: source_indices)
+    Absent => match service.transport {
+      Present { value: t } => is_rest_transport(t: t, source_indices: source_indices)
+      Absent => false
+    }
+  }
+}
+
+fn service_op_entry(child: Node, service: Node, source_indices: Map<String, NewlineIndex>) -> OpEntry {
+  OpEntry { name: authored_name_at(source_indices: source_indices, node: child), outputs: inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params, rest: service_operation_is_rest(op: child, service: service, source_indices: source_indices) }
 }

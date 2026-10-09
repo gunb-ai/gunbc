@@ -2,8 +2,8 @@ module extdeps.ssh.session
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit, String }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -41,6 +41,12 @@ fn shape_scp_copy_to_argv(
   [local_path as String, join([host as String, ":", remote_path as String], "")]
 }
 
+// ssh(1) EXIT STATUS (OpenBSD 7.6): "ssh exits with the exit status of the remote command or with 255
+// if an error occurred." 255 is the CLIENT's status: it does not establish that the remote command
+// did not run -- a connection lost after the command started, or before its status came back, also
+// ends here. A command that itself exits 255 is indistinguishable from it at this boundary.
+data ssh_client_error_exit_status: Int = 255
+
 type SshSessionExecResult {
   exit_code: Int
   success: Bool
@@ -50,6 +56,7 @@ type SshSessionExecResult {
 
 service ssh.Session {
   operation Exec {
+    requires Network
     input { host: NonEmptyStr, command: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
@@ -67,6 +74,7 @@ service ssh.Session {
   }
 
   operation ExecPortableWords {
+    requires Network
     input { client_args: List<String> }
     output {
       exit_code: Int from "exit_code"
@@ -87,6 +95,7 @@ service ssh.Session {
   }
 
   operation ExecPortableWordsWithStdin {
+    requires Network
     input { client_args: List<String>, stdin_payload: String }
     output {
       exit_code: Int from "exit_code"
@@ -108,6 +117,7 @@ service ssh.Session {
   }
 
   operation ExecScript {
+    requires Network
     input { host: NonEmptyStr, script: String }
     output {
       exit_code: Int from "exit_code"
@@ -129,6 +139,7 @@ service ssh.Session {
   }
 
   operation Reachability {
+    requires Network
     input { host: NonEmptyStr }
     output { reachable: Bool from "exit_success" }
     readonly

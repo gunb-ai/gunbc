@@ -9,15 +9,41 @@ module v2.test.claim.fold_lowering
 // carried two. Measured 2026-08-21: with those two import rows present, every
 // end-to-end claim fails with `no such function: tokenize` -- an explicit
 // import block replaces the ambient pool rather than adding to it. The rows
-// were removed, not relocated, because `fold_family_head` and `Bool` resolve
+// were removed, not relocated, because `fold_family_realization` and `Bool` resolve
 // from that same pool and the one claim that used them still passes.
+fn realizes_roster_operation(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: FoldRealizesRosterOperation { template: _, row: _, slots: _ } } => true
+    Present { value: FoldRealizesDeclaration { declaration: _, slots: _ } } => false
+    Absent => false
+  }
+}
+
+fn realizes_corpus_declaration(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: FoldRealizesDeclaration { declaration: _, slots: _ } } => true
+    Present { value: FoldRealizesRosterOperation { template: _, row: _, slots: _ } } => false
+    Absent => false
+  }
+}
+
+fn outside_the_family(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The family is one roster with a realization per member: `fold` is the collection OPERATION
+// (std.algebra collection_fold_shape), the other three are corpus declarations, and anything else
+// is outside it.
 test fn fold_family_head_recognizes_fold_variants() -> Bool {
-  fold_family_head(sym: ^fold)
-    && fold_family_head(sym: ^fold_list)
-    && fold_family_head(sym: ^fold_list_right)
-    && fold_family_head(sym: ^fold_node)
-    && !fold_family_head(sym: ^map)
-    && !fold_family_head(sym: ^g)
+  realizes_roster_operation(head: ^fold)
+    && realizes_corpus_declaration(head: ^fold_list)
+    && realizes_corpus_declaration(head: ^fold_list_right)
+    && realizes_corpus_declaration(head: ^fold_node)
+    && outside_the_family(head: ^map)
+    && outside_the_family(head: ^g)
 }
 
 data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
@@ -133,13 +159,16 @@ test fn fold_collection_name_survives_parse() -> Bool {
   symbol_in(needle: ^xs, xs: fold_snippet_identities())
 }
 
-test fn fold_call_lowers_to_terminating_loop() -> Bool {
+fn fold_call_lowers_to_terminating_loop_verdict() -> Bool {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: call } =>
-      match fold_call_to_loop(fold_call: call) {
-        Accepted { value: loop, diagnostics: _ } =>
-          is_proven_termination(m: loop_multiplicity(n: loop))
+      match fold_call_to_encoding(fold_call: call) {
+        Accepted { value: encoding, diagnostics: _ } =>
+          match fold_recurrence_loop(encoding: encoding) {
+            Present { value: lp } => is_proven_termination(m: loop_multiplicity(n: lp))
+            Absent => false
+          }
         Rejected { diagnostics: _ } => false
       }
   }
@@ -149,8 +178,8 @@ fn lowered_fixture_loop() -> Optional<Node> {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => Absent
     Present { value: call } =>
-      match fold_call_to_loop(fold_call: call) {
-        Accepted { value: loop, diagnostics: _ } => Present { value: loop }
+      match fold_call_to_encoding(fold_call: call) {
+        Accepted { value: encoding, diagnostics: _ } => fold_recurrence_loop(encoding: encoding)
         Rejected { diagnostics: _ } => Absent
       }
   }
@@ -183,19 +212,31 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
     n: n,
     children: list_snoc_item(
       xs: n.children,
-      item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+      item: Edge { label: core_edge_label(marker: LoopCarrierEdge), target: binder }
     )
   )
 }
 
-test fn lowered_loop_binds_carrier_binder() -> Bool {
+// THE CARRIER IS A GENERATED SLOT, NOT THE AUTHORED BINDER, AND THIS ROW IS WHERE THAT IS ASSERTED. It
+// read `sym == ^acc` -- the step's own first binder -- which was true while
+// v2.compiler.fold_lowering spelled the Bind's binder and the carrier edge with
+// operands.carrier. That made the lowered tree hold TWO VISIBLE BINDERS WITH ONE NAME, the persistent slot
+// and the step Arrow's freshly-bound formal, and v2.compiler.resolve's value-binder admission refused the
+// inner one. The slot now comes from v2.std.anonymous_binder fresh_fold_carrier.
+//
+// WHAT IT ASSERTS NOW IS THE SEPARATION ITSELF, in both directions, because either half alone is
+// satisfiable by an accident: the carrier IS a fold-carrier binder (so the row fails if the mint is
+// bypassed and some other symbol appears), and it is NOT the authored binder (so the row fails if the
+// constructor goes back to borrowing `acc`). A row asserting only the first would still pass if the mint
+// were keyed on the authored name.
+test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
-    Present { value: loop } =>
-      match carrier_binder_of(n: loop) {
+    Present { value: lp } =>
+      match carrier_binder_of(n: lp) {
         Found { target: binder } =>
           match node_atom_identity_optional(node: binder) {
-            Present { value: sym } => sym == ^acc
+            Present { value: sym } => is_fold_carrier_binder(sym: sym) && !(sym == ^acc)
             Absent => false
           }
         Ambiguous => false
@@ -207,29 +248,29 @@ test fn lowered_loop_binds_carrier_binder() -> Bool {
 test fn duplicate_carrier_edge_is_malformed() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
-    Present { value: loop } =>
-      match carrier_binder_of(n: loop) {
+    Present { value: lp } =>
+      match carrier_binder_of(n: lp) {
         Found { target: binder } =>
-          !well_formed(n: with_duplicate_carrier_edge(n: loop, binder: binder))
+          !well_formed(n: with_duplicate_carrier_edge(n: lp, binder: binder))
         Ambiguous => false
         v2.std.node.Absent => false
       }
   }
 }
 
-test fn non_fold_call_refuses() -> Bool {
+fn non_fold_call_refuses_verdict() -> Bool {
   match ingest_and_locate(source_text: non_fold_snippet, file: ^g_probe_file) {
     Absent => false
     Present { value: call } =>
-      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+      outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
-test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+fn bodyless_fold_call_refuses_no_loop_fabricated_verdict() -> Bool {
   match ingest_and_locate(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file) {
     Absent => false
     Present { value: call } =>
-      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+      outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
@@ -237,7 +278,7 @@ test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
 // THE CONFLATED ARM, SPLIT -- and what each half of this block is pinning.
 //
 // bodyless_fold_call_refuses_no_loop_fabricated above is UNCHANGED and still
-// green: fold_call_to_loop is the two-state projection and every non-lowered
+// green: fold_call_to_encoding is the two-state projection and every non-lowered
 // arm is still a refusal there, so the no-fabrication property this file has
 // always asserted is asserted in exactly the same words against exactly the
 // same function. What the split adds is the DISPOSITION NAME, which is a
@@ -264,7 +305,8 @@ fn is_step_form_unresolved(source_text: String, file: Symbol) -> Bool {
         FoldCallStepFormUnresolved { diagnostic: _ } => true
         FoldCallStepShapeInvalid { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
       }
   }
 }
@@ -277,7 +319,8 @@ fn is_step_shape_invalid(source_text: String, file: Symbol) -> Bool {
         FoldCallStepShapeInvalid { diagnostic: _ } => true
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
       }
   }
 }
@@ -285,7 +328,7 @@ fn is_step_shape_invalid(source_text: String, file: Symbol) -> Bool {
 fn fabricates_no_loop(source_text: String, file: Symbol) -> Bool {
   match ingest_and_locate(source_text: source_text, file: file) {
     Absent => false
-    Present { value: call } => outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+    Present { value: call } => outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
@@ -312,7 +355,7 @@ test fn bodyless_fold_is_step_form_unresolved() -> Bool {
 // stage lacks, so it stays shape_invalid. This claim is what keeps the split
 // from being a deletion: it goes red if the not-applicable arm ever widens to
 // swallow a form the stage can actually judge.
-test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
+fn paramless_step_fold_is_step_shape_invalid_verdict() -> Bool {
   is_step_shape_invalid(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
@@ -320,13 +363,13 @@ test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
 //
 // WHAT WAS HERE, AND WHY ONE CLAIM REPLACES IT RATHER THAN FOUR. A single
 // `split_dispositions_fabricate_no_loop` re-ingested all four snippets to ask
-// whether `fold_call_to_loop` rejects them -- four crossings of the ingest and
+// whether `fold_call_to_encoding` rejects them -- four crossings of the ingest and
 // lowering apparatus, and the corpus's second most expensive witness at
 // cpu_ms=4058 against a 1552ms disclosure line, measured from the required
 // floor's own `[over-cost]` line on run 32915551049.
 //
 // SPLITTING IT INTO FOUR WITNESSES WOULD HAVE DIVIDED THAT COST RATHER THAN
-// REMOVING IT, and bought little: `fold_call_to_loop` is an exhaustive
+// REMOVING IT, and bought little: `fold_call_to_encoding` is an exhaustive
 // projection over `FoldCallLowering` with NO fixture-dependent behaviour once
 // the variant is selected, and three of the four snippets select the SAME
 // variant. Three witnesses re-proving one arm is the redundancy DESIGN §2
@@ -359,12 +402,17 @@ test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE SPLIT ITSELF. A well-formed fold still lowers,
 // so none of the above is green merely because the authority stopped lowering.
-test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+fn well_formed_fold_lowers_through_the_split() -> Bool {
   match lowering_of(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: l } =>
       match l {
-        FoldCallLowered { seam_loop: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+        FoldCallLowered { operands: o } =>
+          match fold_recurrence_loop(encoding: fold_recurrence_encoding(operands: o)) {
+            Present { value: lp } => is_proven_termination(m: loop_multiplicity(n: lp))
+            Absent => false
+          }
+        FoldCallOperandAbsent { diagnostic: _ } => false
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallStepShapeInvalid { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
@@ -372,16 +420,163 @@ test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
   }
 }
 
-// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm.
+test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+  flp_outcomes().well_formed_still_lowers
+}
+
+// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm. Read off flp_outcomes below.
 test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
+  flp_outcomes().non_fold_is_not_a_fold
+}
+
+// THE POSITIONAL STEP (MQ-1). `fold(xs, 0, fn(acc, x) { acc })` -- the spelling
+// dag/extdeps/container/oci/linux.dag and dag/gunbc/instruments/rust_stage0_gates.dag
+// use -- names no `f:`, so a name-only reading classified it StepByName and it
+// never lowered, leaving `fold` an ordinary call that resolve refuses as
+// unbound. The step's position is read from std.algebra collection_fold_shape,
+// and the claim is SHAPE EQUALITY with the named form, not merely "a Loop came
+// out": both spellings must reach the same step through the one lowering path.
+// content_hash folds node kind and edge labels only, so the differing source
+// offsets of the two snippets do not enter the comparison.
+data positional_fold_snippet: String = "module positional_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, fn(acc, x) { acc })\n}\n"
+
+data named_collection_fold_snippet: String = "module named_collection_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs: xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data positional_collection_fold_list_snippet: String = "module positional_collection_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold_list(xs, empty: 0, cons: fn(acc, x) { acc })\n}\n"
+
+// BOTH SPELLINGS OF A SLOT ARE READ. The native census of gunbc#12550 found the roster fold with a
+// NAMED collection (`fold(xs: .., init: .., f: ..)`) and the corpus fold_list with a POSITIONAL one
+// (`fold_list(left, empty: .., cons: ..)`); a slot readable only one way refused each whole file as
+// ^fold_lowering_operand_absent. Each must reach FoldCallLowered.
+fn lowers_through_the_split(source_text: String, file: Symbol) -> Bool {
+  match lowering_of(source_text: source_text, file: file) {
+    Absent => false
+    Present { value: l } =>
+      match l {
+        FoldCallLowered { operands: _ } => true
+        FoldCallOperandAbsent { diagnostic: _ } => false
+        FoldCallStepFormUnresolved { diagnostic: _ } => false
+        FoldCallStepShapeInvalid { diagnostic: _ } => false
+        FoldCallNotAFold { diagnostic: _ } => false
+      }
+  }
+}
+
+data positional_named_step_fold_snippet: String = "module positional_named_step_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, step)\n}\n"
+
+fn lowered_loop_of(source_text: String, file: Symbol) -> Optional<Node> {
+  match lowering_of(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: l } =>
+      match l {
+        FoldCallLowered { operands: o } => fold_recurrence_loop(encoding: fold_recurrence_encoding(operands: o))
+        FoldCallOperandAbsent { diagnostic: _ } => Absent
+        FoldCallStepFormUnresolved { diagnostic: _ } => Absent
+        FoldCallStepShapeInvalid { diagnostic: _ } => Absent
+        FoldCallNotAFold { diagnostic: _ } => Absent
+      }
+  }
+}
+
+fn loop_shape(n: Node) -> v2.std.node.Hash {
+  v2.std.node.content_hash(n: n)
+}
+
+fn positional_loop_matches_named_loop() -> Bool {
+  match lowered_loop_of(source_text: positional_fold_snippet, file: ^positional_probe_file) {
+    Absent => false
+    Present { value: positional } =>
+      match lowered_fixture_loop() {
+        Absent => false
+        Present { value: named } => loop_shape(n: positional) == loop_shape(n: named)
+      }
+  }
+}
+
+fn non_fold_call_selects_not_a_fold() -> Bool {
   match lowering_of(source_text: non_fold_snippet, file: ^g_probe_file) {
     Absent => false
     Present { value: l } =>
       match l {
         FoldCallNotAFold { diagnostic: _ } => true
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallStepShapeInvalid { diagnostic: _ } => false
       }
   }
+}
+
+// ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
+// inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
+// one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
+// a witness discriminates at one interface). MQ-5's floor run 36490720680 found four more claims here
+// paying their own ingest over the new-witness budget once the fold encoding changed their callee, so
+// they read this record too, as do the two slot-spelling controls. The stored value is ten Bools: no Node, no context,
+// no closure, so it is portable.
+type FlpOutcomes {
+  positional_matches_named: Bool
+  positional_named_step_unresolved: Bool
+  non_fold_is_not_a_fold: Bool
+  well_formed_still_lowers: Bool
+  lowers_to_terminating_loop: Bool
+  non_fold_refuses: Bool
+  bodyless_refuses_no_loop: Bool
+  paramless_step_shape_invalid: Bool
+  named_collection_lowers: Bool
+  positional_collection_fold_list_lowers: Bool
+}
+
+fn flp_outcomes() -> FlpOutcomes {
+  FlpOutcomes {
+    positional_matches_named: positional_loop_matches_named_loop(),
+    positional_named_step_unresolved: is_step_form_unresolved(
+      source_text: positional_named_step_fold_snippet,
+      file: ^positional_named_step_probe_file
+    ),
+    non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold(),
+    well_formed_still_lowers: well_formed_fold_lowers_through_the_split(),
+    lowers_to_terminating_loop: fold_call_lowers_to_terminating_loop_verdict(),
+    non_fold_refuses: non_fold_call_refuses_verdict(),
+    bodyless_refuses_no_loop: bodyless_fold_call_refuses_no_loop_fabricated_verdict(),
+    paramless_step_shape_invalid: paramless_step_fold_is_step_shape_invalid_verdict(),
+    named_collection_lowers: lowers_through_the_split(source_text: named_collection_fold_snippet, file: ^named_collection_probe_file),
+    positional_collection_fold_list_lowers: lowers_through_the_split(source_text: positional_collection_fold_list_snippet, file: ^positional_collection_probe_file)
+  }
+}
+
+test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+  flp_outcomes().positional_matches_named
+}
+
+// THE RED CONTROL ON THE SAME POSITION: a step passed BY NAME at the declared
+// position is still a callee-resolution fact this stage does not have, so it
+// stays the counted unresolved state -- the positional reading must not widen
+// into accepting whatever sits in the slot.
+test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
+  flp_outcomes().positional_named_step_unresolved
+}
+
+test fn fold_call_lowers_to_terminating_loop() -> Bool {
+  flp_outcomes().lowers_to_terminating_loop
+}
+
+test fn non_fold_call_refuses() -> Bool {
+  flp_outcomes().non_fold_refuses
+}
+
+test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+  flp_outcomes().bodyless_refuses_no_loop
+}
+
+test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
+  flp_outcomes().paramless_step_shape_invalid
+}
+
+test fn named_collection_fold_lowers() -> Bool {
+  flp_outcomes().named_collection_lowers
+}
+
+test fn positional_collection_fold_list_lowers() -> Bool {
+  flp_outcomes().positional_collection_fold_list_lowers
 }

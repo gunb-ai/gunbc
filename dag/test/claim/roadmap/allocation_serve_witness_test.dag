@@ -1,0 +1,16 @@
+module test.claim.allocation_serve_witness
+
+import std.types { Bool }
+import extdeps.ietf.http_semantics { GET, POST }
+import extdeps.http.server { serve_select_route, MethodNotAllowed }
+import gunbc.roadmap_serve { AllocationPageHandler, AllocationClientHandler }
+import test.claim.roadmap_serve_witness { selects, live_table_or_empty }
+
+test fn allocation_routes_have_no_write_handler() -> Bool {
+  selects(method: GET, path: "/allocations", want: AllocationPageHandler)
+    && selects(method: GET, path: "/allocation-draft.js", want: AllocationClientHandler)
+    && match serve_select_route(table: live_table_or_empty(), method: POST, path: "/allocations") {
+      MethodNotAllowed { allowed: _ } => true
+      _ => false
+    }
+}

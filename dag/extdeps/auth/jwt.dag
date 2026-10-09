@@ -3,16 +3,27 @@ module extdeps.auth.jwt
 //
 // The boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.
 
-import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, brand }
 import std.measure { Second, second }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc7519"
   }
+}
+
+// Reading: RFC 7519 section 2 owns StringOrURI - a JSON string that, when it contains a colon, must be a URI; type JwtStringOrUri is that rule as a shape, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.auth.jwt", decl_name: "JwtStringOrUri", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 

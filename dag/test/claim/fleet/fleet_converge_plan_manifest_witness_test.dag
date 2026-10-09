@@ -1,17 +1,18 @@
 module test.claim.fleet_converge_plan_manifest_witness
 
+import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly }
+
+import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied }
+
 import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
 import v2.std.algebra { count_where }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.actions_run_binding { ActionsRunBinding }
 import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
 import gunbc.fleet_converge_plan {
-  FleetConvergeScope, FullHost, LaunchEnvironment,
-  FabricExecutionCellsOnly, FabricAllocationStoreOnly,
-  FullyApplied, PartiallyApplied,
   fleet_converge_scope_wire,
-  fleet_converge_plan_bundle_digest_hex,
+  fleet_converge_plan_bundle_digest_hex
 }
 import gunbc.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,

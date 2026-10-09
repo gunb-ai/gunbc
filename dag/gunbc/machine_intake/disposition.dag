@@ -1,7 +1,7 @@
 module gunbc.machine_intake_disposition
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import gunbc.machine_intake_subject {
   QualificationSubject,
   SubjectCurrency,
@@ -9,24 +9,21 @@ import gunbc.machine_intake_subject {
   SubjectStale,
   merge_subject_currency,
   compare_qualification_subject,
-  content_hash_equal,
 }
+import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
 import gunbc.machine_intake_phase {
   ArrivalHardwareQualification,
-  DevelopmentAndTest,
   IntakePhase,
-  IntakeQualificationPolicy,
+  MachineQualificationPolicy,
   IntakeTransaction,
-  MachineOperatingEnvironment,
   OsProvisioning,
   PlacementCommissioning,
-  Production,
   QualificationRefusalOwner,
   UnitHardware,
   fleet_admission_required_phases,
   intake_phase_transaction,
-  intake_qualification_policy,
-  intake_qualification_policy_digest,
+  machine_qualification_policy,
+  machine_qualification_policy_digest,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -126,7 +123,7 @@ type FleetAdmissionReceipt {
   subject: QualificationSubject
   ledger_terminal_fingerprint: ContentHash
   policy_digest: ContentHash
-  environment: MachineOperatingEnvironment
+  admits: DeploymentRiskClass
   satisfied: List<PhaseReceiptBinding>
   derived_at: EpochMs
 }
@@ -139,7 +136,7 @@ type FleetAdmissionStanding
       subject_mismatched: List<IntakePhase>
       subject_currency: SubjectCurrency
     }
-  | FleetPolicyBarMismatch { ledger_digest: ContentHash, bar: IntakeQualificationPolicy }
+  | FleetPolicyBarMismatch { ledger_digest: ContentHash, bar: MachineQualificationPolicy }
 
 type AdmissionFold {
   satisfied: List<PhaseReceiptBinding>
@@ -164,10 +161,10 @@ type AdmissionFold {
 fn derive_fleet_admission(
   observed_subject: QualificationSubject,
   ledger: ValidatedIntakeReceiptLedger,
-  policy: IntakeQualificationPolicy,
+  policy: MachineQualificationPolicy,
   now: EpochMs,
 ) -> FleetAdmissionStanding {
-  if content_hash_equal(left: ledger.policy_digest, right: intake_qualification_policy_digest(policy: policy)) == false {
+  if content_hash_equal(left: ledger.policy_digest, right: machine_qualification_policy_digest(policy: policy)) == false {
     FleetPolicyBarMismatch { ledger_digest: ledger.policy_digest, bar: policy }
   } else {
     let receipts = ledger.ordered_receipts
@@ -195,7 +192,7 @@ fn derive_fleet_admission(
           subject: observed_subject,
           ledger_terminal_fingerprint: ledger.terminal_fingerprint,
           policy_digest: ledger.policy_digest,
-          environment: policy.environment,
+          admits: policy.admits,
           satisfied: folded.satisfied,
           derived_at: now,
         },
@@ -226,7 +223,7 @@ type PartsHoldReason
   | PhaseNotYetObserved { phase: IntakePhase }
   | PlacementQualificationPending
   | QualificationSubjectStale { currency: SubjectCurrency }
-  | QualificationPolicyBarMismatch { ledger_digest: ContentHash, bar: IntakeQualificationPolicy }
+  | QualificationPolicyBarMismatch { ledger_digest: ContentHash, bar: MachineQualificationPolicy }
 
 type MachineIntakeDisposition
   = Admitted { admission_receipt: FleetAdmissionReceipt }
@@ -263,34 +260,34 @@ fn first_phase(phases: List<IntakePhase>) -> IntakePhase? {
 // defect inside an open return window is the only path to ReturnWindow; every
 // other owner's refusal, every unobserved phase and every stale subject is a
 // PartsHold with its reason — loud, and never a false hardware diagnosis.
-fn environment_of_qualification_digest(digest: ContentHash) -> MachineOperatingEnvironment? {
-  if content_hash_equal(left: digest, right: intake_qualification_policy_digest(policy: intake_qualification_policy(environment: DevelopmentAndTest))) {
-    Present { value: DevelopmentAndTest }
-  } else if content_hash_equal(left: digest, right: intake_qualification_policy_digest(policy: intake_qualification_policy(environment: Production))) {
-    Present { value: Production }
+fn admitted_class_of_qualification_digest(digest: ContentHash) -> DeploymentRiskClass? {
+  if content_hash_equal(left: digest, right: machine_qualification_policy_digest(policy: machine_qualification_policy(admits: TestRisk))) {
+    Present { value: TestRisk }
+  } else if content_hash_equal(left: digest, right: machine_qualification_policy_digest(policy: machine_qualification_policy(admits: ProdRisk))) {
+    Present { value: ProdRisk }
   } else {
     none
   }
 }
 
-fn policy_bar_mismatch_cause(ledger_digest: ContentHash, bar: IntakeQualificationPolicy) -> NonEmptyStr {
-  match environment_of_qualification_digest(digest: ledger_digest) {
+fn policy_bar_mismatch_cause(ledger_digest: ContentHash, bar: MachineQualificationPolicy) -> NonEmptyStr {
+  match admitted_class_of_qualification_digest(digest: ledger_digest) {
     Absent =>
-      match bar.environment {
-        Production => "ledger policy digest does not match the Production admission bar"
-        DevelopmentAndTest => "ledger policy digest does not match the DevelopmentAndTest admission bar"
+      match bar.admits {
+        ProdRisk => "ledger policy digest does not match the ProdRisk-admitting admission bar"
+        TestRisk => "ledger policy digest does not match the TestRisk-admitting admission bar"
       }
     Present { value: ledger_env } =>
       match ledger_env {
-        DevelopmentAndTest =>
-          match bar.environment {
-            Production => "ledger was derived under DevelopmentAndTest; the admission bar is Production"
-            DevelopmentAndTest => "ledger policy digest does not match the DevelopmentAndTest admission bar"
+        TestRisk =>
+          match bar.admits {
+            ProdRisk => "ledger was derived under a TestRisk-admitting policy; the admission bar admits ProdRisk"
+            TestRisk => "ledger policy digest does not match the TestRisk-admitting admission bar"
           }
-        Production =>
-          match bar.environment {
-            DevelopmentAndTest => "ledger was derived under Production; the admission bar is DevelopmentAndTest"
-            Production => "ledger policy digest does not match the Production admission bar"
+        ProdRisk =>
+          match bar.admits {
+            TestRisk => "ledger was derived under a ProdRisk-admitting policy; the admission bar admits TestRisk"
+            ProdRisk => "ledger policy digest does not match the ProdRisk-admitting admission bar"
           }
       }
   }

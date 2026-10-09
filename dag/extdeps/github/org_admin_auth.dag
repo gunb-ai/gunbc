@@ -1,6 +1,6 @@
 module extdeps.github.org_admin_auth
 
-import std.types { NonEmptyStr, Timestamp, String, Int }
+import std.types { NonEmptyStr, Timestamp, String, Int, EpochSecs }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -37,6 +37,25 @@ fn github_app_installation_access_token_url(installation_id: Int) -> String {
 data github_app_jwt_backdate_seconds: Int = 60
 
 data github_app_jwt_lifetime_seconds: Int = 540
+
+// THE APP JWT'S CLAIMS, as installation_token_citation states them: iss is the App id, iat is
+// backdated for clock skew, exp is within ten minutes of issue. ONE authority for the claim SHAPE:
+// github_app_jwt_claims_json_of spells the JSON once over rendered values, and both producers go
+// through it -- gunbc.github_effect_perform with the numbers themselves, and gunbc.ci_spec's shell
+// preludes with printf placeholders their runtime `date +%s` fills (those preludes compute the
+// clock in the step that signs, so they cannot take a number from here; the shape and both bounds
+// they still can).
+fn github_app_jwt_claims_json_of(iat: String, exp: String, iss: String) -> String {
+  join(["\{\"iat\":", iat, ",\"exp\":", exp, ",\"iss\":\"", iss, "\"}"], "")
+}
+
+fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: EpochSecs) -> String {
+  github_app_jwt_claims_json_of(
+    iat: to_string(now_epoch_secs - github_app_jwt_backdate_seconds),
+    exp: to_string(now_epoch_secs + github_app_jwt_lifetime_seconds),
+    iss: to_string(app_id),
+  )
+}
 
 data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }

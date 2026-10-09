@@ -13,10 +13,21 @@ use self::Stage0PackageCrateDirLookup::*;
 use self::Stage0PackageCrateDirRefusalCause::*;
 use self::Stage0PartitionRowDepsOutcome::*;
 use self::Stage0PartitionRowSpecOutcome::*;
+use self::Stage0ReexportLinesOutcome::*;
 use self::Stage0ReexportPathDepsOutcome::*;
 use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
 pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+use crate::gunbc_rust_crate_package_ident::PackageIdentRefusalCause::*;
+use crate::gunbc_rust_crate_package_ident::PackageIdentSetOutcome::{
+    PackageIdentSetOk, PackageIdentSetRefused,
+};
+pub use crate::gunbc_rust_crate_package_ident::{
+    package_ident_bound, package_ident_refusal_message, rust_crate_package_idents,
+};
+pub use crate::gunbc_rust_crate_package_ident::{
+    PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
+};
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
@@ -24,15 +35,16 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::gunbc_stage0_partition_package_graph::{
-    stage0_partition_package_dependency_names, stage0_partition_row_is_module_bearing_package,
-};
+pub use crate::gunbc_stage0_emitted_edge_admission::partition_module_owner_packages_over;
+pub use crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::v1_compiler_emit_rust::{
-    emit_cargo_dep, emit_non_empty_wrappers, generated_rust_lint_relaxations,
+    emit_cargo_dep, emit_cargo_features_section, emit_non_empty_wrappers,
+    generated_rust_lint_relaxations,
 };
+pub use crate::v1_compiler_runtime_rust::rust_runtime_cargo_features;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
@@ -62,6 +74,8 @@ pub struct Stage0CrateSpec {
     pub dependencies: Rc<Vec<Rc<CargoDependency>>>,
     pub features: Rc<Vec<Rc<CargoFeature>>>,
     pub carries_non_empty_wrappers: bool,
+    pub package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
+    pub partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -128,10 +142,6 @@ pub fn stage0_emit_core_header_doc() -> String {
         "//! hosts `v1_compiler_emit_core_support` without copying semantics.".to_string(),
     ])
     .join(&"\n".to_string())
-}
-
-pub fn stage0_package_name_to_rust_ident(package_name: String) -> String {
-    v1_rt::replace(package_name.clone(), "-".to_string(), "_".to_string())
 }
 
 pub fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
@@ -212,6 +222,9 @@ pub enum Stage0EmitShellReexportsOutcome {
     Stage0EmitShellReexportsRefused {
         cause: Rc<Stage0ModuleOwnerRefusalCause>,
     },
+    Stage0EmitShellReexportsIdentUnbound {
+        package_name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -245,6 +258,9 @@ pub enum Stage0CratePlanOutcome {
     Stage0CratePlanRefused {
         cause: Rc<Stage0PackageCrateDirRefusalCause>,
     },
+    Stage0CratePlanIdentRefused {
+        cause: Rc<PackageIdentRefusalCause>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -256,6 +272,16 @@ pub enum Stage0CrateLibEmitOutcome {
     Stage0CrateLibEmitRefused {
         cause: Rc<Stage0ModuleOwnerRefusalCause>,
     },
+    Stage0CrateLibEmitIdentUnbound {
+        package_name: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0ReexportLinesOutcome {
+    Stage0ReexportLinesOk { lines: Rc<Vec<String>> },
+    Stage0ReexportLinesIdentUnbound { package_name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -263,6 +289,8 @@ pub enum Stage0CrateLibEmitOutcome {
 pub enum Stage0CrateBoundaryEmitRefusalCause {
     Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: String },
     Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: String },
+    Stage0CrateBoundaryEmitPackageIdentRefused { cause: Rc<PackageIdentRefusalCause> },
+    Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -278,31 +306,23 @@ pub enum Stage0CrateBoundaryEmitOutcome {
 
 pub fn stage0_lookup_module_owner_package_name(
     module_basename: String,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let matches = Rc::new({
-            let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
-                if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); }
-            }
-            __result
-        });
-        let package_name = Rc::new({
-            let mut __result = Vec::new();
-            for row in matches.iter().cloned() {
-                __result.push(row.package_name.clone());
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold("".to_string(), |acc: String, pkg: String| {
-            if (acc.clone() == "".to_string()) {
-                pkg.clone()
-            } else {
-                acc.clone()
-            }
-        });
+        let package_name =
+            crate::gunbc_stage0_emitted_edge_admission::partition_module_owner_packages_over(
+                module_basename.clone(),
+                rows.clone(),
+            )
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, pkg: String| {
+                if (acc.clone() == "".to_string()) {
+                    pkg.clone()
+                } else {
+                    acc.clone()
+                }
+            });
         if (package_name.clone() == "".to_string()) {
             Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
                 cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
@@ -317,11 +337,14 @@ pub fn stage0_lookup_module_owner_package_name(
     }
 }
 
-pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0PackageCrateDirLookup> {
+pub fn stage0_lookup_package_crate_dir(
+    package_name: String,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Stage0PackageCrateDirLookup> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in rows.iter().cloned() {
                 if (row.package_name.clone() == package_name.clone()) {
                     __result.push(row);
                 }
@@ -388,21 +411,11 @@ pub fn stage0_crate_boundary_emit_refusal_message(
     cause: Rc<Stage0CrateBoundaryEmitRefusalCause>,
 ) -> String {
     match (*cause.clone()).clone() {
-        Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing {
-            module_basename: module_basename,
-            ..
-        } => v1_rt::concat(
-            "stage0 partition emit refused: missing module owner for ".to_string(),
-            module_basename.clone(),
-        ),
-        Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageCrateDirMissing {
-            package_name: package_name,
-            ..
-        } => v1_rt::concat(
-            "stage0 partition emit refused: missing package crate_dir for ".to_string(),
-            package_name.clone(),
-        ),
-    }
+    Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: module_basename, .. } => v1_rt::concat("stage0 partition emit refused: missing module owner for ".to_string(), module_basename.clone()),
+    Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: package_name, .. } => v1_rt::concat("stage0 partition emit refused: missing package crate_dir for ".to_string(), package_name.clone()),
+    Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause, .. } => v1_rt::concat("stage0 partition emit refused: ".to_string(), crate::gunbc_rust_crate_package_ident::package_ident_refusal_message(cause.clone())),
+    Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: package_name, .. } => v1_rt::concat("stage0 partition emit refused: package is referenced but not in the admitted ident set: ".to_string(), package_name.clone()),
+}
 }
 
 pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
@@ -419,6 +432,13 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
+            }),
+        }),
+        Rc::new(CargoDependency {
+            name: "libc".to_string(),
+            source: Rc::new(CargoDepSource::RegistryDep {
+                version: "0.2".to_string(),
+                features: Rc::new(vec![]),
             }),
         }),
         Rc::new(CargoDependency {
@@ -454,6 +474,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
 
 pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
     reexport_packages.iter().cloned().fold(
         Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
@@ -468,7 +489,7 @@ pub fn stage0_reexport_path_dependencies_outcome(
                 },
             ),
             Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk { deps: deps, .. } => {
-                match (*stage0_lookup_package_crate_dir(pkg.clone())).clone() {
+                match (*stage0_lookup_package_crate_dir(pkg.clone(), rows.clone())).clone() {
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                         crate_dir: crate_dir,
                         ..
@@ -515,11 +536,14 @@ pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> S
 
 pub fn stage0_partition_row_dependencies_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
     match (*stage0_reexport_path_dependencies_outcome(
-        crate::gunbc_stage0_partition_package_graph::stage0_partition_package_dependency_names(
+        crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over(
             row.clone(),
+            rows.clone(),
         ),
+        rows.clone(),
     ))
     .clone()
     {
@@ -543,10 +567,7 @@ pub fn stage0_features_for_crate_kind(
 ) -> Rc<Vec<Rc<CargoFeature>>> {
     match kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(vec![Rc::new(CargoFeature {
-                name: "text_lookup_work_counter".to_string(),
-                dependencies: Rc::new(vec![]),
-            })])
+            crate::v1_compiler_runtime_rust::rust_runtime_cargo_features()
         }
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Rc::new(vec![]),
@@ -561,8 +582,10 @@ pub fn stage0_partition_row_features(
 
 pub fn stage0_partition_row_to_spec_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
+    package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0PartitionRowSpecOutcome> {
-    match (*stage0_partition_row_dependencies_outcome(row.clone())).clone() {
+    match (*stage0_partition_row_dependencies_outcome(row.clone(), rows.clone())).clone() {
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused { cause: cause, .. } => {
             Rc::new(
                 Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
@@ -582,6 +605,8 @@ pub fn stage0_partition_row_to_spec_outcome(
                     dependencies: deps.clone(),
                     features: stage0_partition_row_features(row.clone()),
                     carries_non_empty_wrappers: row.carries_non_empty_wrappers.clone(),
+                    package_idents: package_idents.clone(),
+                    partition_rows: rows.clone(),
                 }),
             })
         }
@@ -607,51 +632,6 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     }
 }
 
-pub fn render_stage0_crate_feature(feature: Rc<CargoFeature>) -> String {
-    if ((feature.dependencies.clone().len() as i64) == 0) {
-        v1_rt::concat(feature.name.clone(), " = []\n".to_string())
-    } else {
-        {
-            let dep_names = Rc::new({
-                let mut __result = Vec::new();
-                for d in feature.dependencies.clone().iter().cloned() {
-                    __result.push(v1_rt::concat(
-                        v1_rt::concat("\"".to_string(), d.clone()),
-                        "\"".to_string(),
-                    ));
-                }
-                __result
-            })
-            .join(&", ".to_string());
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(feature.name.clone(), " = [".to_string()),
-                    dep_names.clone(),
-                ),
-                "]\n".to_string(),
-            )
-        }
-    }
-}
-
-pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>) -> String {
-    if ((features.clone().len() as i64) == 0) {
-        "".to_string()
-    } else {
-        v1_rt::concat(
-            v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
-            Rc::new(
-                features
-                    .iter()
-                    .cloned()
-                    .map(render_stage0_crate_feature)
-                    .collect::<Vec<_>>(),
-            )
-            .join(&"".to_string()),
-        )
-    }
-}
-
 pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
     {
         let deps = Rc::new(
@@ -672,7 +652,9 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
                         ),
                         "\nedition = \"2021\"".to_string(),
                     ),
-                    render_stage0_crate_features_section(spec.features.clone()),
+                    crate::v1_compiler_emit_rust::emit_cargo_features_section(
+                        spec.features.clone(),
+                    ),
                 ),
                 "\n\n[dependencies]\n".to_string(),
             ),
@@ -741,27 +723,83 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
     }
 }
 
-pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
+pub fn stage0_layered_core_reexport_lines_outcome(
+    spec: Rc<Stage0CrateSpec>,
+) -> Rc<Stage0ReexportLinesOutcome> {
+    spec.reexport_packages.clone().iter().cloned().fold(
+        Rc::new(Stage0ReexportLinesOutcome::Stage0ReexportLinesOk {
+            lines: Rc::new(vec![]),
+        }),
+        |acc: Rc<Stage0ReexportLinesOutcome>, pkg: String| match (*acc).clone() {
+            Stage0ReexportLinesOutcome::Stage0ReexportLinesIdentUnbound {
+                package_name: missing,
+                ..
+            } => Rc::new(
+                Stage0ReexportLinesOutcome::Stage0ReexportLinesIdentUnbound {
+                    package_name: missing.clone(),
+                },
+            ),
+            Stage0ReexportLinesOutcome::Stage0ReexportLinesOk { lines: lines, .. } => {
+                match crate::gunbc_rust_crate_package_ident::package_ident_bound(
+                    spec.package_idents.clone(),
+                    pkg.clone(),
+                ) {
+                    std::option::Option::None => Rc::new(
+                        Stage0ReexportLinesOutcome::Stage0ReexportLinesIdentUnbound {
+                            package_name: pkg.clone(),
+                        },
+                    ),
+                    Some(ident) => Rc::new(Stage0ReexportLinesOutcome::Stage0ReexportLinesOk {
+                        lines: v1_rt::concat(lines.clone(), Rc::new(vec![ident.clone()])),
+                    }),
+                }
+            }
+        },
+    )
+}
+
+pub fn render_stage0_layered_core_lib_outcome(
+    spec: Rc<Stage0CrateSpec>,
+) -> Rc<Stage0CrateLibEmitOutcome> {
+    match (*stage0_layered_core_reexport_lines_outcome(spec.clone())).clone() {
+        Stage0ReexportLinesOutcome::Stage0ReexportLinesIdentUnbound {
+            package_name: package_name,
+            ..
+        } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitIdentUnbound {
+            package_name: package_name.clone(),
+        }),
+        Stage0ReexportLinesOutcome::Stage0ReexportLinesOk { lines: idents, .. } => {
+            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+                file: Rc::new(TextFile {
+                    path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
+                    content: render_stage0_layered_core_lib(spec.clone(), idents.clone()),
+                }),
+            })
+        }
+    }
+}
+
+pub fn render_stage0_layered_core_lib(
+    spec: Rc<Stage0CrateSpec>,
+    reexport_idents: Rc<Vec<String>>,
+) -> String {
     {
-        let sorted_reexports = Rc::new({
-            let mut __sorted: Vec<_> = spec.reexport_packages.clone().iter().cloned().collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka =
-                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(a.clone());
-                let __kb =
-                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            __sorted
-        });
         let reexports = Rc::new({
             let mut __result = Vec::new();
-            for pkg in sorted_reexports.iter().cloned() {
+            for ident in Rc::new({
+                let mut __sorted: Vec<_> = reexport_idents.iter().cloned().collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|ident: String| ident.clone())(a.clone());
+                    let __kb = (|ident: String| ident.clone())(b.clone());
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                });
+                __sorted
+            })
+            .iter()
+            .cloned()
+            {
                 __result.push(v1_rt::concat(
-                    v1_rt::concat(
-                        "pub use ".to_string(),
-                        stage0_package_name_to_rust_ident(pkg.clone()),
-                    ),
+                    v1_rt::concat("pub use ".to_string(), ident.clone()),
                     "::*;".to_string(),
                 ));
             }
@@ -800,6 +838,8 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
 
 pub fn stage0_emit_shell_module_reexports_outcome(
     modules: Rc<Vec<String>>,
+    package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0EmitShellReexportsOutcome> {
     modules.iter().cloned().fold(
         Rc::new(
@@ -816,14 +856,35 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                     cause: cause.clone(),
                 },
             ),
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsIdentUnbound {
+                package_name: missing,
+                ..
+            } => Rc::new(
+                Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsIdentUnbound {
+                    package_name: missing.clone(),
+                },
+            ),
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                 lines: lines, ..
-            } => {
-                match (*stage0_lookup_module_owner_package_name(module_basename.clone())).clone() {
-                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
-                        package_name: owner,
-                        ..
-                    } => Rc::new(
+            } => match (*stage0_lookup_module_owner_package_name(
+                module_basename.clone(),
+                rows.clone(),
+            ))
+            .clone()
+            {
+                Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                    package_name: owner,
+                    ..
+                } => match crate::gunbc_rust_crate_package_ident::package_ident_bound(
+                    package_idents.clone(),
+                    owner.clone(),
+                ) {
+                    std::option::Option::None => Rc::new(
+                        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsIdentUnbound {
+                            package_name: owner.clone(),
+                        },
+                    ),
+                    Some(ident) => Rc::new(
                         Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                             lines: v1_rt::concat(
                                 lines.clone(),
@@ -838,7 +899,7 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                                                     ),
                                                     " {\n    pub use ".to_string(),
                                                 ),
-                                                stage0_package_name_to_rust_ident(owner.clone()),
+                                                ident.clone(),
                                             ),
                                             "::".to_string(),
                                         ),
@@ -849,15 +910,13 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                             ),
                         },
                     ),
-                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => {
-                        Rc::new(
-                            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
-                                cause: cause.clone(),
-                            },
-                        )
-                    }
-                }
-            }
+                },
+                Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => Rc::new(
+                    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                        cause: cause.clone(),
+                    },
+                ),
+            },
         },
     )
 }
@@ -865,9 +924,12 @@ pub fn stage0_emit_shell_module_reexports_outcome(
 pub fn render_stage0_emit_core_lib_outcome(
     spec: Rc<Stage0CrateSpec>,
 ) -> Rc<Stage0CrateLibEmitOutcome> {
-    match (*stage0_emit_shell_module_reexports_outcome(spec.modules.clone())).clone() {
+    match (*stage0_emit_shell_module_reexports_outcome(spec.modules.clone(), spec.package_idents.clone(), spec.partition_rows.clone())).clone() {
     Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused { cause: cause, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
     cause: cause.clone(),
+}),
+    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsIdentUnbound { package_name: package_name, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitIdentUnbound {
+    package_name: package_name.clone(),
 }),
     Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
     file: Rc::new(TextFile {
@@ -895,20 +957,43 @@ pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0Crat
                 }),
             })
         }
-        Stage0CrateKind::LayeredCoreCrate => {
-            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: Rc::new(TextFile {
-                    path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
-                    content: render_stage0_layered_core_lib(spec.clone()),
-                }),
-            })
-        }
+        Stage0CrateKind::LayeredCoreCrate => render_stage0_layered_core_lib_outcome(spec.clone()),
         Stage0CrateKind::EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec.clone()),
     }
 }
 
 pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
-    generated_partition_crate_rows().iter().cloned().fold(
+    partition_crate_plan_outcome_over(generated_partition_crate_rows())
+}
+
+pub fn partition_crate_plan_outcome_over(
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Stage0CratePlanOutcome> {
+    match (*crate::gunbc_rust_crate_package_ident::rust_crate_package_idents(Rc::new({
+        let mut __result = Vec::new();
+        for row in rows.iter().cloned() {
+            __result.push(row.package_name.clone());
+        }
+        __result
+    })))
+    .clone()
+    {
+        PackageIdentSetOutcome::PackageIdentSetRefused { cause: cause, .. } => {
+            Rc::new(Stage0CratePlanOutcome::Stage0CratePlanIdentRefused {
+                cause: cause.clone(),
+            })
+        }
+        PackageIdentSetOutcome::PackageIdentSetOk {
+            bindings: bindings, ..
+        } => stage0_crate_plan_from_admitted_rows(bindings.clone(), rows.clone()),
+    }
+}
+
+pub fn stage0_crate_plan_from_admitted_rows(
+    package_idents: Rc<Vec<Rc<PackageIdentBinding>>>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Stage0CratePlanOutcome> {
+    rows.clone().iter().cloned().fold(
         Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
             plan: Rc::new(Stage0CratePlan {
                 crates: Rc::new(vec![]),
@@ -921,8 +1006,19 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
                     cause: cause.clone(),
                 })
             }
+            Stage0CratePlanOutcome::Stage0CratePlanIdentRefused { cause: cause, .. } => {
+                Rc::new(Stage0CratePlanOutcome::Stage0CratePlanIdentRefused {
+                    cause: cause.clone(),
+                })
+            }
             Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => {
-                match (*stage0_partition_row_to_spec_outcome(row.clone())).clone() {
+                match (*stage0_partition_row_to_spec_outcome(
+                    row.clone(),
+                    package_idents.clone(),
+                    rows.clone(),
+                ))
+                .clone()
+                {
                     Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
                         cause: cause,
                         ..
@@ -945,55 +1041,46 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
 pub fn emit_stage0_crate_boundary_files_outcome(
     plan: Rc<Stage0CratePlan>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    plan.crates.clone().iter().cloned().fold(
-        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
-            files: Rc::new(vec![]),
-        }),
-        |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: Rc<Stage0CrateSpec>| match (*acc).clone() {
-            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                cause: cause, ..
-            } => Rc::new(
-                Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                    cause: cause.clone(),
-                },
-            ),
-            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: files, .. } => {
-                match (*emit_stage0_crate_lib_outcome(spec.clone())).clone() {
-                    Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
-                        cause: cause, ..
-                    } => Rc::new(
-                        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                            cause: stage0_map_module_owner_refusal_to_boundary(cause.clone()),
-                        },
-                    ),
-                    Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk { file: lib_file, .. } => {
-                        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
-                            files: v1_rt::concat(
-                                files.clone(),
-                                Rc::new(vec![
-                                    emit_stage0_crate_manifest(spec.clone()),
-                                    lib_file.clone(),
-                                ]),
-                            ),
-                        })
-                    }
-                }
-            }
-        },
-    )
+    plan.crates.clone().iter().cloned().fold(Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+    files: Rc::new(vec![]),
+}), |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: Rc<Stage0CrateSpec>| match (*acc).clone() {
+    Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+    cause: cause.clone(),
+}),
+    Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: files, .. } => match (*emit_stage0_crate_lib_outcome(spec.clone())).clone() {
+    Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+    cause: stage0_map_module_owner_refusal_to_boundary(cause.clone()),
+}),
+    Stage0CrateLibEmitOutcome::Stage0CrateLibEmitIdentUnbound { package_name: package_name, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+    cause: Rc::new(Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageIdentUnbound {
+    package_name: package_name.clone(),
+}),
+}),
+    Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk { file: lib_file, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+    files: v1_rt::concat(files.clone(), Rc::new(vec![emit_stage0_crate_manifest(spec.clone()), lib_file.clone()])),
+}),
+},
+})
 }
 
 pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*stage0_crate_plan_outcome()).clone() {
-        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(
-            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
-            },
-        ),
-        Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => {
-            emit_stage0_crate_boundary_files_outcome(plan.clone())
-        }
-    }
+    partition_crate_boundary_emit_outcome_over(generated_partition_crate_rows())
+}
+
+pub fn partition_crate_boundary_emit_outcome_over(
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Stage0CrateBoundaryEmitOutcome> {
+    match (*partition_crate_plan_outcome_over(rows.clone())).clone() {
+    Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+    cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
+}),
+    Stage0CratePlanOutcome::Stage0CratePlanIdentRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+    cause: Rc::new(Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageIdentRefused {
+    cause: cause.clone(),
+}),
+}),
+    Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => emit_stage0_crate_boundary_files_outcome(plan.clone()),
+}
 }
 
 pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> Rc<DissolutionCondition> {

@@ -1,13 +1,8 @@
 module v2.test.manual.sg2_type_expression_projection
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_bundle_child_optional_type_expr_projection,
-  target_serialize_source_from_model,
-  translate,
-  ProjectionAbsent
-}
+import v2.compiler.translate { translate_type_expression_project, target_bundle_child_optional_type_expr_projection, translate, ProjectionAbsent }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.rust {
   rust_target_model,
   rust_sg2_arrow_malformed_source_type_node,
@@ -48,7 +43,6 @@ import v2.test.manual.rust_add_emit_translate {
   rust_add_target_model
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -237,17 +231,6 @@ test fn sg2_instantiation_delimiters_bidirectional() -> Bool {
     row.instantiation_form.close == ^rust_token_gt
 }
 
-test fn witness_sg2_arrow_holds() -> Bool {
-  (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: rust_sg2_arrow_xy_emitted()))
-    && sg2_arrow_serialize_matches_expected()
-    && sg2_arrow_projected_serialize_matches_expected()
-    && sg2_conj_projected_serialize_matches_expected()
-    && sg2_instantiation_projected_serialize_matches_expected()
-    && sg2_binary_fn_projection_accepts()
-    && sg2_arrow_malformed_projection_rejects()
-    && sg2_arrow_swapped_split_serialize_mismatches_expected()
-}
-
 test fn witness_sg2_projection_falsification_holds() -> Bool {
   !sg2_serialize_accepts(emitted: sg2_fail_node())
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())
@@ -272,7 +255,8 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
       param_list_separator: row.arrow_form.param_list_separator
     },
     cardinality_form: row.cardinality_form,
-    instantiation_form: row.instantiation_form
+    instantiation_form: row.instantiation_form,
+    declaration_reference_form: row.declaration_reference_form
   }
 }
 

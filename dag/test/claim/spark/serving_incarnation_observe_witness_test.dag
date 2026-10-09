@@ -6,6 +6,7 @@ import std.content_hash { ContentHash, Sha256Hash, ContentHashEqual, compare_con
 import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
 import extdeps.linux.proc_pid_stat {
   StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time,
+  process_start_epoch_seconds,
 }
 import extdeps.posix.getconf { ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, clock_ticks_reading }
 import extdeps.procps.pgrep { PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing }
@@ -19,7 +20,7 @@ import extdeps.prometheus.client {
 }
 import gunbc.spark.serving_incarnation_observe {
   ServingIncarnationReading, IncarnationObserved, IncarnationRefused,
-  exported_start_equals_process_start, process_start_epoch_seconds,
+  exported_start_equals_process_start,
   endpoint_incarnation_standing,
 }
 import gunbc.spark.vllm_serving_launch {

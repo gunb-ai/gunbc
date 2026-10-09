@@ -1,0 +1,189 @@
+module extdeps.ethtool
+
+import std.types { NonEmptyStr, String, List, Bool, Unit, Int }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// ethtool is the Linux NIC query and control utility. It is its own independently versioned upstream
+// project with its own manual page and its own option set, so it gets its own module rather than
+// rows on a generic "network tools" hub -- the external-decomposition rule in DESIGN §3: a shared
+// interface may be agnostic, but a concrete independently governed tool owns its own authority.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/ethtool.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ethtool",
+      decl_name: "ethtool_binary_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ethtool_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data ethtool_binary_name: NonEmptyStr = "ethtool" as NonEmptyStr
+
+// WHERE THE BINARY LIVES, AND WHY IT IS NOT systemd's DIRECTORY. `extdeps.systemd` declares
+// /usr/bin because that is where distribution-packaged systemd clients sit; ethtool is a network
+// ADMINISTRATION tool and the filesystem hierarchy puts those in sbin. Measured on spark-a3ee
+// 2026-09-17: `command -v ethtool` and `readlink -f` both report /usr/sbin/ethtool, version 6.7.
+// Borrowing systemd's row would have produced /usr/bin/ethtool, which is the absolute path a
+// sudoers Cmnd_Spec would then fail to match -- a grant that silently authorizes nothing.
+data ethtool_binary_directory: NonEmptyStr = "/usr/sbin" as NonEmptyStr
+
+fn ethtool_binary_path() -> NonEmptyStr {
+  join([ethtool_binary_directory as String, "/", ethtool_binary_name as String], "") as NonEmptyStr
+}
+
+// ================= THE MODULE-INFORMATION READ =================
+//
+// `-m` (long form `--module-info`) dumps the pluggable module's EEPROM for one device. It TAKES ITS
+// DEVICE, and as with loginctl's enable-linger the parameter is required here rather than optional:
+// a sudoers grant written without the device authorizes the read on EVERY interface the host has,
+// which is a materially wider authorization than the one this repository needs. The device is the
+// subject of the read, so it is carried, not defaulted.
+data ethtool_module_info_flag: NonEmptyStr = "-m" as NonEmptyStr
+
+// ONLY THE RAW FORM IS MODELED, AND THE DECODED FORM IS ABSENT ON PURPOSE. `ethtool -m <dev>` alone
+// prints ethtool's own DECODING of the EEPROM, and gunbc.spark.fabric_switch_observed records that
+// decoding fabricating a measurement: byte 140 holds FFh, the SFF-8636 escape meaning "the real rate
+// is in byte 222", and ethtool rendered it as "BR, nominal: 25500 Mb/s" -- 255 x 100, the sentinel
+// multiplied out and printed as though it were a reading.
+//
+// `raw on` returns the BYTES, which is the only form from which byte 116, byte 192 and byte 222 can
+// be read as themselves and decoded by extdeps.transceiver.sff_8636, whose decoders this repository
+// owns and can be asked questions. So the raw form is what the compliance-coding question is
+// actually answered from, and it is the only form any consumer here needs.
+//
+// An earlier head of this module also carried builders for the decoded spelling, on the reasoning
+// that it names the vendor and part. Nothing called them. That is the dangling declaration DESIGN
+// §3c makes red, and "names the vendor and part" is a use nobody has, not a consumer -- so they are
+// deleted rather than kept against a need no change in flight has. A decoded reader lands with the
+// consumer that wants those fields.
+//
+// Both spellings of the raw command -- bare argv and absolute Cmnd_Spec -- are rendered from the same
+// rows below, so the argv a grant executes and the sudoers line that authorizes it cannot drift
+// apart: the fork measured on srv5/srv6 2026-08-22, where the sudoers line carried a subject the
+// argv did not.
+data ethtool_module_info_raw_keyword: NonEmptyStr = "raw" as NonEmptyStr
+data ethtool_module_info_raw_on: NonEmptyStr = "on" as NonEmptyStr
+
+fn ethtool_module_info_raw_argv(device: NonEmptyStr) -> List<String> {
+  [
+    ethtool_binary_name as String,
+    ethtool_module_info_flag as String,
+    device as String,
+    ethtool_module_info_raw_keyword as String,
+    ethtool_module_info_raw_on as String,
+  ]
+}
+
+fn ethtool_module_info_raw_command(device: NonEmptyStr) -> NonEmptyStr {
+  join([
+    ethtool_binary_path() as String,
+    " ", ethtool_module_info_flag as String,
+    " ", device as String,
+    " ", ethtool_module_info_raw_keyword as String,
+    " ", ethtool_module_info_raw_on as String,
+  ], "") as NonEmptyStr
+}
+
+// ================= THE CHANNEL READ =================
+//
+// `-l` (long form `--show-channels`) reports the device's channel counts: ethtool issues
+// ETHTOOL_MSG_CHANNELS_GET over netlink, or ETHTOOL_GCHANNELS where netlink is unavailable. Both
+// answer the same `struct ethtool_channels` (include/uapi/linux/ethtool.h). The rendering cited here
+// is netlink/channels.c in ethtool 6.7, the version measured on spark-a3ee (see
+// ethtool_binary_directory): a header line `Channel parameters for <dev>:`, then a `Pre-set
+// maximums:` block and a `Current hardware settings:` block, each holding `RX:`, `TX:`, `Other:` and
+// `Combined:` lines. A count the driver does not report is printed as `n/a`, not as 0.
+//
+// THE CURRENT COMBINED COUNT IS THE ONLY FIELD READ, because it is the one any consumer here needs:
+// struct ethtool_channels.combined_count, the field the earlier inline ioctl probe read as
+// channels[8]. Every other outcome is a refusal and never a count. That covers a nonzero exit (the
+// driver has no get_channels, or the device is gone), a missing header, a missing current block, a
+// missing `Combined:` line in that block, and `n/a` or any other non-decimal value. A refusal that
+// fell back to 0 would make an unreadable count look like an idle device.
+data ethtool_show_channels_flag: NonEmptyStr = "--show-channels" as NonEmptyStr
+
+service ethtool.Ethtool {
+  operation ShowChannels {
+    input { device: NonEmptyStr }
+    output { value: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["/usr/sbin/ethtool", "--show-channels", "{device}"] }
+    exit { 0 => Unit nonzero => String "ethtool channel read failed" }
+    mock_response { 1 => { value: "", success: false } "no fabricated channel parameters" }
+  }
+}
+
+type EthtoolCombinedChannels
+  = EthtoolCombinedChannelsCurrent { count: Int }
+  | EthtoolCombinedChannelsUnreadable { cause: NonEmptyStr }
+
+fn ethtool_decimal_value(text: String) -> Int? {
+  let cps = text |> chars
+  if length(cps) == 0 || length(cps) > 10 || !all(cps, cp => cp >= 48 && cp <= 57) { none }
+  else { parse_int(s: text) }
+}
+
+fn ethtool_channel_line_value(line: String, label: String) -> String? {
+  if starts_with(s: line, prefix: label) {
+    Present { value: trim(s: substring(s: line, start: string_length(s: label), end: string_length(s: line))) }
+  } else { none }
+}
+
+// The current `Combined:` line is the first one AFTER the `Current hardware settings:` line, so the
+// pre-set maximum, which carries the same label, can never be read in its place.
+fn ethtool_current_combined_from(lines: List<String>) -> EthtoolCombinedChannels {
+  let after = fold(lines, init: EthtoolChannelScanBefore {}, f: (acc, line) => match acc {
+    EthtoolChannelScanBefore {} =>
+      if trim(s: line) == "Current hardware settings:" { EthtoolChannelScanCurrent {} } else { acc }
+    EthtoolChannelScanCurrent {} => match ethtool_channel_line_value(line: line, label: "Combined:") {
+      Present { value: v } => EthtoolChannelScanFound { value: v }
+      Absent => acc
+    }
+    EthtoolChannelScanFound { value: _ } => acc
+  })
+  match after {
+    EthtoolChannelScanBefore {} => EthtoolCombinedChannelsUnreadable { cause: "no current hardware settings block" as NonEmptyStr }
+    EthtoolChannelScanCurrent {} => EthtoolCombinedChannelsUnreadable { cause: "no current Combined count" as NonEmptyStr }
+    EthtoolChannelScanFound { value: v } => match ethtool_decimal_value(text: v) {
+      Present { value: n } => EthtoolCombinedChannelsCurrent { count: n }
+      Absent => EthtoolCombinedChannelsUnreadable { cause: "current Combined count is not a decimal count" as NonEmptyStr }
+    }
+  }
+}
+
+type EthtoolChannelScan
+  = EthtoolChannelScanBefore {}
+  | EthtoolChannelScanCurrent {}
+  | EthtoolChannelScanFound { value: String }
+
+fn ethtool_combined_channels(device: NonEmptyStr, success: Bool, value: String) -> EthtoolCombinedChannels {
+  let lines = split(s: value, delimiter: "\n")
+  if !success { EthtoolCombinedChannelsUnreadable { cause: "ethtool --show-channels exited nonzero" as NonEmptyStr } }
+  else { match lines |> first {
+    Absent => EthtoolCombinedChannelsUnreadable { cause: "empty channel report" as NonEmptyStr }
+    Present { value: header } =>
+      if trim(s: header) != join(["Channel parameters for ", device as String, ":"], "") {
+        EthtoolCombinedChannelsUnreadable { cause: "channel report names a different device or no device" as NonEmptyStr }
+      } else { ethtool_current_combined_from(lines: lines) }
+  } }
+}
+
+fn ethtool_observe_combined_channels(device: NonEmptyStr) -> EthtoolCombinedChannels {
+  let read = ethtool.Ethtool.ShowChannels(device: device)
+  ethtool_combined_channels(device: device, success: read.success, value: read.value)
+}

@@ -14,11 +14,11 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
+    metering_pass: BeltPassRecorded,
   }
 }
 
 data fixture_v3_tick_wire: String = "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\",\"launches\":[],\"spawn_pass\":{\"outcome\":\"recorded\"},\"teardown_pass\":{\"outcome\":\"recorded\"},\"verify_pass\":{\"outcome\":\"recorded\"},\"publish_pass\":{\"outcome\":\"recorded\"}}"
-data fixture_v3_tick_wire: String = "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\",\"launches\":[],\"spawn_pass\":{\"outcome\":\"recorded\"},\"commit_pass\":{\"outcome\":\"recorded\"},\"verify_pass\":{\"outcome\":\"recorded\"},\"publish_pass\":{\"outcome\":\"recorded\"}}"
 
 // (1) ISO-8601 UTC instants decode to epoch seconds on known values (Python datetime as the oracle).
 test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
@@ -30,6 +30,7 @@ test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
     && (match iso8601_utc_epoch_seconds(text: "2026-02-30T00:00:00Z") { Present { value: _ } => false  Absent => true })
     && (match iso8601_utc_epoch_seconds(text: "2027-04-31T00:00:00Z") { Present { value: _ } => false  Absent => true })
     && (match iso8601_utc_epoch_seconds(text: "2024-02-29T00:00:00Z") { Present { value: s } => second_count(s) == 1709164800  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: iso8601_utc_text(unix: 4102444799)) { Present { value: s } => second_count(s) == 4102444799  Absent => false })
 }
 
 // (2) Freshness: fresh within the cadence bound, stale beyond it, refused before the deploy, and

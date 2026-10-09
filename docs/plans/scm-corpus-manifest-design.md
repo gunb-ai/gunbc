@@ -17,8 +17,9 @@ which is the §5 specification-without-execution gap the SCM design note also na
 
 **Ingestion is modeled, not absent.** An earlier draft asserted otherwise. It searched
 `dag/gunbc/scm`, found nothing, and let an empty subtree speak for the repository — *a partial
-observer returning the negative value of a total observer*, the class recorded in
-`gunbc.namespace_wave_admission`'s ledger. `src/v2/compiler` models `01_tokenize`, `02_parse`,
+observer returning the negative value of a total observer*, the class whose ledger was
+`gunbc.namespace_wave_admission`'s at this writing (that module was deleted with the
+wave-admission wall, operator ruling 2026-09-19). `src/v2/compiler` models `01_tokenize`, `02_parse`,
 `03_ingest`, `00_compile`.
 
 **Most of the proposed vocabulary exists.** `v2.compiler.source_authority` declares

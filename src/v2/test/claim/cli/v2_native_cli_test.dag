@@ -2,21 +2,35 @@ module v2.test.cli.v2_native_cli
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitFailure, ExitSuccess }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
+import extdeps.process.posix_exit { exit_code_general_error }
 import v2.cli.compile_cli {
   CliEmitClosure,
+  CliCensusRefused,
   CliEmitted,
   CliPlan,
   CliPlanParsed,
   CliPlanRefused,
   CliRunOutcome,
   CliRunRefused,
+  CliEmitTarget,
+  CliTargetC,
+  CliTargetRust,
+  CliTargetSwift,
+  CliUsageRefused,
+  CliDifferentialReported,
+  CliIfArmReaderDifferential,
+  cli_emit_target_spelling,
   v2_cli_exit,
   v2_cli_parse,
   v2_cli_plan_source_roots,
   v2_cli_run
 }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
-import v2.std.logic { Bool }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -50,11 +64,12 @@ fn plan_first_root(plan: CliPlan) -> String {
     CliPlanRefused { reason: _, detail: _ } => ""
     CliPlanParsed { verb: verb } =>
       match verb {
-        CliEmitClosure { entry: _, source_roots: roots } =>
+        CliEmitClosure { entry: _, source_roots: roots, target: _ } =>
           match list_head(xs: roots) {
             HeadAbsent => ""
             HeadFound { value: first } => first
           }
+        CliIfArmReaderDifferential { source_roots: _ } => ""
       }
   }
 }
@@ -62,7 +77,11 @@ fn plan_first_root(plan: CliPlan) -> String {
 fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
   match outcome {
     CliRunRefused { reason: reason, detail: _ } => reason
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } =>
+    CliCensusRefused { reason: reason, detail: _, text: _ } => reason
+    CliUsageRefused { reason: reason, detail: _ } => reason
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } =>
+      ^cli_outcome_was_not_refused
+    CliDifferentialReported { text: _, observed: _, detail: _ } =>
       ^cli_outcome_was_not_refused
   }
 }
@@ -70,7 +89,10 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
 fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
   match outcome {
     CliRunRefused { reason: _, detail: _ } => false
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => true
+    CliCensusRefused { reason: _, detail: _, text: _ } => false
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }
 
@@ -124,7 +146,7 @@ data argv_unknown_verb: FreeMonoid<String> = Cons {
 
 data argv_unknown_option: FreeMonoid<String> = Cons {
   head: "emit",
-  tail: Cons { head: "--target", tail: Cons { head: "rust", tail: Empty } }
+  tail: Cons { head: "--output", tail: Cons { head: "out.rs", tail: Empty } }
 }
 
 test fn the_emit_verb_with_one_root_parses_holds() -> Bool {
@@ -206,6 +228,76 @@ test fn an_option_in_the_entry_value_position_refuses_holds() -> Bool {
 test fn an_unknown_verb_refuses_holds() -> Bool {
   plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_verb)))
     == ^cli_unknown_verb
+}
+
+fn argv_emit_with_target(target: String) -> FreeMonoid<String> {
+  Cons {
+    head: "emit",
+    tail: Cons {
+      head: "--entry",
+      tail: Cons {
+        head: "cli_probe",
+        tail: Cons {
+          head: "--source-root",
+          tail: Cons { head: "dag", tail: Cons { head: "--target", tail: Cons { head: target, tail: Empty } } }
+        }
+      }
+    }
+  }
+}
+
+// `kotlin` is the discriminating unknown: a real target with a model, not rostered in this door.
+data argv_emit_unknown_target: FreeMonoid<String> = argv_emit_with_target(target: "kotlin")
+
+data argv_emit_dangling_target: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons { head: "cli_probe", tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Cons { head: "--target", tail: Empty } } } }
+  }
+}
+
+fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => false
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: _, target: target } =>
+          cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
+        CliIfArmReaderDifferential { source_roots: _ } => false
+      }
+  }
+}
+
+// EACH ROSTERED SPELLING SELECTS ITS OWN ARM. Three rows rather than one because a parser that
+// mapped every known spelling to the first arm would pass any single one of them.
+test fn the_rust_target_spelling_selects_rust_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "rust")), expected: CliTargetRust)
+}
+
+test fn the_c_target_spelling_selects_c_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "c")), expected: CliTargetC)
+}
+
+test fn the_swift_target_spelling_selects_swift_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "swift")), expected: CliTargetSwift)
+}
+
+// NO --target IS THE PLAN'S DECLARED DEFAULT, which is the argv every existing caller spawns.
+test fn an_emit_without_a_target_plans_the_declared_default_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)), expected: CliTargetRust)
+}
+
+// A TARGET OUTSIDE THE ROSTER REFUSES AT THE PARSE, before any root is walked -- it never reaches
+// the emitter as a name the emitter has no model for.
+test fn an_unknown_target_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_unknown_target)))
+    == ^cli_unknown_target
+}
+
+test fn a_dangling_target_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_dangling_target)))
+    == ^cli_target_missing_value
 }
 
 test fn an_unknown_option_refuses_holds() -> Bool {
@@ -291,11 +383,99 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 // emits and compiles this module's whole closure -- that is compilation of the emit arm and not
 // execution of it, and the difference is exactly what this frontier records.
 
-test fn a_refused_outcome_exits_failure_holds() -> Bool {
+// A COMMAND LINE THAT WAS NOT USABLE EXITS 2, WORK THAT RAN AND REFUSED EXITS 1. The two are
+// different terminations for the caller -- one means "fix the invocation", the other "the subject
+// did not emit" -- so each row pins its exact code rather than any non-zero.
+test fn a_refused_plan_exits_misuse_holds() -> Bool {
   match v2_cli_exit(
     outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_empty)), ingest: Empty)
   ) {
     ExitSuccess => false
-    ExitFailure { code: code, reason: _ } => code != 0
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
+  }
+}
+
+test fn an_unknown_target_exits_misuse_holds() -> Bool {
+  match v2_cli_exit(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_emit_unknown_target)), ingest: Empty)
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
+  }
+}
+
+test fn an_emit_refusal_exits_general_error_holds() -> Bool {
+  match v2_cli_exit(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)), ingest: Empty)
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_general_error
+  }
+}
+
+// THE REFUSAL NAMES THE REFUSING LINK, NOT THE FIRST ADVISORY. This is the run-level claim the emit
+// arm's frontier above does not block: a refusal at ASSEMBLE happens before the single-module
+// emit frontier is reached, so a supplied ingest holding one file with tokens left after its module
+// body refuses through the real front end (tokenize, parse, normalize over dag_language_model),
+// with the grammar's overlap-residue advisory riding in front. The outcome's `reason` must be the
+// FATAL -- the last link, parse_g0_tokens_remain -- and the detail must locate it: the compilation
+// unit the front end was handed (v2.compiler.program_assembly names the read's compilation_unit as
+// the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
+// which on every such refusal is the same grammar-global advisory, so three different broken
+// entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
+data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
+
+data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport std.types { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
+
+fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data cli_probe_trailing_ingest: SourceRootIngest = [
+  cli_probe_read(source: cli_probe_entry_source, id: ^cli_probe_entry_artifact, unit: ^cli_probe_entry_cu, path: "dag/cli_probe_entry.dag"),
+  cli_probe_read(source: cli_probe_trailing_source, id: ^cli_probe_trailing_artifact, unit: ^cli_probe_trailing_cu, path: "dag/cli_probe_trailing.dag")
+]
+
+data argv_emit_cli_probe_entry: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "v2.cli_probe.entry",
+      tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+    }
+  }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE (v2.workflow.floor_pure_producer_share, WARM): the run pays a
+// grammar preparation and a two-file front end, which is more than one claim's budget, and both
+// claims below inspect one field of its outcome.
+fn cli_probe_trailing_outcome() -> CliRunOutcome {
+  v2_cli_run(
+    plan: v2_cli_parse(argv: argv_of(items: argv_emit_cli_probe_entry)),
+    ingest: cli_probe_trailing_ingest
+  )
+}
+
+test fn a_trailing_token_refusal_names_the_refusing_link_as_its_reason_holds() -> Bool {
+  outcome_refusal_reason(outcome: cli_probe_trailing_outcome()) == ^parse_g0_tokens_remain
+}
+
+test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
+  match cli_probe_trailing_outcome() {
+    CliRunRefused { reason: _, detail: detail } =>
+      string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
+        && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
+    CliCensusRefused { reason: _, detail: detail, text: _ } =>
+      string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
+        && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }

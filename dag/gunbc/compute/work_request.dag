@@ -1,7 +1,9 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.measure { Kibibyte, kibibyte_count }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import extdeps.systemd.systemd_run { SystemdRunOptionWordsRefusedCause, systemd_run_option_words_refused_cause_detail }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -126,55 +128,132 @@ type WorkOutput {
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
 // the work cannot render as the work having failed). Every arm carries the identity so a caller can
 // never attach a verdict to a different request.
+// A CANCELLATION CARRIES WHY, and the arm was a bare identity until a real run made the gap
+// visible. The only producer of this arm is a launch refused by the attempt gate -- somebody else
+// ended this attempt before it spawned -- and an ending of "cancelled" with no cause cannot be
+// told apart from any other cancellation by the caller who reads the document. The detail is in
+// the durable outcome for the same reason every other arm's is: the next reader of this identity
+// gets the same account the first caller got.
 type WorkOutcome
   = WorkSucceeded { identity: String, outputs: List<WorkOutput>, log_path: String }
   | WorkFailed { identity: String, exit_code: Int, log_path: String }
   | WorkRefusedByInfrastructure { identity: String, cause: WorkInfrastructureRefusal }
-  | WorkCancelled { identity: String }
+  | WorkCancelled { identity: String, detail: String }
   | WorkOutputMismatch { identity: String, detail: String }
 
 // Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
-// (the caller attaches later, it does not start a second build), the host is at its cold-build cap,
-// the checkout or the store could not be prepared, or a dependency of this operation (the build the
-// compile consumes) did not succeed.
+// (the caller attaches later, it does not start a second build), the host cannot back the memory
+// this class reserves, the checkout or the store could not be prepared, or a dependency of this
+// operation (the build the compile consumes) did not succeed.
+//
+// THE MEMORY ARMS CARRY Kibibyte, NOT Int FIELDS NAMED _kib. A unit in a field NAME on a bare Int
+// is the unit modeled twice -- once in the name and once in the " KiB" this module then renders --
+// and modeled nowhere the compiler can see. The producer already had it right
+// (gunbc.compute.host_capacity ComputeHostBelowFloor carries Kibibyte) and the provider was calling
+// kibibyte_count to STRIP the carrier on the way in, which is the tell (review 69624). The deleted
+// arm this replaced, HostAtColdBuildCap { in_flight, cap }, was a dimensionless COUNT, so Int was
+// right there and is not right here.
+//
+// THREE CAPACITY ARMS WHERE THERE USED TO BE ONE COUNT. HostAtColdBuildCap { in_flight, cap } is
+// DELETED, and its disposition is that the fact it reported -- this host is already carrying as
+// much as it may -- is now HostComputeCapacityFull, measured in the memory the pool actually
+// appropriates rather than in producers. The other two are facts the count could not express at
+// all and that a caller must not confuse with it: the machine's LIVE availability being below what
+// this class needs is somebody else's memory, not this pool's commitments, and an unreadable
+// ledger is a store repair. One arm for three remedies is the conflation DESIGN 5 forbids.
+// A UNIT KILLED FOR MEMORY IS THE MACHINE ENDING THE WORK, NOT THE WORK FAILING, and it has its
+// own arm for the reason this vocabulary has five endings rather than one: rendering an OOM kill as
+// WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger
+// reservation. The arm is reached only when no larger reservation remains -- a grant below the
+// ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
+// compute_run_granted), and that retry is counted per class.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
-  | HostAtColdBuildCap { in_flight: Int, cap: Int }
+  | HostComputeCapacityFull { wire: String }
+  | HostBelowMemoryFloor { requested: Kibibyte, available: Kibibyte }
+  | ComputeCapacityLedgerUnavailable { detail: String }
   | CheckoutUnavailable { detail: String }
   | StoreUnavailable { detail: String }
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
+  | UnitEndingUnclassifiable { exit_code: Int, cause: String }
+  | UnitLaunchRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
     WorkSucceeded { identity, outputs: _, log_path: _ } => identity
     WorkFailed { identity, exit_code: _, log_path: _ } => identity
     WorkRefusedByInfrastructure { identity, cause: _ } => identity
-    WorkCancelled { identity } => identity
+    WorkCancelled { identity, detail: _ } => identity
     WorkOutputMismatch { identity, detail: _ } => identity
   }
 }
 
-fn work_outcome_ending(o: WorkOutcome) -> String {
+// HOW A WORK OUTCOME ENDED, WITH ITS PAYLOAD DROPPED. It is the closed set the ending words were
+// always drawn from, typed once so a reader that stores an ending (the attempt slot's terminal
+// generation) decodes against the set rather than accepting any word. work_outcome_ending is its
+// spelling, and work_ending_decode is the inverse of that one spelling, not a second vocabulary.
+type WorkEnding
+  = WorkEndedSucceeded
+  | WorkEndedFailed
+  | WorkEndedRefusedByInfrastructure
+  | WorkEndedCancelled
+  | WorkEndedOutputMismatch
+
+fn work_outcome_ending_of(o: WorkOutcome) -> WorkEnding {
   match o {
-    WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
-    WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
-    WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
-    WorkCancelled { identity: _ } => "cancelled"
-    WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => WorkEndedSucceeded
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => WorkEndedFailed
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => WorkEndedRefusedByInfrastructure
+    WorkCancelled { identity: _, detail: _ } => WorkEndedCancelled
+    WorkOutputMismatch { identity: _, detail: _ } => WorkEndedOutputMismatch
   }
+}
+
+fn work_ending_wire(e: WorkEnding) -> String {
+  match e {
+    WorkEndedSucceeded => "succeeded"
+    WorkEndedFailed => "failed"
+    WorkEndedRefusedByInfrastructure => "refused_by_infrastructure"
+    WorkEndedCancelled => "cancelled"
+    WorkEndedOutputMismatch => "output_mismatch"
+  }
+}
+
+fn work_ending_decode(word: String) -> WorkEnding? {
+  if word == work_ending_wire(e: WorkEndedSucceeded) { Present { value: WorkEndedSucceeded } }
+  else if word == work_ending_wire(e: WorkEndedFailed) { Present { value: WorkEndedFailed } }
+  else if word == work_ending_wire(e: WorkEndedRefusedByInfrastructure) { Present { value: WorkEndedRefusedByInfrastructure } }
+  else if word == work_ending_wire(e: WorkEndedCancelled) { Present { value: WorkEndedCancelled } }
+  else if word == work_ending_wire(e: WorkEndedOutputMismatch) { Present { value: WorkEndedOutputMismatch } }
+  else { none }
+}
+
+fn work_outcome_ending(o: WorkOutcome) -> String {
+  work_ending_wire(e: work_outcome_ending_of(o: o))
 }
 
 fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
   match r {
     ProducerInFlight { lease_path } => join(["a producer already holds the lease at ", lease_path, "; attach later, do not start a second one"], "")
-    HostAtColdBuildCap { in_flight, cap } => join([to_string(value: in_flight), " producers in flight on this host, cap ", to_string(value: cap)], "")
+    HostComputeCapacityFull { wire } => join(["this host's compute memory pool has no room for another reservation: ", wire], "")
+    HostBelowMemoryFloor { requested, available } => join(["this class reserves ", to_string(value: kibibyte_count(k: requested)), " KiB and the host reports only ", to_string(value: kibibyte_count(k: available)), " KiB available, so the reservation would not have been backed by the machine"], "")
+    ComputeCapacityLedgerUnavailable { detail } => join(["the host's compute capacity ledger could not be transacted: ", detail], "")
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    UnitEndingUnclassifiable { exit_code, cause } =>
+      join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
+    UnitLaunchRefused { cause } =>
+      join(["the unit was never launched: the systemd-run builder refused the invocation, so there is no exit to report: ", systemd_run_option_words_refused_cause_detail(cause: cause)], "")
+    UnitMemoryGrantExceeded { class, granted, peak_upper, grant_was_ceiling } =>
+      join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
+        " KiB and its manager reported a peak of ", match peak_upper { Present { value: k } => join(["at most ", to_string(value: kibibyte_count(k: k)), " KiB"], "")  Absent => "NOTHING (no Memory peak line was reported)" },
+        if grant_was_ceiling { "; the grant was this host's ceiling, so no larger reservation exists to retry under" } else { "; the grant was below the ceiling and the retry at the ceiling was not taken -- the consumption record says why" }], "")
   }
 }
 
@@ -207,7 +286,9 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
     WorkRefusedByInfrastructure { identity: _, cause } => [
       json_kv(key: "cause", value: json_string(s: work_refusal_detail(r: cause))),
     ]
-    WorkCancelled { identity: _ } => []
+    WorkCancelled { identity: _, detail } => [
+      json_kv(key: "detail", value: json_string(s: detail)),
+    ]
     WorkOutputMismatch { identity: _, detail } => [
       json_kv(key: "detail", value: json_string(s: detail)),
     ]
@@ -226,7 +307,7 @@ type StoredOutcomeRead
 
 fn stored_outcome_member(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  _ => none }
+    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  JsonNull => none  JsonBool { value: _ } => none  JsonNumber { lexeme: _ } => none  JsonArray { elements: _ } => none  JsonObject { members: _ } => none }
     JsonMemberAbsent => none
     JsonMemberDuplicated => none
     JsonMemberNotAnObject => none

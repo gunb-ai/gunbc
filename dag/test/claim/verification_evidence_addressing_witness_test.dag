@@ -1,5 +1,9 @@
 module test.claim.verification_evidence_addressing_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { Bool, String, NonEmptyStr, List, CommitSha }
@@ -10,7 +14,7 @@ import std.content_hash {
   content_hash_of_value,
   serialize_content_hash,
 }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 import extdeps.languages.json.emit {
   serialize_json,
   json_object,
@@ -28,16 +32,16 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
   RoadmapNodeId,
-  Sized,
-  IntricacyHigh,
-  VolumeMedium,
+  Dispatchable,
   PrsMerged,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_provider_events { ProviderCompleted }
+import gunbc.roadmap_workflow_command { WorkflowModeledStateObserved }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
+  AttemptWorktreePresent,
   workflow_attempt_progress,
 }
 import gunbc.roadmap_workflow_stage {
@@ -306,15 +310,15 @@ fn fixture_roadmap_node() -> RoadmapNode {
     node: fixture_node_id(),
     line: DerivableLine { prs: [1], title: "recut-a", description: "" },
     carriers: [],
-    sizing: Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: PrsMerged,
     },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -341,7 +345,8 @@ fn fixture_evidence(
     node_id: "recut-a",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/recut-a-afeedfacefeedface",
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
+    worktree: AttemptWorktreePresent { path: "/wt" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
@@ -372,7 +377,10 @@ fn fixture_evidence(
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 

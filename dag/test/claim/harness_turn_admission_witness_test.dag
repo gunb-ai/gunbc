@@ -2,14 +2,14 @@ module test.claim.harness_turn_admission_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.measure { token_count }
-import v2.std.optional { Present, Absent }
+import std.measure { token_count, second_count }
+import std.optional { Present, Absent }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef, OfferedService, MaterializedProgram }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
@@ -28,10 +28,11 @@ import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_seat {
   HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
-  harness_bind_candidate, harness_serving_realization,
+  harness_bind_candidate, harness_serving_realization, harness_placement_grant_duration,
 }
 import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
-import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape }
+import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
+import product.fabric.supply { ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration }
 
 // ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND, AND A BOUND OFFER PASSES ADMISSION OR NOTHING ──
 //
@@ -107,6 +108,7 @@ fn t_realization() -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -252,4 +254,17 @@ test fn the_wire_shape_is_the_interface() -> Bool {
   let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
   let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
   (openai.work.id.key as String) != (anthropic.work.id.key as String)
+}
+
+// THE PLACEMENT DURATION CARRIES THE POLICY SECONDS AS A Second. harness_placement_round once handed
+// EstimatedGrantDuration.seconds a bare Nat where a Second belongs; no claim had priced a bound
+// candidate, and the first live dispatch that did (2026-09-20) died in select_supply at second_count
+// ("cannot access field 'count' on Int"). The constructor is shared with the production fold, so this
+// row reads back exactly the duration that fold builds; under the old inline shape it errors.
+test fn the_placement_duration_carries_the_policy_seconds_as_a_second() -> Bool {
+  match harness_placement_grant_duration(policy: harness_seat_policy) {
+    EstimatedGrantDuration { seconds: sc } => second_count(s: sc) == harness_seat_policy.maximum_duration_seconds
+    ExactGrantDuration { seconds: _ } => false
+    UnobservedGrantDuration { obligation: _ } => false
+  }
 }

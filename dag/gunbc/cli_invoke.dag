@@ -140,27 +140,29 @@ fn named_argument_invocation_words(arguments: List<NamedArgument>) -> List<Invoc
   fold(arguments, init: [], f: (acc, a) => concat(acc, named_argument_words(argument: a)))
 }
 
-// THE ONE `gunbc run` SHAPE. The no-named-arguments route below delegates here with an EMPTY
-// population rather than carrying a second spelling of the same argv, so there is one place where
-// the order of `run`, the source roots, the entry, the function, the named arguments and
-// `--claim-run` is decided (DESIGN section 3: interface, realization and policy are three facts, and
-// the argv shape is the interface).
-fn gunbc_run_invocation_words_with_arguments(
+// THE ONE `gunbc run` SHAPE. Every route below delegates here rather than carrying a second
+// spelling of the same argv, so there is one place where the order of `run`, the source roots,
+// the entry, the functions, the named arguments and `--claim-run` is decided (DESIGN section 3:
+// interface, realization and policy are three facts, and the argv shape is the interface).
+// `--function` is repeatable on the modeled surface (gunbc.cli_dispatch_surface), so the
+// functions are a POPULATION here: one `--function <name>` pair per member, and an empty
+// population is the no-function run -- `main` for an ordinary run, every `test fn` of the entry
+// under `--claim-run` -- with no second builder deciding that case.
+fn function_invocation_words(functions: List<String>) -> List<InvocationWord> {
+  fold(functions, init: [], f: (acc, f) => concat(acc, [LiteralWord { spelling: "--function" }, LiteralWord { spelling: f }]))
+}
+
+fn gunbc_run_invocation_words_with_functions(
   source_roots: List<String>,
   entry: String,
-  function: String,
+  functions: List<String>,
   claim_run: Bool,
   arguments: List<NamedArgument>
 ) -> List<InvocationWord> {
   let base = concat(
     concat(
       concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
-      [
-        LiteralWord { spelling: "--entry" },
-        LiteralWord { spelling: entry },
-        LiteralWord { spelling: "--function" },
-        LiteralWord { spelling: function }
-      ]
+      concat([LiteralWord { spelling: "--entry" }, LiteralWord { spelling: entry }], function_invocation_words(functions: functions))
     ),
     named_argument_invocation_words(arguments: arguments)
   )
@@ -169,6 +171,22 @@ fn gunbc_run_invocation_words_with_arguments(
   } else {
     base
   }
+}
+
+fn gunbc_run_invocation_words_with_arguments(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  arguments: List<NamedArgument>
+) -> List<InvocationWord> {
+  gunbc_run_invocation_words_with_functions(
+    source_roots: source_roots,
+    entry: entry,
+    functions: [function],
+    claim_run: claim_run,
+    arguments: arguments
+  )
 }
 
 fn gunbc_run_invocation_words(
@@ -182,6 +200,21 @@ fn gunbc_run_invocation_words(
     entry: entry,
     function: function,
     claim_run: claim_run,
+    arguments: []
+  )
+}
+
+// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS: the one builder above with an empty function
+// population under `--claim-run`.
+fn gunbc_run_all_claims_invocation_words(
+  source_roots: List<String>,
+  entry: String
+) -> List<InvocationWord> {
+  gunbc_run_invocation_words_with_functions(
+    source_roots: source_roots,
+    entry: entry,
+    functions: [],
+    claim_run: true,
     arguments: []
   )
 }
@@ -218,6 +251,20 @@ fn gunbc_run_transport_argv_with_arguments(
       arguments: arguments
     )
   )
+}
+
+// THE ONE `gunbc converge` SHAPE. The fleet-converge thin run invokes the pinned gunbc binary
+// with `converge --host <identity>`; before this builder stood beside the run builders, that
+// shape was hand-authored inline at the thin-invocation bind (gunbc.fleet_converge_apply
+// fleet_converge_thin_invocation), a second authoring surface for a gunbc subcommand's argv —
+// the same two-authorities defect the run builders dissolved. The order of `converge`, the
+// `--host` flag and the identity is decided HERE and nowhere else (DESIGN section 3: the argv
+// shape is the interface). The program word is not part of the shape: the run builders start at
+// the subcommand and the realization that needs a program word composes it with
+// gunbc_bin_name, so an emitted step and an argv projection cannot disagree about flags while
+// agreeing about the binary.
+fn gunbc_converge_invocation_words(host: String) -> List<InvocationWord> {
+  [LiteralWord { spelling: "converge" }, LiteralWord { spelling: "--host" }, LiteralWord { spelling: host }]
 }
 
 fn claim_executor_verify_artifacts_shell(artifact_paths: List<String>) -> String {

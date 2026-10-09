@@ -1,15 +1,15 @@
 module v2.compiler.staged_front_end
 
+import std.types { List }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { List }
+import std.algebra { list_snoc_item }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
 import v2.std.language_model { LanguageModel }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.diagnostic {
@@ -71,7 +71,7 @@ type FrontEndStageStep
     }
 
 type FrontEndCompletion
-  = FrontEndResolvedModule { resolved: Node }
+  = FrontEndResolvedModule { resolved: ResolvedTree }
   | FrontEndRefused
   | FrontEndBoundReached { last: FrontEndStage }
 
@@ -259,7 +259,7 @@ fn front_end_resolve_step(
         steps: front_end_passed(
           steps: steps,
           stage: FrontEndResolve,
-          receipt: ResolvedModule { node_count: node_subtree_count(n: resolved) },
+          receipt: ResolvedModule { node_count: node_subtree_count(n: resolved.root) },
           diagnostics: d
         ),
         completion: FrontEndResolvedModule { resolved: resolved }
@@ -290,7 +290,7 @@ fn front_end_first_refusal(steps: List<FrontEndStageStep>) -> Optional<NonEmptyD
   })
 }
 
-fn front_end_run_outcome(run: FrontEndRun) -> Outcome<Node> {
+fn front_end_run_outcome(run: FrontEndRun) -> Outcome<ResolvedTree> {
   match front_end_first_refusal(steps: run.steps) {
     Present { value: r } =>
       Rejected {

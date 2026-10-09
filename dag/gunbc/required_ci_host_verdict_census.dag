@@ -83,16 +83,6 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
     }
   },
   {
-    phase: "namespace-wave-admission",
-    lane: WitnessesLane,
-    host_site: "v1_compiler.cli_run.namespace_wave_admission run_required_wave_admission plus claim_executor report_wave_admission_outcome",
-    relation: ReDecidesCarrier {
-      carrier: decl_ref(module_path: "gunbc.namespace_wave_admission", decl_name: "namespace_wave_admission_bindings"),
-      host_decision: "Rust reconstructs the disposition vocabulary over its private DeclarationIndex and then maps the resulting outcome into phase_failures",
-      root_cut: cut(phase: "namespace-wave-admission", carrier: "gunbc.namespace_wave_admission namespace_wave_admission_bindings")
-    }
-  },
-  {
     phase: "regen",
     lane: BuildLane,
     host_site: "v1_compiler.required_regen_host run_required_regen plus claim_executor RequiredCiPhase::Regen",
@@ -139,6 +129,15 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
       carrier: decl_ref(module_path: "gunbc.generated_artifact_emit", decl_name: "generated_artifact_body_for_path"),
       host_decision: "the projection answers what each rostered path ought to hold and the roster answers which paths are enrolled, but the host independently folds per-path comparison outcomes -- drifted, absent, and reached-no-verdict -- into the phase exit verdict",
       root_cut: cut(phase: "generated-artifact", carrier: "gunbc.generated_artifact_emit generated_artifact_body_for_path")
+    }
+  },
+  {
+    phase: "primitive-runtime-body",
+    lane: WitnessesLane,
+    host_site: "claim_executor run_required_primitive_runtime_body",
+    relation: RealizesCarrier {
+      carrier: decl_ref(module_path: "v1.compiler.primitive_runtime_body", decl_name: "check"),
+      host_effect_only: "resolve the runtime producer's source universe and transport its ProcessExit; the .dag gate owns the live bridge/body join and permanent missing-body control"
     }
   },
   {

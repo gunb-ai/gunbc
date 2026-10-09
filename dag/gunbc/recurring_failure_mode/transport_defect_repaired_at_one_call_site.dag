@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.transport_defect_repaired_at_one_call_site
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data transport_defect_repaired_at_one_call_site: RecurringFailureMode = RecurringFailureMode {
+  identity: "transport_defect_repaired_at_one_call_site" as NonEmptyStr,
+
+  receipts: [
+    "transport defect repaired at one call site: a request fails for a reason that belongs to the TRANSPORT REALIZATION -- a missing header, an encoding, a redirect rule -- and the repair is made in the one operation that hit it, by adding a field whose only purpose is to provoke correct transport behaviour. The operation now works and the class stays alive: the next operation written in the same shape fails the same way, and the fix is invisible as a fix because it reads as ordinary request content.",
+
+    "SPECIMEN, 2026-09-17, extdeps.cloud.gcp.iam_admin GetServiceAccountIamPolicy. Declared `method: POST` with a path and nothing else. Google's frontend answered HTTP 411 Length Required -- 'POST requests require a Content-length header' -- an HTML error page from the frontend, never reaching the IAM API at all. Adding `body: { }` fixed the call because a body causes the realization to emit Content-Length.",
+
+    "WHY THAT REPAIR IS THE SYMPTOM LINK, NOT THE BOUNDARY (DESIGN section 6b). The derivation is: an operation declares POST with no body; the REST realization builds a request; the realization omits Content-Length when there is no body; the frontend refuses. The EARLIEST UNJUSTIFIED BOUNDARY is the realization -- HTTP requires a Content-Length (or chunked encoding) on a POST, so emitting neither is wrong independent of which operation asked. Repairing it at the operation encodes a fact about the transport in a caller, which is the second authority DESIGN section 3 forbids, and leaves the corpus-wide class untouched.",
+
+    "THE DISCRIMINATOR BETWEEN THIS CLASS AND A LEGITIMATE EMPTY BODY: ask whether the body field carries MEANING to the upstream. `body: { }` added because the API accepts an empty request object is content. `body: { }` added because the request otherwise fails to be well-formed is this class -- the field is load-bearing for the wrong layer, and deleting it breaks the call for a reason unrelated to what it says.",
+
+    "ATTAINABLE CEILING: structurally impossible, at the realization. A bodyless POST must send `Content-Length: 0`; once it does, no operation can express the failing shape and no author can be expected to remember. NEXT-RUNG TRIGGER: the REST transport realization emits Content-Length for every request with a body-bearing method, with a discriminating probe -- a declared POST carrying no body reaching a server that requires the header -- executing on the acceptance path. The annotation now on GetServiceAccountIamPolicy records the observation and is NOT the remedy; it is what a reader finds after the next instance.",
+
+    "RECOGNITION RULE: a 4xx whose body is the CLOUD FRONTEND'S error page rather than the API's JSON error shape. A frontend HTML response means the request never reached the service, so the cause is in how the request was FORMED, not in what it asked for. gunbc.fleet.app_control_plane_converge carries the neighbouring instance of the same tell -- a Google frontend 404, byte-identical for a deleted service and a service that never existed -- where the lesson was that a frontend answer says nothing about the API behind it.",
+  ],
+
+  evidence: [],
+}

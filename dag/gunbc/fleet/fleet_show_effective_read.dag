@@ -1,12 +1,68 @@
 module gunbc.fleet_show_effective_read
 
+import gunbc.runner_unit_live_read { RunnerUnitLiveReadRow }
+import std.disposition { Disposition }
 import std.algebra { trim }
+import std.disposition { Disposition }
+import std.measure { percent_count }
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  MemorySwapMax,
+  SystemdCgroupMemoryLimit,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+}
+import gunbc.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  RunnerUnitMemoryLiveRead,
+  converge_target_live_verdict,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  memory_limit_converge_verdict,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+}
 import gunbc.host_identity_adopt {
   srv1_host_identity_ssh_transport,
   srv2_host_identity_ssh_transport,
   srv3_host_identity_ssh_transport,
   srv4_host_identity_ssh_transport,
 }
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemorySwapMax,
+  SystemdCgroupMemoryLimit,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+}
+import extdeps.systemd.oomd { parse_managed_oom_pressure_limit_show }
+import gunbc.ci_floor_measurement { CapEffective, RunnerSliceCapEffectiveness }
+import gunbc.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv4_host }
+import gunbc.host_converge { ConvergeTarget, ConvergeVerdict, VerdictConverged }
+import gunbc.host_effect { HostEffectTransport, HostOs, NodeControlPlane }
+import gunbc.runner_unit_live_read {
+  RunnerUnitMemoryLiveRead,
+  converge_target_live_verdict,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  memory_limit_converge_verdict,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+}
+import gunbc.systemctl_show_read {
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+  SystemdPropertyCaptured,
+  systemctl_show_property_read,
+}
+import std.measure { percent_count }
+import std.realization_reconcile { ReadAbsent, ReadObserved, ShowEffectiveRead }
 
 
 type RunnerSliceCapLiveReadRow {
@@ -96,10 +152,13 @@ fn fleet_runner_unit_memory_live_read(
                       }
                     )
                   }
+                SystemdPropertyBlank => none
                 SystemdPropertyCaptureRefused { reason: _ } => none
               }
+            SystemdPropertyBlank => none
             SystemdPropertyCaptureRefused { reason: _ } => none
           }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
@@ -114,6 +173,7 @@ fn fleet_runner_slice_cap_memory_max_raw(
     Present { value: transport } =>
       match systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax) {
         SystemdPropertyCaptured { value: raw } => Present { value: raw }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
@@ -126,19 +186,27 @@ fn runner_unit_live_read_row_from_stdout(
   probed_at: NonEmptyStr,
 ) -> RunnerUnitLiveReadRow? {
   let parts = split(s: stdout, delimiter: "\n")
-  if length(parts) >= 3 {
-    Present {
-      value: RunnerUnitLiveReadRow {
-        unit: unit,
-        memory_max_raw: trim(parts.first()),
-        memory_swap_max_raw: trim(parts.skip(n: 1).first()),
-        memory_high_raw: trim(parts.skip(n: 2).first()),
-        memory_current_raw: "",
-        probed_at: probed_at,
+  match parts.first() {
+    Absent => none
+    Present { value: max_raw } =>
+      match parts.skip(n: 1).first() {
+        Absent => none
+        Present { value: swap_max_raw } =>
+          match parts.skip(n: 2).first() {
+            Absent => none
+            Present { value: high_raw } =>
+              Present {
+                value: RunnerUnitLiveReadRow {
+                  unit: unit,
+                  memory_max_raw: trim(max_raw),
+                  memory_swap_max_raw: trim(swap_max_raw),
+                  memory_high_raw: trim(high_raw),
+                  memory_current_raw: "",
+                  probed_at: probed_at,
+                }
+              }
+          }
       }
-    }
-  } else {
-    none
   }
 }
 
@@ -290,17 +358,21 @@ fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSlic
   memory_limit_to_cap_effectiveness(lim: read.memory_max)
 }
 
+fn show_effective_read_from_slice_cap(read: RunnerSliceCapLiveRead) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  match runner_slice_cap_to_effectiveness(read: read) {
+    Present { value: eff } => ReadObserved { value: eff }
+    Absent =>
+      ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
+  }
+}
+
 fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
   let read = runner_slice_cap_live_read_typed(row: row)
   match read.memory_max {
     MemoryLimitAbsent =>
       ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
-    _ =>
-      match runner_slice_cap_to_effectiveness(read: read) {
-        Present { value: eff } => ReadObserved { value: eff }
-        Absent =>
-          ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
-      }
+    MemoryLimitUnbounded => show_effective_read_from_slice_cap(read: read)
+    MemoryLimitBytes { bytes: _ } => show_effective_read_from_slice_cap(read: read)
   }
 }
 

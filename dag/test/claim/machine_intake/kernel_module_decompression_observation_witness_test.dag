@@ -1,0 +1,212 @@
+module test.claim.machine_intake.kernel_module_decompression_observation_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.measure { byte_size }
+import extdeps.linux.module_decompress { ZstdCorruptionDetected, ZstdErrorCodeOther }
+import gunbc.machine_intake_kernel_module_decompression_observation {
+  kernel_module_decompression_observation, kernel_module_decompression_text,
+  KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded,
+  RefusalIdentityUnread, RefusalIdentityCandidates, ModuleInsertFailure, DriverPrintedLater, DriverNotSeenInCapture,
+}
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXCERPT OF THE FAILED ATTEMPT'S RETAINED SOL CAPTURE, byte-for-byte lines 1893-1897 of
+// mtcollins1-boot-sol.capture (sha256 761e79ca42b7ac955a3a4186a1cc5c2bcc1fde0422340d5be02cde2690fcee87)
+// in artifact mtcollins1-boot-receipts of fleet-converge run 36335369059
+// (artifact digest sha256:16dcc1b34233cea3b338104a6cff5d88a46f8b6c2e815443653da5271062dd9b).
+// That boot ran without the module-identity instrument, so no loader record exists.
+data failed_attempt_excerpt: List<String> = [
+  "[   10.149389] Run /init as init process\r",
+  "[   10.374590] ZSTD-decompression failed with status 20\r",
+  "[   10.380475] ZSTD-decompression failed with status 20\r",
+  "[   10.392987] igb: Intel(R) Gigabit Ethernet Network Driver\r",
+  "[   10.398716] igb: Copyright (c) 2007-2014 Intel Corporation.\r",
+]
+
+// EXCERPT OF THE CENSUS-REACHING ATTEMPT'S RETAINED SOL CAPTURE, lines 1895-1900 of
+// mtcollins1-boot-sol.capture (sha256 83e818fb2be55383966f5e98c69c7853625d429941192062530da5f5d21f8161)
+// in artifact mtcollins1-boot-receipts of fleet-converge run 36253081549
+// (artifact digest sha256:ca38324ebcad6477911b0f56a86f91a0785a77dc31163ede6b9afc616fde3496).
+// It carries the renesas "fallback to ROM" warning, which is not a refusal.
+data census_reaching_excerpt: List<String> = [
+  "[   10.154211] Run /init as init process\r",
+  "[   10.391272] xhci_hcd 0004:03:00.0: Adding to iommu group 17\r",
+  "[   10.391751] igb: Intel(R) Gigabit Ethernet Network Driver\r",
+  "[   10.397592] xhci_hcd 0004:03:00.0: failed to load firmware renesas_usb_fw.mem, fallback to ROM\r",
+  "[   10.402897] igb: Copyright (c) 2007-2014 Intel Corporation.\r",
+  "[   10.403241] xhci_hcd 0004:03:00.0: xHCI Host Controller\r",
+]
+
+// THE OFFLINE CONTROL'S INSTRUMENTED CAPTURE, lines 323-325 of its ttyAMA0 log (sha256
+// b8b333934516a1172baabb11cc2b8b649e83d367578aa63773582e556daf6bcf): qemu-system-aarch64 10.0.13 -M virt
+// with a qemu-xhci device, booting the stock 24.04.3 /casper/vmlinuz and /casper/initrd with ONE edit --
+// 64 bytes inverted inside the zstd body of xhci-pci.ko.zst, frame header intact (initrd sha256
+// 83fd2a47a6449584e5062d5238ad84915da7d095c5ebdee406469046a8e40f96) -- under the census cmdline plus
+// mtcollins1_census_module_identity_args, "--- console=tty0" kept. The same boot WITHOUT the args
+// (log sha256 7e8db2f8d916ea009b2085c65e5a2348d77c06d27ad4eeac60f03988874b5552) printed the status-20
+// line and no loader record: the instrument is what names the file. The uas and xhci_pci lines are
+// DESIGNED, added to exercise the errno filter and the later-driver reading.
+data instrumented_excerpt: List<String> = [
+  "[   27.190394] ZSTD-decompression failed with status 20\r",
+  "[   27.209606] (udev-worker)[100]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst': Invalid argument\r",
+  "[   27.300000] (udev-worker)[101]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/storage/uas.ko.zst': No such device\r",
+  "[   28.916926] input: gpio-keys as /devices/platform/gpio-keys/input/input0\r",
+  "[   29.000000] xhci_pci: printed later\r",
+]
+
+// POSITIVE CONTROL: the census-reaching boot is not a refusal, renesas warning included.
+test fn the_census_reaching_capture_reads_as_not_refused() -> Bool {
+  let o = kernel_module_decompression_observation(lines: census_reaching_excerpt)
+  match o {
+      NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: us } => count(fs) == 0 && count(us) == 0
+      _ => false
+    }
+}
+
+// RED, ANONYMOUS: the failed boot is a refusal with both statuses retained, and identity UNREAD.
+test fn the_failed_capture_is_a_refusal_whose_identity_is_unread() -> Bool {
+  match kernel_module_decompression_observation(lines: failed_attempt_excerpt) {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityUnread } =>
+      count(rs) == 2 && count(urs) == 0
+        && match first(rs) {
+          Absent => false
+          Present { value: r } => r.at == "10.374590" && match r.status { ZstdCorruptionDetected => true _ => false }
+        }
+    _ => false
+  }
+}
+
+test fn the_failed_capture_text_names_no_module_and_leaves_the_request_unread_on_sol() -> Bool {
+  let text = kernel_module_decompression_text(o: kernel_module_decompression_observation(lines: failed_attempt_excerpt))
+  string_contains(s: text, pattern: "module identity UNREAD")
+    && string_contains(s: text, pattern: "REFUSED 2 time(s)")
+    && string_contains(s: text, pattern: "status corruption_detected")
+    && string_contains(s: text, pattern: "requesting device/modalias: unread on SOL")
+}
+
+// THE INSTRUMENTED CAPTURE: the EINVAL insert failure is a CANDIDATE, identity UNRESOLVED -- the
+// capture carries no invocation-level link, however close the two lines sit. Every named failure,
+// candidate or not, is retained as its own observation.
+test fn an_instrumented_capture_keeps_the_named_failure_as_an_unresolved_candidate() -> Bool {
+  match kernel_module_decompression_observation(lines: instrumented_excerpt) {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: all, unparsed_insert_records: _, identity: RefusalIdentityCandidates { candidates: cs } } =>
+      count(rs) == 1 && count(all) == 2 && count(cs) == 1
+        && match first(cs) { Absent => false Present { value: f } => named_xhci_pci(f: f) }
+    _ => false
+  }
+}
+
+test fn the_instrumented_text_says_unresolved_not_known() -> Bool {
+  let text = kernel_module_decompression_text(o: kernel_module_decompression_observation(lines: instrumented_excerpt))
+  string_contains(s: text, pattern: "identity UNRESOLVED")
+    && string_contains(s: text, pattern: "not established by this capture")
+    && string_contains(s: text, pattern: "uas.ko.zst: No such device")
+}
+
+fn named_xhci_pci(f: ModuleInsertFailure) -> Bool {
+  (f.path as String) == "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst"
+    && f.loader == "(udev-worker)[100]"
+    && f.at == "27.209606"
+    && f.module_name == "xhci_pci"
+    && match f.later { DriverPrintedLater { at: a, line: _ } => a == "29.000000" DriverNotSeenInCapture => false }
+}
+
+// REVIEW COUNTEREXAMPLE (eager-owl-205): an unrelated EINVAL failure BEFORE the refusal is not the
+// refusal's identity; it is at most a candidate, and the verdict never reads "known".
+test fn an_unrelated_earlier_einval_failure_is_only_a_candidate() -> Bool {
+  match kernel_module_decompression_observation(lines: [
+    "[  9.000000] (udev-worker)[99]: Failed to insert module '/unrelated.ko.zst': Invalid argument",
+    "[ 10.374590] ZSTD-decompression failed with status 20",
+  ]) {
+    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityCandidates { candidates: cs } } => count(cs) == 1
+    _ => false
+  }
+}
+
+// A loader record with no refusal line is not a decompression refusal, and is still retained.
+test fn a_loader_failure_without_a_kernel_refusal_is_not_a_refusal_but_is_kept() -> Bool {
+  match kernel_module_decompression_observation(lines: instrumented_excerpt.skip(n: 1).take(n: 1)) {
+    NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: _ } => count(fs) == 1
+    _ => false
+  }
+}
+
+// MALFORMED-ONLY: a recognised refusal record whose status cannot be read is a refusal record, never
+// "no refusal", and no status is invented for it.
+test fn a_malformed_refusal_record_alone_is_still_a_refusal_with_its_line_kept() -> Bool {
+  match kernel_module_decompression_observation(lines: [
+    "[ 10.374590] ZSTD-decompression failed with status",
+    "[ 10.374590] ZSTD-decompression failed with status unreadable",
+  ]) {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
+      count(rs) == 0 && count(urs) == 2
+        && match first(urs) { Absent => false Present { value: u } => u.field == "status" && u.at == "10.374590" && string_contains(s: u.line, pattern: "failed with status") }
+    _ => false
+  }
+}
+
+// VALID PLUS MALFORMED: the parsed refusal is kept, the unparsed one is not dropped, and the text
+// does not state a complete count.
+test fn a_valid_plus_malformed_refusal_does_not_state_a_complete_count() -> Bool {
+  let o = kernel_module_decompression_observation(lines: [
+    "[ 10.374590] ZSTD-decompression failed with status 20",
+    "[ 10.380475] ZSTD-decompression failed with sta",
+  ])
+  let text = kernel_module_decompression_text(o: o)
+  match o {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: _ } => count(rs) == 1 && count(urs) == 1
+    _ => false
+  }
+    && string_contains(s: text, pattern: "the total is not stated")
+    && !string_contains(s: text, pattern: "REFUSED 1 time(s)")
+}
+
+// An uncatalogued numeric status stays a parsed refusal carrying its integer.
+test fn an_uncatalogued_numeric_status_is_parsed_not_unread() -> Bool {
+  match kernel_module_decompression_observation(lines: ["[ 1.0] ZSTD-decompression failed with status 42"]) {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
+      count(urs) == 0 && match first(rs) { Absent => false Present { value: r } => match r.status { ZstdErrorCodeOther { code: c } => c == 42 _ => false } }
+    _ => false
+  }
+}
+
+// INCOMPLETE LOADER RECORDS: truncated before the path end, or with no errno, are kept as unparsed
+// insert records with the field that failed -- neither dropped nor turned into a candidate.
+test fn incomplete_loader_records_are_kept_as_unparsed() -> Bool {
+  match kernel_module_decompression_observation(lines: [
+    "[ 10.374590] ZSTD-decompression failed with status 20",
+    "[ 10.374801] (udev-worker)[412]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.z",
+    "[ 10.374802] (udev-worker)[413]: Failed to insert module '/lib/modules/x.ko.zst': ",
+  ]) {
+    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: fs, unparsed_insert_records: us, identity: RefusalIdentityUnread } =>
+      count(fs) == 0 && count(us) == 2
+        && match first(us) { Absent => false Present { value: u } => u.field == "path" }
+        && match first(us.skip(n: 1)) { Absent => false Present { value: u } => u.field == "errno" }
+    _ => false
+  }
+}
+
+// UNRELATED TEXT is neither a refusal nor a loader record.
+test fn unrelated_text_is_not_a_record() -> Bool {
+  match kernel_module_decompression_observation(lines: ["[ 1.0] zstd: something else", "[ 1.1] Failed to allocate memory pressure watch"]) {
+    NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: us } => count(fs) == 0 && count(us) == 0
+    _ => false
+  }
+}
+
+data unread_digest: Sha256FileDigest = Sha256FileDigestUnavailable { path: "witness", reason: "not digested in this claim" }
+
+// INHABITANCE: the attempt-bound console reading carries this observation from the capture text it
+// retains -- the real route the boot bundle renders, not a supplied observation.
+test fn the_retained_console_reading_carries_the_refusal() -> Bool {
+  let capture = join(failed_attempt_excerpt, "\n")
+  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: concat(capture, "\n"), read_ok: true, read_error: "", capture_digest: unread_digest, reference: ReferenceCaptureRead { text: "", ok: false, error: "not supplied", digest: unread_digest }) {
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: m, nvparam: _, span_readings: _ } =>
+      match m { RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityUnread } => count(rs) == 2 _ => false }
+    _ => false
+  }
+}

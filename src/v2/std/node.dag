@@ -1,6 +1,22 @@
 module v2.std.node
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.types { List }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.optional { Present }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceAllocator,
+  alloc_projected_occurrence,
+  occurrence_identity_in_image_of,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -10,7 +26,39 @@ import std.content_hash {
 }
 
 type Symbol
+
+// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
+// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// the two are distinct representations, and a host-text value reaches the structural carrier only
+// through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
+// UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
+// this declaration only where no other declaration of the spelling is visible.
+type String
 type Hash = Fnv1a64Structural
+
+// THE VALUE TYPE OF HOST TEXT, as a node: what a string literal is typed as, and what the unbound
+// spelling `String` binds to. This module declares the kernel String, so it owns its type node, as
+// it does symbol_type_node for Symbol.
+fn host_text_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^string_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
+// annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
+// v2.std.logic bool_node does for Bool and v2.std.integer integer_int_type_node for Int. The atom's
+// identity is the canonical binding v2.extdeps.languages.dag maps the spelling and this declaration
+// to (dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional).
+fn symbol_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^symbol_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
 
 type Connective
   = Atom { identity: Symbol }
@@ -81,16 +129,164 @@ fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
 
-data match_arm_pattern: Symbol = ^match_arm_pattern
-data match_arm_body: Symbol = ^match_arm_body
 
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
 
+// AN EDGE LABEL SAYS WHO NAMED THE EDGE. An authored name (a field, a binder, a named actual, a
+// declaration) carries the source spelling; a structural label is minted by the substrate or by a
+// language's grammar and is compared by ARM, never by text, so no authored spelling can inhabit it.
+// Grammar productions are keyed by their language (the language model's identity) because
+// v2.std.node may not enumerate any grammar's productions (DESIGN section 3); the substrate's own
+// edge-discipline markers are closed here. Plan: docs/plans/edge-label-coproduct/README.md.
 type EdgeLabel
-  = Named { name: Symbol }
+  = Authored { name: Symbol }
+  | StructuralLabel { label: StructuralEdgeLabel }
   | Positional
+
+type StructuralEdgeLabel
+  = CoreMarker { marker: CoreEdgeLabel }
+  | ProductionEdge { language: Symbol, edge: Symbol }
+
+// MatchArmScopeExitEdge: A MATCH ARM'S BINDERS END AT ITS LET'S BODY. A named edge (targeting an
+// empty Conj, beside the three positionals, as TypeAnnotationEdge is) on a Bind that IS a match
+// arm's MatchArmBodyEdge target, lowered from `let x = match s { .. }` heading a spine (v2.compiler.body_lowering_fold
+// body_lower_let_match_binding_arm_continued, its one producer). The Bind's VALUE resolves in the
+// arm's scope and sees the pattern's binders; its BINDER and BODY (the rest of the spine) resolve
+// in the scope enclosing the match, so no pattern binder reaches the rest
+// (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
+// a marked Bind anywhere else is a malformed tree.
+type CoreEdgeLabel
+  = ArrowBodyEdge
+  | ArrowSignatureOrderEdge
+  | LoopBoundEdge
+  | LoopCarrierEdge
+  | LoopDomainEdge
+  | LoopRealizedDeclarationEdge
+  | MatchArmPatternEdge
+  | MatchArmBodyEdge
+  | CastTargetEdge
+  | TypeAnnotationEdge
+  | TypeParamsEdge
+  | TypeBodyEdge
+  | TypeAliasEdge
+  | DeclarationReferenceEdge
+  | FieldProjectionBaseEdge
+  | FieldProjectionFieldEdge
+  | ConstructTagEdge
+  | ConstructTagElidedEdge
+  | ParameterReferenceEdge
+  | ArrowEffectClaimsEdge
+  | ArrowExecutionModeClaimEdge
+  | BinderTypeEdge
+  | BinderDefaultEdge
+  | ArrowResourceRequirementsEdge
+  | LexicalReferenceEdge
+  | MapLiteralEntryEdge
+  | MapLiteralEntriesEdge
+  | MatchArmScopeExitEdge
+
+fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
+  StructuralLabel { label: CoreMarker { marker: marker } }
+}
+
+fn production_edge_label(language: Symbol, edge: Symbol) -> EdgeLabel {
+  StructuralLabel { label: ProductionEdge { language: language, edge: edge } }
+}
+
+fn core_edge(marker: CoreEdgeLabel, target: Node) -> Edge {
+  Edge { label: core_edge_label(marker: marker), target: target }
+}
+
+// THE ONE READER OF A CORE MARKER: it matches the arm, so an authored name spelled like a marker
+// answers false by construction.
+fn edge_is_core(e: Edge, marker: CoreEdgeLabel) -> Bool {
+  match e.label {
+    StructuralLabel { label: CoreMarker { marker: m } } => m == marker
+    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => false
+    Authored { name: _ } => false
+    Positional => false
+  }
+}
+
+fn edge_is_production(e: Edge, language: Symbol, edge: Symbol) -> Bool {
+  match e.label {
+    StructuralLabel { label: ProductionEdge { language: l, edge: p } } => (l == language) && (p == edge)
+    StructuralLabel { label: CoreMarker { marker: _ } } => false
+    Authored { name: _ } => false
+    Positional => false
+  }
+}
+
+// THE CLOSED SET, listed once, for a codec that must invert a wire marker (gunbc.scm.object_table_json).
+fn core_edge_labels() -> List<CoreEdgeLabel> {
+  [
+    ArrowBodyEdge,
+    ArrowSignatureOrderEdge,
+    LoopBoundEdge,
+    LoopCarrierEdge,
+    LoopDomainEdge,
+    LoopRealizedDeclarationEdge,
+    MatchArmPatternEdge,
+    MatchArmBodyEdge,
+    CastTargetEdge,
+    TypeAnnotationEdge,
+    TypeParamsEdge,
+    TypeBodyEdge,
+    TypeAliasEdge,
+    DeclarationReferenceEdge,
+    FieldProjectionBaseEdge,
+    FieldProjectionFieldEdge,
+    ConstructTagEdge,
+    ConstructTagElidedEdge,
+    ParameterReferenceEdge,
+    ArrowEffectClaimsEdge,
+    ArrowExecutionModeClaimEdge,
+    BinderTypeEdge,
+    BinderDefaultEdge,
+    ArrowResourceRequirementsEdge,
+    LexicalReferenceEdge,
+    MapLiteralEntryEdge,
+    MapLiteralEntriesEdge,
+    MatchArmScopeExitEdge,
+  ]
+}
+
+// The Symbol a core marker contributes to CANONICAL ORDER AND CONTENT HASH ONLY. It is not a
+// reading key: a reader that compares it with a label's text re-opens the defect this type closes.
+fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
+  match marker {
+    ArrowBodyEdge => ^arrow_body_edge
+    ArrowSignatureOrderEdge => ^arrow_signature_order_edge
+    LoopBoundEdge => ^loop_bound_edge
+    LoopCarrierEdge => ^loop_carrier_edge
+    LoopDomainEdge => ^loop_domain_edge
+    LoopRealizedDeclarationEdge => ^loop_realized_declaration_edge
+    MatchArmPatternEdge => ^match_arm_pattern
+    MatchArmBodyEdge => ^match_arm_body
+    CastTargetEdge => ^core_cast_target_edge
+    TypeAnnotationEdge => ^core_type_annotation_edge
+    TypeParamsEdge => ^core_type_params_edge
+    TypeBodyEdge => ^core_type_body_edge
+    TypeAliasEdge => ^core_type_alias_edge
+    DeclarationReferenceEdge => ^core_declaration_reference_edge
+    FieldProjectionBaseEdge => ^core_field_projection_base_edge
+    FieldProjectionFieldEdge => ^core_field_projection_field_edge
+    ConstructTagEdge => ^core_construct_tag_edge
+    ConstructTagElidedEdge => ^core_construct_tag_elided_edge
+    ParameterReferenceEdge => ^core_parameter_reference_edge
+    ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
+    ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
+    BinderTypeEdge => ^core_binder_type_edge
+    BinderDefaultEdge => ^core_binder_default_edge
+    ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
+    LexicalReferenceEdge => ^core_lexical_reference_edge
+    MapLiteralEntryEdge => ^core_map_literal_entry_edge
+    MapLiteralEntriesEdge => ^core_map_literal_entries_edge
+    MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
+  }
+}
 type Edge {
   label: EdgeLabel
   target: Node
@@ -121,6 +317,186 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
   )
 }
 
+// A LOWERED NODE IS NOT A SYNTHETIC ONE, and the difference is the whole reason a diagnostic can
+// name a file. `node_synthetic` says "no authored origin exists"; this says "the authored origin is
+// the node I am lowering". The front end lowers an authored construct into its semantic form, and
+// the result stands for the same authored text, so it takes that text's occurrence rather than
+// losing it.
+//
+// BUT A LOWERING IS AN IMAGE, NOT A NODE, AND ONE OCCURRENCE NAMES ONE NODE. The earlier rule said a
+// same-graph lowering "owns its source's occurrence outright" and let every node it built carry it.
+// That made an occurrence stop identifying a node inside one tree: a function declaration's wrap,
+// arrow, order transform, head spine and every parameter label all carried the declaration's id,
+// and every occurrence-keyed fact over them was ambiguous. The rule is therefore: this helper marks
+// a node as a MEMBER of its source's image, and the builder that returns the image root closes the
+// image with `close_lowered_image`, which keeps OccurrenceMinted on that root alone and marks every
+// other member OccurrencePending with the source as its cause; normalization then allocates each
+// pending member an OccurrenceProjected id from the graph's one allocator
+// (`allocate_pending_occurrences`). A tree that still holds two nodes with one minted id is an unclosed
+// image, and v2.compiler.normalized_tree admission refuses it as a duplicated minted occurrence,
+// located at the second node; its red control is an image builder with its close removed.
+//
+// THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
+// authored origin produces nodes that still have none, and closing such an image changes nothing --
+// carrying "nothing" forward is the honest answer, and borrowing a NEIGHBOUR's occurrence to fill
+// the gap would be the plausible guess DESIGN section 5 forbids.
+fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: kind,
+    children: children,
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// A BUILDER CLOSES ITS IMAGE AT THE ROOT IT NAMES, PURELY. The root keeps the source's
+// OccurrenceMinted; every other member still minted with that source, anywhere beneath it through
+// members and synthetic nodes, is marked OccurrencePending { caused_by: source }. No id is allocated
+// here, so no builder threads allocator state; allocate_pending_occurrences does that once, after
+// normalization.
+//
+// WHAT THE WALK ENTERS. It descends through members of this image and through synthetic nodes, and
+// it stops at a node that carries ANOTHER occurrence: that subtree was lowered for a different source
+// and is that source's image to close. So closing costs the image, not the tree beneath it. A member
+// hidden below another source's node is not reached and stays minted -- and the duplicate-minted
+// admission wall refuses it loudly rather than anything here repairing it silently.
+//
+// IDEMPOTENT. A member already pending from this source is left as it is, so closing an image that
+// contains an already-closed same-source image marks nothing twice. A root with no minted source
+// (synthetic, or already pending or projected) has no image to close and is returned unchanged.
+fn close_lowered_image(root: Node) -> Node {
+  match root.occurrence_id {
+    OccurrenceMinted { id: source } => node_rebuild(n: root, children: close_image_edges(edges: root.children, source: source))
+    OccurrenceSynthetic => root
+    OccurrencePending { caused_by: _ } => root
+    OccurrenceProjected { id: _, caused_by: _ } => root
+  }
+}
+
+// FOR A BUILDER WHOSE RETURNED NODE IS SYNTHETIC. Some lowerings (a postfix chain ending in a call or
+// a cast) return a synthetic node that stands for no authored text, with the source's members
+// beneath it. The builder still names its source, so closing starts at each topmost member of that
+// source under synthetic nodes and closes it as a root. Two sibling topmost members therefore both
+// keep OccurrenceMinted, and the duplicate-minted admission wall refuses them; nothing here chooses
+// between them.
+fn close_lowered_image_of(root: Node, source: Node) -> Node {
+  match source.occurrence_id {
+    OccurrenceMinted { id: id } => close_lowered_image_under(node: root, source: id)
+    OccurrenceSynthetic => root
+    OccurrencePending { caused_by: _ } => root
+    OccurrenceProjected { id: _, caused_by: _ } => root
+  }
+}
+
+fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
+  match node.occurrence_id {
+    OccurrenceSynthetic =>
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source) }))
+    OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
+    OccurrencePending { caused_by: _ } => node
+    OccurrenceProjected { id: _, caused_by: _ } => node
+  }
+}
+
+fn close_image_member(node: Node, source: OccurrenceId) -> Node {
+  match node.occurrence_id {
+    OccurrenceSynthetic => node_rebuild(n: node, children: close_image_edges(edges: node.children, source: source))
+    OccurrenceMinted { id: id } =>
+      if id.value == source.value {
+        node_with_occurrence_id(
+          kind: node.kind,
+          children: close_image_edges(edges: node.children, source: source),
+          occurrence_id: OccurrencePending { caused_by: source },
+        )
+      } else {
+        node
+      }
+    OccurrencePending { caused_by: _ } =>
+      if occurrence_identity_in_image_of(identity: node.occurrence_id, source: source) {
+        node_rebuild(n: node, children: close_image_edges(edges: node.children, source: source))
+      } else {
+        node
+      }
+    OccurrenceProjected { id: _, caused_by: _ } => node
+  }
+}
+
+fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source) })
+}
+
+// THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
+// which is the canonical order, and converts each OccurrencePending member into OccurrenceProjected
+// with an id from the graph's allocator and its cause stated in that allocator's scope. It never
+// mints, never touches a Minted or Synthetic node, and allocates nothing on a tree with no pending
+// member, so running it twice changes nothing the second time.
+type PendingOccurrenceAllocation {
+  root: Node
+  allocator: ScopedOccurrenceAllocator
+}
+
+fn allocate_pending_occurrences(
+  root: Node,
+  allocator: ScopedOccurrenceAllocator
+) -> PendingOccurrenceAllocation {
+  let here = allocate_pending_here(identity: root.occurrence_id, allocator: allocator)
+  let walked = fold(
+    root.children,
+    init: PendingEdgesAllocation { edges: [], allocator: here.allocator },
+    f: (acc, e) => {
+      let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
+      PendingEdgesAllocation {
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root }),
+        allocator: child.allocator,
+      }
+    },
+  )
+  PendingOccurrenceAllocation {
+    root: node_with_occurrence_id(kind: root.kind, children: walked.edges, occurrence_id: here.identity),
+    allocator: walked.allocator,
+  }
+}
+
+// THE FIRST ID NO NODE IN THIS TREE CARRIES: one past the highest minted or projected id, so an
+// allocator seeded here cannot reuse an id the tree holds. For a tree normalized on its own; an
+// ingest that threads its allocator across files passes that allocator instead.
+fn node_occurrence_allocator_after(root: Node) -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: node_occurrence_id_ceiling(node: root, floor: 0) }
+}
+
+fn node_occurrence_id_ceiling(node: Node, floor: Int) -> Int {
+  let here = match node.occurrence_id {
+    OccurrenceMinted { id: id } => if id.value + 1 > floor { id.value + 1 } else { floor }
+    OccurrenceProjected { id: id, caused_by: _ } => if id.value + 1 > floor { id.value + 1 } else { floor }
+    OccurrencePending { caused_by: _ } => floor
+    OccurrenceSynthetic => floor
+  }
+  fold(node.children, init: here, f: (acc, e) => node_occurrence_id_ceiling(node: e.target, floor: acc))
+}
+
+type PendingNodeAllocation {
+  identity: NodeOccurrenceIdentity
+  allocator: ScopedOccurrenceAllocator
+}
+
+fn allocate_pending_here(
+  identity: NodeOccurrenceIdentity,
+  allocator: ScopedOccurrenceAllocator
+) -> PendingNodeAllocation {
+  match identity {
+    OccurrencePending { caused_by: source } =>
+      let allocated = alloc_projected_occurrence(allocator: allocator, source: source)
+      PendingNodeAllocation { identity: allocated.identity, allocator: allocated.allocator }
+    OccurrenceSynthetic => PendingNodeAllocation { identity: identity, allocator: allocator }
+    OccurrenceMinted { id: _ } => PendingNodeAllocation { identity: identity, allocator: allocator }
+    OccurrenceProjected { id: _, caused_by: _ } => PendingNodeAllocation { identity: identity, allocator: allocator }
+  }
+}
+
+type PendingEdgesAllocation {
+  edges: List<Edge>
+  allocator: ScopedOccurrenceAllocator
+}
+
 fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
@@ -144,7 +520,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
   )
 }
 
@@ -205,6 +581,38 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
   })
 }
 
+// A CHILD WHOSE INFERENCE DEPENDS ON A SIBLING'S SETTLED RESULT. fold_node carries results only from
+// child to parent, and fold_node_topdown carries context only from parent to child: its child_context
+// sees the parent node, the inherited context and the edge, never what an earlier sibling synthesized.
+// So neither algebra expresses "fold the dependency child, derive a scoped context from its result, then
+// fold the dependent child under it" (gunbc.recurring_failure_mode
+// infer_child_context_cannot_depend_on_a_sibling_result). This algebra does: child_context also receives
+// the parent's accumulator AFTER the children already folded, and `first` schedules the dependency
+// children ahead of the rest.
+// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which edges are
+// folded before the others, each part keeping its authored order; no schedule can drop, duplicate or
+// invent an edge, so there is nothing to validate. With `first` false everywhere and a child_context that
+// ignores the accumulator, this is fold_node_topdown exactly.
+type NodeFoldDependent<A,R> {
+  init: fn(Node, A) -> R
+  first: fn(Node, Edge) -> Bool
+  child_context: fn(Node, A, R, Edge) -> A
+  step: fn(R, Edge, R) -> R
+}
+
+fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<Edge> {
+  concat(
+    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { list_snoc_item(xs: acc, item: e) } else { acc } }),
+    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+  )
+}
+
+fn fold_node_dependent<A,R>(n: Node, ctx: A, algebra: NodeFoldDependent<A,R>) -> R {
+  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_dependent(n: e.target, ctx: algebra.child_context(n, ctx, acc, e), algebra: algebra))
+  })
+}
+
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
@@ -213,6 +621,10 @@ type EdgeDiscipline
   | LoopBoundEdges
 
   | ArrowBodyEdges
+
+  | PositionalPrefixThenLabeledEdges
+
+  | PositionalPlusNamedMarkerEdges
 
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
 // ^dag_token_int_literal via ^integer_literal_magnitude_field) —
@@ -248,7 +660,11 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
 fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => atom_connective_edge_discipline(child_count: child_count)
-    _ => connective_edge_discipline(c: c)
+    Arrow => connective_edge_discipline(c: c)
+    Conj => connective_edge_discipline(c: c)
+    Disj => connective_edge_discipline(c: c)
+    Instantiation => connective_edge_discipline(c: c)
+    Cardinality => connective_edge_discipline(c: c)
   }
 }
 
@@ -256,18 +672,32 @@ fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) 
   connective_edge_discipline_for_child_count(c: c, child_count: count(children))
 }
 
+// A NAMED EDGE is any non-positional edge: authored or structural. Edge discipline counts both.
 fn is_named(e: Edge) -> Bool {
   match e.label {
-    Named { name: _ } => true
+    Authored { name: _ } => true
+    StructuralLabel { label: _ } => true
     Positional => false
   }
 }
 
 fn is_positional(e: Edge) -> Bool {
   match e.label {
-    Named { name: _ } => false
+    Authored { name: _ } => false
+    StructuralLabel { label: _ } => false
     Positional => true
   }
+}
+
+// A NODE'S SLOTS ARE ITS POSITIONAL EDGES, in the order the producer wrote them; its Named edges are
+// the markers beside them. Readers that index a Bind's binder, value and body take the slots from
+// here, so one fact decides what a slot is.
+fn positional_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { is_positional(e: e) })
+}
+
+fn named_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { !is_positional(e: e) })
 }
 
 fn all_edges_named(children: List<Edge>) -> Bool {
@@ -281,20 +711,26 @@ fn all_edges_positional(children: List<Edge>) -> Bool {
     acc && is_positional(e: e)
   })
 }
+// How many edges carry this AUTHORED name. A structural label never counts, whatever its spelling.
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
-      Named { name: n } => if n == name { acc + 1 } else { acc }
+      Authored { name: n } => if n == name { acc + 1 } else { acc }
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
 }
+
+fn core_occurrences(marker: CoreEdgeLabel, children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, e) {
+    if edge_is_core(e: e, marker: marker) { acc + 1 } else { acc }
+  })
+}
+
 fn positional_child_count(children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
-    match e.label {
-      Positional => acc + 1
-      Named { name: _ } => acc
-    }
+    if is_positional(e: e) { acc + 1 } else { acc }
   })
 }
 
@@ -302,31 +738,440 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar §2.2).
+// The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
+// is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
+// ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
+// initial value lives on an enclosing Bind. ^loop_realized_declaration_edge targets an AUTHORED
+// reference -- the callee occurrence of a desugared recurrence such as `fold(..)` -- which resolve must
+// bind to the declaration whose recurrence the Loop realizes; it is a reference, never work. A Loop
+// whose meaning the language fixes (`for`, `while`, `loop`) names no declaration and carries none. Any other named label is LoopEdgeUnrecognized, which no
+// conforming Loop holds, so a consumer that matches every role is exhaustive over a conforming Loop.
+type LoopEdgeRole
+  = LoopIteratedBody
+  | LoopDomainValue
+  | LoopBoundMeasure
+  | LoopCarrierBinder
+  | LoopRealizedDeclaration
+  | LoopEdgeUnrecognized
+
+fn loop_edge_role(e: Edge) -> LoopEdgeRole {
+  match e.label {
+    Positional => LoopIteratedBody
+    StructuralLabel { label: _ } =>
+      if edge_is_core(e: e, marker: LoopDomainEdge) {
+        LoopDomainValue
+      } else if edge_is_core(e: e, marker: LoopBoundEdge) {
+        LoopBoundMeasure
+      } else if edge_is_core(e: e, marker: LoopCarrierEdge) {
+        LoopCarrierBinder
+      } else if edge_is_core(e: e, marker: LoopRealizedDeclarationEdge) {
+        LoopRealizedDeclaration
+      } else {
+        LoopEdgeUnrecognized
+      }
+    Authored { name: _ } => LoopEdgeUnrecognized
+  }
+}
+
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
+    match loop_edge_role(e: e) {
+      LoopIteratedBody => acc
+      LoopDomainValue => acc
+      LoopBoundMeasure => acc
+      LoopCarrierBinder => acc
+      LoopRealizedDeclaration => acc
+      LoopEdgeUnrecognized => false
     }
   })
 }
 
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
-  let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
-  let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
+  let bound_edges = core_occurrences(marker: LoopBoundEdge, children: children)
+  let carrier_edges = core_occurrences(marker: LoopCarrierEdge, children: children)
+  let domain_edges = core_occurrences(marker: LoopDomainEdge, children: children)
+  let realized_edges = core_occurrences(marker: LoopRealizedDeclarationEdge, children: children)
   (bound_edges == 1)
   && (carrier_edges <= 1)
+  && (domain_edges <= 1)
+  && (realized_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
 
+// AN ARROW'S NAMED EDGES ARE ITS BODY AND AT MOST ONE TYPE-BINDER CONJ. The binder edge's LABEL is
+// not this module's fact: it is v2.std.type_binder type_params_marker, a lexeme no source can spell,
+// which this module cannot intern (v2.std.compilers.lexing imports it). So this module states the
+// SHAPE -- any Named edge other than the body targets a well-formed binder Conj, and there is at most
+// one -- and v2.std.type_binder type_binder_labels_conform states that such an edge carries the marker.
+// THE DECLARED-ORDER EDGE'S LABEL, as one value every stage compares against through edge_label_of
+// (v2.compiler.resolve, v2.compiler.infer, v2.std.compilers.body_lowering), so the label is spelled in
+// one place and no stage writes its own variant match.
+data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarker { marker: ArrowSignatureOrderEdge } }
+
+// AN ARROW'S CONTRACT EDGES (XL-2 PR2a; ruling 2026-10-01, docs/plans/arrow-contract-edges.md). Two
+// optional core-marker edges that state what the Arrow promises: ArrowEffectClaimsEdge (its declared
+// effect claims) and ArrowExecutionModeClaimEdge (its declared execution-mode claim). This module
+// owns only their STRUCTURE: each appears at most once, and neither is a binder, so neither counts
+// toward the one type-binder Conj and the binder, order and body readers never consume them. Their
+// VOCABULARY -- which claims and modes exist -- is not this module's fact: it lives in std.effects
+// EffectClaim and std.execution_mode ExecutionMode, and v2.std.arrow_contract checks a contract edge's
+// target against those homes (v2.std.type_binder type_binder_node_conforms runs it on every Arrow).
+// THE THIRD CONTRACT EDGE, an operation's declared RESOURCE REQUIREMENTS (D13 step a,
+// docs/plans/arrow-contract-edges.md): `requires Network` on an opaque operation, whose requirement
+// cannot be derived from a body because it has none. It is the core marker ArrowResourceRequirementsEdge,
+// and its target is a nonempty Conj of references to `resource` declarations, one Authored member per
+// spelling. Unlike the claims and mode edges it names DECLARATIONS, an open set, so its members are
+// resolved: v2.compiler.resolve walks it in the Arrow's OUTER scope (a requirement may not see the
+// operation's parameters) and refuses a member that does not resolve to a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
+// metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
+// skip every arrow_named_edge_is_contract edge.
+fn arrow_named_edge_is_contract(e: Edge) -> Bool {
+  edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
+    || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
+    || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
+}
+
+
+// The Arrow named edges that are not binders: its body, its declared order and its contract edges.
+// The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
+// arrow_named_labels_conform), so they agree on what a binder is.
+fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    Authored { name: _ } => false
+    StructuralLabel { label: _ } =>
+      edge_is_core(e: e, marker: ArrowBodyEdge)
+        || edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
+        || arrow_named_edge_is_contract(e: e)
+  }
+}
+
+// WHETHER AN EDGE IS A DECLARED ORDER: label metadata (binder labels), not a value the parent is built
+// from. Two parents carry one: an Arrow (its domain's order) and a type-parameter binder set
+// (type_binder_conj_conforms). A Conj can carry the core marker only as a binder set -- no authored
+// label spells a core marker -- so the Conj arm answers for exactly those. The one classification
+// every reader that walks values through either asks -- v2.compiler.infer (its gather fold and product
+// evidence) and std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
+fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
+    TypeNode { connective: Conj } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
+    _ => false
+  }
+}
+
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
+  let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == ^arrow_body_edge)
+      StructuralLabel { label: _ } => if arrow_named_edge_is_non_binder(e: e) { acc } else { acc + 1 }
+      Authored { name: _ } => acc + 1
     }
   })
+  (binder_edges <= 1)
+  && arrow_signature_order_conforms(children: children)
+  && (core_occurrences(marker: ArrowEffectClaimsEdge, children: children) <= 1)
+  && (core_occurrences(marker: ArrowExecutionModeClaimEdge, children: children) <= 1)
+  && (core_occurrences(marker: ArrowResourceRequirementsEdge, children: children) <= 1)
+  && fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc && (arrow_named_edge_is_non_binder(e: e) || type_binder_conj_conforms(t: e.target))
+      Authored { name: _ } => acc && type_binder_conj_conforms(t: e.target)
+    }
+  })
+}
+
+
+
+// THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
+// ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge): a Transform
+// whose positional children after the head are childless Atoms, one per domain binder, in declared
+// order. This answers the labels in that order, OrderAbsent when there is no such edge, and
+// OrderUnreadable for two edges or any other shape. The head's identity -- the FreeMonoid
+// introduction -- is the one thing this module cannot name without an import cycle, so
+// v2.std.arrow_signature arrow_declared_parameter_order checks the head and consumes THIS
+// parse for the labels; it does not parse them again.
+type ArrowParameterOrderRead
+  = OrderAbsent
+  | OrderLabels { labels: List<Symbol> }
+  | OrderUnreadable
+
+type ArrowParameterOrderStep {
+  index: Int
+  read: ArrowParameterOrderRead
+}
+
+fn arrow_signature_order_read(children: List<Edge>) -> ArrowParameterOrderRead {
+  match core_edge_target_lookup(children: children, marker: ArrowSignatureOrderEdge) {
+    Absent => OrderAbsent
+    Ambiguous => OrderUnreadable
+    Found { target: list } => arrow_signature_order_list_read(list: list)
+  }
+}
+
+fn arrow_signature_order_list_read(list: Node) -> ArrowParameterOrderRead {
+  match list.kind {
+    ComputationNode { behavior: Transform } =>
+      if !all_edges_positional(children: list.children) || (count(list.children) < 1) {
+        OrderUnreadable
+      } else {
+        match fold(list.children, init: ArrowParameterOrderStep { index: 0, read: OrderLabels { labels: [] } }, f: fn(acc, e) {
+          ArrowParameterOrderStep {
+            index: acc.index + 1,
+            read: if acc.index == 0 { acc.read } else { arrow_parameter_order_step(read: acc.read, element: e.target) }
+          }
+        }).read {
+          OrderLabels { labels: reversed } => OrderLabels { labels: symbol_list_reverse(xs: reversed) }
+          OrderAbsent => OrderUnreadable
+          OrderUnreadable => OrderUnreadable
+        }
+      }
+    TypeNode { connective: _ } => OrderUnreadable
+    ComputationNode { behavior: Value } => OrderUnreadable
+    ComputationNode { behavior: Branch } => OrderUnreadable
+    ComputationNode { behavior: Loop } => OrderUnreadable
+    ComputationNode { behavior: Bind } => OrderUnreadable
+    ComputationNode { behavior: Match } => OrderUnreadable
+  }
+}
+
+// Conses, so the parse is linear; arrow_signature_order_list_read reverses once at the end.
+fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> ArrowParameterOrderRead {
+  match read {
+    OrderUnreadable => OrderUnreadable
+    OrderAbsent => OrderUnreadable
+    OrderLabels { labels: ls } =>
+      match element.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          if count(element.children) == 0 { OrderLabels { labels: Cons { head: sym, tail: ls } } } else { OrderUnreadable }
+        TypeNode { connective: Conj } => OrderUnreadable
+        TypeNode { connective: Disj } => OrderUnreadable
+        TypeNode { connective: Arrow } => OrderUnreadable
+        TypeNode { connective: Cardinality } => OrderUnreadable
+        TypeNode { connective: Instantiation } => OrderUnreadable
+        ComputationNode { behavior: _ } => OrderUnreadable
+      }
+  }
+}
+
+fn symbol_list_reverse(xs: List<Symbol>) -> List<Symbol> {
+  fold(xs, init: [], f: fn(acc, x) { Cons { head: x, tail: acc } })
+}
+
+// THE DECLARED ORDER IS EXACTLY A PERMUTATION OF THE DOMAIN'S BINDERS: at most one order edge, and
+// when present its labels and the domain's binder labels are the same multiset with no label twice.
+// The producer mints the list and the domain from one fold (v2.std.anonymous_binder
+// anonymous_binder_mint_parameter_list, through v2.std.arrow_signature declared_signature), so
+// a disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
+// extra, or a repeated label. The comparison sorts both sides once and walks them together, so it is
+// O(n log n) rather than a scan per label. The stored domain is NOT assumed sorted: lowering keeps
+// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed
+// only when its domain binds no name (arrow_domain_binds_a_name); positional binding never falls back
+// to label order.
+fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
+  match arrow_signature_order_read(children: children) {
+    OrderAbsent => !arrow_domain_binds_a_name(children: children)
+    OrderUnreadable => false
+    OrderLabels { labels: labels } =>
+      match arrow_domain_binder_labels(children: children) {
+        DomainBinderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
+        DomainBinderLabelsUnreadable => false
+      }
+  }
+}
+
+// A DOMAIN THAT BINDS A NAME OWES ITS DECLARED ORDER (A4, reversing #12361's "an Arrow with no order
+// edge is well formed"). Since Program P (gunbc#12625) there is one Arrow encoding: a Named edge in the
+// domain -- the first POSITIONAL child, a Conj -- IS a parameter binder, and a binder's position is
+// carried only by ^arrow_signature_order_edge (content hashing sorts the Conj, so f(a, b) and f(b, a)
+// would otherwise be one identity). So an Arrow whose domain binds any name and carries no order edge
+// has no admitted meaning and is ill formed here, at Node admission, rather than refused later at
+// binding time. A domain that binds no name -- a positional type, an empty product -- owes no order.
+// THE ONE ANSWER to "does this Arrow's domain bind a name": v2.compiler.resolve scopes an Arrow's
+// parameters exactly when this holds (arrow_domain_has_named_bindings delegates here), so admission and
+// scoping cannot disagree. An Atom domain is a TYPE, not a binder, under the one encoding.
+fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalAbsent => false
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          fold(domain.children, init: false, f: fn(acc, e) {
+            acc || match e.label {
+              Authored { name: _ } => true
+              StructuralLabel { label: _ } => false
+              Positional => false
+            }
+          })
+        _ => false
+      }
+  }
+}
+
+type SortedSymbolWalk {
+  rest: List<Symbol>
+  previous: List<Symbol>
+  ok: Bool
+}
+
+// Same length, and the two sorted sequences are equal element by element with no element repeated.
+fn symbols_are_one_distinct_set(a: List<Symbol>, b: List<Symbol>) -> Bool {
+  if count(a) != count(b) {
+    false
+  } else {
+    let walk = fold(sort_by(a, fn(x) { x }), init: SortedSymbolWalk { rest: sort_by(b, fn(x) { x }), previous: [], ok: true }, f: fn(acc, x) {
+      match acc.rest {
+        Empty => SortedSymbolWalk { rest: Empty, previous: [x], ok: false }
+        Cons { head: y, tail: more } =>
+          SortedSymbolWalk {
+            rest: more,
+            previous: [x],
+            ok: acc.ok && (x == y) && !(acc.previous == [x])
+          }
+      }
+    })
+    walk.ok
+  }
+}
+
+// The domain's binder labels, in any order: the Arrow's FIRST positional child, a Conj of Named edges.
+// Its own result type: a domain's labels are never "absent" the way an order edge is.
+type DomainBinderLabelsRead
+  = DomainBinderLabels { labels: List<Symbol> }
+  | DomainBinderLabelsUnreadable
+
+fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          fold(domain.children, init: DomainBinderLabels { labels: [] }, f: fn(acc, d) {
+            match acc {
+              DomainBinderLabelsUnreadable => DomainBinderLabelsUnreadable
+              DomainBinderLabels { labels: ls } =>
+                match d.label {
+                  Authored { name: sym } => DomainBinderLabels { labels: Cons { head: sym, tail: ls } }
+                  StructuralLabel { label: _ } => DomainBinderLabelsUnreadable
+                  Positional => DomainBinderLabelsUnreadable
+                }
+            }
+          })
+        TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Cardinality } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
+        ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
+      }
+    FirstPositionalAbsent => DomainBinderLabelsUnreadable
+  }
+}
+
+type FirstPositionalTarget
+  = FirstPositionalFound { target: Node }
+  | FirstPositionalAbsent
+
+fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget {
+  fold(children, init: FirstPositionalAbsent, f: fn(acc, e) {
+    match acc {
+      FirstPositionalFound { target: _ } => acc
+      FirstPositionalAbsent =>
+        match e.label {
+          Positional => FirstPositionalFound { target: e.target }
+          Authored { name: _ } => acc
+          StructuralLabel { label: _ } => acc
+        }
+    }
+  })
+}
+
+// TYPE PARAMETERS ARE BINDERS, CARRIED THE WAY VALUE PARAMETERS ARE. An Arrow's domain is a Conj whose
+// Named edges are the value binders; a type-parameter list is a Conj whose Named edges are the type
+// binders, each targeting the Atom its own name spells. One binder concept -- a Named edge in a Conj,
+// scoped by v2.compiler.resolve as a lexical frame -- in two roles, told apart by the edge that carries
+// the Conj (v2.std.type_binder) rather than by a second node kind. The same Conj rides on an Arrow for
+// `fn f<T>` and on a type declaration's member for `type Box<T>`; a binder whose target is not its own
+// Atom is unwritable here rather than refused downstream.
+//
+// A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
+// binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
+// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
+// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
+fn type_binder_conforms(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    StructuralLabel { label: _ } => false
+    Authored { name: sym } =>
+      match e.target.kind {
+        TypeNode { connective: Atom { identity: id } } => (id == sym) && type_binder_children_conform(children: e.target.children)
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
+      }
+  }
+}
+
+fn type_binder_children_conform(children: List<Edge>) -> Bool {
+  match children {
+    Empty => true
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+  }
+}
+
+// A BINDER SET CARRIES ITS DECLARED ORDER, the way an Arrow's domain does. The Conj's binder edges are
+// labelled, and content hashing sorts labelled edges, so `type Pair<z, a>` and `type Pair<a, z>` would
+// otherwise be one identity and an application's arguments would pair with binders in LABEL order. So
+// a set that binds any name carries exactly one ^arrow_signature_order_edge -- the carrier a declared
+// signature already uses (v2.std.arrow_signature signature_order_edge), read by the same parser
+// (arrow_signature_order_read) -- whose labels are exactly a permutation of the binder labels; a set
+// that binds none carries no order. Any other edge is unwritable here.
+fn type_binder_conj_conforms(t: Node) -> Bool {
+  match t.kind {
+    TypeNode { connective: Conj } =>
+      all_names_distinct(children: t.children)
+        && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_set_edge_conforms(e: e) })
+        && type_binder_order_conforms(children: t.children)
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn type_binder_set_edge_conforms(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => type_binder_conforms(e: e)
+    StructuralLabel { label: _ } => edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
+    Positional => false
+  }
+}
+
+fn type_binder_labels_of(children: List<Edge>) -> List<Symbol> {
+  fold(children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn type_binder_order_conforms(children: List<Edge>) -> Bool {
+  match arrow_signature_order_read(children: children) {
+    OrderAbsent => count(type_binder_labels_of(children: children)) == 0
+    OrderUnreadable => false
+    OrderLabels { labels: labels } => symbols_are_one_distinct_set(a: labels, b: type_binder_labels_of(children: children))
+  }
 }
 
 type NamedEdgeTargetLookup
@@ -334,26 +1179,37 @@ type NamedEdgeTargetLookup
   | Ambiguous
   | Absent
 
+fn edge_target_lookup_step(acc: NamedEdgeTargetLookup, hit: Bool, target: Node) -> NamedEdgeTargetLookup {
+  if hit {
+    match acc {
+      Absent => Found { target: target }
+      Found { target: _ } => Ambiguous
+      Ambiguous => Ambiguous
+    }
+  } else {
+    acc
+  }
+}
+
+// The edge carrying this AUTHORED name. A structural label is never found by spelling.
 fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
   fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
-      Named { name: sym } =>
-        if sym == name {
-          match acc {
-            Absent => Found { target: e.target }
-            Found { target: _ } => Ambiguous
-            Ambiguous => Ambiguous
-          }
-        } else {
-          acc
-        }
+      Authored { name: sym } => edge_target_lookup_step(acc: acc, hit: sym == name, target: e.target)
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
 }
 
+fn core_edge_target_lookup(children: List<Edge>, marker: CoreEdgeLabel) -> NamedEdgeTargetLookup {
+  fold(children, init: Absent, f: fn(acc, e) {
+    edge_target_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
+  })
+}
+
 fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
-  named_edge_target_lookup(children: children, name: ^arrow_body_edge)
+  core_edge_target_lookup(children: children, marker: ArrowBodyEdge)
 }
 
 // ArrowBodyForm classifies arrow-body targets for structural admission
@@ -369,26 +1225,206 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
 // re-check computation edges. Record Conj field wiring is the only
 // ArrowBodyForm-specific structural gate beyond classification
 // (arrow_body_record_construct_conforms).
+//
+// FunctionValueBody is a body that IS a function value -- `fn f() -> fn(A) -> B { fn(a) { .. } }`,
+// curried `x => y => ..`. It adds no validity check of its own: well_formed is a fold_node, so the
+// inner Arrow is admitted by its own Arrow arm (arrow_body_edges_conform) and nesting is that
+// recursion, bounded by the finite source. Only Arrow is a function value; every other TypeNode
+// connective stays UnsupportedArrowBody.
 type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
+  | DeclarationReferenceBody
+  | ParameterReferenceBody
+  | LexicalReferenceBody
   | ComputationBody { behavior: Behavior }
+  | FunctionValueBody
   | UnsupportedArrowBody
+
+// A SYMBOL IS INTERNED FROM ITS LEXEME HERE, AND READ BACK TO IT, BESIDE THE TYPE BOTH CONVERT. The body is a self-call -- a
+// host seam (std.primitive_projection HostRealizedSeam), realized by the interpreter's
+// v4_bridge.symbol_intern_lexeme arm and by the Rust registry row of the same name -- and it lives
+// in this module so the carriers this module owns can name a symbol no source spells. It was
+// declared in v2.std.compilers.lexing, which imports this module, so a marker label was a fact this
+// module's well_formed could not check, and each gate had to pair it with a second predicate; one
+// gate did and the rest silently admitted what the marker exists to exclude (gunbc#12377 review
+// 71638).
+fn symbol_intern_lexeme(lexeme: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: lexeme)
+}
+
+// ITS INVERSE, THE SAME SEAM THE OTHER WAY: the lexeme a Symbol was interned from.
+data symbol_lexeme_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.node",
+    decl_name: "symbol_lexeme",
+    field: WholeDeclaration
+  }
+}
+
+fn symbol_lexeme(sym: Symbol) -> String {
+  symbol_lexeme(sym: sym)
+}
+
+// A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. v2.compiler.resolve mints a reference
+// to a corpus declaration as a one-edge Conj whose only label is this marker, over the reference's
+// qualified-name spine (v2.std.qualified_name declaration_reference_node). A spine is a cons list,
+// and a cons list is not only a path -- an integer literal and a list literal lower to the same
+// shape (gunbc.recurring_failure_mode declaration_reference_recognised_by_a_shape_a_literal_also_has)
+// -- so every reader keys on this label: the core marker DeclarationReferenceEdge, which no authored
+// record field, binder or name can carry because an authored name is an Authored label.
+
+// A REFERENCE TO A NAMED FN'S PARAMETER IS THE SAME CARRIER UNDER ITS OWN MARKER, the core marker
+// ParameterReferenceEdge. v2.compiler.resolve mints it from a ParameterFrame
+// (resolve_frame_bound_reference) over the parameter's declaring path <fn path>.<label> -- the path
+// v2.compiler.symbol_index_fill indexes the parameter at, and the one identity std.decl_ref
+// DeclarationRef names for it. It is a reference to a binder of the enclosing declaration, not to a
+// declaration a module owns: v2.compiler.reference_closure never reads it as a neighbour, and a
+// target spells its leaf as a local rather than a module-scoped name. A distinct core arm keeps the
+// two apart without a shape test, and no authored name can carry either.
+
+// A REFERENCE TO A LEXICAL BINDER IS THE SAME CARRIER UNDER A THIRD MARKER, the core marker
+// LexicalReferenceEdge. v2.compiler.resolve mints
+// it from a LexicalFrame -- a `let`, a match-arm pattern binder, a lambda's parameter -- whose binder
+// is not a declaration and has no declaring path. Its one child is the local's label, a synthetic
+// atom, so the reference's own occurrence stays on the marker node alone; which binder answered it is
+// recorded by resolve in v2.compiler.resolve ResolvedTree.lexical_bindings under that occurrence, keyed
+// to the binder's SITE (std.occurrence_identity), so a reader never searches scope again. It pulls no
+// module into the reference closure and a target spells its label as a local.
+
+// WHICH REFERENCE A MARKER DENOTES, AS A CLOSED VARIANT. Every reader of a resolved reference asks
+// this, never the marker symbol, so a third marker is a new arm every reader must place.
+type ResolvedReferenceKind
+  = DeclarationReferenceKind
+  | ParameterReferenceKind
+  | LexicalReferenceKind
+
+fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> CoreEdgeLabel {
+  match kind {
+    DeclarationReferenceKind => DeclarationReferenceEdge
+    ParameterReferenceKind => ParameterReferenceEdge
+    LexicalReferenceKind => LexicalReferenceEdge
+  }
+}
+
+type ResolvedReferenceMarking
+  = MarkedReference { kind: ResolvedReferenceKind }
+  | NotMarkedReference
+
+fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarking {
+  match label {
+    StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } } => MarkedReference { kind: DeclarationReferenceKind }
+    StructuralLabel { label: CoreMarker { marker: ParameterReferenceEdge } } => MarkedReference { kind: ParameterReferenceKind }
+    StructuralLabel { label: CoreMarker { marker: LexicalReferenceEdge } } => MarkedReference { kind: LexicalReferenceKind }
+    StructuralLabel { label: _ } => NotMarkedReference
+    Authored { name: _ } => NotMarkedReference
+    Positional => NotMarkedReference
+  }
+}
+
+// A CONSTRUCT'S TAG IS MARKED BY ITS ROLE, NOT RECOGNISED BY SPELLING. A record construct and a
+// fielded constructor pattern are one Conj whose first edge carries this marker and targets the
+// constructor as an ordinary REFERENCE: the authored qualified-name spine before resolution (a bare
+// `R` is its one-segment case) and v2.std.qualified_name declaration_reference_node after it. The
+// label used to be the constructor's own spelling, read back by comparing it with the target Atom's
+// identity; resolution rewrites that target into a declaration reference, so the comparison failed
+// for every resolved user construct (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), and a module-qualified
+// constructor had no representation at all. It is distinct from the declaration-reference marker,
+// so a nullary `R {}` never reads as a reference. It is a Core structural marker of the typed
+// EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
+// sibling until that cut converts both.
+
+
+// AN ANONYMOUS RECORD LITERAL'S TAG IS ELIDED, NOT GUESSED. `data x: T = { f: v }` names no
+// constructor; the constructor is chosen by the EXPECTED type, which lowering (before resolve) cannot
+// know. So lowering writes the ONE construct shape with its tag edge present and targeting this
+// marker, and resolve's construct-tag writer replaces it with the declaration reference of the
+// expected type's record, or refuses (docs/plans/anonymous-record-literal-design.md). Keeping the
+// tag edge rather than omitting it keeps a headless literal distinct from a bare Conj of Named edges,
+// which is the anonymous record TYPE. The marker is CoreEdgeLabel ConstructTagElidedEdge, beside
+// ConstructTagEdge (the EdgeLabel cut).
+
+// A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
+// Arrow whose body is the initializer, and when the initializer is a reference that body is the
+// marked Conj. Before this arm the classifier read every Conj body as a record construct, whose
+// field gate refuses a first edge that does not target an Atom, so every module holding such a
+// declaration failed well_formed and eval refused all of its tests (the native lane canary,
+// 2026-09-26). The arm is keyed on the MARKER: a one-edge Conj whose label is anything else -- an
+// authored one-field record over a record -- stays a record construct and is refused by its gate
+// exactly as before.
+fn declaration_reference_body_marked(target: Node) -> Bool {
+  match resolved_reference_body_kind(target: target) {
+    MarkedReference { kind: DeclarationReferenceKind } => true
+    MarkedReference { kind: ParameterReferenceKind } => false
+    MarkedReference { kind: LexicalReferenceKind } => false
+    NotMarkedReference => false
+  }
+}
+
+fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
+  match target.kind {
+    TypeNode { connective: Conj } =>
+      if count(target.children) == 1 {
+        fold(target.children, init: NotMarkedReference, f: fn(acc, e) {
+          resolved_reference_kind_of_label(label: e.label)
+        })
+      } else {
+        NotMarkedReference
+      }
+    TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
+    TypeNode { connective: Disj } => NotMarkedReference
+    TypeNode { connective: Arrow } => NotMarkedReference
+    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Instantiation } => NotMarkedReference
+    ComputationNode { behavior: _ } => NotMarkedReference
+  }
+}
 
 fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
-    TypeNode { connective: Conj } => RecordConstructBody
+    TypeNode { connective: Conj } =>
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
+    TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: Disj } => UnsupportedArrowBody
+    TypeNode { connective: Cardinality } => UnsupportedArrowBody
+    TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
 
+// WHICH BODY FORMS MAY ENTER EVAL, AND IT IS THE ONE AUTHORITY FOR THAT QUESTION. An eval-local exception
+// beside it would be a second authority for the same decision, so a form is admitted here or not at all.
+//
+// ParameterReferenceBody IS ADMITTED, and that is the change gunbc#12766 named as this lane's obligation. It
+// refused categorically while NO route evaluated a declared fn body over resolver output, which was honest
+// then and became a wall against the capability once the named-call route existed. MEASURED, by locus rather
+// than by reason: the three argument-dependent controls in
+// v2.test.claim.callexec.declaration_reference_eval refused with
+// ^eval_rejected_parameter_reference_unbound anchored at the callee's DECLARING ARROW, not at the parameter
+// use -- v2.compiler.eval eval_callee_body_refusal_reason maps this arm to that same symbol, so the reason
+// has two producers and the gate was the one firing, before eval_bind_arrow_params ran at all.
+//
+// ADMITTING THE FORM IS NOT ADMITTING THE ACCESS. A parameter reference whose binding the environment does
+// not hold still refuses with the same reason, now raised at the USE by eval_type_node_atom's own arm, where
+// it means what it says. What disappears is a refusal based solely on the body's FORM; what remains is the
+// refusal based on a missing binding, which is the only one that was ever a fact about the program.
 fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   match form {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
+    DeclarationReferenceBody => false
+    ParameterReferenceBody => true
+    LexicalReferenceBody => true
+    FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
     ComputationBody { behavior: Branch } => true
@@ -398,36 +1434,87 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   }
 }
 
+// A Conj body that is not a marked declaration reference is admitted on one of two readings.
+//
+// A CONSTRUCT: the tag edge is FIRST and carries v2.std.node CoreEdgeLabel ConstructTagEdge, and its target is a
+// reference, which is a Conj in both of its forms (an authored spine, a marked declaration
+// reference); every edge is Named. Which Conj is a well-formed reference is v2.std.qualified_name's to
+// read (v2.std.node_query construct_tag_path_optional), not repeated here.
+//
+// ANY OTHER UNMARKED Conj is admitted exactly as it was before the tag became a marker: every edge
+// Named and SOME Named edge targeting an Atom. That population is not constructs -- it is an authored
+// path before resolution (`fn f() -> T { m.C }`, the spine whose head targets an Atom) and a field
+// projection body (`fn f() -> Symbol { g(x).reason }`, v2.std.node_query field_projection_node,
+// whose field edge targets an Atom). This module cannot name either shape's labels -- v2.std.algebra
+// and v2.std.node_query own them and import this module -- so the admission is kept unchanged rather
+// than narrowed; narrowing it refused v2.std.diagnostic diagnostics_fatal_reason, measured on the
+// native route. A typed arm per body form would let the classifier say which one it holds; it is a
+// follow-up named in docs/plans/construct-tag-reference-design.md, not a change this package makes.
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
-      if !all_edges_named(children: node.children) {
-        false
-      } else {
-        fold(node.children, init: false, f: fn(seen_first_named, edge) {
-          if seen_first_named {
-            seen_first_named
-          } else {
-            match edge.label {
-              Named { name: _ } =>
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: _ } } => true
-                  _ => false
-                }
-              Positional => false
-            }
-          }
-        })
-      }
-    _ => false
+      all_edges_named(children: node.children)
+        && (arrow_body_construct_tag_leads(node: node) || arrow_body_some_edge_targets_an_atom(node: node))
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
+}
+
+// The construct reading is a fact about the FIRST edge alone. This module reads a list's head the
+// way arrow_first_positional_target does -- a declared first-edge read, settled by the first element
+// and carried unchanged past it -- because it can take neither alternative: a direct `Cons` match on
+// a List<Edge> does not typecheck in the seed, and `first` answers v2.std.optional Optional, whose
+// import into this module (which nearly every module imports) moves the tree-wide unimported-bare-
+// provider census (measured: the required floor refused a roster row it silently discharged).
+type FirstEdgeRead
+  = FirstEdgeUnread
+  | FirstEdgeFound { edge: Edge }
+
+fn first_edge_read(children: List<Edge>) -> FirstEdgeRead {
+  fold(children, init: FirstEdgeUnread, f: fn(acc, e) {
+    match acc {
+      FirstEdgeFound { edge: _ } => acc
+      FirstEdgeUnread => FirstEdgeFound { edge: e }
+    }
+  })
+}
+
+fn arrow_body_construct_tag_leads(node: Node) -> Bool {
+  match first_edge_read(children: node.children) {
+    FirstEdgeFound { edge: edge } =>
+      edge_is_core(e: edge, marker: ConstructTagEdge)
+        && (match edge.target.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        })
+    FirstEdgeUnread => false
+  }
+}
+
+fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(found, edge) {
+    found || (is_named(e: edge)
+      && !edge_is_core(e: edge, marker: ConstructTagEdge)
+      && (match edge.target.kind {
+        TypeNode { connective: Atom { identity: _ } } => true
+        _ => false
+      }))
+  })
 }
 
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match classify_arrow_body_form(target: target) {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+    DeclarationReferenceBody => true
+    ParameterReferenceBody => true
+    LexicalReferenceBody => true
     DirectAtomBody => true
+    FunctionValueBody => true
     ComputationBody { behavior: _ } => true
   }
 }
@@ -441,66 +1528,104 @@ fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
 }
 
 fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
-  let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
+  let body_edges = core_occurrences(marker: ArrowBodyEdge, children: children)
   (body_edges <= 1)
   && arrow_signature_edges_conform(children: children)
   && (positional_child_count(children: children) >= 1)
   && arrow_body_target_conforms(children: children)
 }
 fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
-  named_edge_target_lookup(children: children, name: ^loop_bound_edge)
+  core_edge_target_lookup(children: children, marker: LoopBoundEdge)
 }
 
 fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
-  named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
+  core_edge_target_lookup(children: children, marker: LoopCarrierEdge)
 }
 
+fn loop_domain_value_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  core_edge_target_lookup(children: children, marker: LoopDomainEdge)
+}
+
+fn loop_realized_declaration_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  core_edge_target_lookup(children: children, marker: LoopRealizedDeclarationEdge)
+}
+
+// Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
+// measure, the carrier is a binder and the realized declaration is a reference. Each consumer
+// matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => true
+        LoopDomainValue => false
+        LoopBoundMeasure => false
+        LoopCarrierBinder => false
+        LoopRealizedDeclaration => false
+        LoopEdgeUnrecognized => false
       }
     _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+      true
   }
 }
 
-// Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type
-// positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries
-// the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
-// iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
-// use that function directly.
+// HOW THE SYMBOLIC COST FOLD PRICES ONE EDGE, answered in one place (Wave 1 Gate 1 C1: the fold
+// prices only runtime work). CostEdgeComposed children compose under the parent's mode;
+// CostEdgePricedOnce is work evaluated once beside that composition (a Loop's domain, never multiplied
+// into its iteration and never dropped); CostEdgeNotPriced is not runtime work. An Arrow's signature
+// and type edges are not priced -- only ^arrow_body_edge carries the body (general-body-producer-design
+// Stage C prerequisite). A Loop's edges are priced by their role (loop_edge_role). Every other edge
+// of every other node composes.
+type CostEdgeRole
+  = CostEdgeComposed
+  | CostEdgePricedOnce
+  | CostEdgeNotPriced
 
-fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => CostEdgeComposed
+        LoopDomainValue => CostEdgePricedOnce
+        LoopBoundMeasure => CostEdgeNotPriced
+        LoopCarrierBinder => CostEdgeNotPriced
+        LoopRealizedDeclaration => CostEdgeNotPriced
+        LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>
       match e.label {
-        Positional => false
-        Named { name: sym } => sym == ^arrow_body_edge
+        StructuralLabel { label: _ } => if edge_is_core(e: e, marker: ArrowBodyEdge) { CostEdgeComposed } else { CostEdgeNotPriced }
+        Authored { name: _ } => CostEdgeNotPriced
+        Positional => CostEdgeNotPriced
       }
-    _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+    TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
+    TypeNode { connective: Conj } => CostEdgeComposed
+    TypeNode { connective: Disj } => CostEdgeComposed
+    TypeNode { connective: Cardinality } => CostEdgeComposed
+    TypeNode { connective: Instantiation } => CostEdgeComposed
+    ComputationNode { behavior: Value } => CostEdgeComposed
+    ComputationNode { behavior: Transform } => CostEdgeComposed
+    ComputationNode { behavior: Branch } => CostEdgeComposed
+    ComputationNode { behavior: Bind } => CostEdgeComposed
+    ComputationNode { behavior: Match } => CostEdgeComposed
   }
 }
+
+// No two non-positional edges carry the same label. Labels compare whole, so an authored name and a
+// structural label never collide, whatever the authored spelling.
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
-      Positional => acc
+    if is_positional(e: e) {
+      acc
+    } else {
+      acc && (label_occurrences(label: e.label, children: children) == 1)
     }
+  })
+}
+
+fn label_occurrences(label: EdgeLabel, children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, e) {
+    if e.label == label { acc + 1 } else { acc }
   })
 }
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
@@ -511,7 +1636,33 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
+    PositionalPrefixThenLabeledEdges => positional_prefix_then_labeled_conform(children: children)
+    PositionalPlusNamedMarkerEdges => (count(children) - positional_child_count(children: children)) <= 2
   }
+}
+
+// AN APPLICATION'S ACTUALS: a positional prefix -- the callee first, then positional actuals in
+// order -- followed by named actuals, each label at most once. A positional edge after a named one
+// has no slot independent of which names preceded it, so it has no constructor
+// (v2.compiler.body_lowering_fold body_lower_call_arg_edges refuses it located) and is ill formed
+// here. Named actuals bind by name against the callee's name-keyed domain (gunbc#12054), so their
+// authored order carries no meaning: the content hash sorts them
+// (canonicalize_positional_then_named), while the stored node keeps authored order for the
+// occurrence layer.
+fn positional_prefix_then_labeled_conform(children: List<Edge>) -> Bool {
+  let walk = fold(children, init: TransformActualsWalk { seen_named: false, ok: true }, f: fn(acc, e) {
+    match e.label {
+      Positional => TransformActualsWalk { seen_named: acc.seen_named, ok: acc.ok && !acc.seen_named }
+      Authored { name: _ } => TransformActualsWalk { seen_named: true, ok: acc.ok }
+      StructuralLabel { label: _ } => TransformActualsWalk { seen_named: true, ok: acc.ok }
+    }
+  })
+  walk.ok && all_names_distinct(children: children)
+}
+
+type TransformActualsWalk {
+  seen_named: Bool
+  ok: Bool
 }
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
@@ -534,10 +1685,19 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
 fn match_arm_node_conforms(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>
-      name_occurrences(name: match_arm_pattern, children: arm.children) == 1
-        && name_occurrences(name: match_arm_body, children: arm.children) == 1
+      core_occurrences(marker: MatchArmPatternEdge, children: arm.children) == 1
+        && core_occurrences(marker: MatchArmBodyEdge, children: arm.children) == 1
     _ => false
   }
+}
+
+// THE PATTERN EDGE OF A MATCH ARM: the arm's one ^match_arm_pattern edge. Its subtree is a binding
+// form -- binders, wildcards, literals, nested constructor patterns -- so a stage that derives facts
+// for VALUES declines it (v2.compiler.infer infer_gather_fold_step) and a walk over the nodes
+// that stage derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes).
+fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
+  match_arm_node_conforms(arm: parent)
+    && edge_is_core(e: edge, marker: MatchArmPatternEdge)
 }
 
 type MatchArmChildrenConformFold {
@@ -562,7 +1722,8 @@ fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee
             } else {
               MatchArmChildrenConformFold { ok: true, skipped_scrutinee: true }
             }
-          Named { name: _ } => acc
+          Authored { name: _ } => acc
+          StructuralLabel { label: _ } => acc
         }
       }
     }
@@ -573,10 +1734,13 @@ fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
-    Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Transform =>
+      edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
+        && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
-    Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
+    Bind =>
+      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
     Match =>
       edges_conform(children: children, d: PositionalEdges)
         && (positional_child_count(children: children) >= 2)
@@ -606,17 +1770,22 @@ fn well_formed(n: Node) -> Bool {
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
-    Transform => PositionalEdges
+    Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
-    Bind => PositionalEdges
+    Bind => PositionalPlusNamedMarkerEdges
     Match => PositionalEdges
   }
 }
@@ -631,9 +1800,13 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
 // caller obligation this dissolves. An Edge-shaped ordering with a second hash-shaped copy beside it
 // would be two authorities for one identity rule (DESIGN section 3) -- agreeing exactly until one is
 // edited, and disagreeing as objects unreachable by the identity they were stored under.
+// The key within one sort class (labeled_sort_classes); also the segment a labeled edge contributes
+// to a path.
 fn label_sort_key(label: EdgeLabel) -> Symbol {
   match label {
-    Named { name: sym } => sym
+    Authored { name: sym } => sym
+    StructuralLabel { label: CoreMarker { marker: m } } => core_edge_label_canonical_symbol(marker: m)
+    StructuralLabel { label: ProductionEdge { language: _, edge: p } } => p
     Positional => ^canonical_tag_positional_edge
   }
 }
@@ -645,26 +1818,56 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
 fn labeled_is_positional<T>(x: T, label_of: fn(T) -> EdgeLabel) -> Bool {
   match label_of(x) {
     Positional => true
-    Named { name: _ } => false
+    Authored { name: _ } => false
+    StructuralLabel { label: _ } => false
   }
 }
 
 fn labeled_named_is<T>(x: T, label_of: fn(T) -> EdgeLabel, wanted: Symbol) -> Bool {
   match label_of(x) {
-    Named { name: sym } => sym == wanted
+    Authored { name: sym } => sym == wanted
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
 
-fn labeled_named_is_not<T>(x: T, label_of: fn(T) -> EdgeLabel, excluded: Symbol) -> Bool {
+fn labeled_core_is<T>(x: T, label_of: fn(T) -> EdgeLabel, wanted: CoreEdgeLabel) -> Bool {
   match label_of(x) {
-    Named { name: sym } => sym != excluded
+    StructuralLabel { label: CoreMarker { marker: m } } => m == wanted
+    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => false
+    Authored { name: _ } => false
     Positional => false
   }
+}
+
+fn labeled_named_is_not_core<T>(x: T, label_of: fn(T) -> EdgeLabel, excluded: CoreEdgeLabel) -> Bool {
+  !labeled_is_positional(x: x, label_of: label_of) && !labeled_core_is(x: x, label_of: label_of, wanted: excluded)
+}
+
+// THE TWO SORT CLASSES, partitioned by the label's arm in one match: structural labels sort as one
+// class ahead of every other label, so no authored name can interleave with a structural label whose
+// key spells the same. Within a class the order is label_sort_key.
+type LabeledSortClasses<T> {
+  structural: List<T>
+  other: List<T>
+}
+
+fn labeled_sort_classes<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> LabeledSortClasses<T> {
+  fold(items, init: LabeledSortClasses { structural: [], other: [] }, f: fn(acc, x) {
+    match label_of(x) {
+      StructuralLabel { label: _ } => LabeledSortClasses { structural: list_snoc_item(xs: acc.structural, item: x), other: acc.other }
+      Authored { name: _ } => LabeledSortClasses { structural: acc.structural, other: list_snoc_item(xs: acc.other, item: x) }
+      Positional => LabeledSortClasses { structural: acc.structural, other: list_snoc_item(xs: acc.other, item: x) }
+    }
+  })
 }
 
 fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
-  sort_by(items, fn(x) { label_sort_key(label: label_of(x)) })
+  let classes = labeled_sort_classes(items: items, label_of: label_of)
+  concat(
+    sort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) }),
+    sort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })
+  )
 }
 
 // Arrow: positional signature first, then the other named edges in label order, then the body. The
@@ -676,11 +1879,11 @@ fn canonicalize_arrow_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -
     concat(
       sort_labeled(
         items: filter(items, fn(x) {
-          labeled_named_is_not(x: x, label_of: label_of, excluded: ^arrow_body_edge)
+          labeled_named_is_not_core(x: x, label_of: label_of, excluded: ArrowBodyEdge)
         }),
         label_of: label_of
       ),
-      filter(items, fn(x) { labeled_named_is(x: x, label_of: label_of, wanted: ^arrow_body_edge) })
+      filter(items, fn(x) { labeled_core_is(x: x, label_of: label_of, wanted: ArrowBodyEdge) })
     )
   )
 }
@@ -691,11 +1894,38 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
     concat(
       sort_labeled(
         items: filter(items, fn(x) {
-          labeled_named_is_not(x: x, label_of: label_of, excluded: ^loop_bound_edge)
+          labeled_named_is_not_core(x: x, label_of: label_of, excluded: LoopBoundEdge)
         }),
         label_of: label_of
       ),
-      filter(items, fn(x) { labeled_named_is(x: x, label_of: label_of, wanted: ^loop_bound_edge) })
+      filter(items, fn(x) { labeled_core_is(x: x, label_of: label_of, wanted: LoopBoundEdge) })
+    )
+  )
+}
+
+// A TRANSFORM'S OR BIND'S CANONICAL ORDER: its positional children in order, then its named edges
+// sorted by label. Their SHAPES differ, because their contracts do. A Transform's named edges are
+// either one v2.std.type_binder marker (a cast's target) or an application's named actuals, and an
+// application's positional order carries meaning, so no positional edge may follow a named one
+// (positional_prefix_then_labeled_conform). A Bind carries at most two named edges, both markers --
+// its let annotation and its MatchArmScopeExitEdge, each at most once -- and where they stand is free
+// (PositionalPlusNamedMarkerEdges): a marker has no slot to misplace. v2.std.type_binder type_binder_labels_conform states which labels each admits.
+// Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
+// placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
+// f(1, 2) and f(2, 1) stay two.
+//
+// EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
+// node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for
+// identity only. The identity claim rests on purity: for effectful actuals two hash-equal
+// applications perform their effects in different orders, so no consumer may reuse or dedupe a
+// result across hash-equal applications when an actual may be effectful
+// (gunbc.recurring_failure_mode argument_order_silently_orders_two_effects).
+fn canonicalize_positional_then_named<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  concat(
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
+    sort_labeled(
+      items: filter(items, fn(x) { !labeled_is_positional(x: x, label_of: label_of) }),
+      label_of: label_of
     )
   )
 }
@@ -721,6 +1951,8 @@ fn canonicalize_labeled_for_content_hash<T>(
     PositionalEdges => items
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
+    PositionalPrefixThenLabeledEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
+    PositionalPlusNamedMarkerEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
 }
 
@@ -803,12 +2035,25 @@ fn canonical_hash_of_node_kind(kind: NodeKind) -> Fnv1a64Structural {
   }
 }
 
+// An authored name keeps the tag every Named edge carried before the EdgeLabel coproduct, so only
+// nodes holding a structural label change identity; each structural arm has its own tag, so no
+// authored spelling hashes like a marker.
 fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
   match label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       content_hash_combine_structural(
         left: content_hash_atom(value: ^canonical_tag_named_edge),
         right: content_hash_atom(value: sym)
+      )
+    StructuralLabel { label: CoreMarker { marker: m } } =>
+      content_hash_combine_structural(
+        left: content_hash_atom(value: ^canonical_tag_core_marker_edge),
+        right: content_hash_atom(value: core_edge_label_canonical_symbol(marker: m))
+      )
+    StructuralLabel { label: ProductionEdge { language: l, edge: p } } =>
+      content_hash_combine_structural(
+        left: content_hash_atom(value: ^canonical_tag_production_edge),
+        right: content_hash_combine_structural(left: content_hash_atom(value: l), right: content_hash_atom(value: p))
       )
     Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
   }
@@ -816,6 +2061,12 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
 
 fn combine_hash(a: Fnv1a64Structural, b: Fnv1a64Structural) -> Fnv1a64Structural {
   content_hash_combine_structural(left: a, right: b)
+}
+
+// The one Symbol equality, owned by the module that owns Symbol. Consumers that need an `eq`
+// callback (contains, dedup, ...) take this; a module-local `*_symbol_eq` alias re-mints it.
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
 }
 
 fn symbol_identity_digest(sym: Symbol) -> Hash {
@@ -1372,7 +2623,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
 }
 
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn node_offset_conj(children: List<Edge>) -> Node {
@@ -1641,7 +2892,7 @@ type NodeQuery
   | NodeQueryByPath { at: Path }
 
 type Path {
-  steps: List<Symbol>
+  steps: List<EdgeLabel>
 }
 type Edit {
   at: Path

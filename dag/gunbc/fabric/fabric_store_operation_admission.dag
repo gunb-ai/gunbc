@@ -1,0 +1,254 @@
+module gunbc.fabric_store_operation_admission
+
+import std.types { NonEmptyStr, String, Bool, Timestamp, List }
+import std.optional { Present, Absent }
+import v2.std.algebra { is_empty }
+import std.content_hash { ContentHash, sha256_hex_digest, as_content_hash_cryptographic, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree, grant_covers }
+import std.scoped_authorization { AuthorizationScope, parse_intent_scopes, scope_covered_by_any, authorization_claim_key_scope }
+import product.capacity.event_chain { EventDecoded, EventUndecodable }
+import gunbc.spark.pair_serving_authority_log {
+  PairAuthorityEvent, AuthorityEstablished, AuthorityTransitioned, EntryStateRecorded, AuthorityAppendCancelled,
+  HostEffectAdmitted, HostEffectReleased, PlacementPrepared, PlacementAppendClaimed, PlacementFinalized, PlacementAborted,
+  pair_authority_event_decode, pair_authority_partition_prefix, host_placement_partition,
+}
+import gunbc.spark.host_effect_quiescence { ClaimantTerminal, RecoveryAuthorized }
+import gunbc.spark.pair_serving_d0 { d0_required_scope, d0_filing_key_scope }
+import gunbc.durable_cas_fabric_storage { cas_slot_head_prefix }
+import gunbc.auth.approval_capability { ApprovalCapability, CapabilityRefusal }
+import gunbc.auth.approval_decision_store { ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused }
+import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAuthentic, StoreReceiptNotAuthentic, StoreReceiptTagUnreadable }
+
+// ── THE FABRIC STORE'S PER-OPERATION WALL ─────────────────────────────────────────────────────
+//
+// gunbc.spark.pair_serving_d0 d0_store_operation_wall: the fabric DB admits an advance of a
+// pair-serving authority partition, the host-placement partition or a D0 consent slot ONLY under a
+// credential the STORE verifies for that operation (operator ruling A, 2026-09-27). This module is
+// that decision, as one fold over supplied readings -- the head, the advanced-to object's text, what
+// the writer presented, the presenting principal's grants, the receipt key and the instant -- so the
+// door (gunbc.fabric_storage_serve's advance arm) performs the reads and this decides.
+//
+// A DECLARED FRONTIER (DESIGN §3c): admit_store_operation's consumer is gunbc.fabric_storage_serve's
+// advance arm, which reads the advanced-to object, the presented credential, the presenting
+// principal's grants (a per-principal roster over jolly-owl-158's door principal, gunbc#12482) and
+// the receipt keyring, and calls this before fabric_storage_file_advance (d0_store_operation_wall
+// PR 4b). TRIGGER: that change lands; if the door decides some other way, this module goes with it.
+//
+// THE OPERATION IS READ FROM THE OBJECT, NEVER FROM THE WRITER. An advance names a head and the
+// object it moves to; the object is already stored, so the door decodes it and the operation is what
+// the object IS. A writer cannot claim a cheaper operation than the one it writes.
+//
+// THE CREDENTIAL IS THE ONE THE WRITER'S SELECTION NAMES (gunbc.auth.privileged_effect_census, the
+// fabric store rows): the recurring host-effect lanes select their workload identity, so a normal
+// host-effect admit or release is admitted under the presenting principal's std.effect_grant Grant;
+// every other protected operation selects operator approval, so it is admitted only under a broker
+// store receipt (gunbc.auth.approval_store_receipt) whose approved intent -- presented beside it and
+// bound to it by digest -- states a scope admissible for the operation.
+
+// Which protected head an advance names; Absent is an unprotected head this wall does not govern.
+type ProtectedHead
+  = AuthorityPartitionHead
+  | HostPlacementHead
+  | ConsentClaimSlotHead
+  | ConsentFilingSlotHead
+
+fn protected_head_of(name: String) -> ProtectedHead? {
+  if starts_with(s: name, prefix: pair_authority_partition_prefix) { Present { value: AuthorityPartitionHead } }
+  else if name == (host_placement_partition as String) { Present { value: HostPlacementHead } }
+  else if starts_with(s: name, prefix: join([cas_slot_head_prefix, authorization_claim_key_scope], "")) { Present { value: ConsentClaimSlotHead } }
+  else if starts_with(s: name, prefix: join([cas_slot_head_prefix, d0_filing_key_scope], "")) { Present { value: ConsentFilingSlotHead } }
+  else { none }
+}
+
+// The operation an advance performs, one arm per distinct authorization question.
+type StoreOperation
+  = EstablishAuthority
+  | TransitionAuthority
+  | RecordEntryState
+  | CancelAppend
+  | AdmitHostEffect
+  | ReleaseHostEffect
+  | RecoverHostEffect
+  | PreparePlacement
+  | ClaimPlacementAppend
+  | FinalizePlacement
+  | AbortPlacement
+  | ClaimConsent
+  | FreezeConsentFiling
+
+type StoreOperationReading
+  = StoreOperationClassified { operation: StoreOperation }
+  | StoreOperationUnclassifiable { reason: NonEmptyStr }
+
+fn operation_of_event(e: PairAuthorityEvent) -> StoreOperation {
+  match e {
+    AuthorityEstablished { authority: _, placement: _ } => EstablishAuthority
+    AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _, placement: _ } => TransitionAuthority
+    EntryStateRecorded { transaction: _, body: _ } => RecordEntryState
+    AuthorityAppendCancelled { preparation: _, provenance: _ } => CancelAppend
+    HostEffectAdmitted { host: _, purpose: _, executor: _, term: _, residue: _ } => AdmitHostEffect
+    HostEffectReleased { admitted_by: _, evidence: _, provenance: p } =>
+      match p {
+        ClaimantTerminal { claim: _, claimant_executor: _ } => ReleaseHostEffect
+        RecoveryAuthorized { claim: _, claimant: _, authorized_by: _, receipt: _ } => RecoverHostEffect
+      }
+    PlacementPrepared { operation: _, group: _, previous_hosts: _, next_hosts: _ } => PreparePlacement
+    PlacementAppendClaimed { preparation: _, intent: _ } => ClaimPlacementAppend
+    PlacementFinalized { preparation: _, authority_event: _ } => FinalizePlacement
+    PlacementAborted { preparation: _, reason: _, provenance: _ } => AbortPlacement
+  }
+}
+
+// A consent slot's operation is its head; a partition's is the event its object carries, and an
+// object that does not decode as one is refused rather than guessed.
+fn store_operation_of(head: ProtectedHead, target_text: String) -> StoreOperationReading {
+  match head {
+    ConsentClaimSlotHead => StoreOperationClassified { operation: ClaimConsent }
+    ConsentFilingSlotHead => StoreOperationClassified { operation: FreezeConsentFiling }
+    AuthorityPartitionHead => event_operation(text: target_text)
+    HostPlacementHead => event_operation(text: target_text)
+  }
+}
+
+fn event_operation(text: String) -> StoreOperationReading {
+  match pair_authority_event_decode(text: text) {
+    EventDecoded { event: ev } => StoreOperationClassified { operation: operation_of_event(e: ev.payload) }
+    EventUndecodable { reason: r } => StoreOperationUnclassifiable { reason: join(["the advanced-to object is not one pair-serving authority event: ", r], "") as NonEmptyStr }
+  }
+}
+
+// ── WHAT EACH OPERATION REQUIRES ──────────────────────────────────────────────────────────────
+//
+// The host-effect position a workload grant must cover, and the action its lanes perform.
+data host_effect_position: NamespacePosition = NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "host_commitment"] }
+
+type OperationRequirement
+  = WorkloadGrantRequired { target: NamespacePosition }
+  | ApprovedScopeRequired { admissible: List<AuthorizationScope> }
+
+// THE ADMISSIBLE SCOPES ARE THE APPROVED OPERATIONS THAT PERFORM EACH WRITE. Today one approval flow
+// exists, D0's (d0_required_scope), and it performs the suspension transaction end to end: the
+// consent claim and filing, the authority transitions and entry-state record, and the placement saga
+// it prepares, claims, finalizes, aborts or cancels. EstablishAuthority and RecoverHostEffect have
+// NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
+// host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
+// recover, finalize and abort flows are d0_store_operation_wall PR 5b, which the flip depends on, so
+// no enforcing door runs without the manual repair path (proud-deer-538, 2026-09-28); their scopes
+// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is PR 7:
+// it runs once per group, and both groups are established. An empty list refuses
+// (NoApprovalFlowForOperation) rather than admitting: an operation nobody can approve is refused,
+// never exempted.
+fn operation_requirement(operation: StoreOperation) -> OperationRequirement {
+  match operation {
+    AdmitHostEffect => WorkloadGrantRequired { target: host_effect_position }
+    ReleaseHostEffect => WorkloadGrantRequired { target: host_effect_position }
+    EstablishAuthority => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    RecoverHostEffect => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    TransitionAuthority => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    RecordEntryState => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    CancelAppend => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    PreparePlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    ClaimPlacementAppend => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    FinalizePlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    AbortPlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    ClaimConsent => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    FreezeConsentFiling => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+  }
+}
+
+// ── WHAT THE WRITER PRESENTS, AND THE DECISION ────────────────────────────────────────────────
+type StoreOperationCredential
+  = NoOperationCredential
+  | PresentedApproval { receipt: ApprovalCapability, intent_text: String }
+
+type StoreOperationRefusal
+  = OperationUnclassifiable { reason: NonEmptyStr }
+  | WorkloadGrantAbsent { target: NamespacePosition }
+  | NoApprovalFlowForOperation
+  | ApprovalAbsent
+  | ReceiptKeyUnavailable
+  | ReceiptNotAuthentic { cause: CapabilityRefusal }
+  | ReceiptTagUnreadable
+  | IntentNotTheApprovedRevision
+  | IntentStatesNoScope
+  | IntentScopeNotAdmissible { stated: List<AuthorizationScope>, admissible: List<AuthorizationScope> }
+
+type StoreOperationAdmission
+  = StoreOperationAdmitted { operation: StoreOperation }
+  | StoreOperationRefused { operation: StoreOperation?, refusal: StoreOperationRefusal }
+
+// The digest the approved revision names, taken over the presented intent's exact UTF-8 bytes with
+// the host SHA-256 (sha256_hex_of_text, whose known answers the pure extdeps.crypto.sha2 fold shares),
+// so the store hashes what it was handed and nothing else.
+fn intent_digest(text: String) -> ContentHash? {
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: text)) {
+    Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+    Absent => none
+  }
+}
+
+fn intent_is_revision(text: String, revision: NonEmptyStr) -> Bool {
+  match intent_digest(text: text) {
+    Absent => false
+    Present { value: presented } =>
+      match parse_content_hash(wire: revision as String) {
+        Absent => false
+        Present { value: approved } =>
+          match compare_content_hash(left: presented, right: approved) {
+            ContentHashEqual => true
+            ContentHashDifferent => false
+            ContentHashCrossFamilyIncomparable => false
+          }
+      }
+  }
+}
+
+fn admit_store_operation(
+  head: ProtectedHead,
+  target_text: String,
+  credential: StoreOperationCredential,
+  principal_grants: List<Grant>,
+  receipt_keyring: ApprovalKeyringRead,
+  observed_at: Timestamp,
+) -> StoreOperationAdmission {
+  match store_operation_of(head: head, target_text: target_text) {
+    StoreOperationUnclassifiable { reason: r } => StoreOperationRefused { operation: none, refusal: OperationUnclassifiable { reason: r } }
+    StoreOperationClassified { operation: op } =>
+      match operation_requirement(operation: op) {
+        WorkloadGrantRequired { target: t } =>
+          if any(principal_grants, g => grant_covers(grant: g, verb: Write, target: t)) { StoreOperationAdmitted { operation: op } }
+          else { StoreOperationRefused { operation: Present { value: op }, refusal: WorkloadGrantAbsent { target: t } } }
+        ApprovedScopeRequired { admissible: scopes } =>
+          if is_empty(scopes) { StoreOperationRefused { operation: Present { value: op }, refusal: NoApprovalFlowForOperation } }
+          else { approved_operation(op: op, admissible: scopes, credential: credential, receipt_keyring: receipt_keyring, observed_at: observed_at) }
+      }
+  }
+}
+
+// The approval path, in the order that names the first thing wrong: a receipt at all, the key, the
+// receipt's authenticity and window, the intent as the approved revision, and its scope.
+fn approved_operation(op: StoreOperation, admissible: List<AuthorizationScope>, credential: StoreOperationCredential, receipt_keyring: ApprovalKeyringRead, observed_at: Timestamp) -> StoreOperationAdmission {
+  match credential {
+    NoOperationCredential => StoreOperationRefused { operation: Present { value: op }, refusal: ApprovalAbsent }
+    PresentedApproval { receipt: r, intent_text: text } =>
+      match receipt_keyring {
+        ApprovalKeyringRefused { cause: _ } => StoreOperationRefused { operation: Present { value: op }, refusal: ReceiptKeyUnavailable }
+        ApprovalKeyLoaded { key: key } =>
+          match verify_store_receipt(receipt: r, key: key, observed_at: observed_at) {
+            StoreReceiptTagUnreadable => StoreOperationRefused { operation: Present { value: op }, refusal: ReceiptTagUnreadable }
+            StoreReceiptNotAuthentic { cause: c } => StoreOperationRefused { operation: Present { value: op }, refusal: ReceiptNotAuthentic { cause: c } }
+            StoreReceiptAuthentic { claims: cl } =>
+              if !intent_is_revision(text: text, revision: cl.request_revision) {
+                StoreOperationRefused { operation: Present { value: op }, refusal: IntentNotTheApprovedRevision }
+              } else {
+                match parse_intent_scopes(text: text) {
+                  Absent => StoreOperationRefused { operation: Present { value: op }, refusal: IntentStatesNoScope }
+                  Present { value: f } =>
+                    if any(admissible, a => scope_covered_by_any(granted: f.scopes, required: a)) { StoreOperationAdmitted { operation: op } }
+                    else { StoreOperationRefused { operation: Present { value: op }, refusal: IntentScopeNotAdmissible { stated: f.scopes, admissible: admissible } } }
+                }
+              }
+          }
+      }
+  }
+}

@@ -1,0 +1,370 @@
+module gunbc.machine_intake_mtcollins1_ui_bundle_observe
+
+import std.decl_ref { decl_ref }
+import extdeps.shell
+import extdeps.bmc.ipmi
+import extdeps.bmc.megarac
+import extdeps.tools.sha256sum
+import extdeps.tools.gzip
+import std.algebra { trim }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
+import extdeps.bmc.megarac { megarac_ui_bundle_path }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
+import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand }
+import std.measure { Second, second, second_count }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import v2.std.algebra { any }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+
+// ONE READ OF MT. COLLINS' OWN UI BUNDLE, SO A VENDOR CODE IS INTERPRETED FROM THE VENDOR'S SOURCE
+// (operator, amended brief msg_20e45239 and decision msg_b3c77f62, 2026-09-30). The settings route
+// answers cd_error_code 16 and nothing in the tree says what 16 names; the firmware's UI names its
+// own codes in source.min.js, which is how start-media's 13410/13460 were recovered. This mode is the
+// modeled route to those bytes: the controller's firmware revision is read over IPMI (`mc info`,
+// read-only), the bundle is fetched only when that revision is the one this unit's facts are keyed
+// on, and the served bytes, their sha256 and the comparison with the 2026-09-27 read are the receipt.
+//
+// ONE READ-ONLY SERVED-FILE OBSERVATION, NOT ONE FILE (eager-owl-205, 2026-09-30). The KVM viewer's
+// /kvm video socket is not in source.min.js -- that bundle's one WebSocket is SOL -- so the mode also
+// reads viewer.html and every script it loads, derived by parsing what was served and followed to
+// closure within a declared budget (served_crawl). Each file is its own receipt row.
+//
+// NOTHING IS WRITTEN TO THE CONTROLLER AND NO WEB SESSION IS OPENED. Every file read is served to the
+// login page's origin before a session exists, so each GET carries no credential (extdeps.bmc.megarac
+// megarac.Ui.GetServedBundle); the only credential this run materializes is the IPMI one `mc info`
+// needs, through the same prelude the fan observation uses. No unit hold is taken: like the fan
+// series, nothing here changes chassis, media or boot state.
+
+// EVERYTHING THE MODE KEEPS SHARES ONE PREFIX, so the upload is one glob: the receipt, and one directory
+// holding every served file, named by its served path with "/" read as "__".
+data mtcollins1_ui_bundle_prefix: String = "target/mtcollins1-ui-bundle-"
+
+data mtcollins1_ui_bundle_artifact_glob: String = concat(mtcollins1_ui_bundle_prefix, "*")
+
+data mtcollins1_ui_bundle_dir: String = concat(mtcollins1_ui_bundle_prefix, "files")
+
+fn mtcollins1_ui_bundle_file_path(served: String) -> String {
+  concat(concat(mtcollins1_ui_bundle_dir, "/"), join(split(s: served, delimiter: "/"), "__"))
+}
+
+data mtcollins1_ui_bundle_receipt_path: String = concat(mtcollins1_ui_bundle_prefix, "receipt.txt")
+
+// THE CRAWL'S BUDGET, A DECLARED POLICY BOUND (DESIGN §5: an explicit budget, never a silent cut): at
+// most this many served files are fetched in one run. The require config the 2026-09-30 read of
+// source.min.js carries names 23 ./libs/kvm/ modules; the budget is room for roughly twice that plus the
+// two seeds. A run that reaches it records a ServedFileBudgetReached row naming every path left unvisited.
+data mtcollins1_ui_bundle_file_budget: Nat = 48
+
+// WHAT THE PROBE'S OWN READS CAN COST AT MOST: the one `mc info` under its timeout and kill-after, then
+// every served GET the budget admits under curl --max-time. The step budget adds gunbc run's load and the
+// credential prelude on the workflow side (gunbc.fleet_converge_workflow), which owns those authorities.
+fn mtcollins1_ui_bundle_read_bound() -> Second {
+  second(count: second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
+    + mtcollins1_ui_bundle_file_budget * second_count(s: megarac_media_read_max_time))
+}
+
+// THE REVISION AS `mc info` PRINTS IT: the value after the colon on the `Firmware Revision` line.
+fn firmware_revision_of_mc_info(stdout: String) -> String? {
+  let lines = filter(split(s: stdout, delimiter: "\n"), l => starts_with(s: trim(s: l), prefix: "Firmware Revision"))
+  match lines.first() {
+    Absent => none
+    Present { value: line } => {
+      let after = split(s: line, delimiter: ":").skip(n: 1)
+      let v = trim(s: join(after, ":"))
+      if v == "" { none } else { Present { value: v } }
+    }
+  }
+}
+
+// THE BUNDLE IS FETCHED ONLY UNDER THE REVISION THE UNIT'S FACTS ARE KEYED ON. Every code this
+// module exists to recover is a 0.32 fact (mtcollins1_firmware); bytes from another build would be
+// read as 0.32's table.
+type UiBundleFirmwareStanding
+  = UiBundleFirmwareExpected { revision: NonEmptyStr }
+  | UiBundleFirmwareDiffers { revision: NonEmptyStr, expected: NonEmptyStr }
+  | UiBundleFirmwareUnread { detail: String }
+
+fn ui_bundle_firmware_standing(success: Bool, stdout: String, exit_code: Int, stderr: String) -> UiBundleFirmwareStanding {
+  if !success {
+    UiBundleFirmwareUnread { detail: join(["ipmitool mc info exited ", to_string(exit_code), ": ", trim(s: stderr)], "") }
+  } else {
+    match firmware_revision_of_mc_info(stdout: stdout) {
+      Absent => UiBundleFirmwareUnread { detail: concat("mc info printed no Firmware Revision line: ", stdout) }
+      Present { value: r } =>
+        if r == (mtcollins1_firmware.raw_version as String) { UiBundleFirmwareExpected { revision: r as NonEmptyStr } }
+        else { UiBundleFirmwareDiffers { revision: r as NonEmptyStr, expected: mtcollins1_firmware.raw_version } }
+    }
+  }
+}
+
+// MATCH OR DRIFT AGAINST THE 2026-09-27 READ, REPORTED AND NEVER A REFUSAL: a different digest is a
+// finding about the served UI, not a failed read.
+type UiBundleDigestComparison
+  = UiBundleDigestMatches
+  | UiBundleDigestDrifted { cited: NonEmptyStr }
+
+fn ui_bundle_digest_comparison(observed: String) -> UiBundleDigestComparison {
+  if observed == (megarac_source_min_js_sha256_2026_09_27 as String) { UiBundleDigestMatches }
+  else { UiBundleDigestDrifted { cited: megarac_source_min_js_sha256_2026_09_27 } }
+}
+
+fn ui_bundle_digest_comparison_text(c: UiBundleDigestComparison) -> String {
+  match c {
+    UiBundleDigestMatches => "MATCH with the 2026-09-27 read"
+    UiBundleDigestDrifted { cited: d } => concat("DRIFT from the 2026-09-27 read, which was ", d as String)
+  }
+}
+
+fn ui_bundle_firmware_text(f: UiBundleFirmwareStanding) -> String {
+  match f {
+    UiBundleFirmwareExpected { revision: r } => concat("firmware revision ", concat(r as String, " (expected)"))
+    UiBundleFirmwareDiffers { revision: r, expected: e } => join(["firmware revision ", r as String, " is NOT the expected ", e as String, "; the bundle was not fetched"], "")
+    UiBundleFirmwareUnread { detail: d } => concat("firmware revision UNREAD, so the bundle was not fetched: ", d)
+  }
+}
+
+// THE RECEIPT IS WRITTEN ON EVERY PATH THAT REACHED THE CONTROLLER, and the exit carries the same
+// sentence, so a refused run's artifact says why it holds no bytes.
+fn ui_bundle_conclude(lines: List<String>, outcome: ProcessExit) -> ProcessExit {
+  let body = join(concat([concat("subject=", mtcollins1_endpoint.host as String), concat("bundle_path=", megarac_ui_bundle_path as String)], lines), "\n")
+  let kept = Filesystem.Write(path: mtcollins1_ui_bundle_receipt_path, content: concat(body, "\n"))
+  if kept.success { outcome } else {
+    match outcome {
+      ExitSuccess => exit_failure(reason: concat("mtcollins1 ui bundle: the bundle was read and its receipt could not be written: ", kept.error))
+      other => other
+    }
+  }
+}
+
+fn ui_bundle_firmware_refused(firmware: UiBundleFirmwareStanding) -> ProcessExit {
+  ui_bundle_conclude(lines: [concat("firmware=", ui_bundle_firmware_text(f: firmware))], outcome: exit_failure(reason: concat("mtcollins1 ui bundle: ", ui_bundle_firmware_text(f: firmware))))
+}
+
+// ── THE SERVED FILES, DERIVED RATHER THAN LISTED (operator rule: no hardcoded lists) ─────────────────
+// Two seeds: source.min.js, the UI bundle (still compared with the 2026-09-27 read), and viewer.html,
+// the H5 viewer the UI opens with window.open. Every further path is PARSED out of a file already
+// fetched: an HTML file's <script src> and data-main, and a script's "./libs/kvm/..." references (the
+// require config's KVM modules and the decode worker it constructs) -- followed to closure within
+// mtcollins1_ui_bundle_file_budget. Fleet-converge run 36779479938 loaded viewer.html and never opened
+// /kvm; these are the bytes that say what the viewer needs first.
+data mtcollins1_ui_bundle_seed_found_by: String = "seed"
+
+type ServedRef {
+  path: String
+  found_by: String
+}
+
+data mtcollins1_ui_bundle_seeds: List<ServedRef> = [
+  ServedRef { path: "source.min.js", found_by: mtcollins1_ui_bundle_seed_found_by },
+  ServedRef { path: "viewer.html", found_by: mtcollins1_ui_bundle_seed_found_by },
+]
+
+// A reference as the page wrote it, as a path under the controller's root: "./" and "/" prefixes
+// dropped, a query or fragment cut; a reference to another origin is not a served path of this
+// controller and is kept as such, never fetched.
+type ServedRefReading
+  = ServedRefLocal { path: String }
+  | ServedRefOtherOrigin { reference: String }
+  | ServedRefEmpty
+
+fn served_ref_reading(reference: String) -> ServedRefReading {
+  let r = trim(s: reference)
+  if starts_with(s: r, prefix: "http://") || starts_with(s: r, prefix: "https://") || starts_with(s: r, prefix: "//") { ServedRefOtherOrigin { reference: r } }
+  else {
+    let no_query = match split(s: r, delimiter: "?").first() { Present { value: p } => p  Absent => "" }
+    let no_frag = match split(s: no_query, delimiter: "#").first() { Present { value: p } => p  Absent => "" }
+    let dotless = if starts_with(s: no_frag, prefix: "./") { substring(s: no_frag, start: 2, end: string_length(no_frag)) } else { no_frag }
+    let rooted = if starts_with(s: dotless, prefix: "/") { substring(s: dotless, start: 1, end: string_length(dotless)) } else { dotless }
+    if rooted == "" { ServedRefEmpty } else { ServedRefLocal { path: rooted } }
+  }
+}
+
+// The value of attribute `name` in a tag's text, double- or single-quoted.
+fn html_attribute(tag: String, name: String) -> String? {
+  let dq = split(s: tag, delimiter: concat(name, "=\"")).skip(n: 1).first()
+  match dq {
+    Present { value: rest } => split(s: rest, delimiter: "\"").first()
+    Absent =>
+      match split(s: tag, delimiter: concat(name, "='")).skip(n: 1).first() {
+        Present { value: rest } => split(s: rest, delimiter: "'").first()
+        Absent => none
+      }
+  }
+}
+
+// AN HTML FILE'S SCRIPTS: every <script ...> tag's src and data-main (require.js's entry module, which it
+// loads as "<data-main>.js").
+fn served_html_references(html: String) -> List<String> {
+  flat_map(split(s: html, delimiter: "<script").skip(n: 1), tag_rest => {
+    let tag = match split(s: tag_rest, delimiter: ">").first() { Present { value: x } => x  Absent => "" }
+    let src = match html_attribute(tag: tag, name: "src") { Present { value: s } => [s]  Absent => [] }
+    let main = match html_attribute(tag: tag, name: "data-main") { Present { value: m } => [js_module_file(reference: m)]  Absent => [] }
+    concat(src, main)
+  })
+}
+
+// A require.js module id names "<id>.js"; a reference already naming a file keeps its name.
+fn js_module_file(reference: String) -> String {
+  if ends_with(s: reference, suffix: ".js") { reference } else { concat(reference, ".js") }
+}
+
+data served_kvm_library_prefix: String = "./libs/kvm/"
+
+// A SCRIPT'S KVM LIBRARIES: every string literal beginning "./libs/kvm/", in either quote.
+fn served_js_references_quoted(js: String, q: String) -> List<String> {
+  map(split(s: js, delimiter: concat(q, served_kvm_library_prefix)).skip(n: 1), rest => {
+    let name = match split(s: rest, delimiter: q).first() { Present { value: n } => n  Absent => "" }
+    js_module_file(reference: concat(served_kvm_library_prefix, name))
+  })
+}
+
+fn served_js_references(js: String) -> List<String> {
+  concat(served_js_references_quoted(js: js, q: "\""), served_js_references_quoted(js: js, q: "'"))
+}
+
+fn served_references(path: String, text: String) -> List<String> {
+  if ends_with(s: path, suffix: ".html") || ends_with(s: path, suffix: ".htm") { served_html_references(html: text) }
+  else if ends_with(s: path, suffix: ".js") { served_js_references(js: text) }
+  else { [] }
+}
+
+// ONE ROW PER FILE, TYPED; nothing is dropped. A fetched file carries its HTTP status, size and sha256
+// (and source.min.js its comparison with the 2026-09-27 read); a failed GET, an undigestable or
+// undecodable file, a reference to another origin and the budget's edge are each their own row.
+type ServedFileRow
+  = ServedFileFetched { path: String, found_by: String, http: String, size: String, sha256: String, kept_at: String }
+  | ServedFileGetFailed { path: String, found_by: String, detail: String }
+  | ServedFileUndigested { path: String, found_by: String, detail: String }
+  | ServedFileUnparsed { path: String, found_by: String, detail: String }
+  | ServedFileOtherOrigin { reference: String, found_by: String }
+  | ServedFileBudgetReached { budget: Int, unvisited: List<String> }
+
+fn served_file_row_text(r: ServedFileRow) -> String {
+  match r {
+    ServedFileFetched { path: p, found_by: f, http: h, size: s, sha256: d, kept_at: k } =>
+      join([
+        "file path=/", p, " http=", h, " size=", s, " sha256=", d, " found_by=", f, " kept=", k,
+        if p == "source.min.js" { concat(" comparison=", ui_bundle_digest_comparison_text(c: ui_bundle_digest_comparison(observed: d))) } else { "" },
+      ], "")
+    ServedFileGetFailed { path: p, found_by: f, detail: d } => join(["file path=/", p, " GET FAILED found_by=", f, " detail=", d], "")
+    ServedFileUndigested { path: p, found_by: f, detail: d } => join(["file path=/", p, " fetched but NOT DIGESTED found_by=", f, " detail=", d], "")
+    ServedFileUnparsed { path: p, found_by: f, detail: d } => join(["file path=/", p, " fetched and digested but NOT PARSED for references found_by=", f, " detail=", d], "")
+    ServedFileOtherOrigin { reference: r2, found_by: f } => join(["reference ", r2, " is another origin; not fetched found_by=", f], "")
+    ServedFileBudgetReached { budget: b, unvisited: u } => join(["BUDGET REACHED at ", to_string(b), " files; unvisited: ", join(u, " ")], "")
+  }
+}
+
+fn served_path_seen(seen: List<String>, path: String) -> Bool {
+  any(seen, s => s == path)
+}
+
+// ONE SERVED FILE: GET as served, digest, then decode (gzip or not) and parse its references.
+type ServedFetch {
+  rows: List<ServedFileRow>
+  refs: List<String>
+}
+
+fn served_fetch(item: ServedRef) -> ServedFetch {
+  let dest = mtcollins1_ui_bundle_file_path(served: item.path)
+  let got = megarac.Ui.GetServedBundle(
+    bmc_host: mtcollins1_endpoint.host,
+    bundle_path: concat("/", item.path) as NonEmptyStr,
+    dest_file: dest as NonEmptyStr,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let words = split(s: trim(s: got.writeout), delimiter: " ")
+  let http = match words.first() { Present { value: w } => w  Absent => "" }
+  let size = match words.skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+  if !got.success {
+    return ServedFetch { rows: [ServedFileGetFailed { path: item.path, found_by: item.found_by, detail: join(["exit ", to_string(got.exit_code), " http=", http, " ", trim(s: got.stderr)], "") }], refs: [] }
+  }
+  let digest = sha256sum.Sha256.DigestFile(path: dest as NonEmptyStr)
+  let observed = match split(s: trim(s: digest.line), delimiter: " ").first() { Present { value: d } => d  Absent => "" }
+  if !digest.success || observed == "" {
+    return ServedFetch { rows: [ServedFileUndigested { path: item.path, found_by: item.found_by, detail: digest.line }], refs: [] }
+  }
+  let fetched = ServedFileFetched { path: item.path, found_by: item.found_by, http: http, size: size, sha256: observed, kept_at: dest }
+  let decoded = gzip.Gzip.DecodeToStdout(path: dest as NonEmptyStr)
+  if !decoded.success {
+    return ServedFetch { rows: [fetched, ServedFileUnparsed { path: item.path, found_by: item.found_by, detail: join(["gzip exit ", to_string(decoded.exit_code), " ", trim(s: decoded.stderr)], "") }], refs: [] }
+  }
+  ServedFetch { rows: [fetched], refs: served_references(path: item.path, text: decoded.text) }
+}
+// THE CRAWL: a worklist in discovery order, each served path fetched once, every reference classified,
+// and the budget's edge recorded with what it left unvisited. `remaining` is the budget still unspent.
+fn served_crawl(queue: List<ServedRef>, seen: List<String>, rows: List<ServedFileRow>, remaining: Int) -> List<ServedFileRow> {
+  match queue.first() {
+    Absent => rows
+    Present { value: item } => {
+      let rest = queue.skip(n: 1)
+      if served_path_seen(seen: seen, path: item.path) { return served_crawl(queue: rest, seen: seen, rows: rows, remaining: remaining) }
+      if remaining <= 0 {
+        let unvisited = fold(queue, [], (acc, q) => if served_path_seen(seen: seen, path: q.path) || any(acc, a => a == q.path) { acc } else { list_append(acc, q.path) })
+        return list_append(rows, ServedFileBudgetReached { budget: mtcollins1_ui_bundle_file_budget as Int, unvisited: unvisited })
+      }
+      let fetched = served_fetch(item: item)
+      let readings = map(fetched.refs, r => served_ref_reading(reference: r))
+      let local = flat_map(readings, x => match x { ServedRefLocal { path: p } => [ServedRef { path: p, found_by: item.path }]  _ => [] })
+      let foreign = flat_map(readings, x => match x { ServedRefOtherOrigin { reference: r } => [ServedFileOtherOrigin { reference: r, found_by: item.path }]  _ => [] })
+      served_crawl(queue: concat(rest, local), seen: list_append(seen, item.path), rows: concat(concat(rows, fetched.rows), foreign), remaining: remaining - 1)
+    }
+  }
+}
+
+fn served_seed_fetched(rows: List<ServedFileRow>, seed: String) -> Bool {
+  any(rows, r => match r { ServedFileFetched { path: p, found_by: _, http: _, size: _, sha256: _, kept_at: _ } => p == seed  _ => false })
+}
+
+fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEmptyStr) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_ui_bundle_observe", decl_name: "mtcollins1_ui_bundle_observe_wet"),
+  ]
+{
+  let mc = diagnostic.ipmi.Tool.McInfo(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  let firmware = ui_bundle_firmware_standing(success: mc.success, stdout: mc.stdout, exit_code: mc.exit_code, stderr: mc.transport_stderr)
+  let fw_line = concat("firmware=", ui_bundle_firmware_text(f: firmware))
+  match firmware {
+    UiBundleFirmwareExpected { revision: _ } => {}
+    UiBundleFirmwareDiffers { revision: _, expected: _ } => return ui_bundle_firmware_refused(firmware: firmware)
+    UiBundleFirmwareUnread { detail: _ } => return ui_bundle_firmware_refused(firmware: firmware)
+  }
+  let made = shell.Mkdir.Parents(path: mtcollins1_ui_bundle_dir as FilePath)
+  if !made.success {
+    return ui_bundle_conclude(lines: [fw_line], outcome: exit_failure(reason: concat("mtcollins1 ui bundle: the file directory could not be made: ", mtcollins1_ui_bundle_dir)))
+  }
+  let rows = served_crawl(queue: mtcollins1_ui_bundle_seeds, seen: [], rows: [], remaining: mtcollins1_ui_bundle_file_budget as Int)
+  let lines = concat([fw_line], map(rows, r => served_file_row_text(r: r)))
+  let missing_seeds = filter(map(mtcollins1_ui_bundle_seeds, s => s.path), p => !served_seed_fetched(rows: rows, seed: p))
+  if count(missing_seeds) > 0 {
+    ui_bundle_conclude(lines: lines, outcome: exit_failure(reason: concat("mtcollins1 ui bundle: a seed was not fetched: ", join(missing_seeds, " "))))
+  } else {
+    ui_bundle_conclude(lines: lines, outcome: ExitSuccess)
+  }
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING, exactly as the fan observation's.
+fn mtcollins1_ui_bundle_observe_wet() -> ProcessExit
+{
+  match managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint) {
+    Absent => exit_failure(reason: "mtcollins1 ui bundle: the managed host does not bind (not BmcSecured, or its observed controller is not the secured one), so this run holds no account to read the firmware revision with; contacting NO host")
+    Present { value: username } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset => exit_failure(reason: join(["mtcollins1 ui bundle: no ", mtcollins1_fan_credential_path_env as String, " in the environment; contacting NO host"], ""))
+        FanCredentialPathEmpty => exit_failure(reason: join(["mtcollins1 ui bundle: ", mtcollins1_fan_credential_path_env as String, " is set but empty; contacting NO host"], ""))
+        FanCredentialPathReady { path: p } => mtcollins1_ui_bundle_observe_with(username: username, password_file: p)
+      }
+  }
+}

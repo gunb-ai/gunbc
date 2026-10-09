@@ -1,0 +1,65 @@
+module test.claim.generic_optional_type_application_witness
+
+import gunbc.compile_census_probe { blocking_class_count_for }
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A GENERIC `T?` INSTANTIATED WITH A TYPE APPLICATION KEEPS ITS OPTIONAL.
+//
+// gunbc.recurring_failure_mode generic_optional_over_a_type_application_argument_loses_the_optional.
+// v1 records `?` as the cardinality ON the slot's type node, and generic substitution replaced a
+// bare slot `L` with its argument node wholesale -- so `L?` came out as the argument with the
+// argument's own cardinality, i.e. without the optional. Both substitutions (infer
+// substitute_generics_apply, resolve substitute_type_slots_scoped) now carry the slot's cardinality
+// onto what replaces it through preserve_outer_optional_cardinality, the existing authority for
+// that move.
+//
+// Each source defines its alias LOCALLY (`GoNatLike = GoRing<GoMag>`), the same shape as
+// `Nat = CommutativeSemiring<Magnitude>`, so the fixture reaches no production module and the
+// class count is the fixture's own. Every red is paired with the shape that must still pass, and
+// the refusal control proves the census still sees VariantNotFound here at all.
+
+data variant_not_found_class: String = "VariantNotFound"
+
+data alias_decls: String = "type GoRing<M> { m: M }\ntype GoMag { v: Int }\ntype GoNatLike = GoRing<GoMag>\ntype GoHolder<L> { last: L? }\ntype GoOuter = GoOuterHas { inner: GoHolder<GoNatLike> } | GoOuterNone\n"
+
+// THE ORIGINAL SIGHTING: the optional field of a generic record at an alias argument, reached
+// through an outer constructor's field pattern. Refused `variant 'Present' not found in type 'Nat'`.
+data nested_alias_source: String = concat("module probe_go_nested_alias\n", concat(alias_decls, "fn f(o: GoOuter) -> Bool {\n  match o {\n    GoOuterHas { inner: GoHolder { last: l } } => match l { Present { value: _ } => true, Absent => false }\n    GoOuterNone => false\n  }\n}\n"))
+
+// THE SAME FIELD BOUND DIRECTLY ON A PARAMETER. Also refused before the fix -- the trigger is the
+// argument, not the nesting.
+data direct_alias_source: String = concat("module probe_go_direct_alias\n", concat(alias_decls, "fn f(h: GoHolder<GoNatLike>) -> Bool {\n  match h { GoHolder { last: l } => match l { Present { value: _ } => true, Absent => false } }\n}\n"))
+
+// THE RETURNED-OPTIONAL PATH: a generic helper returning `T?` over a generic record argument (the
+// first_duplicate_by_key sighting). No alias is involved.
+data returned_optional_source: String = "module probe_go_returned\ntype GoBox<K> { k: K }\nfn go_wrap<T>(x: T) -> T? { Present { value: x } }\nfn f(b: GoBox<Int>) -> Bool {\n  match go_wrap(x: b) { Present { value: _ } => true, Absent => false }\n}\n"
+
+// THE PRIMITIVE CONTROL: the nested shape at `Int`, which always kept the optional.
+data nested_int_source: String = "module probe_go_nested_int\ntype GoHolder<L> { last: L? }\ntype GoOuter = GoOuterHas { inner: GoHolder<Int> } | GoOuterNone\nfn f(o: GoOuter) -> Bool {\n  match o {\n    GoOuterHas { inner: GoHolder { last: l } } => match l { Present { value: _ } => true, Absent => false }\n    GoOuterNone => false\n  }\n}\n"
+
+// THE REFUSAL CONTROL: a NON-optional field at the same alias argument must still refuse both
+// arms. Without it, a census that stopped reporting the class would green every row above.
+data required_alias_source: String = concat("module probe_go_required_alias\n", concat(alias_decls, "type GoReq<L> { v: L }\nfn f(h: GoReq<GoNatLike>) -> Bool {\n  match h { GoReq { v: l } => match l { Present { value: _ } => true, Absent => false } }\n}\n"))
+
+test fn a_nested_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool {
+  blocking_class_count_for(source: nested_alias_source, wanted_class: variant_not_found_class) == 0
+}
+
+test fn a_directly_bound_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool {
+  blocking_class_count_for(source: direct_alias_source, wanted_class: variant_not_found_class) == 0
+}
+
+test fn a_generic_optional_returned_over_a_generic_record_admits_present_and_absent() -> Bool {
+  blocking_class_count_for(source: returned_optional_source, wanted_class: variant_not_found_class) == 0
+}
+
+test fn the_nested_shape_at_a_primitive_argument_still_admits_present_and_absent() -> Bool {
+  blocking_class_count_for(source: nested_int_source, wanted_class: variant_not_found_class) == 0
+}
+
+test fn a_required_field_at_an_alias_argument_still_refuses_both_arms() -> Bool {
+  blocking_class_count_for(source: required_alias_source, wanted_class: variant_not_found_class) == 2
+}

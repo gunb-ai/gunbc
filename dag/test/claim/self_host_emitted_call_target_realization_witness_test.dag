@@ -110,12 +110,17 @@ test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> 
 // "invalid type: map, expected unit struct BoolEncodingFact", measured 2026-09-08 on the native
 // run of the emitted 00_compile closure (v2.std.logic bool_primitive_facts). The value side now
 // spells the zero-field record `null`; this row reds if the map spelling returns.
+//
+// THE ROUTE, NOT ONLY THE DOCUMENT. This row and the three below match the JSON document as it
+// reaches rustc: since #12219 the document is realized as an escaped Rust string literal handed to
+// `serde_json::from_str` (emit_data_def_body), so its quotes arrive as `\"`. Matching the bare JSON
+// text went permanently red at that change, and its excludes went permanently vacuous.
 test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.fieldless_record_json_probe\ntype Marker {}\ntype Holder {\n  marker: Marker\n}\ndata probe: Holder = Holder { marker: Marker {} }\n",
     "src/test_claim_fieldless_record_json_probe.rs",
-    ["pub struct Marker;", "\"marker\": null"],
-    ["\"marker\": {}"]
+    ["pub struct Marker;", "serde_json::from_str(\"{\\\"marker\\\": null}\")"],
+    ["\\\"marker\\\": {}"]
   )
 }
 
@@ -126,8 +131,8 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.nonempty_record_json_probe\nimport std.types { String }\ntype Holder {\n  name: String\n}\ndata probe: Holder = Holder { name: \"kept\" }\n",
     "src/test_claim_nonempty_record_json_probe.rs",
-    ["\"name\": \"kept\""],
-    ["\"name\": null"]
+    ["serde_json::from_str(\"{\\\"name\\\": \\\"kept\\\"}\")"],
+    ["\\\"name\\\": null"]
   )
 }
 
@@ -143,14 +148,14 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
 // build_data_variant_wire_spellings), which this pair of rows now pins. The probe forces the JSON
 // path (the Holder record nests Marker) and constructs the fieldless variant with braces; the
 // bare spelling never reaches the arm (an ExprVar routes the whole value to direct construction
-// via data_value_has_cross_refs). It reds if the tag map is lost, and if the former
+// via data_value_is_json_literal_tree). It reds if the tag map is lost, and if the former
 // mis-serializations (null, or the compile_error! refusal) return.
 test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_spelling_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
     "src/test_claim_variant_json_spelling_probe.rs",
-    ["{\"e\": {\"_variant\": \"A\"}, \"m\": null}"],
-    ["compile_error!", "\"e\": null"]
+    ["serde_json::from_str(\"{\\\"e\\\": {\\\"_variant\\\": \\\"A\\\"}, \\\"m\\\": null}\")"],
+    ["compile_error!", "\\\"e\\\": null"]
   )
 }
 
@@ -166,8 +171,8 @@ test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_fielded_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: B { x: 3 }, m: Marker {} }\n",
     "src/test_claim_variant_json_fielded_probe.rs",
-    ["{\"e\": {\"_variant\": \"B\", \"x\": 3}, \"m\": null}"],
-    ["compile_error!", "\"e\": {\"x\": 3}"]
+    ["serde_json::from_str(\"{\\\"e\\\": {\\\"_variant\\\": \\\"B\\\", \\\"x\\\": 3}, \\\"m\\\": null}\")"],
+    ["compile_error!", "\\\"e\\\": {\\\"x\\\": 3}"]
   )
 }
 
@@ -195,30 +200,42 @@ test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool {
 // it -- but the qualified use-line route asked the leaf index, saw LeafAmbiguous, and declined to
 // synthesize any line, leaving the bare leaf unimported in the emitted file. Measured on the
 // native 00_compile closure build as eight E0425/E0433 `Nat` sites in v2_lens_fact_density.rs,
-// which references v2.std.nat.Nat qualified while the std.nat alias co-resides in the closure.
+// which referenced v2.std.nat.Nat qualified while the std.nat alias co-resided in the closure (before the Nat de-fork).
 //
 // HOW THE DOTTED SPELLING REACHES THE ROUTE constrained the probe shape, because a signature
-// annotation alone does NOT produce it: the resolver binds `n: v2.std.nat.Nat` to the declaration
+// annotation alone does NOT produce it: the resolver binds a qualified `n: <module>.<Type>` annotation to the declaration
 // node and the surface walk collects the bare leaf (measured: a signature-only probe delivered no
 // dotted name). The dotted spelling enters through the VALUE surface -- a qualified value
-// projection (`v2.std.nat.Zero` as match scrutinee) takes its inferred type from
+// projection (`test.fixture.structural_peano_nat.StructuralZero` as match scrutinee) takes its inferred type from
 // qualify_borrowed_type_names, whose borrowed view carries the qualified name, and
 // annotate_pattern_parent_enums stamps that spelling as the patterns' parent_enum, which
 // collect_pattern_ref_names emits. That is the fact_density chain in miniature. The record-lit
-// head contributes the dotted VARIANT `v2.std.nat.Succ` to the same route, so the exclude half
+// head contributes the dotted VARIANT `test.fixture.structural_peano_nat.StructuralSucc` to the same route, so the exclude half
 // pins the E0603 boundary: the variant must still be declined (it is not a type the qualifier
 // declares), or the route re-opens the sixteen-site false-import class its comment records.
 // The pool admits a module only through an import edge, so
-// test.fixture.nat_qualified_provider holds the v2.std.nat edge while std.nat is imported
-// directly; both Nat declarers co-reside and the leaf is globally ambiguous, exactly the closure
+// test.fixture.nat_qualified_provider holds the test.fixture.structural_peano_nat edge while std.nat is imported
+// directly; before the de-fork both Nat declarers co-resided and the leaf is globally ambiguous, exactly the closure
 // condition the fix answers. It reds if the qualifier stops resolving the ambiguity, and if the
 // variant leaf starts being imported.
+//
+// WHAT THIS ROW NO LONGER REACHES, stated because the Nat de-fork (operator ruling A, 2026-09-30)
+// removed its specimen rather than its bug. The leaf was ambiguous only because two corpus
+// declarations were spelled Nat; there is one now, and the fixture that replaces v2.std.nat
+// deliberately does not share a spelling with std.nat (a second Nat would re-create the fork). So
+// the qualified reference here resolves UNAMBIGUOUSLY and its use line arrives by the ordinary
+// specific-import rendering (the braced form below), not by the ambiguity-resolving qualified
+// route. The exclude half -- the variant leaf is never imported -- still pins the E0603 boundary.
+// The AMBIGUOUS arm is currently unreached by any corpus homonym of this shape: a Bool re-subject
+// (std.types Bool against v2.std.logic Bool) was measured and resolves to the kernel Bool, so it
+// does not reach the arm either. The arm's next specimen is whichever std/v2.std homonym survives
+// the integer-family de-forks; until then this row is a control for the unambiguous route only.
 test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> v2.std.nat.Nat {\n  match v2.std.nat.Zero {\n    v2.std.nat.Zero => v2.std.nat.Zero\n    v2.std.nat.Succ { prev: p } => v2.std.nat.Succ { prev: p }\n  }\n}\n",
+    "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> test.fixture.structural_peano_nat.StructuralNat {\n  match test.fixture.structural_peano_nat.StructuralZero {\n    test.fixture.structural_peano_nat.StructuralZero => test.fixture.structural_peano_nat.StructuralZero\n    test.fixture.structural_peano_nat.StructuralSucc { prev: p } => test.fixture.structural_peano_nat.StructuralSucc { prev: p }\n  }\n}\n",
     "src/test_claim_qualified_leaf_disambiguation_probe.rs",
-    ["pub use crate::v2_std_nat::Nat;", "pub fn probe() -> Rc<Nat>"],
-    ["pub use crate::v2_std_nat::Succ;"]
+    ["pub use crate::test_fixture_structural_peano_nat::\{StructuralNat};", "pub fn probe() -> Rc<StructuralNat>"],
+    ["pub use crate::test_fixture_structural_peano_nat::StructuralSucc;", "StructuralSucc};", "StructuralSucc, "]
   )
 }
 
@@ -337,10 +354,10 @@ test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
 // been green throughout the defect; this asserts the call reaches the realization.
 test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_symbol_lexeme_probe.rs",
     ["v1_rt::symbol_lexeme("],
-    ["crate::v2_std_compilers_lexing::symbol_lexeme("]
+    ["crate::v2_std_node::symbol_lexeme("]
   )
 }
 
@@ -418,7 +435,7 @@ test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_
 // bridge, and ordinary emission writes the delegation by itself.
 test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_realized_seam_probe.rs",
     ["v1_rt::symbol_lexeme("],
     ["has no realization for this target"]
@@ -506,7 +523,7 @@ test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
 // is the carrier authority and must be what the arm falls back to.
 test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
+    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list }\nimport std.algebra { list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
     "src/test_claim_witness_carrier_probe.rs",
     ["Witness::<"],
     ["UNRESOLVED_CompilerError"]
@@ -608,15 +625,15 @@ test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
   )
 }
 
-// QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `v2.std.nat.Succ { prev: .. }` is a variant record
+// QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `test.fixture.structural_peano_nat.StructuralSucc { prev: .. }` is a variant record
 // literal; the value route imports it through its parent enum, and this route must synthesize
 // nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
 test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_variant_head_probe\nimport v2.std.nat { Nat, Zero }\nfn probe() -> Nat { v2.std.nat.Succ { prev: Zero } }\n",
+    "module test.claim.qualified_variant_head_probe\nimport test.fixture.structural_peano_nat { StructuralNat, StructuralZero }\nfn probe() -> StructuralNat { test.fixture.structural_peano_nat.StructuralSucc { prev: StructuralZero } }\n",
     "src/test_claim_qualified_variant_head_probe.rs",
-    ["Succ"],
-    ["use crate::v2_std_nat::Succ;"]
+    ["StructuralSucc"],
+    ["use crate::test_fixture_structural_peano_nat::StructuralSucc;"]
   )
 }
 
@@ -686,16 +703,40 @@ test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
   )
 }
 
-// SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
-// the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
-// name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
-// realization in this target and must emit the generated refusal body naming the seam. The realized
-// arm has no positive control here because no source in the corpus spells a receiver the signature
-// authority accepts; that absence is recorded in rust_unrealized_service_op_refusal's note.
-test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+// A SERVICE OP REACHED THROUGH ITS BARE NAME IS REALIZED, AND THE TWO AUTHORITIES AGREE. This row
+// was the discriminating red for the opposite outcome: `Filesystem.Read(path:)` inside a fn the
+// signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound name in
+// a non-async fn -- and the method-call arm was taught to emit the "unrealized host seam" refusal
+// instead. The fn was only judged service-free because a service imported by its BARE name never
+// reached derived service demand (gunbc.recurring_failure_mode
+// bare_imported_service_invisible_to_derived_demand): the scope fold made `Filesystem` a local, and
+// the signature authority never saw the call. With that repaired, the fn IS effectful by derivation,
+// the signature makes it `async` and binds the service as a parameter, and the method-call arm asks
+// the same predicate and realizes the call against that binding. So the row flips from the refusal to
+// the realized arm's positive control, which its note recorded as not authorable until now, and it
+// still discriminates: before the repair this exact source emitted the refusal this row excludes.
+// The refusal it used to pin keeps a source-authorable input, and the next row enrolls it.
+test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
     "src/test_claim_service_op_probe.rs",
+    ["pub async fn probe(", "filesystem: &Filesystem", "filesystem.read(path.clone()).await?"],
+    ["unrealized host seam"]
+  )
+}
+
+// THE REFUSAL ARM'S DISCRIMINATING RED, still authorable and so still enrolled (DESIGN 4b). The stamp
+// follows the service's NAME: a bare `Filesystem` is its registered root local and is stamped, but
+// `let fs = Filesystem` copies the nominal service TYPE onto a different name, and `fs.Read(...)`
+// then carries service method semantics (read from the receiver's type) through a receiver that is
+// an ordinary local. Derived demand does not see that call, so the fn is judged service-free and the
+// method-call arm, asking the same predicate as the signature, declines to realize it and emits the
+// refusal body -- a loud, located refusal, never an unbound `.await?`. The row asserts exactly that,
+// so an emitter that realized the call against a binding the signature never made would turn it red.
+test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.service_alias_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String {\n  let fs = Filesystem\n  let read = fs.Read(path: path)\n  read.content\n}\n",
+    "src/test_claim_service_alias_probe.rs",
     ["unrealized host seam: service op Filesystem.Read"],
     [".await?"]
   )
@@ -717,6 +758,22 @@ test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwr
   )
 }
 
+// A FUNCTION VALUE IS NOT AN OPTIONAL ARGUMENT. A typed lambda node carries its BODY's type, so a
+// lambda returning `String?` passed to `fn(String) -> T` read as an optional flowing into a
+// required parameter and earned the unwrap -- appended to the lambda, where Rust parses it into
+// the closure body, turning a closure that must return Option<String> into one returning String
+// (E0308 at std.materialization_object store_object_line_malformed_text and store_lookup_payload).
+// The `end: none` argument is the positive control in the same call: a bare type-variable
+// parameter was already declined, so the row reds only on the callable arm.
+test fn w_optional_returning_lambda_argument_is_not_unwrapped_as_an_optional_value() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_lambda_probe\nimport std.types { String, Bool }\nfn pick<T>(flag: Bool, hit: fn(String) -> T, miss: T) -> T { if flag { hit(\"x\") } else { miss } }\nfn probe(flag: Bool) -> String? { pick(flag: flag, hit: t => Present { value: t }, miss: none) }\n",
+    "src/test_claim_optional_lambda_probe.rs",
+    ["|t| Some(t.clone())"],
+    [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
+  )
+}
+
 // The shared-field accessor returns T by value from &self; without T: Clone on its impl rustc
 // clones the reference.
 test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool {
@@ -732,7 +789,7 @@ test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bo
 // exactly as a shared enum's variant pattern is, so the pattern must meet the value, not the Rc.
 test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.record_pattern_probe\nimport std.types { Int }\nimport v2.std.collection { List }\ntype Rec { tag: Int, items: List<Int> }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { tag: x, items: _ } => x } }\n",
+    "module test.claim.record_pattern_probe\nimport std.types { Int, List }\ntype Rec { tag: Int, items: List<Int> }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { tag: x, items: _ } => x } }\n",
     "src/test_claim_record_pattern_probe.rs",
     ["Rec { tag: x, .. } => x.clone()"],
     ["match ident(r.clone()) {"]
@@ -794,7 +851,7 @@ test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
 // (`if matches!(label.as_ref(), ..)` on every arm) is invisible to rustc's exhaustiveness check.
 test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.grouped_record_arms_probe\nimport std.types { Int, String }\nimport v2.std.collection { List }\ntype LblX = NamedX { name: String, items: List<Int> } | PositionalX\ntype EdgeX { label: LblX, target: Int }\nfn probe(e: EdgeX) -> Int { match e { EdgeX { label: NamedX { name: _, items: _ }, target: t } => t  EdgeX { label: PositionalX, target: _ } => 0 } }\n",
+    "module test.claim.grouped_record_arms_probe\nimport std.types { Int, String, List }\ntype LblX = NamedX { name: String, items: List<Int> } | PositionalX\ntype EdgeX { label: LblX, target: Int }\nfn probe(e: EdgeX) -> Int { match e { EdgeX { label: NamedX { name: _, items: _ }, target: t } => t  EdgeX { label: PositionalX, target: _ } => 0 } }\n",
     "src/test_claim_grouped_record_arms_probe.rs",
     ["match label.as_ref() {"],
     ["if matches!(label.as_ref()"]
@@ -830,7 +887,7 @@ test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scal
 // key function; the element-type-unknown arm used to drop the key and compare elements directly.
 test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.generic_sort_probe\nimport std.types { Int }\nimport v2.std.collection { List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
+    "module test.claim.generic_sort_probe\nimport std.types { Int, List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
     "src/test_claim_generic_sort_probe.rs",
     ["let __ka = ("],
     ["a.partial_cmp(b)"]
@@ -852,7 +909,7 @@ test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -
 // `|x: T|`): a `_` annotation on an immediately-applied key closure is uninferable (E0282).
 test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.generic_sort_typed_probe\nimport std.types { Int }\nimport v2.std.collection { List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
+    "module test.claim.generic_sort_typed_probe\nimport std.types { Int, List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
     "src/test_claim_generic_sort_typed_probe.rs",
     ["|a: &T, b: &T|"],
     ["|x: _|"]
@@ -902,20 +959,20 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
 
 // REALIZATION IDENTITY FOR list_append'S CONCAT ROUTING. The probe CALLS production
 // list_append (the length-sibling pattern: the probe file must reach the declaration, not
-// inline a concat). The body surface is src/v2_std_algebra.rs: algebra.dag has one concat
-// call, list_append's `left |> concat(right)`, so a revert to fold_list_right drops
-// `v1_rt::concat` from that file. fold_list_right stays elsewhere in algebra, so it is not
-// a whole-file exclude. Not a doubling-ratio timing witness: both arms are linear.
+// inline a concat). list_append lives in std.algebra (dag/std/algebra.dag, beside FreeMonoid;
+// gunbc#12208 moved it from v2.std.algebra), so the body surface is src/std_algebra.rs: that
+// module has one concat call, list_append's `left |> concat(right)`, so a revert to
+// fold_list_right drops `v1_rt::concat` from that file. Not a doubling-ratio timing witness: both arms are linear.
 test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
-  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
+  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
   compile_dag_rust_emit_check(
     source,
     "src/test_claim_list_append_concat_probe.rs",
-    ["crate::v2_std_algebra::list_append("],
+    ["crate::std_algebra::list_append("],
     ["v1_rt::concat", "fold_list_right"]
   ) && compile_dag_rust_emit_check(
     source,
-    "src/v2_std_algebra.rs",
+    "src/std_algebra.rs",
     ["v1_rt::concat"],
     []
   )

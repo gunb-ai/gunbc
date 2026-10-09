@@ -1,10 +1,43 @@
 module std.nat
+import std.optional { Present }
 
-import std.types { List }
-import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
-import std.magnitude { Magnitude }
+import std.types { List, Bool }
+import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }
 
-type Nat = CommutativeSemiring<Magnitude>
+// THE NATURALS, DECLARED AS WHAT THEY ARE (operator ruling A, 2026-09-30). The carrier is the
+// accepted inductive definition -- zero, and the successor of a natural -- and it is the ONLY
+// declaration of Nat in the corpus. It used to be two: this module's
+// `CommutativeSemiring<Magnitude>` over an opaque, constructorless Magnitude (a name standing where
+// a definition was available, DESIGN section 2), and v2.std.nat's Peano coproduct. The semiring is
+// not the carrier's body; it is something the carrier INHABITS (nat_semiring below, and the
+// std.algebra carrier row the operators derive from).
+//
+// THE HOST REPRESENTATION IS A REALIZATION FACT, NOT A REASON FOR AN OPAQUE CARRIER (DESIGN section
+// 3). gunbc.structural_realization_bindings kernel_grounding_rows binds this declaration to the
+// kernel integer, and the seed folds every Zero and Succ -- constructed or matched -- into integer
+// form before any realizer reads the tree (v1.compiler.infer ground_kernel_views). No route builds
+// a unary tower, so the operations below are written with the host operators and cost what an
+// integer operation costs; only nat_cata, whose meaning IS n applications, is linear in n.
+type Nat
+  = Zero
+  | Succ { prev: Nat }
+
+// THE ELIMINATOR: succ applied n times to zero. Accumulating, so the recursion is a tail call and
+// its depth does not grow with n.
+fn nat_cata<A>(n: Nat, zero: A, succ: fn(A) -> A) -> A {
+  match n {
+    Zero => zero
+    Succ { prev: p } => nat_cata(n: p, zero: succ(zero), succ: succ)
+  }
+}
+
+fn nat_add(a: Nat, b: Nat) -> Nat {
+  a + b
+}
+
+fn nat_mul(a: Nat, b: Nat) -> Nat {
+  a * b
+}
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
@@ -16,6 +49,84 @@ fn nat_max(a: Nat, b: Nat) -> Nat {
 
 fn nat_min(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
+}
+
+// TRUNCATED SUBTRACTION (monus) WITH A TYPED UNDERFLOW OUTCOME. The naturals are not closed under
+// subtraction; a - b for b > a has no answer here and says so as its own arm, never a wrapped or
+// fabricated Zero.
+type NatSubtraction
+  = NatDifference { value: Nat }
+  | NatSubtrahendExceedsMinuend
+
+// THE ONE PLACE A DIFFERENCE OF NATURALS RE-ENTERS THE NATURALS. `a - b` is an Int
+// (std.coercion dag_subtraction_refinement), and an Int crosses into a Nat at the field position
+// below. The crossing is sound only because the branch has already ruled out b > a; it is written
+// inside that branch rather than behind a callable helper, so no caller can reach it without the
+// ordering having been established (review 73960). The crossing itself is still admitted implicitly
+// by the checker -- gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
+fn nat_sub(a: Nat, b: Nat) -> NatSubtraction {
+  if b > a {
+    NatSubtrahendExceedsMinuend
+  } else {
+    NatDifference { value: a - b }
+  }
+}
+
+// EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. nat_div_rem is the general operation: a
+// Zero divisor is its own arm. nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
+// BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor Succ { prev }
+// cannot be Zero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
+// (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
+type NatQuotient {
+  quotient: Nat
+  remainder: Nat
+}
+
+type NatDivision
+  = NatQuotientRemainder { quotient: Nat, remainder: Nat }
+  | NatDivisionByZero
+
+fn nat_div_rem(a: Nat, b: Nat) -> NatDivision {
+  match b {
+    Zero => NatDivisionByZero
+    Succ { prev: divisor_prev } =>
+      let q = nat_div_rem_by_succ(a: a, divisor_prev: divisor_prev)
+      NatQuotientRemainder { quotient: q.quotient, remainder: q.remainder }
+  }
+}
+
+fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> NatQuotient {
+  let divisor = Succ { prev: divisor_prev }
+  NatQuotient { quotient: a / divisor, remainder: a % divisor }
+}
+
+// CEILING DIVISION, WITHOUT LEAVING THE NATURALS. The usual spelling `(a + b - 1) / b` subtracts,
+// and a difference of Nats is an Int (std.coercion dag_subtraction_refinement), so it cannot
+// return a Nat without a proof it does not have. Carrying the remainder instead stays in + and /,
+// which a Nat is closed under. A zero divisor has no quotient, so it is absent rather than
+// answered: each caller says what a zero divisor means in its own domain.
+fn nat_ceil_div(a: Nat, b: Nat) -> Nat? {
+  if b == 0 {
+    none
+  } else {
+    let carry = if a % b == 0 { 0 } else { 1 }
+    Present { value: a / b + carry }
+  }
+}
+
+// THE SEMIRING IS INHABITANCE. These two values are the witnesses that the naturals inhabit the
+// additive commutative monoid and the commutative semiring; nothing about the carrier's body says
+// so, and nothing needs to.
+data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
+  op: nat_add,
+  identity: Zero
+}
+data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
+  add: nat_add,
+  zero: Zero,
+  mul: nat_mul,
+  one: Succ { prev: Zero }
 }
 
 // AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat

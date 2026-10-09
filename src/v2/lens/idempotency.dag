@@ -1,4 +1,5 @@
 module v2.lens.idempotency
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.common.algebraic_composition {
   AlgebraicIdempotenceProven,
@@ -9,12 +10,12 @@ import v2.lens.common.algebraic_composition {
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.algebra { bag_eq, list_snoc_item }
+import v2.std.algebra { bag_eq }
+import std.algebra { list_snoc_item }
 import v2.std.collection {
-  List,
   optional_present_witness
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,
@@ -33,7 +34,6 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -71,7 +71,8 @@ fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional
       right: match dep.classification {
         AlgebraicIdempotenceProven { law: Violates { diagnostic: d } } =>
           optional_present(value: d)
-        _ => optional_absent()
+        AlgebraicIdempotenceProven { law: _ } => optional_absent()
+        RequiresAlgebraWitness => optional_absent()
       }
     )
   })

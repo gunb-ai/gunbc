@@ -603,7 +603,7 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 // THE HOST WOULD NOT BOOT THE PRESENTED MEDIUM, AND THE REASON IS A FIELD THE BOOT-HANDOFF MODEL
 // DOES NOT CARRY. IPMI boot parameter 5 encodes TWO decisions: the device selector, and the BIOS
 // boot type (byte 1 bit 5 — 0 = PC-compatible/legacy, 1 = EFI). gunbc.machine_intake_oob_boot_handoff
-// and gunbc.machine_intake_mtcollins1_actuate model the SELECTOR and have no concept of the boot
+// and gunbc.managed_host_boot_handoff model the SELECTOR and have no concept of the boot
 // type at all: `efiboot`, `boot_type` and `legacy` appear nowhere in that path. So every handoff
 // this repository performs requests the device under the DEFAULT boot type, which reads back as
 // "BIOS PC Compatible (legacy) boot".
@@ -621,7 +621,7 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 // boot-type/architecture pair are the migration's to model, not a unit receipt's to prescribe.
 //
 // THE MODEL SAID THE HANDOFF SUCCEEDED EVERY TIME, WHICH IS THE DEEPER DEFECT AND THE REASON THIS
-// SURVIVED. oob_boot_handoff mints BootHandoffCompleted once the override reads back with the
+// SURVIVED. oob_boot_handoff mints BootControlIssued once the override reads back with the
 // expected rendering and the power action is accepted. Both were true on every failed attempt: the
 // selector really did say "Force Boot from CD/DVD", and the power cycle really was accepted. The
 // arm confirms a PRECONDITION and reports it as an EFFECT, so a handoff that provably never booted

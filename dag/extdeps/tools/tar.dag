@@ -1,5 +1,7 @@
 module extdeps.tools.tar
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -33,7 +35,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data tar_program: NonEmptyStr = "tar"
+fn tar_program() -> ProgramIdentity = uncataloged_program(invocation: "tar")
 
 // EXTRACT NAMES ITS DESTINATION AND ITS STRIP DEPTH, both as parameters. `xf` is extract-from-file;
 // -C changes directory BEFORE extracting, so the archive's paths are interpreted relative to the
@@ -42,11 +44,28 @@ data tar_program: NonEmptyStr = "tar"
 // pre-spelled flag string because it is a number the caller knows, not a token it should remember.
 fn tar_extract_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
   argv_command(
-    program: tar_program,
+    program: tar_program(),
     arguments: [
       "xf", archive,
       "-C", into_directory,
       concat("--strip-components=", to_string(strip_components)),
     ],
   )
+}
+
+// CREATE FROM AN EXPLICIT MEMBER LIST, AND NOTHING ELSE. -T names a file of member paths (one per
+// line, relative to -C's directory); --no-recursion stops a listed directory from pulling in members
+// the list did not name, so the archive's membership IS the list -- a caller that filtered the list
+// has filtered the archive. --verbatim-files-from reads each line as a path, never as an option.
+fn tar_create_from_list_command(archive: String, from_directory: String, member_list: String) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: ["-C", from_directory, "-cf", archive, "--no-recursion", "--verbatim-files-from", "-T", member_list],
+  )
+}
+
+// LIST AN ARCHIVE'S MEMBERS, one path per line on stdout: the readback of what an archive holds,
+// independent of whatever list built it.
+fn tar_list_command(archive: String) -> ArgvCommand {
+  argv_command(program: tar_program(), arguments: ["-tf", archive])
 }

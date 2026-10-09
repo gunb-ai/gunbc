@@ -70,11 +70,22 @@ type OperandRealization
 // unnamed-operand population of the v2 closure under an arithmetic operator). Refusing there would
 // refuse an operand nothing suggests is structural. What still refuses is the case the refusal is
 // FOR: a type node that DOES name a declaration whose identity the caller could not resolve.
+//
+// THE HOST TEXT CARRIER is the type the target's type renderer realizes as its native string (on
+// Rust, v1.compiler.emit_rust is_host_text_carrier_type: the String spelling whose declaration is not
+// a structural FreeMonoid<Char>). The operator decision reads the SAME predicate the renderer reads,
+// so an operand rendered as a host String is judged as one: its ordering is the host string's, which
+// is the interpreter's (Value::Str, Value::Str) arm exactly -- byte-lexicographic over UTF-8. Before
+// this arm the corpus String reached the ordering operators as an unreadable declaration and refused
+// (extdeps.standards.rfc_5280 x509_validity_at, over the String alias Timestamp), while `==` on the
+// same operand passed by operator class: one operand, two answers about whether it has a host
+// realization.
 type HostRealizationReason
   = KernelMintedType
   | GenericTypeParameter
   | HostContainer
   | UnnamedSynthesizedType
+  | HostTextCarrier
 
 // AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
 // declaration. Equality and the connectives do not depend on the declaration at all: every
@@ -143,37 +154,13 @@ fn structural_ordering_for(rows: List<StructuralOrderingBinding>, carrier: Decla
   }
 }
 
-// A DECLARED CONNECTIVE (review 57746, retiring gunbc.guarantee_stall structural_connective_stall
-// by its own trigger): the row admits that this structural carrier's conjunction and disjunction
-// realize on the host token -- a row may only state what is already true of the destination
-// (v2.std.logic Bool = True | False, the corpus's ordinary Bool). A structural operand under a
-// connective with NO row refuses, typed and located, instead of emitting the host token for a
-// carrier that is not a Boolean algebra at all (a Peano-shaped operand was authorable because
-// inference constrains only the RESULT of && / || to Bool). NullCoalesce is not a connective and
-// keeps its own arm.
-type StructuralConnectiveBinding {
-  carrier: DeclarationRef
-}
-
-type StructuralConnectiveLookup
-  = StructuralConnectiveFound { row: StructuralConnectiveBinding }
-  | StructuralConnectiveAbsent
-  | StructuralConnectiveAmbiguous { row_count: Int }
-
-fn structural_connective_for(rows: List<StructuralConnectiveBinding>, carrier: DeclarationRef) -> StructuralConnectiveLookup {
-  let matching = rows |> filter(r => declaration_ref_eq(a: r.carrier, b: carrier))
-  let n = matching |> count
-  if n == 0 {
-    StructuralConnectiveAbsent
-  } else if n == 1 {
-    match matching |> first {
-      Present { value: row } => StructuralConnectiveFound { row: row }
-      Absent => StructuralConnectiveAbsent
-    }
-  } else {
-    StructuralConnectiveAmbiguous { row_count: n }
-  }
-}
+// A CONNECTIVE ON A STRUCTURAL OPERAND REFUSES, typed and located (review 57746). Inference
+// constrains only the RESULT of && / || to Bool, so a Peano-shaped operand under `&&` is authorable,
+// and it must not receive the host token. There is no declared-connective row family: it existed
+// for exactly one carrier, v2.std.logic's structural `Bool = True | False`, and the Bool de-fork
+// (gunbc.defork_type_name_census ResolvedByDeletingV2) retired that declaration -- std.types Bool
+// realizes natively, so its operands reach the fold as host operands and never ask for a row. A
+// family with no rows would have been an authority no carrier consumes (DESIGN section 3c).
 
 // The test an ordering operator performs on a comparison's result, grounded on std.algebra
 // Ordering = Less | Equal | Greater: `<` is `== Less`, `>` is `== Greater`, `<=` is `!= Greater`,
@@ -228,10 +215,64 @@ fn binop_label(op: BinOp) -> String {
   }
 }
 
+// OPERAND DEMAND -- WHICH OPERANDS AN OPERATOR ACTUALLY ASKS FOR, DECLARED ONCE.
+//
+// This is the fact that was missing, and its absence is filed as gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses: OperatorRealization above names WHO
+// evaluates an operator without naming WHAT is evaluated, so each realization improvised. The
+// interpreter demanded both operands before dispatching; the Rust emitter rendered the host token,
+// which demands the right operand only conditionally. One accepted program, two behaviours --
+// `false && Filesystem.Write(...)` wrote the file under one arm and not the other, and the filed
+// row's red (`n != 0 && (100 / n) > 1` at n = 0) refused under one arm and returned false in the
+// other. Neither arm was wrong about a fact it consulted; there was no fact to consult.
+//
+// THE VALUE IS DERIVED, NOT CHOSEN. std.logic classical_and is `match a { False => False  True => b }`
+// and classical_or is its dual: a match arm is demanded only when its scrutinee selects it, so the
+// logical connectives of the corpus's own logic authority ask for their right operand only under one
+// left value, and every other operator is a function of both. This fold restates that reading over
+// the BinOp vocabulary so that BOTH realizations read one row; it does not mint a second semantics.
+//
+// WHY `deciding` IS THE LEFT VALUE AND NOT A VARIANT PER CONNECTIVE: And and Or differ in exactly
+// that value and in nothing else, so a variant each would be one concept spelled twice (DESIGN
+// section 2). A consumer short-circuits when the left value is NOT `deciding`, and the same arm
+// serves both connectives.
+//
+// NULL-COALESCING GETS ITS OWN ARM BECAUSE ITS CONDITION IS A DIFFERENT QUESTION, and folding it
+// into `deciding` would be the meaning fork DESIGN section 3 names: `a ?? b` demands `b` on the
+// CARDINALITY of the left operand, not on a Bool value of it, which is the same distinction the
+// note above operator_realization_for already draws for this operator. It is carried here and not
+// omitted because it has exactly the divergence this type exists to close, measured the same way:
+// the interpreter's eval_binop evaluates both operands at the call site before selecting, while
+// extdeps.languages.rust.emit rust_null_coalesce_template renders `{0}.unwrap_or_else(|| {1})`,
+// whose closure body is demanded only when the left is absent. Declaring it and leaving the
+// interpreter eager would be a row its own realization contradicts, so it is repaired here too.
+type OperandDemand
+  = DemandsBothOperands
+  | DemandsRightOnlyWhenLeftIs { deciding: Bool }
+  | DemandsRightOnlyWhenLeftIsAbsent
+
+fn operand_demand(op: BinOp) -> OperandDemand {
+  match op {
+    And => DemandsRightOnlyWhenLeftIs { deciding: true }
+    Or => DemandsRightOnlyWhenLeftIs { deciding: false }
+    Add => DemandsBothOperands
+    Sub => DemandsBothOperands
+    Mul => DemandsBothOperands
+    Div => DemandsBothOperands
+    Mod => DemandsBothOperands
+    Eq => DemandsBothOperands
+    Ne => DemandsBothOperands
+    Lt => DemandsBothOperands
+    Gt => DemandsBothOperands
+    Le => DemandsBothOperands
+    Ge => DemandsBothOperands
+    NullCoalesce => DemandsRightOnlyWhenLeftIsAbsent
+  }
+}
+
 type OperatorRealizationRefusal
   = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: BinOp }
   | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
-  | StructuralConnectiveDuplicated { declaration: DeclarationRef, row_count: Int }
   | OperandIdentityUnavailableAt { operator: BinOp, facts: OperandShapeFacts }
 
 type OperatorRealization
@@ -254,12 +295,6 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
         d.module_path as String, ".", d.decl_name as String,
         " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
       )
-    StructuralConnectiveDuplicated { declaration: d, row_count: n } =>
-      concat(
-        "operator realization: structural connective for ",
-        d.module_path as String, ".", d.decl_name as String,
-        " has more than one declared row (gunbc.structural_realization_bindings authoring defect)"
-      )
     OperandIdentityUnavailableAt { operator: o, facts: f } =>
       concat(
         "operator realization: host operator `", binop_label(op: o), "` on an operand whose declaration could not be read",
@@ -276,27 +311,23 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
 // the question is cardinality, not operand structure. Its arm here is the fold's totality over the
 // closed BinOp vocabulary, not a second decision about it.
 //
-// LOGICAL CONNECTIVES answer HostOperator on a structural operand, and that arm is HONEST ABOUT
-// WHAT IT DOES NOT CHECK. Inference types `&&`/`||` as returning Bool without constraining its
-// OPERANDS to be one (v1.compiler.types infer_binop_type_node: the And and Or arms name only the
-// result), so `a && b` with a Peano-shaped `a` is authorable and this arm would emit the host token
-// for it. It is not repaired by refusing every structural operand: v2.std.logic Bool is a declared
-// structural coproduct that 593 modules import as their ordinary Bool, so a blanket refusal would
-// refuse the corpus's ordinary conjunction -- the wall paid for in false refusals. The repair is a
-// declared-connective row family beside the ordering rows. THAT FAMILY NOW EXISTS
-// (StructuralConnectiveBinding below; rows in gunbc.structural_realization_bindings
-// structural_connective_rows): a structural operand under And/Or realizes on the host only where
-// its carrier declares it, and refuses, typed and located, where it does not. The former
-// structural_connective_stall row in gunbc.guarantee_stall is retired by exactly this
-// capability, which is what its trigger named.
+// LOGICAL CONNECTIVES on a structural operand REFUSE. Inference types `&&`/`||` as returning Bool
+// without constraining its OPERANDS to be one (v1.compiler.types infer_binop_type_node: the And and
+// Or arms name only the result), so `a && b` with a Peano-shaped `a` is authorable, and the host
+// token would be emitted for it. A blanket refusal once cost false refusals, because v2.std.logic
+// declared a structural `Bool` that most of the corpus named as its ordinary Bool, and a row family
+// admitted that one carrier's connectives on the host. The Bool de-fork retired that declaration:
+// the only Bool is std.types Bool, which realizes natively and reaches this fold as a host operand,
+// so no structural carrier has host connectives and the refusal is exact. The former
+// structural_connective_stall row in gunbc.guarantee_stall stays retired: its trigger was a wall
+// under structural connectives, and the wall now holds with no admission list at all.
 //
 // AN OPERAND WHOSE DECLARATION COULD NOT BE READ is not a widen and not a guess: it decides by
 // operator class, below.
 fn operator_realization_for(
   op: BinOp,
   operand: OperandRealization,
-  ordering_rows: List<StructuralOrderingBinding>,
-  connective_rows: List<StructuralConnectiveBinding>
+  ordering_rows: List<StructuralOrderingBinding>
 ) -> OperatorRealization {
   match operand {
     HostNumericOperand => HostOperator
@@ -326,8 +357,8 @@ fn operator_realization_for(
         Gt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
         Le => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
         Ge => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
-        And => structural_connective_realization(op: op, declaration: d, connective_rows: connective_rows)
-        Or => structural_connective_realization(op: op, declaration: d, connective_rows: connective_rows)
+        And => structural_arithmetic_refusal(op: op, declaration: d)
+        Or => structural_arithmetic_refusal(op: op, declaration: d)
         NullCoalesce => HostOperator
         Add => structural_arithmetic_refusal(op: op, declaration: d)
         Sub => structural_arithmetic_refusal(op: op, declaration: d)
@@ -335,16 +366,6 @@ fn operator_realization_for(
         Div => structural_arithmetic_refusal(op: op, declaration: d)
         Mod => structural_arithmetic_refusal(op: op, declaration: d)
       }
-  }
-}
-
-// A connective on a structural operand: host realization where the carrier declares it (the row),
-// a typed located refusal where it does not, a duplication refusal where the roster forked.
-fn structural_connective_realization(op: BinOp, declaration: DeclarationRef, connective_rows: List<StructuralConnectiveBinding>) -> OperatorRealization {
-  match structural_connective_for(rows: connective_rows, carrier: declaration) {
-    StructuralConnectiveFound { row: _ } => HostOperator
-    StructuralConnectiveAbsent => structural_arithmetic_refusal(op: op, declaration: declaration)
-    StructuralConnectiveAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralConnectiveDuplicated { declaration: declaration, row_count: n } }
   }
 }
 

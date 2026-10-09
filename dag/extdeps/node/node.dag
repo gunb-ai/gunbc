@@ -29,6 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // as a nonzero exit, so the caller receives success: false without a fallback.
 service node.Runtime {
   operation RunFile {
+    requires opaque
     input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
     output {
       success: Bool from "exit_success"

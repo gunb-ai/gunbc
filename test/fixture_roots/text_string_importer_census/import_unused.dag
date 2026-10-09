@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.import_unused
+import v2.std.text { String }
+fn one() -> Int {
+  1
+}

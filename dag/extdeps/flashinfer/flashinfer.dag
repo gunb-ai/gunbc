@@ -117,6 +117,167 @@ data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
   },
 ]
 
+// WHERE THE 0.6.18.post1 WHEELS RESOLVE AS FILES. The row above records that each digest was read
+// from two agreeing upstream surfaces, one of which is the asset listing of the GitHub release
+// v0.6.18.post1 on flashinfer-ai/flashinfer; a release asset is addressed by its filename under the
+// release's download base, which is the same derivation the nightly row performs and is carried once
+// here for the same reason -- a consumer derives a wheel's URL instead of re-spelling it.
+//
+// THIS IS AN ADDRESS, NOT AN AVAILABILITY GUARANTEE, and the distinction is the same one the nightly
+// row draws: what makes a fetched file the wheel this repository means is its sha256 matching the row
+// above, never the URL it arrived from. A consumer that fetches without comparing has established
+// nothing.
+data flashinfer_0_6_18_post1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.6.18.post1" as NonEmptyStr
+
+fn flashinfer_0_6_18_post1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_6_18_post1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
+// ── 0.7.1rc1: THE FIRST RELEASE CARRYING RUNTIME SM120 SPARSE-MLA PAGE SIZES ──────────────────
+//
+// flashinfer-ai/flashinfer#5197 (merged 2026-09-18, eb5f05be1f) makes the SM120 sparse-MLA page size a
+// runtime parameter, including the 32-token extra pages a DeepSeek V4.1 ratio-2 layer takes once the
+// kernel page is 64 tokens (vllm-project/vllm#57292, #56461, #59203). v0.7.0 and v0.7.0.post1 predate it
+// (compare eb5f05be1f...v0.7.0.post1: diverged); v0.7.1rc1 (GitHub release, published 2026-09-30) contains
+// it (compare eb5f05be1f...v0.7.1rc1: ahead 221, behind 0), read 2026-10-01. It is a RELEASE CANDIDATE,
+// adopted by operator ruling 2026-10-01 for the V4.1 GB10 launch; 0.7.1 final replaces it when published.
+data flashinfer_0_7_1rc1_version: NonEmptyStr = "0.7.1rc1" as NonEmptyStr
+
+data flashinfer_0_7_1rc1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_1rc1_version,
+  channel: FlashInferProjectStable,
+  index: "flashinfer.ai/whl for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/cu130 for flashinfer-jit-cache and its per-architecture providers" as NonEmptyStr,
+}
+
+// THE ELEVEN 0.7.1rc1 WHEELS AN aarch64 cu130 IMAGE INSTALLS. From 0.7.x the jit-cache is a 4 KB shim
+// (flashinfer_jit_cache) whose METADATA Requires-Dist names one provider wheel per architecture
+// (sm80, sm89, sm90a, sm100a, sm103a, sm110a, sm120f, sm121a), all at 0.7.1rc1+cu130 -- read from the
+// shim wheel itself, whose downloaded sha256 matched below -- so `flashinfer-jit-cache==0.7.1rc1` from the
+// cu130 index installs all nine. Each digest was read 2026-10-01 from two agreeing upstream surfaces: the
+// `digest` field of the GitHub release v0.7.1rc1 asset and the `#sha256=` fragment of the flashinfer.ai
+// index link (whl/flashinfer-python, whl/flashinfer-cubin, whl/cu130/flashinfer-jit-cache,
+// whl/cu130/flashinfer-jit-cache-sm121a cross-checked; the other providers rest on the release listing).
+data flashinfer_0_7_1rc1_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "17b7a2d47a153456f056f9f4d309ac13a0a7bfccbec852f562f120f36146edd9" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "760ea1b6485b7315683ea1852f9926270eb57b7d05b95f8cd262fd12c93e062b" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "bfd71831bb06f3361a9631dcfc0474712e8c45e6d44db16774ba65789a95067c" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm100a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a1ff150e5f81f1a96ab900bd9357e98092a119004b8292078fa9b09cabae92e5" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm103a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "15f6c9df6e3928c6de664191582075e087d49dfc3ed1e0db6741d37263155baa" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm110a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "242cdbf730471211883f0aa145f24c02ff0b2b51e083f160f4ec97592a9443d3" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm120f-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "9d5b55adfbf0d68127710dbc602c7c8e93893581b598f73b97d259b457df232f" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm121a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm121a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a900e973695798581d60d5297fee3c9bee8d1f1e6211303af7c0171481446a34" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm80" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm80-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "539bb1454af4df30b0f846e3f27838e6de1b0a4f9eeb221a561ff99a52ddc2ce" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm89" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm89-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "25bff4e71bffaef61cf35a02c19fd4f06600d74f3643f9e84fc3672088fb154a" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm90a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "67511bdeb5ee4de4c9af78b4b77d7158cf822cb4ba5ad29b3c25f7a3201cbca7" as Sha256DigestHex },
+  },
+]
+
+data flashinfer_0_7_1rc1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.7.1rc1" as NonEmptyStr
+
+fn flashinfer_0_7_1rc1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_1rc1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
+// THE PLAIN 0.6.18 SPELLING, which upstream pinned before the .post1 release existed:
+// requirements/cuda.txt at 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (2026-09-04) states
+// `flashinfer-python==0.6.18` and `flashinfer-cubin==0.6.18`, and docker/Dockerfile at the same
+// revision declares `ARG FLASHINFER_VERSION=0.6.18`. The GLM-5.3-Flash SM121 base image's recorded
+// build arguments carry exactly this spelling; the .post1 row above is a different pin at a later
+// revision, not a correction of this one.
+data flashinfer_0_6_18_version: NonEmptyStr = "0.6.18" as NonEmptyStr
+
+// THE 0.7.0.dev20260910 NIGHTLY, WHICH THE GLM-5.3-FLASH SM121 IMAGE FORCE-REINSTALLS OVER THE
+// BASE'S 0.6.18. The GLM native arm's serving image (the local build whose base is upstream vLLM
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83) carries these three wheels and pip-installs them
+// --no-deps --force-reinstall; the base's 0.6.18 predates the sparse-MLA page-table fix the model
+// needs. A nightly is a published build of a dated snapshot, not a release: the channel is the
+// nightly index, and the row stays honest about what a nightly is -- it may be pruned upstream, in
+// which case the digest-pinned wheel in the image is the surviving artifact and this row's index
+// citation is its provenance, not its availability guarantee.
+data flashinfer_0_7_0_dev20260910_version: NonEmptyStr = "0.7.0.dev20260910" as NonEmptyStr
+
+data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_0_dev20260910_version,
+  channel: FlashInferProjectNightly,
+  index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// THE THREE NIGHTLY WHEELS. The python and jit-cache digests agree across two independent surfaces
+// read 2026-09-17: the `#sha256=` fragment of the nightly index link, and sha256sum of the wheels
+// as installed in the serving image on srv9. The cubin wheel (1.57 GB) was not re-hashed; its
+// digest rests on the index listing alone, the same evidence level this module already carries for
+// the 0.6.18.post1 cubin and jit-cache rows.
+data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a5fa6ee62652b6e02cef8e2be33a5a3fdc1f2ae70ed2a131beface7594c436bd" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "7c45246d658c9818a4179c2ce81729163112aefcb3bcd1ff63eb5004c0df5422" as Sha256DigestHex },
+  },
+]
+
+// WHERE THE NIGHTLY WHEELS ACTUALLY RESOLVE. The nightly index's links are GitHub release assets of
+// flashinfer-ai/whl under the release tag nightly-v0.7.0-20260910 (the `#sha256=` hrefs, read
+// 2026-09-17). The release base is carried once here so a consumer derives a wheel's URL instead of
+// re-spelling it.
+data flashinfer_0_7_0_dev20260910_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/whl/releases/download/nightly-v0.7.0-20260910" as NonEmptyStr
+
+fn flashinfer_0_7_0_dev20260910_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_0_dev20260910_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
 // THE FIELDS OF A COMPLETE WHEEL FILENAME (binary distribution format, PEP 427,
 // packaging.python.org/en/latest/specifications/binary-distribution-format/):
 // `{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl`. The version field keeps its local

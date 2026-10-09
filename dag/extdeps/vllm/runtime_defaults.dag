@@ -7,6 +7,10 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import extdeps.nvidia.management_library { DeviceMemoryObservation, device_memory_observed_bytes, device_memory_note }
 import extdeps.vllm.engine_args {
   VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+  VllmSchedulerAdmissionRequest, VllmFullInputAdmissionRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
+  KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_defect,
+  VllmIndexerKvDtype, VllmIndexerKvDtypeRequest, IndexerKvDtypeOmitted, IndexerKvDtypeExplicit,
+  IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4, vllm_indexer_kv_dtype_wire,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -70,7 +74,11 @@ type VllmImageSourceBinding sole_constructor {
 type ModelledVllmDefaultsRevision
   = Vllm487ecf187
   | Vllm1967a5627
+  | Vllm8d09804
 
+// THE 8d09804 REVISION IS WHAT THE DERIVED NoPE RUNTIME SELF-REPORTS, read from inside the image on srv9
+// 2026-09-13: vllm.__version__ is 0.1.dev1+g8d09804c8, whose trailing token is this commit. That is the
+// image saying which tree it was built from; it is not a comparison of its bytes against that tree.
 fn defaults_source_revision(r: ModelledVllmDefaultsRevision) -> VllmSourceRevision {
   match r {
     Vllm487ecf187 => vllm_source_revision(
@@ -80,6 +88,10 @@ fn defaults_source_revision(r: ModelledVllmDefaultsRevision) -> VllmSourceRevisi
     Vllm1967a5627 => vllm_source_revision(
       repository: "github.com/vllm-project/vllm" as NonEmptyStr,
       full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr,
+    )
+    Vllm8d09804 => vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
     )
   }
 }
@@ -109,13 +121,18 @@ fn defaults_gpu_utilization(r: ModelledVllmDefaultsRevision) -> BasisPoint {
   match r {
     Vllm487ecf187 => basis_point(count: 9200)
     Vllm1967a5627 => basis_point(count: 9200)
+    Vllm8d09804 => basis_point(count: 9200)
   }
 }
 
+// ABSENT HERE MEANS THE REVISION DECLARES NO EXPLICIT BYTE OVERRIDE. It does not mean a zero-byte cache,
+// and it does not mean the field went unread: for 8d09804 the dataclass default was inspected inside the
+// derived image and found to be None, which is the successful observation of an optional field's absence.
 fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? {
   match r {
     Vllm487ecf187 => none
     Vllm1967a5627 => none
+    Vllm8d09804 => none
   }
 }
 
@@ -125,14 +142,36 @@ fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? 
 // managed ingress and nobody who may bypass one. Those are the facts a tenancy claim needs, and a
 // Boolean that cannot express any of them cannot assert them. The partition question has its own type
 // below and its own honest starting value.
-fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> Bool {
+// WHAT AN OMITTED FLAG BECOMES IS NOT ALWAYS A PROPERTY OF THE REVISION ALONE, and a Bool here said it
+// was. At 8d09804 the CLI path does not read CacheConfig's declared default: EngineArgs starts the field
+// at None and resolves it through the MODEL configuration -- measured inside the derived image on srv9,
+// 2026-09-13, where zai-org/GLM-5.3-Flash reports runner_type=generate, is_hybrid=True,
+// is_attention_free=False, is_encoder_decoder=False and is_prefix_caching_supported=True. A revision-keyed
+// Bool cannot express "it depends on the model", so it would have had to assert a constant that is true
+// for this checkpoint and unknown for the next one.
+//
+// THE THREE ARMS ARE THE THREE HONEST ANSWERS. A revision whose omission rule really is fixed says so; a
+// revision that defers to model characteristics says THAT, and cannot be resolved without a model
+// reading; a revision nobody has read says neither.
+//
+// THE OLDER TWO ROWS KEEP THE ANSWER THEY WERE RECORDED WITH, and that is a deliberate limit rather than
+// a claim: `true` is what was observed for those runtimes, and whether their upstream resolves through
+// the same model-dependent path was NOT re-read here. Reclassifying them from this revision's source
+// would be inferring two measurements from a third.
+type VllmOmittedPrefixCachingRule
+  = OmittedPrefixCachingFixed { enabled: Bool }
+  | OmittedPrefixCachingFromModelSupport
+  | OmittedPrefixCachingUnestablished { cause: NonEmptyStr }
+
+fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> VllmOmittedPrefixCachingRule {
   match r {
-    Vllm487ecf187 => true
-    Vllm1967a5627 => true
+    Vllm487ecf187 => OmittedPrefixCachingFixed { enabled: true }
+    Vllm1967a5627 => OmittedPrefixCachingFixed { enabled: true }
+    Vllm8d09804 => OmittedPrefixCachingFromModelSupport
   }
 }
 
-data vllm_modelled_revisions: List<ModelledVllmDefaultsRevision> = [Vllm487ecf187, Vllm1967a5627]
+data vllm_modelled_revisions: List<ModelledVllmDefaultsRevision> = [Vllm487ecf187, Vllm1967a5627, Vllm8d09804]
 
 // AN UNMODELLED REVISION REFUSES RATHER THAN BORROWING A NEIGHBOUR'S DEFAULTS. The two rows above
 // agree on every field today, which is exactly the coincidence that would make a fallback look
@@ -200,12 +239,18 @@ type VllmConfigField
   = GpuMemoryUtilizationField
   | KvCacheMemoryBytesField
   | EnablePrefixCachingField
+  | SchedulerReserveFullIslField
+  | SchedulerWatermarkField
+  | IndexerKvDtypeField
 
 fn vllm_config_field_declaration(f: VllmConfigField) -> NonEmptyStr {
   match f {
     GpuMemoryUtilizationField => "CacheConfig.gpu_memory_utilization" as NonEmptyStr
     KvCacheMemoryBytesField => "CacheConfig.kv_cache_memory_bytes" as NonEmptyStr
     EnablePrefixCachingField => "CacheConfig.enable_prefix_caching" as NonEmptyStr
+    SchedulerReserveFullIslField => "SchedulerConfig.scheduler_reserve_full_isl" as NonEmptyStr
+    SchedulerWatermarkField => "SchedulerConfig.watermark" as NonEmptyStr
+    IndexerKvDtypeField => "AttentionConfig.indexer_kv_dtype" as NonEmptyStr
   }
 }
 
@@ -430,6 +475,10 @@ type ResolvedVllmPrefixCaching
   = PrefixCachingResolved { enabled: Bool, origin: VllmResolutionOrigin }
   | PrefixCachingUnresolvable { cause: NonEmptyStr }
 
+// A MODEL-DEPENDENT RULE CANNOT BE RESOLVED FROM A REVISION, and that refusal is the useful half of
+// modelling it: the caller is told to ask explicitly rather than handed a constant that happens to be
+// right for one checkpoint. An explicit request needs no established default at all, which is why the
+// PrefixCachingExplicit arm below never consults one.
 fn resolve_vllm_prefix_caching(
   request: VllmPrefixCachingRequest,
   defaults: VllmDefaultsResolution,
@@ -448,10 +497,203 @@ fn resolve_vllm_prefix_caching(
             ], "") as NonEmptyStr,
           }
         VllmDefaultsKnown { revision: rev } =>
-          PrefixCachingResolved {
-            enabled: defaults_prefix_caching(r: rev),
-            origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
+          match defaults_prefix_caching(r: rev) {
+            OmittedPrefixCachingFixed { enabled: e } =>
+              PrefixCachingResolved {
+                enabled: e,
+                origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
+              }
+            OmittedPrefixCachingFromModelSupport =>
+              PrefixCachingUnresolvable {
+                cause: join([
+                  "prefix caching is omitted and revision ",
+                  (defaults_source_revision(r: rev)).full_revision as String,
+                  " resolves it from the model configuration rather than from the revision, so it is unestablished until the request names a value or a model reading is supplied",
+                ], "") as NonEmptyStr,
+              }
+            OmittedPrefixCachingUnestablished { cause: c } => PrefixCachingUnresolvable { cause: c }
           }
       }
+  }
+}
+
+// ── THE SCHEDULER'S ADMISSION CONTROLS, PER REVISION ─────────────────────────────────────────────
+//
+// EACH REVISION SAYS ITS OWN, READ FROM ITS OWN vllm/config/scheduler.py (2026-10-02). All three
+// declare `scheduler_reserve_full_isl: bool = True`. The watermark is NOT uniform, and that is why
+// this is a per-revision projection rather than one constant: 487ecf187 and 8d09804 declare
+// `watermark: float = Field(default=0.0, ge=0.0, lt=1.0)`; 1967a5627's SchedulerConfig has no
+// watermark field at all, so a launch on that runtime cannot request one and a rendered --watermark
+// would be an unknown argument.
+type VllmWatermarkSupport
+  = WatermarkSupported { default_fraction: BasisPoint }
+  | WatermarkAbsentAtRevision
+
+fn defaults_scheduler_reserve_full_isl(r: ModelledVllmDefaultsRevision) -> Bool {
+  match r {
+    Vllm487ecf187 => true
+    Vllm1967a5627 => true
+    Vllm8d09804 => true
+  }
+}
+
+fn defaults_kv_watermark(r: ModelledVllmDefaultsRevision) -> VllmWatermarkSupport {
+  match r {
+    Vllm487ecf187 => WatermarkSupported { default_fraction: basis_point(count: 0) }
+    Vllm1967a5627 => WatermarkAbsentAtRevision
+    Vllm8d09804 => WatermarkSupported { default_fraction: basis_point(count: 0) }
+  }
+}
+
+// THE EFFECTIVE ADMISSION CONTROLS A LAUNCH RUNS WITH, each carrying the origin of its value. An
+// omitted control on an unmodelled revision is UNRESOLVABLE, never assumed on: the whole reason these
+// are modelled is that an above-floor sequence is safe only through them, so a guessed "on" would be
+// the fabricated default DESIGN section 5 refuses.
+type ResolvedVllmSchedulerAdmission
+  = SchedulerAdmissionResolved {
+      full_input_admission: Bool
+      full_input_origin: VllmResolutionOrigin
+      watermark: BasisPoint
+      watermark_origin: VllmResolutionOrigin
+    }
+  | SchedulerAdmissionUnresolvable { cause: NonEmptyStr }
+
+fn resolve_vllm_scheduler_admission(
+  request: VllmSchedulerAdmissionRequest,
+  defaults: VllmDefaultsResolution,
+) -> ResolvedVllmSchedulerAdmission {
+  match vllm_scheduler_admission_defect(r: request) {
+    Present { value: why } => SchedulerAdmissionUnresolvable { cause: why }
+    Absent =>
+      match defaults {
+        VllmDefaultsUnestablished { revision: r } =>
+          match request.full_input_admission {
+            FullInputAdmissionOmitted => SchedulerAdmissionUnresolvable { cause: join([
+              "full-input admission is omitted and revision ", r.full_revision as String,
+              " is not modelled, so whether the scheduler checks the whole sequence before admitting it is unestablished",
+            ], "") as NonEmptyStr }
+            FullInputAdmissionExplicit { enabled: _ } => SchedulerAdmissionUnresolvable { cause: join([
+              "revision ", r.full_revision as String,
+              " is not modelled, so whether it accepts the scheduler admission flags at all is unestablished",
+            ], "") as NonEmptyStr }
+          }
+        VllmDefaultsKnown { revision: rev } => {
+          let source = defaults_source_revision(r: rev)
+          let full = resolve_full_input_admission(request: request.full_input_admission, rev: rev)
+          match defaults_kv_watermark(r: rev) {
+            WatermarkAbsentAtRevision =>
+              match request.kv_watermark {
+                KvWatermarkExplicit { fraction: _ } => SchedulerAdmissionUnresolvable { cause: join([
+                  "a KV watermark is requested but revision ", source.full_revision as String,
+                  " declares no SchedulerConfig.watermark, so --watermark is not an argument this engine accepts",
+                ], "") as NonEmptyStr }
+                KvWatermarkOmitted => SchedulerAdmissionResolved {
+                  full_input_admission: full.enabled, full_input_origin: full.origin,
+                  watermark: basis_point(count: 0),
+                  watermark_origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: SchedulerWatermarkField },
+                }
+              }
+            WatermarkSupported { default_fraction: d } =>
+              match request.kv_watermark {
+                KvWatermarkExplicit { fraction: bp } => SchedulerAdmissionResolved {
+                  full_input_admission: full.enabled, full_input_origin: full.origin,
+                  watermark: bp, watermark_origin: ExplicitArgument { field: SchedulerWatermarkField },
+                }
+                KvWatermarkOmitted => SchedulerAdmissionResolved {
+                  full_input_admission: full.enabled, full_input_origin: full.origin,
+                  watermark: d,
+                  watermark_origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: SchedulerWatermarkField },
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+// A REVISION WITH NO WATERMARK FIELD STILL RUNS WITH NONE HELD BACK, which is why the absent arm
+// above resolves to zero rather than refusing: the engine reserves nothing, exactly as a 0.0 default
+// would, and the origin names the revision so a reader sees that zero was not a choice.
+type FullInputAdmissionResolution {
+  enabled: Bool
+  origin: VllmResolutionOrigin
+}
+
+fn resolve_full_input_admission(request: VllmFullInputAdmissionRequest, rev: ModelledVllmDefaultsRevision) -> FullInputAdmissionResolution {
+  match request {
+    FullInputAdmissionExplicit { enabled: e } =>
+      FullInputAdmissionResolution { enabled: e, origin: ExplicitArgument { field: SchedulerReserveFullIslField } }
+    FullInputAdmissionOmitted =>
+      FullInputAdmissionResolution {
+        enabled: defaults_scheduler_reserve_full_isl(r: rev),
+        origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: SchedulerReserveFullIslField },
+      }
+  }
+}
+
+// ── THE INDEXER KV DTYPE, PER REVISION ───────────────────────────────────────────────────────────
+//
+// EACH REVISION SAYS ITS OWN, read from its own vllm/config/attention.py (2026-10-02):
+//   8d09804   IndexerKVDType = Literal["auto", "bf16", "fp8", "mxfp4", "nvfp4"], default "auto"
+//   487ecf187 IndexerKVDType = Literal["bf16", "fp8", "mxfp4", "nvfp4"], default "bf16" (no "auto")
+//   1967a5627 no indexer_kv_dtype field; only the boolean use_fp4_indexer_cache
+// "auto" is a MODEL-dependent default (fp8 for the DeepSeek sparse indexer), so resolving it to a
+// concrete dtype is a capability question about the model, not a fact this revision table can answer;
+// the resolution below therefore reports "auto" as auto, with its origin.
+type VllmIndexerKvSupport
+  = IndexerKvFieldDeclared { default_dtype: VllmIndexerKvDtype, accepted: List<VllmIndexerKvDtype> }
+  | IndexerKvFieldAbsentAtRevision
+
+fn defaults_indexer_kv_dtype(r: ModelledVllmDefaultsRevision) -> VllmIndexerKvSupport {
+  match r {
+    Vllm487ecf187 => IndexerKvFieldDeclared { default_dtype: IndexerKvBf16, accepted: [IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4] }
+    Vllm1967a5627 => IndexerKvFieldAbsentAtRevision
+    Vllm8d09804 => IndexerKvFieldDeclared { default_dtype: IndexerKvAuto, accepted: [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4] }
+  }
+}
+
+type ResolvedVllmIndexerKvDtype
+  = IndexerKvDtypeResolved { dtype: VllmIndexerKvDtype, origin: VllmResolutionOrigin }
+  | IndexerKvDtypeNotARevisionField { origin: VllmResolutionOrigin }
+  | IndexerKvDtypeUnresolvable { cause: NonEmptyStr }
+
+fn resolve_vllm_indexer_kv_dtype(request: VllmIndexerKvDtypeRequest, defaults: VllmDefaultsResolution) -> ResolvedVllmIndexerKvDtype {
+  match defaults {
+    VllmDefaultsUnestablished { revision: r } =>
+      IndexerKvDtypeUnresolvable { cause: join([
+        "revision ", r.full_revision as String,
+        " is not modelled, so whether it declares an indexer KV dtype, and with which default, is unestablished",
+      ], "") as NonEmptyStr }
+    VllmDefaultsKnown { revision: rev } => {
+      let source = defaults_source_revision(r: rev)
+      match defaults_indexer_kv_dtype(r: rev) {
+        IndexerKvFieldAbsentAtRevision =>
+          match request {
+            IndexerKvDtypeExplicit { dtype: _ } => IndexerKvDtypeUnresolvable { cause: join([
+              "an indexer KV dtype is requested but revision ", source.full_revision as String,
+              " declares no AttentionConfig.indexer_kv_dtype, so the argument is not one this engine accepts",
+            ], "") as NonEmptyStr }
+            IndexerKvDtypeOmitted => IndexerKvDtypeNotARevisionField {
+              origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: IndexerKvDtypeField },
+            }
+          }
+        IndexerKvFieldDeclared { default_dtype: d, accepted: acc } =>
+          match request {
+            IndexerKvDtypeOmitted => IndexerKvDtypeResolved {
+              dtype: d,
+              origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: IndexerKvDtypeField },
+            }
+            IndexerKvDtypeExplicit { dtype: x } =>
+              if count(filter(acc, a => (vllm_indexer_kv_dtype_wire(d: a) as String) == (vllm_indexer_kv_dtype_wire(d: x) as String))) == 0 {
+                IndexerKvDtypeUnresolvable { cause: join([
+                  "indexer KV dtype ", vllm_indexer_kv_dtype_wire(d: x) as String, " is not in revision ",
+                  source.full_revision as String, "'s IndexerKVDType",
+                ], "") as NonEmptyStr }
+              } else {
+                IndexerKvDtypeResolved { dtype: x, origin: ExplicitArgument { field: IndexerKvDtypeField } }
+              }
+          }
+      }
+    }
   }
 }

@@ -6,11 +6,10 @@
 //! papered over by a shared wildcard.
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
-    lookup_eval_algebra_method_inner, lookup_eval_builtin_inner,
-    lookup_eval_call_bridge_std_compilers_lexing, lookup_eval_call_native_intercept,
-    lookup_try_parse_table_memo_dispatch, lookup_try_v2_std_collection_map_primitive_grounding,
-    EvalAlgebraMethodArm, EvalBuiltinArm, EvalCallBridgeStdCompilersLexingArm,
-    EvalCallNativeInterceptArm, TryParseTableMemoDispatchArm,
+    lookup_eval_algebra_method_inner, lookup_eval_builtin_inner, lookup_eval_call_bridge_std_node,
+    lookup_eval_call_native_intercept, lookup_try_parse_table_memo_dispatch,
+    lookup_try_v2_std_collection_map_primitive_grounding, EvalAlgebraMethodArm, EvalBuiltinArm,
+    EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm, TryParseTableMemoDispatchArm,
     TryV2StdCollectionMapPrimitiveGroundingArm,
 };
 
@@ -36,8 +35,8 @@ fn all_eval_algebra_variants_reachable() {
 
 fn all_bridge_variants_reachable() {
     assert!(
-        lookup_eval_call_bridge_std_compilers_lexing("symbol_lexeme").is_some(),
-        "missing lookup for eval_call bridge (std_compilers_lexing) spelling: symbol_lexeme"
+        lookup_eval_call_bridge_std_node("symbol_lexeme").is_some(),
+        "missing lookup for eval_call bridge (std_node) spelling: symbol_lexeme"
     );
 }
 
@@ -71,8 +70,8 @@ fn generated_enums_are_copy_and_distinct() {
         EvalAlgebraMethodArm::MethodCallMap
     );
     assert_ne!(
-        EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme,
-        EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme
+        EvalCallBridgeStdNodeArm::V4BridgeSymbolInternLexeme,
+        EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme
     );
     assert_ne!(
         TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert,

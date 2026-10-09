@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.interpreter_ignores_match_arm_guards
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data interpreter_ignores_match_arm_guards: RecurringFailureMode = RecurringFailureMode {
+  identity: "interpreter_ignores_match_arm_guards" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a match arm carrying a guard (`pat if cond => body`) is selected by the seed interpreter whenever its PATTERN fits, whatever the guard evaluates to. The guard reaches the arm node intact -- parse, lowering, the checker (`v1.compiler.infer` reads `arm_guard` for binding scopes and for `match_unguarded_absent_arm_index`) and the Rust emitter (`v1.compiler.emit` `emit_arm_guard`) all carry it -- and `v1_interpreter` `eval_match` was the one consumer that never read it.",
+
+    "HARM: silent wrongness on the path that decides every claim verdict. The interpreter and the emitted binary disagree on the same accepted source with no diagnostic on either side, so a claim over a guarded arm reports the verdict of a program nobody wrote. Interpretation and emission are two paths from one source (DESIGN section 4b(1)); the class sat outside the ladder on the interpretation path while the emission path honoured it.",
+
+    "RECEIPT (gunbc, 2026-09-30, bright-owl-402, EXECUTED rather than read): the fixture `match n { x if x > 10 => 1  _ => 2 }` evaluated at n = 3 answered 1 under `claim_batch --wet` (claim `pick(n: 3) == 2` FAIL) and 2 in the emitted crate (`gunbc compile --target rust`, built and run in the same BuildBuddy dispatch, which rendered `x if (x.clone() > 10) => 1`). The positive control `pick(n: 30) == 1` passed on both paths.",
+
+    "CHAIN (DESIGN section 6b): every link upstream of `eval_match` establishes the guard -- `v1.std.core` `arm_guard` reads it off the arm node the parser built, and the emitter and checker consume that same node -- so `eval_match` was the earliest unjustified boundary and the local correction there IS the root-cause repair. A guard is evaluated in the arm's own bindings: `true` admits, `false` falls through to the next arm, any other value refuses with the typed, located `InterpError::MatchGuardNotBool`; when no arm admits, the existing non-exhaustive refusal applies.",
+
+    "CENSUS AT THE REPAIR: no authored `.dag` source under dag/ or src/ carries a guarded arm (text census over every arm head; the only guards found sit inside fixture STRINGS compiled by emitter witnesses, which the interpreter does not evaluate). So no enrolled claim's verdict moved: unguarded arms take the unchanged path. The absence of authored sites is why the class stayed invisible, not evidence that it was harmless.",
+
+    "RECOGNITION RULE: when one node carrier feeds several consumers (checker, emitter, interpreter), each consumer must read every field the carrier's grammar admits, or refuse it. A consumer that reads a subset answers a narrower question than the source asks -- the same shape as `special_cased_lowering_answers_a_narrower_question_than_its_arms_ask`, on the interpretation path instead of the emission path.",
+
+    "ADJACENT GAP FOUND BY THE SAME PROBE, NOT REPAIRED HERE: the checker ACCEPTS a guard that is not Bool. `match n { x if 5 => 1  _ => 2 }` resolved and type-checked clean under `claim_batch`, and only the interpreter's `MatchGuardNotBool` refused it at run time (`match guard at <file>:<offset> evaluated to 5 (Int), not a Bool`, cause token type-error). So a non-Bool guard is refused on the interpretation path at rung 1 and is not refused at acceptance at all; the emitted `if 5` would be a rustc refusal. Its next-rung trigger is the checker requiring a guard to inhabit Bool, which makes the interpreter arm unreachable from an Accepted program.",
+
+    "SECOND INDEPENDENT RECEIPT (gunbc#12859, bold-badger-829, folded here from the duplicate row it had filed as `match_guard_ignored_by_the_seed_interpreter`; two rows for one class is a DESIGN section 3 fork): found while building the interpreter-vs-emitted differential for gunbc.recurring_failure_mode nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust -- the authored-guard arm kind `match GP { GP if n > 0 => 1  _ => 2 }` returned 1 for n = 0 on the interpreter, so the differential reported the CORRECT emitted answer as the divergence. That is the harm stated from the differential's side: an interpreter-vs-emitted comparison is only as honest as the interpreter it trusts. Its permanent control is `test.claim.emit.nested_constant_pattern_emission_witness_test` `the_interpreter_honors_an_authored_guard_on_a_nested_arm`, which reds with the eval_match guard reverted.",
+
+    "RUNG FOUND AT: outside the ladder (silent). RUNG NOW: 2, mechanically preventable -- `test.claim.interpreter_match_guard_witness_test` pairs each rejecting guard (the discriminating red, measured red before the repair) with an admitting control.",
+
+    "ATTAINABLE CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, named as the capability: an executed interpreter-versus-emitted-binary differential over the same source and inputs, reporting disagreement as a located refusal -- the same capability `special_cased_lowering_answers_a_narrower_question_than_its_arms_ask` names, which would have caught this class without anyone knowing to look for guards."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emit.nested_constant_pattern_emission_witness_test", decl_name: "the_interpreter_honors_an_authored_guard_on_a_nested_arm", field: WholeDeclaration },
+  ],
+}

@@ -416,13 +416,3 @@ test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool {
       }
   }
 }
-
-test fn scm_manifest_merge_witnesses_hold() -> Bool {
-  scm_mm_the_presence_cases_fall_out_of_the_one_law()
-    && scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent()
-    && scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent()
-    && scm_mm_every_conflicting_path_is_reported_not_the_first()
-    && scm_mm_a_path_only_one_side_has_is_still_decided()
-    && scm_mm_the_law_does_not_depend_on_which_side_is_source()
-    && scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting()
-}

@@ -14,11 +14,12 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import extdeps.systemd { ControlGroup }
 import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 // STRICTLY READ-ONLY pre-apply observation for the PR 8045 supervised TasksMax apply
 // (operator ruling 2026-08-09: before the apply, re-observe and reduce to ONE exact
@@ -98,12 +99,14 @@ fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
                   },
                 }
               }
+            SystemdPropertyBlank =>
+              Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }
             SystemdPropertyCaptureRefused { reason: why } =>
               Srv1TasksUnitObservationRefused { unit: unit, cause: join(["ControlGroup read refused: ", why], "") }
           }
-        _ => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksCurrent read refused" }
+        Absent => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksCurrent read refused" }
       }
-    _ => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksMax read refused" }
+    Absent => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksMax read refused" }
   }
 }
 
@@ -120,7 +123,7 @@ fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
           units: map(units, u => observe_unit_tasks(unit: u)),
         }
       }
-    _ => Srv1TasksPreApplyRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
+    Absent => Srv1TasksPreApplyRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
   }
 }
 

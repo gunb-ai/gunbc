@@ -10,7 +10,7 @@ fn atom(sym: Symbol) -> Node {
 fn chain1(child: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only }, target: child }]
+    children: [Edge { label: Authored { name: ^only }, target: child }]
   )
 }
 
@@ -18,9 +18,9 @@ fn star3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^first }, target: a },
-      Edge { label: Named { name: ^second }, target: b },
-      Edge { label: Named { name: ^third }, target: c }
+      Edge { label: Authored { name: ^first }, target: a },
+      Edge { label: Authored { name: ^second }, target: b },
+      Edge { label: Authored { name: ^third }, target: c }
     ]
   )
 }

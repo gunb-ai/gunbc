@@ -1,7 +1,6 @@
 module gunbc.spark.remote_step_sequence
 
 import std.types { String, List, Bool }
-import std.resources { Network }
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -41,7 +40,6 @@ fn run_remote_operation(
   operation: RemoteOperation,
   transport: HostEffectTransport,
 ) -> RemoteOperationExecution
-  uses net: Network
 {
   match operation {
     RemoteArgv { argv: argv } =>
@@ -103,7 +101,6 @@ fn remote_step_sequence_step(
   step: PlannedRemoteStep,
   transport: HostEffectTransport,
 ) -> RemoteStepSequenceAcc
-  uses net: Network
 {
   if acc.halted {
     RemoteStepSequenceAcc {
@@ -134,7 +131,6 @@ fn run_remote_step_sequence(
   steps: List<PlannedRemoteStep>,
   transport: HostEffectTransport,
 ) -> List<RemoteStepStanding>
-  uses net: Network
 {
   fold(
     steps,

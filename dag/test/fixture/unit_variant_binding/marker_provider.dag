@@ -1,0 +1,9 @@
+module test.fixture.unit_variant_binding.marker_provider
+
+import std.types { Int }
+
+type Marker = Alpha | Beta
+
+type Holder<M> { count: Int }
+
+fn unrelated() -> Int { 0 }

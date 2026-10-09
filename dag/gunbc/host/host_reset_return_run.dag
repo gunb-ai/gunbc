@@ -1,5 +1,10 @@
 module gunbc.host_reset_return_run
 
+import gunbc.managed_host_unit_hold {
+  UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
+  host_reset_owner, admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired,
+}
+import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second }
@@ -19,7 +24,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,
@@ -51,6 +56,8 @@ import gunbc.host_reset_return {
   IssuingRunUnidentified,
   ObserverNotAssigned,
   SubjectHasNoRosterRow,
+  UnitHoldStoreNotOnObserver,
+  UnitHeldForMaintenance,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -72,18 +79,25 @@ import gunbc.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
-import gunbc.host_reset_subject_roster { ResetSubjectCandidate, reset_observer_peer_roster, reset_subject_candidate_for, reset_subject_roster }
+import gunbc.host_reset_subject_roster { AdmittedResetSubject, reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
 import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff,
-  BootHandoffCompleted,
+  BootControlIssued,
   BootHandoffNotAdmitted,
   BootSelectionFlagInvalid,
   BootSelectionNotApplied,
+  BootSelectionFirmwareMismatch,
+  BootSelectionNotOneShot,
   BootSelectionRefused,
   BootSelectionUnverifiable,
   OobBootHandoffOutcome,
-  PowerCycleRefused,
+  PowerCommandAcceptedNoTransition,
+  oob_power_action_verb,
+  power_transition_progress_text,
+  PowerCommandRefused,
+  PowerStateReadFailed,
 }
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
@@ -106,7 +120,6 @@ import gunbc.machine_intake_oob_boot_handoff {
 data host_reset_return_probe_label: NonEmptyStr = "ssh.Session.Reachability, BatchMode, ConnectTimeout=5"
 
 fn host_is_reachable(host: NonEmptyStr) -> Bool
-  uses net: std.resources.Network
 {
   return ssh.Session.Reachability(host: host).reachable
 }
@@ -135,7 +148,6 @@ type WatchFold {
 // back watch, so one fold serves both and the two waits cannot drift apart in their pacing, their
 // bound or their clock discipline.
 fn watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchFold
-  uses net: std.resources.Network
 {
   return match acc.outcome {
     Present { value: _ } => acc
@@ -163,7 +175,6 @@ fn watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchF
 }
 
 fn watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> LivenessWatch
-  uses net: std.resources.Network
 {
   let done = fold(
     nat_range_inclusive(lo: 1, hi: max_samples),
@@ -183,7 +194,6 @@ fn watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> Liven
 // observed without a departure having been observed first, so "down then up" cannot degenerate into
 // "up", which is what a host that never rebooted would answer.
 fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_max: Nat) -> HostReturnObservation
-  uses net: std.resources.Network
 {
   return match watch_for(host: host, want_reachable: false, max_samples: down_samples_max) {
     WatchClockRefused { detail: d } =>
@@ -235,7 +245,6 @@ fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_m
 // not happen" class this branch had already been caught by once, which is the argument for reading
 // every sentence that names a state as a claim to be re-measured rather than as description.
 fn observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
-  uses net: std.resources.Network
 {
   let observed = os.Hostname.ReadShort()
   if observed.success == false {
@@ -283,7 +292,6 @@ fn observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) ->
 // moved nothing. So reachability is established first, and a subject that was not up refuses on its
 // own arm rather than proceeding into a watch whose answer is already decided.
 fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
-  uses net: std.resources.Network
 {
   if host_is_reachable(host: host) {
     return none
@@ -307,9 +315,9 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
   match outcome {
-    BootHandoffCompleted { selected: d } =>
+    BootControlIssued { selected: d, power: _ } =>
       ResetAccepted {
-        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted"], "") as NonEmptyStr,
+        controller_response: join(["boot source override verified for '", d as String, "' and the chassis power transition was observed; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
         issued_at: issued_at,
       }
     BootSelectionRefused =>
@@ -322,13 +330,29 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
       ResetRefusedByController {
         diagnostic: join(["the override for '", d as String, "' was reported alongside an INVALID boot flag, so it will not be honoured; read back: ", r], "") as NonEmptyStr,
       }
+    BootSelectionNotOneShot { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' is not one-shot next-boot; read back: ", r], "") as NonEmptyStr,
+      }
+    BootSelectionFirmwareMismatch { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' does not match the required firmware mode; read back: ", r], "") as NonEmptyStr,
+      }
     BootSelectionUnverifiable { requested: d, readback: r } =>
       ResetRefusedByController {
         diagnostic: join(["boot parameter 5 did not read back, so the override for '", d as String, "' is unverified; output: ", r], "") as NonEmptyStr,
       }
-    PowerCycleRefused { selected: d } =>
+    PowerStateReadFailed { selected: d, observed_state: o } =>
       ResetRefusedByController {
-        diagnostic: join(["the override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power read ", chassis_observation_text(observation: o) as String, ", so no power action was selected; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandRefused { selected: d, action: a } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power ", oob_power_action_verb(action: a) as String, " was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandAcceptedNoTransition { selected: d, action: a, progress: pr, last_observed: o } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED and chassis power ", oob_power_action_verb(action: a) as String, " exited 0 but the transition did not complete within the bound: ", power_transition_progress_text(progress: pr) as String, "; last chassis power ", chassis_observation_text(observation: o) as String], "") as NonEmptyStr,
       }
     BootHandoffNotAdmitted { admission: _ } =>
       ResetNotAttempted { cause: "the controller was not admitted for out-of-band drive; no write was attempted" }
@@ -367,23 +391,38 @@ data host_reset_down_watch_samples: Nat = 120
 
 data host_reset_back_watch_samples: Nat = 200
 
+fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
+  match admit_unit_hold_subject(host: candidate.binding.host) {
+    UnitHoldNotRequired { host: _ } => none
+    UnitHoldSubjectAdmitted { subject: _ } =>
+      match proof {
+        Absent => Present { value: join(["subject ", candidate.binding.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
+        Present { value: p } =>
+          match unit_hold_proof_refusal(proof: p, host: candidate.binding.host.host, label: "host reset-return") {
+            Present { value: why } => Present { value: why as NonEmptyStr }
+            Absent => none
+          }
+      }
+  }
+}
+
 fn host_reset_return_attempt(
-  candidate: ResetSubjectCandidate,
+  proof: UnitHoldProof?,
+  candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
   attempt: NonEmptyStr,
   route: ResetIssuanceRoute,
   password_file: NonEmptyStr,
 ) -> ResetAttemptMint
-  uses net: std.resources.Network
 {
-  let subject = candidate.host as NonEmptyStr
+  let subject = candidate.binding.host.host as NonEmptyStr
   let selection = select_reset_observer(
     subject_roster: reset_subject_roster(),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
   )
-  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host)
+  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.binding.host.host)
   match reset_issuance_block(selection: selection, identity: identity) {
     Present { value: blocked } =>
       return mint_reset_attempt_receipt(
@@ -424,6 +463,7 @@ fn host_reset_return_attempt(
           )
         ClockUnixMillisObserved { millis: issued_at } =>
           host_reset_return_issue_and_watch(
+            proof: proof,
             candidate: candidate,
             selection: selection,
             identity: identity,
@@ -436,8 +476,11 @@ fn host_reset_return_attempt(
   }
 }
 
+// A HOLD-GATED SUBJECT IS NOT WRITTEN WITHOUT A PROOF FOR ITS SLOT, and the proof exists only if the
+// entry's live acquire committed (gunbc.managed_host_unit_hold UnitHoldProof).
 fn host_reset_return_issue_and_watch(
-  candidate: ResetSubjectCandidate,
+  proof: UnitHoldProof?,
+  candidate: AdmittedResetSubject,
   selection: ResetObserverSelection,
   identity: ObserverSelfIdentity,
   attempt: NonEmptyStr,
@@ -445,20 +488,32 @@ fn host_reset_return_issue_and_watch(
   password_file: NonEmptyStr,
   issued_at: EpochMs,
 ) -> ResetAttemptMint
-  uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_attempt"),
+  ]
 {
+  match reset_unit_hold_gate(candidate: candidate, proof: proof) {
+    Present { value: why } =>
+      return mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ResetNotAttempted { cause: why },
+        observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+      )
+    Absent => {}
+  }
   let outcome = oob_boot_handoff(
-    observation: candidate.observation,
-    capability_row: candidate.capability_row,
-    username: candidate.username,
+    observation: candidate.binding.observation,
+    capability_row: candidate.binding.host.capability_row,
+    username: candidate.binding.account,
     password_file: password_file,
-    device: candidate.boot_device,
-    expected_rendering: candidate.boot_readback_rendering,
-    power_action: candidate.power_action,
+    selection: candidate.boot_selection,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
   let observation = observe_reset_return(
-    host: candidate.host as NonEmptyStr,
+    host: candidate.binding.host.host as NonEmptyStr,
     down_samples_max: host_reset_down_watch_samples,
     back_samples_max: host_reset_back_watch_samples,
   )
@@ -492,8 +547,8 @@ fn host_reset_return_issue_and_watch(
 //
 // AND extdeps.shell IS IMPORTED FOR A MEASURED REASON. Service operations register from the IMPORT
 // CLOSURE, so an unimported service compiles clean and refuses at RUN TIME naming the operation
-// rather than the missing import; gunbc.machine_intake_mtcollins1_actuate lost a run to exactly that
-// diagnostic and wrote it down.
+// rather than the missing import; gunbc.managed_host_boot_handoff records the run lost to exactly
+// that diagnostic.
 data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
 
 // THE PREFLIGHT REFUSAL WRITES ITS RECEIPT AND THEN EXITS, in that order, because the upload step
@@ -507,7 +562,6 @@ data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CRE
 // would be the fabricated-plausible-output shape, and a reader sorting receipts by subject would find
 // a row claiming one. The line says which vocabulary answered it so the two are never confused.
 fn host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
-  uses net: std.resources.Network
 {
   let wire = reset_preflight_refusal_wire(refusal: refusal)
   let _w = Filesystem.Write(
@@ -537,7 +591,6 @@ fn host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: Stri
 // module refuses -- so the not-this-mode arm exits SUCCESSFULLY and says so, and the unnamed-observer
 // arm exits non-zero with the located diagnostic.
 fn host_reset_return_dispatch_admission_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   let mode_raw = match shell.Env.Get(name: host_reset_dispatch_mode_env).value {
     Absent => ""
@@ -557,8 +610,33 @@ fn host_reset_return_dispatch_admission_wet() -> ProcessExit
 
 data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
-fn host_reset_return_wet() -> ProcessExit
+fn host_reset_return_attempt_exit(
+  proof: UnitHoldProof?,
+  candidate: AdmittedResetSubject,
+  observer: NonEmptyStr,
+  subject: NonEmptyStr,
+  route: ResetIssuanceRoute,
+  password_file: NonEmptyStr,
+) -> ProcessExit
   uses net: std.resources.Network
+{
+  host_reset_return_exit(
+    verdict: reset_return_verdict_of_mint(
+      mint: host_reset_return_attempt(
+        proof: proof,
+        candidate: candidate,
+        observer: observer,
+        attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+        route: route,
+        password_file: password_file,
+      )
+    ),
+    subject: subject,
+    attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+  )
+}
+
+fn host_reset_return_wet() -> ProcessExit
 {
   let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
   let password_file_raw = match credential {
@@ -602,26 +680,37 @@ fn host_reset_return_wet() -> ProcessExit
         remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
-      match reset_subject_candidate_for(host: subject) {
+      match reset_subject_for(host: subject) {
         Absent =>
           host_reset_return_preflight_exit(
             refusal: SubjectHasNoRosterRow { subject: subject },
             remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
-          host_reset_return_exit(
-            verdict: reset_return_verdict_of_mint(
-              mint: host_reset_return_attempt(
-                candidate: candidate,
-                observer: observer,
-                attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
-                route: route,
-                password_file: password_file_raw as NonEmptyStr,
-              )
-            ),
-            subject: subject,
-            attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
-          )
+          match admit_unit_hold_subject(host: candidate.binding.host) {
+            UnitHoldNotRequired { host: _ } =>
+              host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
+            UnitHoldSubjectAdmitted { subject: held } =>
+              if (observer as String) != (held.store_host as String) {
+                host_reset_return_preflight_exit(
+                  refusal: UnitHoldStoreNotOnObserver { subject: subject, observer: observer, store_host: held.store_host },
+                  remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
+                )
+              } else {
+                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                  UnitHoldRefused { reason: r } =>
+                    host_reset_return_preflight_exit(
+                      refusal: UnitHeldForMaintenance { subject: subject, reason: r },
+                      remedy: "the unit hold was not acquired: it is held (maintenance or another run), or this runner was not observed on the hold store's host; nothing was written to its controller",
+                    )
+                  UnitHeld { proof: p } =>
+                    unit_hold_release(
+                      proof: p,
+                      outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
+                    )
+                }
+              }
+          }
       }
   }
 }
@@ -647,7 +736,6 @@ fn host_reset_return_wet() -> ProcessExit
 // trace back to its run does not establish it, so the honest arm is to refuse before the controller
 // write rather than to record the gap afterwards.
 fn host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
-  uses net: std.resources.Network
 {
   match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -688,7 +776,6 @@ fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmpty
 }
 
 fn host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
-  uses net: std.resources.Network
 {
   let _w = Filesystem.Write(
     path: host_reset_return_receipt_path as String,

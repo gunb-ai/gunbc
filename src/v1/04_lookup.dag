@@ -88,6 +88,7 @@ type KnownMethodResolution {
   semantics: MethodSemantics?
   result_type: Node?
   diagnostics: List<ErrorNode>
+  rest_operation: Bool
 }
 
 fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
@@ -133,7 +134,6 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
           params: [],
           resolved_formals: KernelGroundedFormals { formals: [] },
           inferred: builtin_return,
-          is_async: false,
           output_provenance: [],
           variant_provenance: empty_map()
         }
@@ -647,7 +647,6 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
       params: node.params,
       resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: candidate.module_path, node: node) },
       inferred: return_type,
-      is_async: false,
       output_provenance: [],
       variant_provenance: empty_map()
     }
@@ -749,7 +748,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: raw_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
@@ -760,7 +758,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: qualified_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
@@ -1122,7 +1119,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       KnownMethodResolution {
         semantics: Present { value: semantics },
         result_type: Present { value: mfr.result_type },
-        diagnostics: tier0.kernel_diagnostics
+        diagnostics: tier0.kernel_diagnostics,
+        rest_operation: false
       }
     Absent =>
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
@@ -1130,10 +1128,11 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       KnownMethodResolution {
         semantics: Present { value: ServiceMethodSemantics { service_name: authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
         result_type: Present { value: svc_result.result_type },
-        diagnostics: tier0.kernel_diagnostics
+        diagnostics: tier0.kernel_diagnostics,
+        rest_operation: svc_result.rest
       }
     Absent =>
-      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics }
+      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics, rest_operation: false }
   }
   }
 }

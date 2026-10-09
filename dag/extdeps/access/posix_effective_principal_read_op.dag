@@ -1,7 +1,6 @@
 module extdeps.access.posix_effective_principal_read_op
 
 import std.types { Int, Bool, List, Unit }
-import std.string_type { String }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead, EffectivePosixPrincipalReadOutcome,
 }
@@ -16,7 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the
-// realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice). Hermetic realization
+// realization edge without shell.Exec.Run (Wave C5 typed-argv slice). Hermetic realization
 // refuses this external identity observation; its mock response is a failed read and cannot become
 // principal evidence.
 
@@ -39,6 +38,7 @@ fn effective_posix_principal_read(
 
 service access.PosixEffectivePrincipal {
   operation Read {
+    requires none
     input { read: EffectivePosixPrincipalRead }
     output {
       exit_code: Int from "exit_code"

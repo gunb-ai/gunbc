@@ -5,12 +5,13 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives }
 import std.algebra { Empty }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -18,7 +19,7 @@ data semantic_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool 
 
 data semantic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
 
-data semantic_record_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
+data semantic_record_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: i32 }")
 
 data semantic_record_wrong_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Bool }")
 
@@ -27,7 +28,7 @@ fn sdr_empty_conj() -> Node {
 }
 
 fn sdr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdr_empty_conj() }
 }
 
 fn semantic_bool_coproduct() -> Node {
@@ -43,7 +44,8 @@ fn semantic_bool_emit_text() -> Outcome<String> {
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -62,13 +64,13 @@ fn sdr_atom_type(name: Symbol) -> Node {
 }
 
 fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: sdr_atom_type(name: type_name))
 }
 
 fn semantic_record_type() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ sdr_field_edge(name: ^next_id, type_name: ^Int) ],
+    children: [ sdr_field_edge(name: ^next_id, type_name: ^dag_binding_type_int) ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -78,7 +80,8 @@ fn semantic_record_emit_text() -> Outcome<String> {
     name: ^OccurrenceIdAllocator,
     params: Empty,
     node: semantic_record_type(),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -89,6 +92,30 @@ fn semantic_record_matches(golden: String) -> Bool {
   match semantic_record_emit_text() {
     Accepted { value: text, diagnostics: _ } => text == golden
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR A FABRICATED SPELLING. A field whose type atom the target spells nowhere --
+// `^Int` is not the kernel carrier production lowers to, and Rust has no `Int` -- refuses at the type,
+// by name, where the route this replaced printed the interned `Int` into Rust source.
+fn semantic_unspelled_field_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ sdr_field_edge(name: ^next_id, type_name: ^Int) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn semantic_record_with_an_unspelled_field_type_refuses_by_name() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^OccurrenceIdAllocator,
+    params: Empty,
+    node: semantic_unspelled_field_record(),
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^produced_decl_type_ref_unrealized
   }
 }
 
@@ -103,11 +130,7 @@ test fn semantic_record_routes_to_struct_emit() -> Bool {
 }
 
 fn semantic_arrow_type() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [sdr_atom_type(name: ^Int)], codomain: sdr_atom_type(name: ^Int), source: sdr_atom_type(name: ^Int))
 }
 
 fn semantic_arrow_refuses() -> Bool {
@@ -115,7 +138,8 @@ fn semantic_arrow_refuses() -> Bool {
     name: ^Bogus,
     params: Empty,
     node: semantic_arrow_type(),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

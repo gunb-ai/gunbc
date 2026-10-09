@@ -27,13 +27,13 @@ mod class_b_trim_specimen_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
+mod emitted_symbol_collision_test;
+#[cfg(test)]
 mod field_of_fractions_construction_test;
 #[cfg(test)]
 mod field_of_fractions_single_declaration_test;
 #[cfg(test)]
 mod item_kind_dispatch_totality_test;
-#[cfg(test)]
-mod materialization_provider_resolved_graph_consumer_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]

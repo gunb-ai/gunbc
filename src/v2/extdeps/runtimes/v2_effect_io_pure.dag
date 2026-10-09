@@ -1,10 +1,10 @@
 module v2.extdeps.runtimes.v2_effect_io_pure
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,
@@ -25,7 +25,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.model_core { EffectSignature, PrimitiveOperationRef }
 import v2.std.node { Atom, Node, Symbol, TypeNode, Hash, content_hash }
 import v2.std.runtime {
@@ -33,8 +32,8 @@ import v2.std.runtime {
   EffectHandlerBinding,
   EffectReceipt,
   EffectReceiptLog,
-  EffectRequest,
-  EffectRequestKind,
+  OperationCall,
+  OperationCallKind,
   EvaluationEnvironment,
   EvaluationFrame,
   ReadResource,
@@ -180,17 +179,20 @@ fn effect_io_pure_backends_match(
     FileResourceBackend =>
       match right {
         FileResourceBackend => true
-        _ => false
+        HttpResourceBackend => false
+        StorageResourceBackend => false
       }
     HttpResourceBackend =>
       match right {
         HttpResourceBackend => true
-        _ => false
+        FileResourceBackend => false
+        StorageResourceBackend => false
       }
     StorageResourceBackend =>
       match right {
         StorageResourceBackend => true
-        _ => false
+        FileResourceBackend => false
+        HttpResourceBackend => false
       }
   }
 }
@@ -229,7 +231,7 @@ fn effect_io_pure_store_lookup(
 
 fn effect_io_pure_handle_read(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
@@ -239,7 +241,7 @@ fn effect_io_pure_handle_read(
 
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -264,7 +266,7 @@ fn effect_io_pure_handle_write(
 
 fn effect_io_pure_invoke_handler(
   handler: EffectHandler,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match handler {
     EffectHandler { handle: h } => h(request)
@@ -304,10 +306,10 @@ fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> Effec
 }
 
 fn effect_io_pure_request(
-  kind: EffectRequestKind,
+  kind: OperationCallKind,
   args: List<RuntimeValue>
-) -> EffectRequest {
-  EffectRequest {
+) -> OperationCall {
+  OperationCall {
     kind: kind,
     operation: effect_io_pure_operation_ref(),
     arguments: args,
@@ -315,17 +317,17 @@ fn effect_io_pure_request(
   }
 }
 
-fn effect_io_pure_read_request(args: List<RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_read_request(args: List<RuntimeValue>) -> OperationCall {
   effect_io_pure_request(kind: ReadResource, args: args)
 }
 
-fn effect_io_pure_write_request(args: List<RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_write_request(args: List<RuntimeValue>) -> OperationCall {
   effect_io_pure_request(kind: WriteResource, args: args)
 }
 
 fn effect_io_pure_append_receipt(
   log: EffectReceiptLog,
-  request: EffectRequest,
+  request: OperationCall,
   result: Outcome<RuntimeValue>
 ) -> EffectReceiptLog {
   EffectReceiptLog {
@@ -435,12 +437,14 @@ fn effect_io_pure_roundtrip_through_store(
                 RuntimeValueEqualityUnavailable { reason: r } =>
                   Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
               }
-            _ => Holds { value: false }
+            Accepted { value: _, diagnostics: _ } => Holds { value: false }
+            Rejected { diagnostics: _ } => Holds { value: false }
           }
         RuntimeValuesDiffer => Holds { value: false }
         RuntimeValueEqualityUnavailable { reason: r } =>
           Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
       }
-    _ => Holds { value: false }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }

@@ -14,7 +14,7 @@ import test.fixture.required_lane_claim.stale_claim_fixture {
   stale_claim_fixture_documents,
   stale_claim_fixture_rostered_job_ids,
 }
-import gunbc.witness_floor_workflow { RequiredLane, required_lanes_roster }
+import gunbc.witness_floor_lanes { RequiredLane, required_lanes_roster }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 

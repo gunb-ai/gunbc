@@ -1,0 +1,144 @@
+module tools.self_host_behavioral_equivalence_take
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.subject_evidence {
+  EvidenceInstrumentRefused,
+  EvidenceSubjectUnreached,
+  EvidenceSubjectCompleted,
+}
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.bazel.label { render_label }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.instrument_targets { self_host_behavioral_equivalence_label }
+import tools.self_host_module_behavioral_transport_roster {
+  ModuleBehavioralTransportConfig,
+  compiler_module_behavioral_transport_roster,
+  compiler_module_behavioral_receipt_evidence,
+  BehavioralReceiptHeld,
+  BehavioralReceiptRefuted,
+  CompilerModuleReceiptNoVerdict,
+  BehavioralTransportConfigAbsent,
+  BehavioralReceiptSetupRefused,
+}
+import gunbc.self_host_behavioral_equivalence_receipt {
+  BehavioralRowVerdict,
+  BehavioralRowHeld,
+  BehavioralRowRefuted,
+  BehavioralRowNoVerdict,
+  BehavioralEquivalenceRow,
+  BehavioralEquivalenceReceipt,
+  behavioral_equivalence_outstanding,
+  self_host_behavioral_equivalence_receipts,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// TAKING ONE RECEIPT OF gunbc.self_host_behavioral_equivalence_receipt, ON PURPOSE.
+// `gunbc test //gunbc/instruments:self-host-behavioral-equivalence` evaluates
+// take_self_host_behavioral_equivalence_receipt: it runs every behavioral roster row for real (emit,
+// assemble, cargo build, drive -- the wet path, which is why this is an instrument and never a
+// floor claim), then prints the receipt as the declaration to persist. It persists nothing itself:
+// the receipt enters the series as a reviewed commit, exactly as the compile-phase receipts do.
+//
+// REFUSES (exit 2) rather than measures when the receipt could not name its tree: HEAD unreadable,
+// the working tree dirty (the rows would describe bytes no revision holds), or the clock unreadable.
+// Otherwise exit 0 when the receipt would read Clear against the current roster, and 1 when it
+// would read Outstanding -- the printed receipt is the product on both, since a failing receipt is
+// as much a receipt as a passing one.
+
+fn no_verdict_cause(cause: CompilerModuleReceiptNoVerdict) -> String {
+  match cause {
+    BehavioralTransportConfigAbsent { module_path: _ } => "behavioral transport config absent"
+    BehavioralReceiptSetupRefused { module_path: _, step: refused_step } => concat("setup refused: ", refused_step)
+  }
+}
+
+// A drive that ran decides held or refuted; anything that kept it from running is NoVerdict with
+// its located cause -- a missing witness artifact is never a behavioral FAIL and never a pass.
+fn behavioral_row_of(cfg: ModuleBehavioralTransportConfig) -> BehavioralEquivalenceRow {
+  let verdict = match compiler_module_behavioral_receipt_evidence(module_path: cfg.module_path) {
+    EvidenceSubjectCompleted { outcome } => match outcome {
+      BehavioralReceiptHeld => BehavioralRowHeld
+      BehavioralReceiptRefuted { observed } => BehavioralRowRefuted { observed: observed }
+    }
+    EvidenceInstrumentRefused { cause } => BehavioralRowNoVerdict { cause: no_verdict_cause(cause: cause) }
+    EvidenceSubjectUnreached { cause } => BehavioralRowNoVerdict { cause: no_verdict_cause(cause: cause) }
+  }
+  BehavioralEquivalenceRow { module_path: cfg.module_path, verdict: verdict }
+}
+
+fn verdict_source(v: BehavioralRowVerdict) -> String {
+  match v {
+    BehavioralRowHeld => "BehavioralRowHeld"
+    BehavioralRowRefuted { observed } => concat(concat("BehavioralRowRefuted { observed: \"", observed), "\" }")
+    BehavioralRowNoVerdict { cause } => concat(concat("BehavioralRowNoVerdict { cause: \"", cause), "\" }")
+  }
+}
+
+fn row_source(r: BehavioralEquivalenceRow) -> String {
+  concat(concat(concat(concat("    BehavioralEquivalenceRow { module_path: \"", r.module_path), "\", verdict: "), verdict_source(v: r.verdict)), " },")
+}
+
+// The declaration to append to gunbc.self_host_behavioral_equivalence_receipt, and the series edit.
+fn receipt_source(r: BehavioralEquivalenceReceipt) -> String {
+  let name = concat(concat(concat("behavioral_equivalence_receipt_", to_string(r.sequence)), "_"), substring(s: r.main_sha as String, start: 0, end: 8))
+  let rows = r.rows |> map(x => row_source(r: x)) |> join(separator: "\n")
+  [
+    concat(concat("data ", name), ": BehavioralEquivalenceReceipt = BehavioralEquivalenceReceipt {"),
+    concat(concat("  sequence: ", to_string(r.sequence)), ","),
+    concat(concat("  main_sha: \"", r.main_sha as String), "\" as CommitSha,"),
+    concat(concat("  instrument: \"", r.instrument as String), "\" as NonEmptyStr,"),
+    concat(concat("  observed_at: \"", r.observed_at as String), "\" as NonEmptyStr,"),
+    "  rows: [",
+    rows,
+    "  ]",
+    "}",
+    concat(concat("// append `", name), "` to self_host_behavioral_equivalence_receipts")
+  ] |> join(separator: "\n")
+}
+
+fn refused(reason: String) -> CliWireResponse {
+  CliWirePrintable {
+    bytes: concat(concat("self-host-behavioral-equivalence: refused: ", reason), "\n"),
+    exit: ExitFailure { code: 2, reason: reason }
+  }
+}
+
+fn take_self_host_behavioral_equivalence_receipt() -> CliWireResponse {
+  let head = git.Inspect.HeadCommit()
+  let top = git.Inspect.Toplevel()
+  let status = git.Inspect.WorkingTreeStatus(repository_path: top.path)
+  if !head.success {
+    refused(reason: "HEAD is unreadable, so the receipt could not name its revision")
+  } else if !status.success || status.entries_nul != "" {
+    refused(reason: "the working tree is not clean, so the rows would describe bytes no revision holds")
+  } else {
+    match clock_now_probed_at() {
+      Absent => refused(reason: "the clock is unreadable")
+      Present { value: now } => {
+        let receipt = BehavioralEquivalenceReceipt {
+          sequence: count(self_host_behavioral_equivalence_receipts) + 1,
+          main_sha: head.sha,
+          instrument: render_label(l: self_host_behavioral_equivalence_label()) as NonEmptyStr,
+          observed_at: now,
+          rows: compiler_module_behavioral_transport_roster |> map(c => behavioral_row_of(cfg: c))
+        }
+        let outstanding = behavioral_equivalence_outstanding(receipt: receipt, roster: compiler_module_behavioral_transport_roster)
+        let bytes = concat(concat(receipt_source(r: receipt), "\n"), concat(outstanding |> map(o => concat("outstanding ", o)) |> join(separator: "\n"), "\n"))
+        if count(outstanding) == 0 {
+          CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+        } else {
+          CliWirePrintable {
+            bytes: bytes,
+            exit: ExitFailure { code: 1, reason: concat(concat("self-host-behavioral-equivalence: outstanding: ", to_string(count(outstanding))), " (listed above)") }
+          }
+        }
+      }
+    }
+  }
+}

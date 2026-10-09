@@ -1,0 +1,173 @@
+module v2.std.anonymous_binder
+
+import std.types { List }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_reverse }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
+import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
+
+// AN ANONYMOUS PARAMETER SLOT IS A MINTED BINDER, NOT A FIELD NAMED `_`. A function's domain is a
+// name-keyed Conj (v2.std.node edges_conform: every edge Named, every name distinct), so two `_`
+// parameters spelled as the label `_` are two fields with one name -- ill-formed, although the
+// seed admits `fn f(_: A, _: B)` as two unreadable slots (v1.compiler.infer
+// direct_call_shape_wall_note). Each anonymous slot therefore carries its own label, minted here.
+//
+// THE LABEL IS UNAUTHORABLE. `<anonymous-parameter-N>` is not an identifier in the dag grammar (the
+// v2.std.qualified_name declaration_reference_marker precedent, also v2.std.type_binder
+// type_params_marker), so no body mention, named call argument or field can spell it: an anonymous
+// slot is NEVER referenceable, by construction, and a `_` written in a body resolves against
+// nothing (v2.compiler.resolve anonymous_parameter_referenced_diagnostic).
+//
+// N IS THE SLOT'S 1-BASED POSITION WITHIN ITS OWN BINDER LIST, never a module-wide or walk-order
+// counter and never an occurrence id. The label is part of the Arrow's TYPE: an occurrence- or
+// counter-derived label would make `fn(_: Int) -> Int` at two sites two different types with two
+// content hashes, and an edit anywhere above a site would rename it (DESIGN 4c keeps occurrence
+// allocation disjoint from semantic identity). The slot's occurrence stays where it already lives,
+// on the edge target. Ruled by neat-boar-16 via gentle-koi-724, 2026-09-25.
+
+fn anonymous_param_label_prefix() -> String {
+  "<anonymous-parameter-"
+}
+
+// THE ONE MINT. Consumed by anonymous_binder_mint_parameter_list, the only producer of a domain carrying
+// minted slots.
+fn anonymous_param_label(slot: Int) -> Symbol {
+  symbol_intern_lexeme(
+    lexeme: anonymous_param_label_prefix() + integer_int_to_decimal_string(value: slot) + ">"
+  )
+}
+
+// A FRESH TYPE VARIABLE IS MINTED HERE TOO, AND NAMED BY STRUCTURE, NEVER BY OCCURRENCE. A function
+// value (`p => body`, `fn(..) { .. }`) types each parameter it leaves unannotated, and its unwritten
+// return, with a fresh type parameter of its own Arrow (v2.compiler.body_lowering_fold
+// body_lower_function_value_arrow). Consumers identify type variables by SPELLING
+// (gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2), so the name must be unique
+// wherever two function values' types can meet: nested (`x => x => x`) and sibling
+// (`pair(x => x, x => x)`). It is `<type-variable@P:L>`: L is the binder's label (its authored name,
+// or its minted `<anonymous-parameter-N>`, or `<return>`), and P is the function value's STRUCTURAL
+// PATH within its enclosing declaration -- the child-position sequence from the declaration's body to
+// the function value, dot-joined -- assigned by the declaration's lowering
+// (body_lower_position_function_values). Before a declaration positions it, P is empty. The path,
+// like #12298's per-list slot, is structure, not an occurrence: the same lambda at the same position
+// in two declarations has the same type and content hash, and an edit outside the declaration never
+// renames it (ruled by neat-boar-16 and gentle-koi-724 on gunbc#12210, 2026-09-27, from #12298's D1).
+// `<` is not an identifier character, so no authored name can spell one.
+fn fresh_type_variable_prefix() -> String {
+  "<type-variable@"
+}
+
+fn fresh_type_variable(path: List<Int>, label: Symbol) -> Symbol {
+  let p = fold(path, init: "", f: fn(acc, i) {
+    if acc == "" { integer_int_to_decimal_string(value: i) } else { acc + "." + integer_int_to_decimal_string(value: i) }
+  })
+  symbol_intern_lexeme(lexeme: fresh_type_variable_prefix() + p + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+// A FOLD'S PERSISTENT CARRIER IS A GENERATED VALUE BINDER, AND IT MAY NOT BORROW THE AUTHORED STEP
+// PARAMETER'S SPELLING. The fold encoding is
+// Bind { carrier := init, Loop { step, domain, carrier, bound, realized } }: the Bind's binder is a slot
+// that persists ACROSS iterations, while the step's first formal is bound FRESHLY for one invocation of
+// an ordinary callable. They hold the same value at the call boundary and they are not the same binding
+// occurrence -- the author wrote only the formal, and the compiler introduces the slot.
+//
+// WHY THIS MINT EXISTS AT ALL: v2.compiler.fold_lowering used to spell the slot with the step's own first
+// binder symbol, so the lowered tree held two visible binders with one name and v2.compiler.resolve's
+// value-binder admission refused the inner one -- correctly, against the tree it received. The repair is
+// here rather than in the admission: an exception keyed on "same spelling at a synthetic occurrence near a
+// carrier edge" would put fold semantics inside the general binder law and rest on a heuristic, and
+// OccurrenceSynthetic states only that there is NO authored occurrence, which is not a semantic identity.
+//
+// NAMED BY STRUCTURE, like the type variable above and for the same reason: the digest is the content hash
+// of the STEP, so two folds whose scopes can overlap get different carriers. A nested fold's step strictly
+// contains the inner fold, so their digests differ; two sibling folds with identical steps share a digest
+// and that is harmless, because neither Bind's frame contains the other and the admission refuses only a
+// binder hiding a VISIBLE one. It is not derived from an occurrence or from traversal order, so an edit
+// elsewhere in the declaration does not rename it.
+//
+// THE RELATION TO THE STEP IS POSITIONAL, NEVER NOMINAL. A consumer that needs the step's accumulator
+// formal reads the step callable's first declared parameter; a consumer that needs the slot reads the
+// carrier edge. Nothing may infer one from the other by equal spelling -- `<` is not an identifier
+// character, so after this mint they can never be equal.
+fn fold_carrier_prefix() -> String {
+  "<fold-carrier@"
+}
+
+fn fresh_fold_carrier(step_digest: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: fold_carrier_prefix() + step_digest + ">")
+}
+
+// A SYNTHESIZED STEP'S ACCUMULATOR FORMAL. A callback operation (map, filter, any, all) has no authored
+// step, so v2.compiler.body_lowering_fold builds one, and its first formal needs a name no author can
+// write. It is keyed by the CALLBACK's content hash for the same reason the slot is keyed by the step's:
+// a callback nested inside another's body has different content, so the inner formal never hides the
+// outer one. It is distinct from the slot's prefix, so the formal and the slot are never one spelling.
+fn fold_accumulator_prefix() -> String {
+  "<fold-accumulator@"
+}
+
+fn fresh_fold_accumulator(callback_digest: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: fold_accumulator_prefix() + callback_digest + ">")
+}
+
+fn is_fold_carrier_binder(sym: Symbol) -> Bool {
+  starts_with(s: symbol_lexeme(sym: sym), prefix: fold_carrier_prefix())
+}
+
+fn fresh_return_type_variable(path: List<Int>) -> Symbol {
+  fresh_type_variable(path: path, label: symbol_intern_lexeme(lexeme: "<return>"))
+}
+
+// THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission
+// (v2.std.compilers.target_model bound_spelling_from_map) renders it `_`, and
+// v2.compiler.reference_conservation credits it -- asks this, and never compares a label to `_`.
+fn is_anonymous_param_label(sym: Symbol) -> Bool {
+  starts_with(s: symbol_lexeme(sym: sym), prefix: anonymous_param_label_prefix())
+}
+
+type AnonymousBinderMint {
+  slot: Int
+  edges: List<Edge>
+  order: List<Symbol>
+}
+
+// A DECLARED PARAMETER LIST, MINTED ONCE: the domain's edges and the declared order of their labels.
+// The domain is a Conj, which is LabeledEdges and sorted by label for identity, so its edge sequence
+// cannot carry the order the author wrote; `order` does, and positional binding reads it and nothing
+// else (v2.std.node arrow_signature_order_edge). Both come out of ONE fold over the authored list, so
+// a domain whose order disagrees with its labels has no producer here; the Arrow wall
+// (v2.std.node arrow_signature_order_conforms) refuses one built anywhere else.
+//
+// ORDER IS NEVER READ FROM A LABEL'S SPELLING. The minted `<anonymous-parameter-N>` labels sort as
+// text, so slot 10 sorts before slot 2; reading positional order from the sorted domain bound a
+// function with ten or more anonymous slots wrongly and silently. With order carried here, N in a
+// minted label need only make that label unique.
+type DeclaredParameterList {
+  edges: List<Edge>
+  order: List<Symbol>
+}
+
+// THE ONE PRODUCER of a domain's anonymous slots and of its declared order: every edge the author
+// spelled `_` is relabelled with its slot's minted binder; every other edge is unchanged; every
+// Named edge's (possibly minted) label is appended to the order in authored position. This is the
+// only place the authored spelling `_` is read for a parameter, and it is read once, at the source
+// boundary. The fold conses and reverses once, so the mint is linear in the parameter count.
+fn anonymous_binder_mint_parameter_list(edges: List<Edge>) -> DeclaredParameterList {
+  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: Empty, order: Empty }, f: fn(acc, e) {
+    let slot = acc.slot + 1
+    match e.label {
+      Authored { name: sym } =>
+        let label = if sym == pattern_wildcard_name() { anonymous_param_label(slot: slot) } else { sym }
+        AnonymousBinderMint {
+          slot: slot,
+          edges: Cons { head: binder_relabelled(binder: e, name: label), tail: acc.edges },
+          order: Cons { head: label, tail: acc.order }
+        }
+      StructuralLabel { label: _ } =>
+        AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
+      Positional =>
+        AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
+    }
+  })
+  DeclaredParameterList { edges: list_reverse(xs: minted.edges), order: list_reverse(xs: minted.order) }
+}

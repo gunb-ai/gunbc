@@ -1,5 +1,6 @@
 module v2.test.long.bind_eval_by_execution
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
@@ -22,12 +23,11 @@ import v2.compiler.eval {
 }
 import v2.compiler.inferred_tree { InferredFacts, InferredTree }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present,
@@ -55,7 +55,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
@@ -63,7 +62,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -276,8 +275,8 @@ fn bind_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^bind_actual }, target: call },
-      Edge { label: Named { name: ^bind_expected }, target: expected }
+      Edge { label: Authored { name: ^bind_actual }, target: call },
+      Edge { label: Authored { name: ^bind_expected }, target: expected }
     ]
   }
 }

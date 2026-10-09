@@ -135,25 +135,6 @@ data mt_jade_same_channel_mixing_row: List<MtJadeMixedDimmSupportCell> = [
 
 data mt_jade_mixed_dimm_support_table: List<MtJadeMixedDimmSupportCell> = concat(mt_jade_different_channel_mixing_row, mt_jade_same_channel_mixing_row)
 
-fn mt_jade_dimm_mixing_axis_eq(a: MtJadeDimmMixingAxis, b: MtJadeDimmMixingAxis) -> Bool {
-  match a {
-    DifferentRcd => match b { DifferentRcd => true, _ => false }
-    DifferentDramDies => match b { DifferentDramDies => true, _ => false }
-    MixingX4AndX8 => match b { MixingX4AndX8 => true, _ => false }
-    DifferentDensity => match b { DifferentDensity => true, _ => false }
-    DifferentSpeed => match b { DifferentSpeed => true, _ => false }
-    DifferentVendor => match b { DifferentVendor => true, _ => false }
-    Mixing1rAnd2r => match b { Mixing1rAnd2r => true, _ => false }
-  }
-}
-
-fn mt_jade_dimm_mixing_placement_eq(a: MtJadeDimmMixingPlacement, b: MtJadeDimmMixingPlacement) -> Bool {
-  match a {
-    DifferentChannel => match b { DifferentChannel => true, _ => false }
-    SameChannel => match b { SameChannel => true, _ => false }
-  }
-}
-
 // THE LOOKUP REFUSES RATHER THAN DEFAULTING. A cell this table does not carry is an UNMODELLED
 // CELL, and the honest answer is to say which coordinate was asked for. Returning MixingSupported,
 // MixingNotSupported or MixingUndetermined for a missing cell would each be a fabricated plausible
@@ -174,7 +155,7 @@ type MtJadeMixedDimmSupportOutcome
   | MixedDimmSupportAmbiguous { query: MtJadeMixedDimmSupportQuery }
 
 fn mt_jade_accumulate_mixing_cell(acc: MtJadeMixedDimmSupportOutcome, query: MtJadeMixedDimmSupportQuery, cell: MtJadeMixedDimmSupportCell) -> MtJadeMixedDimmSupportOutcome {
-  if mt_jade_dimm_mixing_placement_eq(a: cell.placement, b: query.placement) && mt_jade_dimm_mixing_axis_eq(a: cell.axis, b: query.axis) {
+  if cell.placement == query.placement && cell.axis == query.axis {
     match acc {
       MixedDimmSupportUnmodelled { query: _ } => MixedDimmSupportResolved { cell: cell }
       MixedDimmSupportResolved { cell: _ } => MixedDimmSupportAmbiguous { query: query }

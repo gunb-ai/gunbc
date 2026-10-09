@@ -3,9 +3,12 @@
 
 use self::CheckpointRowDisposition::*;
 use self::ExactBindingResolution::*;
+use self::VariantParentIdentity::*;
+use self::VariantParentKey::*;
+use self::VariantValueRealization::*;
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
-use crate::std_types::Bool::*;
+pub use crate::std_kernel_type_name::KernelTypeName;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -170,4 +173,236 @@ pub fn checkpoint_row_migration_for(
     })
     .first()
     .cloned()
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RepresentationValue<R: Clone> {
+    pub representation: R,
+    pub value_spelling: NonEmptyStr,
+    pub _phantom: std::marker::PhantomData<R>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum VariantParentKey {
+    VariantParentDeclaration { declaration: Rc<DeclarationRef> },
+    VariantParentKernelType { kernel_name: Rc<KernelTypeName> },
+}
+
+pub fn variant_parent_key_eq(a: Rc<VariantParentKey>, b: Rc<VariantParentKey>) -> bool {
+    match (*a.clone()).clone() {
+        VariantParentKey::VariantParentDeclaration {
+            declaration: da, ..
+        } => match (*b.clone()).clone() {
+            VariantParentKey::VariantParentDeclaration {
+                declaration: db, ..
+            } => crate::std_decl_ref::declaration_ref_eq(da.clone(), db.clone()),
+            VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => false,
+        },
+        VariantParentKey::VariantParentKernelType {
+            kernel_name: ka, ..
+        } => match (*b.clone()).clone() {
+            VariantParentKey::VariantParentDeclaration { declaration: _, .. } => false,
+            VariantParentKey::VariantParentKernelType {
+                kernel_name: kb, ..
+            } => (ka.name.clone() == kb.name.clone()),
+        },
+    }
+}
+
+pub fn variant_parent_key_label(k: Rc<VariantParentKey>) -> String {
+    match (*k.clone()).clone() {
+        VariantParentKey::VariantParentDeclaration { declaration: d, .. } => v1_rt::concat(
+            v1_rt::concat(d.module_path.clone(), ".".to_string()),
+            d.decl_name.clone(),
+        ),
+        VariantParentKey::VariantParentKernelType { kernel_name: n, .. } => {
+            v1_rt::concat("kernel ".to_string(), n.name.clone())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SourceVariantTargetValue<R: Clone> {
+    pub parent: Rc<VariantParentKey>,
+    pub variant: NonEmptyStr,
+    pub value: Rc<RepresentationValue<R>>,
+    pub _phantom: std::marker::PhantomData<R>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum VariantParentIdentity {
+    VariantParentIdentified { key: Rc<VariantParentKey> },
+    VariantParentUnrecovered { cause: NonEmptyStr },
+    VariantParentBeforeInference,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum VariantValueRealization {
+    VariantRealizesAsTargetValue {
+        value_spelling: NonEmptyStr,
+    },
+    VariantRealizesStructurally,
+    VariantTargetValueUnbound {
+        parent: Rc<VariantParentKey>,
+        variant: NonEmptyStr,
+    },
+    VariantTargetValueAmbiguous {
+        parent: Rc<VariantParentKey>,
+        variant: NonEmptyStr,
+        candidate_count: i64,
+    },
+    VariantParentIdentityUnavailable {
+        cause: NonEmptyStr,
+    },
+}
+
+pub fn variant_rows_for<R: Clone>(
+    key: Rc<VariantParentKey>,
+    variant: String,
+    values: Rc<Vec<Rc<SourceVariantTargetValue<R>>>>,
+) -> Rc<Vec<Rc<SourceVariantTargetValue<R>>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for v in values.iter().cloned() {
+            if (variant_parent_key_eq(v.parent.clone(), key.clone())
+                && (v.variant.clone() == variant.clone()))
+            {
+                __result.push(v);
+            }
+        }
+        __result
+    })
+}
+
+pub fn variant_value_from_hits<R: Clone>(
+    key: Rc<VariantParentKey>,
+    variant: String,
+    hits: Rc<Vec<Rc<SourceVariantTargetValue<R>>>>,
+) -> Rc<VariantValueRealization> {
+    {
+        let n = (hits.clone().len() as i64);
+        if (n.clone() == 1) {
+            match hits.clone().first().cloned() {
+                Some(v) => Rc::new(VariantValueRealization::VariantRealizesAsTargetValue {
+                    value_spelling: v.value.clone().value_spelling.clone(),
+                }),
+                std::option::Option::None => {
+                    Rc::new(VariantValueRealization::VariantTargetValueUnbound {
+                        parent: key.clone(),
+                        variant: variant.clone(),
+                    })
+                }
+            }
+        } else {
+            if (n.clone() == 0) {
+                Rc::new(VariantValueRealization::VariantTargetValueUnbound {
+                    parent: key.clone(),
+                    variant: variant.clone(),
+                })
+            } else {
+                Rc::new(VariantValueRealization::VariantTargetValueAmbiguous {
+                    parent: key.clone(),
+                    variant: variant.clone(),
+                    candidate_count: n.clone(),
+                })
+            }
+        }
+    }
+}
+
+pub fn variant_value_realization<R: Clone>(
+    parent: Rc<VariantParentIdentity>,
+    variant: String,
+    bindings: Rc<Vec<Rc<SourceTypeTargetBinding<R>>>>,
+    values: Rc<Vec<Rc<SourceVariantTargetValue<R>>>>,
+    same_representation: impl Fn(R, R) -> bool + Clone,
+) -> Rc<VariantValueRealization> {
+    match (*parent.clone()).clone() {
+        VariantParentIdentity::VariantParentBeforeInference => {
+            Rc::new(VariantValueRealization::VariantParentIdentityUnavailable {
+                cause: "the variant was never read by inference".to_string(),
+            })
+        }
+        VariantParentIdentity::VariantParentUnrecovered { cause: c, .. } => {
+            Rc::new(VariantValueRealization::VariantParentIdentityUnavailable { cause: c.clone() })
+        }
+        VariantParentIdentity::VariantParentIdentified { key: key, .. } => match (*key.clone())
+            .clone()
+        {
+            VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
+                let kernel_rows = Rc::new({
+                    let mut __result = Vec::new();
+                    for v in values.iter().cloned() {
+                        if variant_parent_key_eq(v.parent.clone(), key.clone()) {
+                            __result.push(v);
+                        }
+                    }
+                    __result
+                });
+                if ((kernel_rows.clone().len() as i64) == 0) {
+                    Rc::new(VariantValueRealization::VariantRealizesStructurally)
+                } else {
+                    variant_value_from_hits(
+                        key.clone(),
+                        variant.clone(),
+                        variant_rows_for(key.clone(), variant.clone(), values.clone()),
+                    )
+                }
+            }
+            VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
+                match (*resolve_exact_binding(Some(d.clone()), bindings.clone())).clone() {
+                    ExactBindingResolution::ExactBindingAbsent => {
+                        Rc::new(VariantValueRealization::VariantRealizesStructurally)
+                    }
+                    ExactBindingResolution::ExactSourceIdentityUnavailable { cause: c, .. } => {
+                        Rc::new(VariantValueRealization::VariantParentIdentityUnavailable {
+                            cause: c.clone(),
+                        })
+                    }
+                    ExactBindingResolution::ExactBindingAmbiguous {
+                        candidate_count: n, ..
+                    } => Rc::new(VariantValueRealization::VariantTargetValueAmbiguous {
+                        parent: key.clone(),
+                        variant: variant.clone(),
+                        candidate_count: n.clone(),
+                    }),
+                    ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => {
+                        variant_value_from_hits(
+                            key.clone(),
+                            variant.clone(),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for v in
+                                    variant_rows_for(key.clone(), variant.clone(), values.clone())
+                                        .iter()
+                                        .cloned()
+                                {
+                                    if same_representation(
+                                        v.value.clone().representation.clone(),
+                                        b.representation.clone(),
+                                    ) {
+                                        __result.push(v);
+                                    }
+                                }
+                                __result
+                            }),
+                        )
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub fn variant_value_realization_refusal_message(r: Rc<VariantValueRealization>) -> Option<String> {
+    match (*r.clone()).clone() {
+    VariantValueRealization::VariantRealizesAsTargetValue { value_spelling: _, .. } => std::option::Option::None,
+    VariantValueRealization::VariantRealizesStructurally => std::option::Option::None,
+    VariantValueRealization::VariantTargetValueUnbound { parent: p, variant: v, .. } => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant realization: ".to_string(), variant_parent_key_label(p.clone())), " realizes natively on this target but its arm `".to_string()), v.clone()), "` has no target value row; the source spelling cannot be emitted against the native carrier".to_string())),
+    VariantValueRealization::VariantTargetValueAmbiguous { parent: p, variant: v, candidate_count: n, .. } => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant realization: arm `".to_string(), v.clone()), "` of ".to_string()), variant_parent_key_label(p.clone())), " has ".to_string()), (n.clone()).to_string()), " target value rows (corpus authoring defect)".to_string())),
+    VariantValueRealization::VariantParentIdentityUnavailable { cause: c, .. } => Some(v1_rt::concat(v1_rt::concat("variant realization: the coproduct this variant belongs to was not recovered (".to_string(), c.clone()), "), so whether it realizes natively cannot be decided".to_string())),
+}
 }

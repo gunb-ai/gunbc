@@ -18,7 +18,7 @@ import std.measure {
   byte_size_count,
   money_rate_micros,
 }
-import std.nat { Nat, nat_max, nat_min }
+import std.nat { Nat, nat_max, nat_min, nat_ceil_div }
 import std.types { Bool, List, NonEmptyStr, list_length }
 
 // How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly
@@ -149,13 +149,13 @@ fn derive_scm_usage(
                     object_writes: profile.user_count * profile.monthly_object_writes_per_user,
                   }
                 }
-              _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+              Absent => ScmUsageRefused { cause: BasisAssumptionUnstated }
             }
-          _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+          Absent => ScmUsageRefused { cause: BasisAssumptionUnstated }
         }
       }
     }
-    _ => ScmUsageRefused { cause: BasisAssumptionUnknown }
+    Absent => ScmUsageRefused { cause: BasisAssumptionUnknown }
   }
 }
 
@@ -198,12 +198,12 @@ fn derive_scm_monthly_cost(
                   }
                   ScmUsageRefused { cause: c } => ScmMonthlyCostRefused { cause: c }
                 }
-              _ => ScmMonthlyCostRefused { cause: EgressRateUnavailable }
+              Absent => ScmMonthlyCostRefused { cause: EgressRateUnavailable }
             }
-          _ => ScmMonthlyCostRefused { cause: StorageRateUnavailable }
+          Absent => ScmMonthlyCostRefused { cause: StorageRateUnavailable }
         }
       }
-    _ => ScmMonthlyCostRefused { cause: BasisAssumptionUnknown }
+    Absent => ScmMonthlyCostRefused { cause: BasisAssumptionUnknown }
   }
 }
 
@@ -300,7 +300,7 @@ fn storage_ladder(rows: List<ObjectStorageClassRow>) -> List<RateTier>? {
           ok: a.ok,
           tiers: concat(a.tiers, [RateTier { lower_bound_units: row.tier_lower_bound_gb, rate_micros: r }]),
         }
-      _ => TierLadderAcc { ok: false, tiers: a.tiers }
+      Absent => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
   if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
@@ -314,7 +314,7 @@ fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
           ok: a.ok,
           tiers: concat(a.tiers, [RateTier { lower_bound_units: row.tier_lower_bound_gb, rate_micros: r }]),
         }
-      _ => TierLadderAcc { ok: false, tiers: a.tiers }
+      Absent => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
   if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
@@ -386,16 +386,16 @@ fn quote_provider_monthly(
                         total_micros: (storage_micros + egress_micros) + ops_micros,
                       }
                     }
-                    _ => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
+                    Absent => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
                   }
-                _ => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
+                Absent => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
               }
             }
-            _ => ProviderQuoteRefused { cause: EgressRateUnavailable }
+            Absent => ProviderQuoteRefused { cause: EgressRateUnavailable }
           }
-        _ => ProviderQuoteRefused { cause: StorageRateUnavailable }
+        Absent => ProviderQuoteRefused { cause: StorageRateUnavailable }
       }
-    _ => ProviderQuoteRefused { cause: BasisAssumptionUnknown }
+    Absent => ProviderQuoteRefused { cause: BasisAssumptionUnknown }
   }
 }
 
@@ -437,7 +437,10 @@ fn packed_object_count(logical_node_ops: Nat, policy: PackingPolicy) -> Nat {
   match policy {
     UnpackedNodeGrain => logical_node_ops
     PackedObjects { nodes_per_object: n } =>
-      if n <= 0 { logical_node_ops } else { ((logical_node_ops + n) - 1) / n }
+      match nat_ceil_div(a: logical_node_ops, b: n) {
+        Present { value: objects } => objects
+        Absent => logical_node_ops
+      }
   }
 }
 

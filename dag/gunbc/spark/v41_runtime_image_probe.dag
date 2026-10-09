@@ -2,14 +2,13 @@ module gunbc.spark.v41_runtime_image_probe
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_command,
+  docker_run_ephemeral_command, DockerLabel, DockerPsByLabel, docker_label_wire, docker_image_pull_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -35,7 +34,7 @@ import gunbc.fleet_ssh_credential_verify {
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
-  SnapshotAcquisitionExecutor, HostCli,
+  SnapshotAcquisitionExecutor, HostCli, spark_remote_argv_run,
 }
 import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
@@ -50,14 +49,19 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
-import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class, deepseek_v4_1_flash_index_topk }
+import std.measure { token_count_value, ByteSize, byte_size }
+import extdeps.vllm.sparse_indexer_topk {
+  vllm_d2d649e6_sm12_indexer_topk_route, vllm_d2d649e6_indexer_topk_class, vllm_d2d649e6_radix_topk_workspace,
+}
 import gunbc.spark.serving_runtime_capability_probe {
   RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere,
   MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator,
-  runtime_kernel_capability_label,
+  IndexerTopkRouteCorrect, runtime_kernel_capability_label,
 }
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live_over }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
@@ -192,6 +196,131 @@ fn v41_py_kv_layout_block() -> String {
   ], "")
 }
 
+// THE INDEXER TOP-K QUESTION IS ASKED AS CORRECTNESS, BY CALLING THE ROUTE AND ITS KERNELS. A
+// registered operator that returns the wrong top-k raises nothing: the sparse attention then attends
+// over the wrong candidates and the engine answers anyway. So presence decides nothing here, and
+// upstream's own test cannot be the instrument either -- tests/kernels/test_top_k_per_row.py is not in
+// the vllm-openai target this image is built from, and neither is pytest, so a check that ran it would
+// read UNREAD on every image and could never be discharged. The block does what that test does
+// instead: it calls torch.ops.<decode_operator> with the upstream workspace and
+// torch.ops.<prefill_operator> over generated logits, and compares each valid prefix with a masked
+// torch.topk as a VALUE multiset, which is upstream compare_top_k_results's tie rule.
+//
+// THREE CONDITIONS, AND NONE OF THEM DEFAULTS. The route the resolver itself returns must be the one
+// extdeps.vllm.sparse_indexer_topk reads for this family; a nonzero number of cases must have run; and
+// every case must agree. A different route or a disagreeing case is a measured absence. An exception
+// prints no VERDICT line, which the reader takes as UNREAD -- a probe that could not ask produces no
+// evidence against the image.
+fn v41_py_indexer_topk_block() -> String {
+  let label = v41_py_quote(s: v41_probe_label(c: IndexerTopkRouteCorrect))
+  let route = vllm_d2d649e6_sm12_indexer_topk_route
+  join([
+    "def _topk_agrees(_logits, _got, _lengths, _k):\n",
+    "    for _r in range(_got.shape[0]):\n",
+    "        _len = int(_lengths[_r])\n",
+    "        _n = min(_k, _len)\n",
+    "        if _n <= 0:\n",
+    "            continue\n",
+    "        _idx = _got[_r, :_n].long()\n",
+    "        if int(_idx.min()) < 0 or int(_idx.max()) >= _len or _idx.unique().numel() != _n:\n",
+    "            return False\n",
+    "        _want = _logits[_r, :_len].topk(_n).values.sort().values\n",
+    "        _have = _logits[_r, _idx].sort().values\n",
+    "        if not torch.allclose(_have, _want, rtol=1e-5, atol=1e-5):\n",
+    "            return False\n",
+    "    return True\n",
+    "\n",
+    "def _topk_lengths(_rows, _seq):\n",
+    "    return torch.tensor([max(1, _seq - (_i * _seq) // max(1, _rows)) for _i in range(_rows)], dtype=torch.int32, device=\"cuda\")\n",
+    "\n",
+    "def _topk_logits(_rows, _seq, _ties):\n",
+    "    if _ties:\n",
+    "        return torch.randint(0, 8, (_rows, _seq), device=\"cuda\").float()\n",
+    "    return torch.randn(_rows, _seq, dtype=torch.float32, device=\"cuda\")\n",
+    "\n",
+    "try:\n",
+    "    torch.manual_seed(0)\n",
+    "    _k = ", to_string(token_count_value(t: deepseek_v4_1_flash_index_topk)), "\n",
+    "    _decode_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.decode_operator)), ")\n",
+    "    _prefill_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.prefill_operator)), ")\n",
+    "    _workspace = torch.empty(", to_string(vllm_d2d649e6_radix_topk_workspace.count), ", dtype=torch.uint8, device=\"cuda\")\n",
+    "    _mod, _, _cls = ", v41_py_quote(s: vllm_d2d649e6_indexer_topk_class), ".rpartition(\".\")\n",
+    "    _resolver = getattr(importlib.import_module(_mod), _cls)(\"auto\")\n",
+    "    _route = _resolver.resolve_backend(torch.empty((4, 4096), dtype=torch.float32, device=\"cuda\"), _k, 4)\n",
+    "    print(\"DETAIL\", ", label, ", \"route\", _route, \"expected\", ", v41_py_quote(s: route.decode_backend), ")\n",
+    "    _cases = 0\n",
+    "    _agreed = 0\n",
+    "    for _rows, _seq, _ties in ((1, 300, False), (4, 4096, False), (64, 4096, False), (128, 4096, False), (4, 65536, False), (4, 65536, True), (4, 262144, False)):\n",
+    "        _logits = _topk_logits(_rows, _seq, _ties)\n",
+    "        _lengths = _topk_lengths(_rows, _seq)\n",
+    "        _out = torch.full((_rows, _k), -1, dtype=torch.int32, device=\"cuda\")\n",
+    "        _decode_op(_logits, _lengths, _out, _workspace, _k, _seq)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _ok = _topk_agrees(_logits, _out, _lengths, _k)\n",
+    "        _cases += 1\n",
+    "        _agreed += 1 if _ok else 0\n",
+    "        print(\"DETAIL\", ", label, ", \"decode\", \"rows\", _rows, \"seq\", _seq, \"ties\", _ties, \"agrees\" if _ok else \"DISAGREES\")\n",
+    "        _starts = torch.zeros(_rows, dtype=torch.int32, device=\"cuda\")\n",
+    "        _out = torch.full((_rows, _k), -1, dtype=torch.int32, device=\"cuda\")\n",
+    "        _prefill_op(_logits, _starts, _lengths, _out, _rows, _logits.stride(0), _logits.stride(1), _k)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _ok = _topk_agrees(_logits, _out, _lengths, _k)\n",
+    "        _cases += 1\n",
+    "        _agreed += 1 if _ok else 0\n",
+    "        print(\"DETAIL\", ", label, ", \"prefill\", \"rows\", _rows, \"seq\", _seq, \"ties\", _ties, \"agrees\" if _ok else \"DISAGREES\")\n",
+    "    print(\"DETAIL\", ", label, ", \"cases\", _cases, \"agreed\", _agreed)\n",
+    "    print(\"VERDICT\", ", label, " + \"=\" + (\"present\" if _route == ", v41_py_quote(s: route.decode_backend), " and _cases > 0 and _agreed == _cases else \"absent\"))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", label, ", \"error\", repr(_error))\n",
+  ], "")
+}
+
+// THE COST SIDE IS AN INSTRUMENT, NOT A GATE. It times the decode operator this route runs against the
+// masked torch.topk reference at long context, and prints TIMING lines that no reader turns into a
+// verdict: the receipt carries the figures, re-derived on every probe, and nothing transcribes them.
+// DeepSelect is not timed because no sm_12x image can carry it. A failure here prints a DETAIL line
+// and nothing else, so the instrument can never change what the probe admits.
+fn v41_py_indexer_topk_timing_block() -> String {
+  let label = v41_py_quote(s: v41_probe_label(c: IndexerTopkRouteCorrect))
+  let route = vllm_d2d649e6_sm12_indexer_topk_route
+  join([
+    "try:\n",
+    "    _k = ", to_string(token_count_value(t: deepseek_v4_1_flash_index_topk)), "\n",
+    "    _decode_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.decode_operator)), ")\n",
+    "    _workspace = torch.empty(", to_string(vllm_d2d649e6_radix_topk_workspace.count), ", dtype=torch.uint8, device=\"cuda\")\n",
+    "    def _time_ms(_fn, _iters=20):\n",
+    "        for _ in range(3):\n",
+    "            _fn()\n",
+    "        _start = torch.cuda.Event(enable_timing=True)\n",
+    "        _end = torch.cuda.Event(enable_timing=True)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _start.record()\n",
+    "        for _ in range(_iters):\n",
+    "            _fn()\n",
+    "        _end.record()\n",
+    "        torch.cuda.synchronize()\n",
+    "        return _start.elapsed_time(_end) / _iters\n",
+    "    for _seq in (65536, 262144, 1048576):\n",
+    "        _logits = torch.randn(4, _seq, dtype=torch.float32, device=\"cuda\")\n",
+    "        _lengths = torch.full((4,), _seq, dtype=torch.int32, device=\"cuda\")\n",
+    "        _out = torch.empty((4, _k), dtype=torch.int32, device=\"cuda\")\n",
+    "        _kernel = _time_ms(lambda: _decode_op(_logits, _lengths, _out, _workspace, _k, _seq))\n",
+    "        _reference = _time_ms(lambda: _logits.topk(_k, dim=-1))\n",
+    "        print(\"TIMING\", ", label, ", ", v41_py_quote(s: route.decode_backend), ", \"rows\", 4, \"seq\", _seq, \"topk\", _k, \"kernel_ms\", round(_kernel, 4), \"torch_topk_ms\", round(_reference, 4))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", label, ", \"timing-error\", repr(_error))\n",
+  ], "")
+}
+
+// A ROUTE OPERATOR IS SPELLED WITH ITS LIBRARY NAMESPACE (`_C.persistent_topk`); the block reaches it
+// with getattr on torch.ops._C, so it needs the name after the namespace.
+fn v41_py_op_name(qualified: NonEmptyStr) -> NonEmptyStr {
+  match last(split(s: qualified as String, delimiter: ".")) {
+    Absent => qualified
+    Present { value: n } => n as NonEmptyStr
+  }
+}
+
 // AN EXCEPTION IS NOT AN ABSENCE, AND AN EARLIER REVISION MADE IT ONE. The helpers caught every
 // exception and returned False, so a broken interpreter, a partially installed package or an import
 // that raised for its own reasons all read as "this image does not have the symbol" -- evidence
@@ -295,6 +424,8 @@ fn v41_probe_script() -> String {
     v41_py_capability_call(label: v41_probe_label(c: DSparkSpeculator), surface: v41_dspark_surface),
     "report(", v41_py_quote(s: v41_probe_label(c: FlashInferSparseMlaSm120Symbols)),
     ", ops=[], modules=[], attrs=", v41_py_list(xs: v41_sm12_demand_symbols()), ")\n",
+    v41_py_indexer_topk_block(),
+    v41_py_indexer_topk_timing_block(),
   ], "")
 }
 
@@ -429,6 +560,7 @@ data v41_probed_capabilities: List<RuntimeKernelCapability> = [
   Csa2CompressorKernels,
   DSparkSpeculator,
   FlashInferSparseMlaSm120Symbols,
+  IndexerTopkRouteCorrect,
 ]
 
 fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
@@ -580,11 +712,20 @@ fn v41_unread_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonE
 // probe program crosses as ONE argument to `python3 -c` -- which deletes the staged file, the bind
 // mount, the chmod and the three-step write-readback-rename that carrying it as a file required. The
 // program is the same generated text; what is gone is everything that existed only to get it there.
+// THE LANE'S MARK AND BOUND ON ITS CONTAINER. Residue and quiescence select by this label, not by image
+// ancestry: an image filter also matches a serving or measurement container started from the same
+// image on the same host, which this lane must neither wait on nor read as its own. The cap bounds the
+// container's memory cgroup with no swap, so a runaway is OOM-killed inside it.
+data v41_probe_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "v41-runtime-image-probe" as NonEmptyStr }
+data v41_probe_memory_cap: ByteSize = byte_size(count: 8589934592)
+
 fn v41_probe_privileged_argv(image_reference: NonEmptyStr) -> List<String> {
   argv_words(command: docker_run_ephemeral_command(
     image: image_reference,
     gpus_all: true,
     mounts: [],
+    labels: [v41_probe_lane_label],
+    memory_limit: Present { value: v41_probe_memory_cap },
     entrypoint: v41_probe_interpreter,
     argv: ["-c", v41_probe_script()],
   ))
@@ -602,7 +743,7 @@ fn v41_probe_config_id_argv(image_reference: NonEmptyStr) -> List<String> {
 // already keeps them apart; this preserves that rather than folding both into "the probe failed".
 fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOutcome? {
   match run {
-    RemoteUnreachable { cause: why } => Present { value: V41ProbeRefused { step: step, cause: why } }
+    RemoteUnreachable { cause: why, reach: _ } => Present { value: V41ProbeRefused { step: step, cause: why } }
     RemoteRan { exit_code: code, stdout: _, stderr: err } =>
       if code != 0 {
         Present { value: V41ProbeRefused { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } }
@@ -614,56 +755,68 @@ fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOut
 
 fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
   match run {
-    RemoteUnreachable { cause: _ } => ""
+    RemoteUnreachable { cause: _, reach: _ } => ""
     RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
   }
 }
 
-// PULL, READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject
-// the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
+// READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject the
+// bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
 // content per architecture, and what the probe must name is the image the daemon actually holds.
-fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
-  uses net: Network
+//
+// WHY THE PULL IS NOT PART OF THIS FOLD. A published image has to be fetched before it can be asked
+// anything; an image this fleet just BUILT is already in the daemon's store and has never been
+// pushed anywhere, so a pull of its tag would either fail or -- worse -- succeed against some
+// registry object that happens to share the name and silently replace the bytes under test. Those
+// are two different preconditions on one question, so the question is one fold and the pull is the
+// published entry's own first leg. The build lane (gunbc.spark.v41_runtime_image_converge) reaches
+// this fold directly with the tag its own readback returned.
+fn v41_probe_image_in_place(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
 {
-  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
-    Present { value: refusal } => refusal
-    Absent => {
-      let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
-      match inspect_run {
-        RemoteUnreachable { cause: why } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
-        RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
-          if code != 0 {
-            if docker_image_inspect_names_no_such_image(stderr: err) {
-              V41ProbeRefused {
-                step: "image-config-id" as NonEmptyStr,
-                cause: "docker image inspect: No such image (the pull reported success and the daemon names no object for this reference)",
-              }
-            } else {
-              V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
-            }
-          } else {
-            match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
-              DockerImageInspectIdUnreadable { cause: why } =>
-                V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
-              DockerImageInspectId { id: config_id } => {
-                let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: config_id))
-                match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
-                  Present { value: refusal } => refusal
-                  Absent => {
-                    let out = v41_privileged_stdout(run: probe_run)
-                    V41ProbeRead {
-                      reference: reference,
-                      observed_config_id: config_id,
-                      stdout: out,
-                      readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
-                    }
-                  }
+  let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
+  match inspect_run {
+    RemoteUnreachable { cause: why, reach: _ } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
+      if code != 0 {
+        if docker_image_inspect_names_no_such_image(stderr: err) {
+          V41ProbeRefused {
+            step: "image-config-id" as NonEmptyStr,
+            cause: "docker image inspect: No such image (the daemon names no object for this reference)",
+          }
+        } else {
+          V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
+        }
+      } else {
+        match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
+          DockerImageInspectIdUnreadable { cause: why } =>
+            V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+          DockerImageInspectId { id: config_id } => {
+            let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: config_id))
+            match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
+              Present { value: refusal } => refusal
+              Absent => {
+                let out = v41_privileged_stdout(run: probe_run)
+                V41ProbeRead {
+                  reference: reference,
+                  observed_config_id: config_id,
+                  stdout: out,
+                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
                 }
               }
             }
           }
+        }
       }
-    }
+  }
+}
+
+// PULL FIRST, THEN THE SAME QUESTIONS. A published reference names bytes that may not be on this
+// host at all, so the fetch is this entry's precondition and nothing else's.
+fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+{
+  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
+    Present { value: refusal } => refusal
+    Absent => v41_probe_image_in_place(ctx: ctx, reference: reference)
   }
 }
 
@@ -700,8 +853,41 @@ fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outc
 // is the part that is genuinely this lane's.
 data v41_probe_host_purpose: NonEmptyStr = "a published-image probe, which pulls a 9.6 GB image and starts a container" as NonEmptyStr
 
+// THE BOUND ON THE PROBE'S HOST-EFFECT CLAIM: a pull and a container start, bounded by the CI
+// step's own hour; an unreleased claim reads OVERDUE after it and still fences until the host is
+// observed quiet.
+data v41_probe_host_effect_term: Second = second(count: 3600)
+
+// WHAT THE PROBE LEAVES IF IT DID NOT FINISH: the pull, the inspect and the run all carry the image
+// reference on their command line, and the run starts an unnamed container FROM that reference,
+// which `docker ps --filter ancestor=` finds while it runs.
+// The process pattern is the label's own wire form (docker_label_wire, the same encoder the --label
+// argument uses), as it appears on the docker client's command line, which only this
+// lane's run carries; the image reference would also match a serving container's long-running client.
+fn v41_probe_host_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: docker_label_wire(l: v41_probe_lane_label) as NonEmptyStr, container: Present { value: DockerPsByLabel { label: v41_probe_lane_label } } }
+}
+
+// THE ADMINISTRATOR CONTEXT EXISTS BEFORE THE CLAIM, so the claim is released over the same privileged
+// leg that ran the container (gunbc.spark.host_commitment release_host_effect_live_over): the fleet
+// agent cannot read the docker socket, and this lane declares its container as residue.
+fn v41_probe_receipt_exit(at: String, host: NonEmptyStr, executor: String, anchor_receipt: String, outcome: V41ProbeOutcome) -> ProcessExit {
+  let body = join([
+    v41_probe_ci_body(at: at, host: host, reference: v41_published_arm64_reference(), outcome: outcome),
+    join(["executor=", executor, "\n"], ""),
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
+  } else if v41_probe_all_present(o: outcome) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
+  }
+}
+
 fn v41_published_image_probe_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
@@ -709,9 +895,6 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      match admit_unplaced_host(raw: target_host as String, purpose: v41_probe_host_purpose) {
-        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-        SparkHostAdmitted { host: _ } =>
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -729,41 +912,38 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
                         identity_file_name: "gunbc-v41-published-image-probe-admin-password" as NonEmptyStr,
                         secret_bytes: administrator as Secret,
                         use: fn(file) {
-                          v41_probe_published_image(
-                            ctx: SparkMaterializeContext {
-                              host: target_host,
-                              trust: trust,
-                              path: path,
-                              admin_credential: administrator as Secret,
-                              admin_credential_file: file,
-                              executor: HostCli,
-                            },
-                            reference: v41_published_arm64_reference(),
-                          )
+                          let ctx = SparkMaterializeContext {
+                            host: target_host,
+                            trust: trust,
+                            path: path,
+                            admin_credential: administrator as Secret,
+                            admin_credential_file: file,
+                            executor: HostCli,
+                          }
+                          match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue()) {
+                            SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+                            SparkHostAdmitted { host: _, claim: claim } =>
+                              release_host_effect_live_over(
+                                handle: claim,
+                                run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
+                                exit: v41_probe_receipt_exit(
+                                  at: probed_at_word(reading: now) as String,
+                                  host: target_host as NonEmptyStr,
+                                  executor: executor,
+                                  anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                  outcome: v41_probe_published_image(ctx: ctx, reference: v41_published_arm64_reference()),
+                                ),
+                              )
+                          }
                         },
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                        MaterializedSshKeyFileBracketCompleted { value: outcome } => {
-                          let body = join([
-                            v41_probe_ci_body(at: probed_at_word(reading: now) as String, host: target_host as NonEmptyStr, reference: v41_published_arm64_reference(), outcome: outcome),
-                            join(["executor=", executor, "\n"], ""),
-                            known_hosts_materialization_receipt(outcome: materialization),
-                          ], "")
-                          let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
-                          if !w.success {
-                            exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
-                          } else if v41_probe_all_present(o: outcome) {
-                            ExitSuccess
-                          } else {
-                            exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
-                          }
-                        }
+                        MaterializedSshKeyFileBracketCompleted { value: exit } => exit
                       }
                   }
                 }
               }
           }
-      }
       }
   }
 }

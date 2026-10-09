@@ -2,6 +2,7 @@ module test.claim.approval_broker_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.auth.approval_broker {
+  HeaderAttributedToProxy, HeaderUnattributed,
   DecisionMethodAdmission, DecisionMethodCommits, DecisionMethodRetrievesOnly,
   DecisionMethodUnsupported, decision_method_admission,
   Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal,
@@ -22,8 +23,9 @@ import extdeps.crypto.mac {
 }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
 import std.scoped_authorization { AttemptIdentity }
-import std.types { NonEmptyStr, Timestamp, HttpMethod, GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE }
+import std.types { NonEmptyStr, Timestamp }
 import std.logic { Bool }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE, TRACE, CONNECT }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,7 +75,7 @@ fn redeem_with(method: HttpMethod, identity: TailnetIdentity) -> Redemption {
     capability: good_capability(),
     expectation: witness_expectation,
     mac_result: good_mac(),
-    presented_identity: identity,
+    attribution: HeaderAttributedToProxy { presented: identity },
     expected_operator: operator_login,
     observed_at: witness_now,
   )
@@ -120,6 +122,32 @@ test fn a_get_at_the_approval_url_does_not_decide() -> Bool {
 test fn head_and_options_do_not_decide_either() -> Bool {
   !is_admitted(r: redeem_with(method: HEAD, identity: operator_identity()))
     && !is_admitted(r: redeem_with(method: OPTIONS, identity: operator_identity()))
+}
+
+// TRACE is safe (RFC 9110 section 9.3.8), so it is refused exactly as GET is: it retrieves and
+// never decides. CONNECT (9.3.6) is neither safe nor a decision, so it is refused as UNSUPPORTED.
+// Each is asserted at its exact refusal arm: the method gate is the wall under test, so a mutation
+// that let either method commit must turn one of these red.
+test fn trace_is_refused_as_a_safe_method() -> Bool {
+  match redeem_with(method: TRACE, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodNotCommitting { method: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+test fn connect_is_refused_as_unsupported() -> Bool {
+  match redeem_with(method: CONNECT, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodUnsupported { method: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
 }
 
 // The safe-method refusal must READ as "not here", because the operator will see it when their
@@ -245,4 +273,22 @@ test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
     }
   )
   && takeover_is_admissible(t: TakeoverFencedByProvider { fence: "etag-observed" as NonEmptyStr })
+}
+
+// AN UNATTRIBUTED HEADER NEVER BECOMES A LOGIN ON THE RECORD: the redemption is admitted on the
+// capability alone and decided_by names the bearer, whatever login the header carried -- including
+// the operator's own, because on that deployment the header could have been written by anyone.
+test fn an_unattributed_header_records_the_bearer_and_never_the_presented_login() -> Bool {
+  match redeem_capability(
+    method: POST,
+    capability: good_capability(),
+    expectation: witness_expectation,
+    mac_result: good_mac(),
+    attribution: HeaderUnattributed { residual: "witness: loopback bind, on-host peer unattributed" },
+    expected_operator: operator_login,
+    observed_at: witness_now,
+  ) {
+    RedemptionAdmitted { claims: _, decided_by: by } => string_contains(s: by as String, pattern: "bearer of capability") && !string_contains(s: by as String, pattern: operator_login as String)
+    RedemptionRefused { cause: _ } => false
+  }
 }

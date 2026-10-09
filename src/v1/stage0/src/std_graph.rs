@@ -39,12 +39,6 @@ pub struct SccComponentAcc {
     pub members: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SccMembersAcc {
-    pub visited: Rc<BTreeSet<String>>,
-    pub members: Rc<Vec<String>>,
-}
-
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
@@ -204,10 +198,16 @@ pub fn dfs_collect_component(
     })
 }
 
-pub fn graph_multi_node_scc_members(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SccComponentsAcc {
+    pub visited: Rc<BTreeSet<String>>,
+    pub components: Rc<Vec<Rc<Vec<String>>>>,
+}
+
+pub fn graph_strongly_connected_components(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<Vec<String>>>> {
     {
         let adjacency = build_adjacency_views(names.clone(), graph.clone());
         let finish = names.iter().cloned().fold(
@@ -220,11 +220,11 @@ pub fn graph_multi_node_scc_members(
             },
         );
         let result = v1_rt::reverse(finish.order.clone()).iter().cloned().fold(
-            Rc::new(SccMembersAcc {
+            Rc::new(SccComponentsAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                members: Rc::new(vec![]),
+                components: Rc::new(vec![]),
             }),
-            |acc: Rc<SccMembersAcc>, name: String| {
+            |acc: Rc<SccComponentsAcc>, name: String| {
                 if v1_rt::set_contains(&acc.visited.clone(), name.clone()) {
                     acc.clone()
                 } else {
@@ -237,21 +237,38 @@ pub fn graph_multi_node_scc_members(
                                 members: Rc::new(vec![]),
                             }),
                         );
-                        let members = if ((component.members.clone().len() as i64) > 1) {
-                            v1_rt::concat(acc.members.clone(), component.members.clone())
-                        } else {
-                            acc.members.clone()
-                        };
-                        Rc::new(SccMembersAcc {
+                        Rc::new(SccComponentsAcc {
                             visited: component.visited.clone(),
-                            members: members.clone(),
+                            components: v1_rt::rc_list_push(
+                                acc.components.clone(),
+                                component.members.clone(),
+                            ),
                         })
                     }
                 }
             },
         );
-        result.members.clone()
+        result.components.clone()
     }
+}
+
+pub fn graph_multi_node_scc_members(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<Vec<String>> {
+    graph_strongly_connected_components(names.clone(), graph.clone())
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<String>>, component: Rc<Vec<String>>| {
+                if ((component.clone().len() as i64) > 1) {
+                    v1_rt::concat(acc.clone(), component.clone())
+                } else {
+                    acc.clone()
+                }
+            },
+        )
 }
 
 pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {

@@ -1,0 +1,33 @@
+module gunbc.rung_drop_amendment.roster
+
+// THE ENUMERATION AND NOTHING ELSE, held apart from `gunbc.rung_drop_amendment` for the reason
+// gunbc.rung_drop.roster is held apart from its own type module: every row imports the type, so the
+// type module cannot import the rows back. The order here is the projection's order within a drop.
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign { namespace_wave_admission_carrier_redesign }
+import gunbc.rung_drop_amendment.stage0_mirrors_left_outside_the_restored_drift_gate { stage0_mirrors_left_outside_the_restored_drift_gate }
+import gunbc.rung_drop_amendment.stage0_mirror_line_without_an_authority_import { stage0_mirror_line_without_an_authority_import }
+import gunbc.rung_drop_amendment.checker_edge_withheld_over_the_per_pr_runner_class { checker_edge_withheld_over_the_per_pr_runner_class }
+import gunbc.rung_drop_amendment.v2_test_family_reds_measured_outside_the_gate { v2_test_family_reds_measured_outside_the_gate }
+import gunbc.rung_drop_amendment.value_depth_runtime_tests_named_in_the_population { value_depth_runtime_tests_named_in_the_population }
+import gunbc.rung_drop_amendment.variant_field_native_run_residuals { variant_field_native_run_residuals }
+import gunbc.rung_drop_amendment.instrument_sandbox_reference_left_with_its_witness { instrument_sandbox_reference_left_with_its_witness }
+
+data rung_drop_amendment_roster: List<RungDropAmendment> = [
+  namespace_wave_admission_carrier_redesign,
+  stage0_mirrors_left_outside_the_restored_drift_gate,
+  stage0_mirror_line_without_an_authority_import,
+  checker_edge_withheld_over_the_per_pr_runner_class,
+  v2_test_family_reds_measured_outside_the_gate,
+  value_depth_runtime_tests_named_in_the_population,
+  variant_field_native_run_residuals,
+  instrument_sandbox_reference_left_with_its_witness,
+]
+
+// THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at
+// every consumer that renders a drop.
+fn amendments_for_drop(identity: NonEmptyStr) -> List<RungDropAmendment> {
+  filter(rung_drop_amendment_roster, a => (a.drop_identity as String) == (identity as String))
+}

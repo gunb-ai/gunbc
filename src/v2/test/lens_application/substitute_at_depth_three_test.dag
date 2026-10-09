@@ -3,8 +3,7 @@ module v2.test.lens_application.substitute_at_depth_three
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { substitute_at }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode }
 
 data depth_three_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
@@ -22,7 +21,7 @@ data depth_three_inner: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^depth_three_step_c },
+      label: Authored { name: ^depth_three_step_c },
       target: depth_three_original_leaf
     }
   ],
@@ -33,7 +32,7 @@ data depth_three_middle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^depth_three_step_b },
+      label: Authored { name: ^depth_three_step_b },
       target: depth_three_inner
     }
   ],
@@ -44,7 +43,7 @@ data depth_three_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^depth_three_step_a },
+      label: Authored { name: ^depth_three_step_a },
       target: depth_three_middle
     }
   ],
@@ -55,17 +54,17 @@ data depth_three_expected_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^depth_three_step_a },
+      label: Authored { name: ^depth_three_step_a },
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^depth_three_step_b },
+            label: Authored { name: ^depth_three_step_b },
             target: Node {
               kind: TypeNode { connective: Conj },
               children: [
                 Edge {
-                  label: Named { name: ^depth_three_step_c },
+                  label: Authored { name: ^depth_three_step_c },
                   target: depth_three_replacement_leaf
                 }
               ],
@@ -84,7 +83,7 @@ test fn substitute_at_depth_three_claim_holds() -> Bool {
   match substitute_at(
     root: depth_three_root,
     path: Path {
-      steps: [^depth_three_step_a, ^depth_three_step_b, ^depth_three_step_c]
+      steps: [Authored { name: ^depth_three_step_a }, Authored { name: ^depth_three_step_b }, Authored { name: ^depth_three_step_c }]
     },
     replacement: depth_three_replacement_leaf
   ) {

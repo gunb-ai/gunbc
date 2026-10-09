@@ -1,0 +1,22 @@
+module gunbc.namecheap.account
+
+import std.types { String, NonEmptyStr }
+
+data namecheap_domain_sld: NonEmptyStr = "gunb"
+data namecheap_domain_tld: NonEmptyStr = "ai"
+
+// Operator reports, not an authenticated Namecheap or stable-egress observation.
+// The allowlist must be re-observed when the selected DNS controller changes.
+type NamecheapAccountReport {
+  username: String
+  domain: String
+  api_allowlist_ipv4: String
+  allowlist_label: String
+  source: String
+}
+
+data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
+  username: "briansrls", domain: join([namecheap_domain_sld as String, ".", namecheap_domain_tld as String], ""),
+  api_allowlist_ipv4: "96.224.201.7", allowlist_label: "dev",
+  source: "owner Namecheap API allowlist console report 2026-09-27",
+}

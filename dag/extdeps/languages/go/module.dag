@@ -1,6 +1,6 @@
 module extdeps.languages.go.module
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, brand }
 import std.algebra { Ordering, Less, Equal, Greater }
 import extdeps.version { VersionIdentity, VersionScheme }
 
@@ -67,7 +67,7 @@ fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
   }
 }
 
-data go_module_version_scheme: VersionScheme = {
+data go_module_version_scheme: VersionScheme = VersionScheme {
   compare: (a, b) => if a == b { Equal } else { Less }
 }
 

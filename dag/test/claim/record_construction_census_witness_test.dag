@@ -1,10 +1,9 @@
 module test.claim.record_construction_census_witness_test
 
+import std.types { List }
 import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
-import v2.std.collection { List }
+import v2.std.node { Atom, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, StructuralLabel }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Executing consumer for the decl-fact skeleton's record_construction_spelling edge (the marshal
@@ -41,7 +40,8 @@ type CensusConstructionCount {
 
 fn census_edge_is_construction(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
+    StructuralLabel { label: _ } => false
+    Authored { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }

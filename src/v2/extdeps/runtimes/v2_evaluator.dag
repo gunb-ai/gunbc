@@ -1,9 +1,11 @@
 module v2.extdeps.runtimes.v2_evaluator
 
+import v2.std.grammar { node_atom_identity_optional }
+
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,
@@ -12,7 +14,8 @@ import v2.std.collection {
 }
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
-  canonical_operation_wire_matches_operation
+  canonical_operation_wire_matches_operation,
+  canonical_operation_op_coerce
 }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -24,6 +27,7 @@ import v2.std.integer {
   int_add,
   integer_byte_bit_at,
   integer_int_to_signed_i32_le_bytes,
+  integer_int_type_node,
   integer_signed_i32_le_bytes_to_int
 }
 import v2.std.diagnostic {
@@ -39,7 +43,7 @@ import v2.std.diagnostic {
   Unavailable,
   None
 }
-import v2.std.logic { Bool }
+import v2.std.logic { bool_node }
 import v2.std.machine { Byte }
 import v2.std.model_core {
   EffectSignature,
@@ -117,6 +121,10 @@ fn v2_eval_unit_type_node() -> Node {
 }
 }
 
+// A Bool runtime value's TYPE is v2.std.logic bool_node, the node infer derives for a Bool literal and
+// for a Bool-returning application; eval's resolved-type acceptance compares the two, so a runtime-only
+// Bool type would refuse every derived Bool result (docs/plans/arrow-elimination-model.md). This pin
+// is no longer that type: it is only an evaluator literal-shaped node that represents `true`.
 data v2_eval_bool_literal_pin: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
@@ -125,17 +133,12 @@ data v2_eval_bool_literal_pin: Node = Node {
 
 data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
 
-fn v2_eval_bool_true_byte() -> Byte {
-  Byte { bits: [true] }
-}
-
+// ONE ENCODING OF `true`. This used to be its own one-bit byte while v2_eval_bool_runtime_value, the
+// constructor every evaluated Bool takes, wrote eight bits -- two runtime values for one truth, so
+// v2.compiler.refinement_discharge, which compares against this, read an evaluated `true` as a
+// violated predicate. It is now that constructor's value, not a second encoding of it.
 fn v2_eval_bool_true_primitive() -> RuntimeValue {
-  RuntimePrimitive {
-    value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_bool_literal_pin,
-      bytes: [v2_eval_bool_true_byte()]
-    }
-  }
+  v2_eval_bool_runtime_value(is_true: true)
 }
 
 fn v2_eval_unit_runtime_value() -> RuntimeValue {
@@ -187,18 +190,10 @@ fn v2_eval_empty_frame() -> EvaluationFrame {
   }
 }
 
-fn v2_eval_int_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_int_type_node(),
+      primitive_type: integer_int_type_node(),
       bytes: integer_int_to_signed_i32_le_bytes(value: value)
     }
   }
@@ -207,7 +202,7 @@ fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
 fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_bool_literal_pin,
+      primitive_type: bool_node(),
       bytes: if is_true {
         [Byte { bits: [true, false, false, false, false, false, false, false] }]
       } else {
@@ -254,7 +249,8 @@ fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome
         } else {
           outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
         }
-      _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+      TypeNode { connective: _ } => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+      ComputationNode { behavior: _ } => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
     }
   }
 }
@@ -276,12 +272,19 @@ fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<R
 fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == v2_eval_int_type_node() {
+      if p.primitive_type == integer_int_type_node() {
         integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
       } else {
         outcome_rejected(d: v2_eval_runtime_diagnostic(node: p.primitive_type))
       }
-    _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2_eval_int_type_node()))
+    RuntimeAggregate { value: _ } =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: integer_int_type_node()))
+    RuntimeReference { value: _ } =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: integer_int_type_node()))
+    RuntimeClosure { value: _ } =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: integer_int_type_node()))
+    RuntimeUnit { value: _ } =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: integer_int_type_node()))
   }
 }
 
@@ -295,7 +298,7 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
 fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == v2_eval_bool_literal_pin {
+      if p.primitive_type == bool_node() {
         match list_at_optional(xs: p.bytes, index: 0) {
           Present { value: b } => integer_byte_bit_at(b: b, shift: 0) == 1
           Absent => false
@@ -303,15 +306,21 @@ fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
       } else {
         false
       }
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
 fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
-    _ => false
+      p.primitive_type == bool_node() && !v2_eval_runtime_bool_is_true(value: value)
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
@@ -330,16 +339,39 @@ fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
 fn v2_eval_transform_is_int_add(node: Node) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: op_node } =>
-      match op_node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
+      match node_atom_identity_optional(node: op_node) {
+        Present { value: id } =>
           id == ^dag_token_plus
             || canonical_operation_wire_matches_operation(
               wire: op_node,
               operation: canonical_operation_op_add()
             )
-        _ => false
+        Absent => false
       }
     Absent => false
+  }
+}
+
+fn v2_eval_transform_is_coerce(node: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: op_node } =>
+      canonical_operation_wire_matches_operation(wire: op_node, operation: canonical_operation_op_coerce())
+    Absent => false
+  }
+}
+
+// A CAST REALIZES AS ITS OPERAND'S VALUE. The coercion operation is grounded by exact structural
+// equality (v2.std.compilers.target_model canonical_operation_op_coerce), and infer admits the
+// crossing only when v2.std.coercion finds that homomorphism, so the value carries over unchanged.
+// Any other arity refuses.
+fn v2_eval_coerce(node: Node, args: List<RuntimeValue>) -> Outcome<RuntimeValue> {
+  if count(args) == 1 {
+    match list_at_optional(xs: args, index: 0) {
+      Present { value: v } => outcome_accepted(value: v)
+      Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    }
+  } else {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   }
 }
 
@@ -348,7 +380,9 @@ fn v2_eval_call_primitive(
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if v2_eval_transform_is_int_add(node: node) {
+  if v2_eval_transform_is_coerce(node: node) {
+    v2_eval_coerce(node: node, args: args)
+  } else if v2_eval_transform_is_int_add(node: node) {
     if count(args) == 2 {
       match list_at_optional(xs: args, index: 0) {
         Present { value: left } =>

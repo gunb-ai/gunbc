@@ -2,7 +2,7 @@ module gunbc.tools.reference_binding_provenance_calibration
 
 import std.types { Bool, Int, List, SourceSpan, String, list_length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.occurrence_identity {
   OccurrenceId,
@@ -542,7 +542,12 @@ fn resolution_of_observation(o: ReferenceBindingObservation) -> StructuralBindin
     SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution } => Present { value: resolution }
     LaterDeclarationObservation { later_declaration: _, resolution } => Present { value: resolution }
     DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution } => Present { value: resolution }
-    _ => Absent
+    SameFileNeighbourProductionRefused { gap: _ } => Absent
+    SiblingBranchProductionRefused { gap: _ } => Absent
+    LaterDeclarationProductionRefused { gap: _ } => Absent
+    DistinctHomonymProductionRefused { gap: _ } => Absent
+    RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => Absent
+    UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => Absent
   }
 }
 
@@ -612,6 +617,13 @@ fn consumer_standing(
 // unreachable: the route lacks the input, and the missing input is named below because that name is
 // the next-rung trigger.
 //
+fn index_build_refusal_unsupported() -> CalibrationStanding {
+  CalibrationUnsupportedByThisRoute {
+    missing_input: "a fixture that drives std.occurrence_binding_candidates.occurrence_candidate_index_build to this specific index-build refusal",
+    reason: "the route constructs the refusal payload directly, so the index build that would emit it is never executed",
+  }
+}
+
 // ProductionRefusedArm carries an additional and separately sourced fact, and its SCOPE is the whole
 // of its content: no PRODUCTION-ROUTE module constructs StructuralBindingProductionRefused. Stated
 // unscoped -- "no module anywhere" -- it is simply false, because THIS MODULE constructs it, in
@@ -633,11 +645,11 @@ fn production_standing(arm: CalibrationResolutionArm) -> CalibrationStanding {
         missing_input: "a PRODUCTION-ROUTE producer for StructuralBindingProductionRefused; a whole-tree symbol census finds none on any production path -- the only constructions are in evidence carriers, THIS INSTRUMENT INCLUDED, which is why the claim is scoped to the production route rather than stated as none anywhere",
         reason: "the route constructs the resolution, so it obtains no evidence about producibility; the arm is declared and fixture-constructible with no known production route to it",
       }
-    _ =>
-      CalibrationUnsupportedByThisRoute {
-        missing_input: "a fixture that drives std.occurrence_binding_candidates.occurrence_candidate_index_build to this specific index-build refusal",
-        reason: "the route constructs the refusal payload directly, so the index build that would emit it is never executed",
-      }
+    IndexTransportRefusedArm => index_build_refusal_unsupported()
+    IndexModulePathRefusedArm => index_build_refusal_unsupported()
+    IndexExposureRefusedArm => index_build_refusal_unsupported()
+    IndexAuthoredOrderRefusedArm => index_build_refusal_unsupported()
+    IndexDeclarationBucketRefusedArm => index_build_refusal_unsupported()
   }
 }
 

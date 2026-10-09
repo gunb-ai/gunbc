@@ -107,7 +107,7 @@ fn expect_pool_roots(
     let mut out = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s.to_string()),
+            Value::Str(ref s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
@@ -188,7 +188,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Named"),
+                    variant_name: ctx.sym("Authored"),
                     fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
@@ -555,28 +555,6 @@ fn decls_parse_only_from_inventory(
     Ok((out, module_count))
 }
 
-/// Measurement harness (`floor_prepared_toll_receipt` bin): wall time for pool-root parse-only
-/// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
-pub fn pool_decl_parse_wall_ms(
-    pool_roots: &[String],
-    want_kinds: &[ItemKind],
-    inventory: Option<&[crate::cli_run::PreparedSourceView]>,
-) -> Result<(u128, usize), String> {
-    let started = std::time::Instant::now();
-    let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(
-            inv,
-            pool_roots,
-            &[],
-            want_kinds,
-            "pool_decl_parse_wall_ms",
-        )?
-    } else {
-        decls_parse_only_from_disk(pool_roots, &[], want_kinds, "pool_decl_parse_wall_ms")?
-    };
-    Ok((started.elapsed().as_millis(), module_count))
-}
-
 fn decls_parse_only_from_disk(
     roots: &[String],
     files: &[String],
@@ -817,9 +795,18 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 /// empty means the parse did not carry one; treating unknown as "not a string" would
 /// under-report exactly the survivors a census exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
-    match decl.item.type_annotation.as_ref() {
+    data_item_declared_type_name(&decl.item, &decl.source_indices)
+}
+
+/// The same spelling for a data item the caller already holds, so the parse sweep can record it
+/// at ingestion (`declaration_index::record_from_module`) without a second rule beside this one.
+pub(crate) fn data_item_declared_type_name(
+    item: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match item.type_annotation.as_ref() {
         Some(ann) => {
-            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            let authored = authored_name_at(source_indices.clone(), ann.clone());
             if authored.is_empty() {
                 ann.name.clone()
             } else {
@@ -1207,17 +1194,19 @@ fn hoist_call_arg_string_literal_edges(
     node: &Rc<Node>,
     edges: &mut Vec<Value>,
 ) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
             edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            return;
         }
-    }
+        if let Some(child0) = node.children.first() {
+            if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+                edges.push(literal_edge);
+            } else {
+                hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            }
+        }
+    })
 }
 
 fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
@@ -1913,14 +1902,25 @@ fn marshal_fn_export_signature_node(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let mut edges = Vec::new();
+    // THE DOMAIN IS NAMED BINDERS, NEVER POSITIONAL TYPES (Program P, one Arrow encoding): one
+    // Named edge per value parameter, labelled with its authored name (`_` stays `_`), in authored
+    // order. The host mints no order edge and no anonymous binder: the substrate half,
+    // `v2.std.decl_index` `export_signature_declared_facts`, passes these edges through
+    // `v2.std.arrow_signature` `declared_signature`, the one constructor of a domain and its order.
+    let mut binders = Vec::new();
     for p in item.params.iter() {
         if param_is_type_param(p, si) {
             continue;
         }
+        let name = param_node_name_at(p.clone(), si.clone());
         let ty = param_node_type_expr(p.clone());
-        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+        binders.push(edge_named(ctx, &name, marshal_type_expr_ref(ctx, si, &ty)?));
     }
+    let domain = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        binders,
+    );
     let ret_val = item
         .inferred
         .as_ref()
@@ -1928,11 +1928,10 @@ fn marshal_fn_export_signature_node(
         .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
         .transpose()?
         .unwrap_or_else(|| unit_type_node(ctx));
-    edges.push(edge_positional(ctx, ret_val));
     Ok(node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
-        edges,
+        vec![edge_positional(ctx, domain), edge_positional(ctx, ret_val)],
     ))
 }
 
@@ -2364,85 +2363,11 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
 }
 
 #[cfg(test)]
-mod decl_facts_shared_memo_tests {
-    use super::*;
-
-    fn names(facts: &[DeclFactRaw]) -> Vec<(String, String, String)> {
-        facts
-            .iter()
-            .map(|f| {
-                (
-                    f.qualified_name.clone(),
-                    format!("{:?}", f.kind),
-                    f.rel_path.clone(),
-                )
-            })
-            .collect()
-    }
-
-    /// The memo is an ownership change, not a population change: with the floor memo registered,
-    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
-    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
-    /// walk, and clearing the authority drops the artifact.
-    #[test]
-    fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
-        let roots = vec![
-            "dag/std".to_string(),
-            "dag/gunbc/machine_intake".to_string(),
-        ];
-        let reordered = vec![
-            "dag/gunbc/machine_intake".to_string(),
-            "dag/std".to_string(),
-        ];
-        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
-        let singleton = vec!["dag/std".to_string()];
-        let cold = decl_facts_for_roots(&roots);
-        let cold_duplicated = decl_facts_for_roots(&duplicated);
-        let cold_singleton = decl_facts_for_roots(&singleton);
-        assert!(
-            !cold.is_empty(),
-            "the roots must yield declarations or this decides nothing"
-        );
-        assert_ne!(
-            names(&cold_singleton),
-            names(&cold_duplicated),
-            "the walk visits every supplied root, so [r, r] is a different population from [r]"
-        );
-        clear_decl_census_memo();
-        let unregistered = decl_facts_for_roots_shared(&roots);
-        assert_eq!(names(&cold), names(&unregistered));
-        register_decl_census_memo();
-        let first = decl_facts_for_roots_shared(&roots);
-        let second = decl_facts_for_roots_shared(&reordered);
-        let shared_singleton = decl_facts_for_roots_shared(&singleton);
-        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
-        clear_decl_census_memo();
-        assert!(
-            Rc::ptr_eq(&first, &second),
-            "a reordering of the same root multiset must read the same walk"
-        );
-        assert_eq!(names(&cold), names(&first));
-        assert!(
-            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
-            "[r] and [r, r] must not alias"
-        );
-        assert_eq!(names(&cold_singleton), names(&shared_singleton));
-        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
-        let after_clear = decl_facts_for_roots_shared(&roots);
-        assert!(
-            !Rc::ptr_eq(&first, &after_clear),
-            "clearing the prepared authority must drop the memo"
-        );
-    }
-}
-
-#[cfg(test)]
 mod parse_only_uppercase_variant_regression_tests {
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
     use crate::v1_std_core::{
@@ -2455,8 +2380,8 @@ mod parse_only_uppercase_variant_regression_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -2488,6 +2413,9 @@ mod parse_only_uppercase_variant_regression_tests {
             Rc::new(ExprData::ExprVar {
                 binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                     parent_enum: "Parent".to_string(),
+                    parent_identity: Rc::new(
+                        crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+                    ),
                 })),
             }),
             empty_node_list(),
@@ -2650,7 +2578,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
         match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items
+            Some(Value::List(ref items)) => items
                 .iter()
                 .next()
                 .and_then(|edge| field(ctx, edge, "target")),

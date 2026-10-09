@@ -1,7 +1,25 @@
 module v2.compiler.native_test_vocabulary
 
-import v2.std.node { Symbol }
+import std.algebra { FreeMonoid, FreeSemigroup, list_snoc_item }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic {
+  Diagnostic,
+  Locus,
+  NonEmptyDiagnostics,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
+  diagnostics_singleton
+}
+import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
+import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+import std.optional { Optional }
+import v2.std.integer { Int }
+import v2.std.source_position { SourceByteColumn }
+import v2.std.collection { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
@@ -18,11 +36,134 @@ type NativeTestStage
   | NativeTestStageEntry
   | NativeTestStageEval
 
+// A REFUSAL CARRIES WHAT THE FAILING STAGE SAID, NOT ONE SYMBOL COPIED OUT OF IT. The arm used to
+// carry `reason: Symbol` -- the fatal diagnostic's reason and nothing else -- so the stage
+// computed a located cause (v2.std.diagnostic Diagnostic: reason, locus, correction) and the
+// verdict dropped the locus at this boundary; every row the lane persisted and every line the
+// operator read said WHAT refused and never WHERE, and an ambiguous reference reported one
+// symbol where the resolver had named its lookup class and its competing declarations. The
+// verdict now carries the stage's NonEmptyDiagnostics unfolded, for the reason
+// v2.compiler.compile native_module_resolve_verdict already gives at the census grain:
+// summarizing is the CONSUMER's move. The reason every roster keys on is DERIVED --
+// v2.std.diagnostic diagnostics_fatal_reason, the LAST diagnostic, because rejected_with_pending
+// prepends the advisories that rode along -- so a consumer that classifies by reason reads the same symbol
+// it always read, and a consumer that needs the position reads it from the same value.
 type NativeTestVerdict
   = NativeTestPassed
   | NativeTestReturnedFalse
   | NativeTestReturnedOther
-  | NativeTestRefused { stage: NativeTestStage, reason: Symbol }
+  | NativeTestRefused { stage: NativeTestStage, diagnostics: NonEmptyDiagnostics }
+
+// THE ROUTE'S OWN REFUSALS ARE DIAGNOSTICS TOO, LOCATED WHERE THE ROUTE STOPPED. The Entry stage
+// refuses for reasons the pipeline never minted (a declaration the scope does not hold, a
+// declaration that is not an arrow), so it mints the diagnostic itself, with the locus the walk
+// reached. This is the ONLY constructor for a reason-first refusal, and it demands a locus: a
+// producer that has no position to give must say so through the Locus arms rather than through
+// a constructor that lets the position be omitted.
+fn native_test_refused_located(stage: NativeTestStage, reason: Symbol, at: Locus) -> NativeTestVerdict {
+  NativeTestRefused {
+    stage: stage,
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: reason,
+      at: at,
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
+}
+
+// THE ROUTE'S CLASSIFICATION SITS BEHIND WHAT THE PIPELINE SAID. When an Entry-stage walk refuses
+// with its own diagnostics and the route owes the roster a reason of its own (the module scope
+// could not be walked), the pipeline's chain is kept in carriage order and the route's reason is
+// appended as the fatal, located where the underlying fatal was -- so a consumer folding to the
+// last reason reads the roster's symbol and a consumer reading the chain sees what the walk hit.
+fn native_test_refused_after(stage: NativeTestStage, reason: Symbol, d: NonEmptyDiagnostics) -> NativeTestVerdict {
+  let underlying = diagnostics_fatal(d: d)
+  NativeTestRefused {
+    stage: stage,
+    diagnostics: NonEmptyDiagnostics {
+      head: d.head,
+      tail: list_snoc_item(xs: d.tail, item: Diagnostic {
+        reason: reason,
+        at: underlying.at,
+        correction: Unavailable { reason: UserInputBoundary }
+      })
+    }
+  }
+}
+
+fn native_test_stage_text(stage: NativeTestStage) -> String {
+  match stage {
+    NativeTestStageContext => "context"
+    NativeTestStagePrepare => "prepare"
+    NativeTestStageEntry => "entry"
+    NativeTestStageEval => "eval"
+  }
+}
+
+// STAGE EQUALITY IS STRUCTURAL AND ENUMERATED. Comparing the rendered stage text would let a
+// label rename or collision decide a semantic question (the ruling recorded at
+// gunbc.instruments.body_lowering_population_probe); a wildcard arm would let a fifth stage compile
+// and silently compare false. Enumerated, adding a stage fails to typecheck here until its
+// equality is decided. Consumer: gunbc.witness_v2_native_route's live-pair enrollment.
+fn native_test_stage_eq(a: NativeTestStage, b: NativeTestStage) -> Bool {
+  match a {
+    NativeTestStageContext =>
+      match b {
+        NativeTestStageContext => true
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => false
+        NativeTestStageEval => false
+      }
+    NativeTestStagePrepare =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => true
+        NativeTestStageEntry => false
+        NativeTestStageEval => false
+      }
+    NativeTestStageEntry =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => true
+        NativeTestStageEval => false
+      }
+    NativeTestStageEval =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => false
+        NativeTestStageEval => true
+      }
+  }
+}
+
+// ONE LINE PER NON-PASSING VERDICT, FOR THE OPERATOR. The rendered driver prints this beside the
+// JSON row it persists, so the command an operator runs names the failing subject, the stage,
+// the cause and its position -- the same value the row carries, projected once here rather than
+// re-derived by the host from the bytes it just wrote.
+fn native_test_verdict_text(verdict: NativeTestVerdict) -> String {
+  match verdict {
+    NativeTestPassed => "passed"
+    NativeTestReturnedFalse => "returned false"
+    NativeTestReturnedOther => "returned a non-Boolean value"
+    NativeTestRefused { stage: stage, diagnostics: d } =>
+      concat(
+        "refused at ",
+        concat(
+          native_test_stage_text(stage: stage),
+          concat(
+            " cause=",
+            concat(
+              symbol_lexeme(sym: diagnostics_fatal_reason(d: d)),
+              concat(" chain: ", lens_verdict_diagnostics_located_chain_text(d: d))
+            )
+          )
+        )
+      )
+  }
+}
+
 
 type NativeTestObservation {
   module: QualifiedName
@@ -30,14 +171,78 @@ type NativeTestObservation {
   verdict: NativeTestVerdict
 }
 
-// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
-// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
-// reason and the fatal (last) reason are different observations of one refusal — the door
-// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
-// classifier asks both questions of every row.
+// ONE SOURCE'S FRONT-END REFUSAL. `chain` IS THE REFUSAL'S DIAGNOSTICS, EACH LINK WITH ITS POSITION,
+// in carriage order: rejected_with_pending prepends the non-fatal advisories, so the head may be an
+// advisory and the LAST link is the cause that refused. It is non-empty by construction (a head plus
+// a tail), and the head and fatal reasons are DERIVED from it
+// (native_test_file_refusal_head_reason, native_test_file_refusal_fatal_reason), never stored beside
+// it: stored copies were second spellings of chain[0] and chain[last] (DESIGN section 3).
+// Positions are RESOLVED at the absorb, against the refused file's own span index and text, so the
+// row retains no occurrence id: a refused parse's ids are re-minted by the next file, and a retained
+// NodeLocus would resolve to the wrong one.
+// `module` is the module the refused file DECLARES, read from its header line
+// (v2.compiler.compile native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
+// parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
+// told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
+// told only that a name is unbound. Absent means the file declares no module line.
 type NativeTestFileRefusal {
   path: Symbol
-  head_reason: Symbol
-  fatal_reason: Symbol
+  module: Optional<QualifiedName>
+  chain: FreeSemigroup<FileRefusalLink>
 }
 
+// The cause that refused: the chain's LAST link.
+fn native_test_file_refusal_fatal_link(fr: NativeTestFileRefusal) -> FileRefusalLink {
+  fold_list(xs: fr.chain.tail, empty: fr.chain.head, cons: fn(acc, link) { link })
+}
+
+fn native_test_file_refusal_fatal_reason(fr: NativeTestFileRefusal) -> Symbol {
+  native_test_file_refusal_fatal_link(fr: fr).reason
+}
+
+// The chain's first link: an advisory that rode along, or the fatal itself when nothing did.
+fn native_test_file_refusal_head_reason(fr: NativeTestFileRefusal) -> Symbol {
+  fr.chain.head.reason
+}
+
+type FileRefusalLink {
+  reason: Symbol
+  at: FileRefusalAt
+}
+
+// WHERE ONE LINK POINTS, AND WHY IT HAS NO LINE WHEN IT HAS NONE. The column unit is BYTES
+// (v2.std.source_position SourceLineCol), named in the field. A locus in ANOTHER file is not
+// positioned against this one's text; an invariant port has no position by construction (the
+// grammar-construction residue heads every file this way); a node the span index does not cover
+// is unresolved, never guessed.
+type FileRefusalAt
+  = FileRefusalAtLine { line: Int, byte_column: SourceByteColumn }
+  | FileRefusalAtWholeFile
+  | FileRefusalAtOtherFile { file: Symbol }
+  | FileRefusalAtInvariant { invariant: Symbol }
+  | FileRefusalAtDeclaration { declaration: QualifiedName }
+  | FileRefusalAtUnresolvedNode
+
+
+// AN ACCEPTED FILE'S ADVISORIES, COUNTED RATHER THAN DROPPED. An Accepted front-end outcome may
+// carry non-fatal diagnostics (parse residue, body lowering, infer, the accumulator-copy lens), and
+// they are prepended to any later refusal of the same file. The context fold used to match them
+// away as `diagnostics: _`, so an accepted file's advisories were visible only when something
+// downstream refused, and only as the head of that refusal's chain. Each accepted file with any
+// advisory is one row here, carrying every advisory reason in chain order: the reasons are the
+// identities, and the count is their length -- never a separate number that could disagree. The
+// chain is non-empty BY CONSTRUCTION (head plus tail, the shape of NonEmptyDiagnostics it is read
+// from), so a row with no advisory has no constructor rather than a reader that must refuse it.
+type NativeTestFileAdvisories {
+  path: Symbol
+  head: Symbol
+  tail: FreeMonoid<Symbol>
+}
+
+fn native_test_file_advisories(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileAdvisories {
+  NativeTestFileAdvisories {
+    path: path,
+    head: d.head.reason,
+    tail: fold_list(xs: d.tail, empty: [], cons: fn(acc, x) { list_snoc_item(xs: acc, item: x.reason) })
+  }
+}

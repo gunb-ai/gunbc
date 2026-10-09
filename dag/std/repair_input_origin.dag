@@ -1,6 +1,7 @@
 module std.repair_input_origin
 
 import std.types { String, List }
+import std.decl_ref { DeclarationRef }
 
 // XL-0A splits the emitter's six candidate-bearing inputs BEFORE their historical string union.
 // The source branch is deliberately named Candidate rather than DeclarationCarrier: XL-0B/C will
@@ -19,6 +20,91 @@ type SourceCarrierOrigin
 
 type RenderedTypeSurfaceOrigin {}
 
+// ---------------------------------------------------------------------------------------------
+// XL-0B/C: THE DeclarationCarrier HALF THE HEADER ABOVE DEFERS, LANDED ON THE v2 ROUTE.
+//
+// WHAT CHANGED SINCE THE DEFERRAL. The header says claiming a DeclarationRef here would require
+// an emitter-side registry reconstruction, and that was true of the route it was written for: the
+// six channels above are collectors internal to v1.compiler.emit_rust's Rust use-line planner, and
+// that planner is the only place on the v1 route where references were ever enumerated. The v2
+// route enumerates them where they actually live -- v2.compiler.reference_site_collector walks the
+// containment tree and v2.compiler.resolution_provenance resolves each mention through the same
+// symbol index the live resolver uses, answering with the module that CONTAINS the target. No
+// registry is reconstructed because none is consulted: the declaration is the resolver's own
+// answer.
+//
+// THE TWO CARRIERS ARE SEPARATELY TYPED OVER ONE BASE, which is what the XL-0 stage label demands.
+// A source-declaration carrier names a mention in authored source and the declaration that
+// answered it. A rendered target-vocabulary carrier names a token that exists only in a target's
+// rendered vocabulary and has no source declaration to name. They are different facts with
+// different repairs, so a union of their spellings -- which is what the compatibility projection
+// below still is, for the v1 route's lifetime -- cannot tell them apart.
+//
+// THE v1 ARM SURVIVES AND IS FROZEN. SourceCarrierCandidate stays exactly as XL-0A authored it and
+// stays consumed by v1.compiler.emit_rust. It is not a rival of the arm below: it is the same
+// question asked where the only available answer was a spelling, on a route scheduled for
+// deletion, and it retires with that route rather than by a conversion.
+
+// PROVENANCE: A DECLARED ANSWER CARRIES ITS DECLARATION, AND THE THREE WAYS OF NOT HAVING ONE ARE
+// THREE FACTS.
+//
+// THIS DIVERGES FROM std.coercion TypeDeclarationProvenance, DELIBERATELY, AND HERE IS THE REASON
+// (DESIGN section 3b admits a stated departure and refuses only a silent one). Three departures,
+// each with its own cause:
+//
+//   1. CorpusDeclared carries `decl_file: String` -- A POSITION.
+//      gunbc.type_reference_decl_file_occurrence_census names that as the undischarged and larger
+//      half of its repair, and a carrier holding BOTH a DeclarationRef and a decl_file would give
+//      one fact two identities, which is the section 3 fork the census exists to warn about. So
+//      the declared arm here carries the DeclarationRef and nothing positional. The v1 position
+//      is NOT converted: it retires when v1.compiler.emit_rust is deleted.
+//
+//   2. KernelMinted HAS NO PRODUCER ON THIS ROUTE. The kernel-minted arm is obliged to derive from
+//      the exact-equality kernel identity predicate rather than a prefix test, and that minter --
+//      v1.std.core kernel_span -- exists only on the v1 route; no v2 module mints a kernel span.
+//      An arm with no producer is permanently uninhabited, which DESIGN section 4b calls a
+//      decoration rather than a weak wall, and worse than absent because it would be cited as
+//      coverage. What the v2 route can establish exactly is the neighbouring fact: a target that
+//      resolves through the symbol index while NO DECLARATION IDENTITY CAN BE MINTED FOR IT. Two
+//      structural facts produce that, and they are one arm because they are one fact for a repair:
+//      no rostered module contains the target, or the target IS a module and names no declaration
+//      inside one. Both are derived by v2.compiler.resolution_provenance provenance_owner_of_target,
+//      by containment-prefix over the module roster -- an exact structural test, never a prefix
+//      test on a name -- so the state is carried under its own name rather than borrowed under the
+//      kernel's.
+//
+//   3. DeclarationIdentityAbsent CONFLATES TWO STATES WITH DIFFERENT REPAIRS. A mention the
+//      resolver could not bind at all and a mention it could bind two ways are not one fact: the
+//      first is repaired by a declaration or a spelling, the second only by disambiguation, and a
+//      roster that reported them as one number would hide which. Two states, two arms.
+type RepairInputDeclarationProvenance
+  = RepairInputDeclared { declaring: DeclarationRef }
+  | RepairInputTargetWithoutDeclarationIdentity { target_spelling: String }
+  | RepairInputIdentityAmbiguous
+  | RepairInputIdentityAbsent
+
+// THE MENTION, ITS POSITION AND WHAT ANSWERED IT -- AND NOTHING ABOUT WHETHER IT SHOULD BE
+// REPAIRED. The XL-0 stage label says this denominator is taken BEFORE eligibility or repair
+// disposition, so there is no eligibility field to set and no disposition arm to pick: a consumer
+// that wants a narrower population derives it from these rows and owns its own filter.
+//
+// `reference_position` is the mention's CONTAINMENT CHAIN -- the module qualified name followed by
+// the declaration path the mention sits under -- which is what makes two mentions of one name in
+// one module two rows rather than one. THERE IS NO SEPARATE referencing-module FIELD, and its
+// absence is the point: the module is the longest rostered module prefix of this chain, so a
+// second field carrying it would be the same fact stored twice (DESIGN section 2) and would then
+// need a fabricated answer for a position no roster covers. Every consumer of this denominator
+// holds the module roster already -- the producer builds the roster and the carrier from the same
+// roots -- so the module is DERIVED where it is wanted rather than carried where it can drift.
+//
+// The module that ANSWERED the mention is not here either: it is inside the provenance, where it
+// cannot be misread as a property of the site.
+type SourceDeclarationCarrierIdentity {
+  reference_position: String
+  authored_spelling: String
+  provenance: RepairInputDeclarationProvenance
+}
+
 type SourceCarrierCandidateIdentity {
   emitting_module: String
   candidate_spelling: CandidateSpelling
@@ -34,6 +120,7 @@ type RenderedTargetVocabularyIdentity {
 type RepairInputOriginCandidate
   = SourceCarrierCandidate { identity: SourceCarrierCandidateIdentity }
   | RenderedTargetVocabularyCarrier { identity: RenderedTargetVocabularyIdentity }
+  | SourceDeclarationCarrier { identity: SourceDeclarationCarrierIdentity }
 
 fn candidate_spelling_from_text(name: String) -> CandidateSpelling {
   let segments = name |> split(delimiter: ".")
@@ -108,6 +195,7 @@ fn repair_input_origin_candidate_name(candidate: RepairInputOriginCandidate) -> 
         QualifiedCandidate { authored_qualifier, member } => concat(authored_qualifier, ".", member)
       }
     RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier
+    SourceDeclarationCarrier { identity } => identity.authored_spelling
   }
 }
 
@@ -118,6 +206,9 @@ fn repair_input_origin_compatibility_names(candidates: List<RepairInputOriginCan
 // The qualified-type emission route is an ITEM-SURFACE route, not a second spelling producer.
 // Derive its population from the tagged assembly so a dotted value-reference or rendered token
 // cannot enter merely because it shares the same textual shape.
+// A v2 source-declaration carrier is never an ITEM-SURFACE spelling: it is a mention the resolver
+// answered, not one of the v1 emitter's six use-line channels. Its arm below returns the empty
+// list, which is answering for it rather than declining to.
 fn qualified_item_emit_surface_compatibility_names(
   candidates: List<RepairInputOriginCandidate>,
 ) -> List<String> {
@@ -136,6 +227,7 @@ fn qualified_item_emit_surface_compatibility_names(
           VariantPayloadSurfaceOrigin => []
         }
       RenderedTargetVocabularyCarrier { identity: _ } => []
+      SourceDeclarationCarrier { identity: _ } => []
     }
   )
 }

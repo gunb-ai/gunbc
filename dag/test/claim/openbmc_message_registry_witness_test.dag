@@ -1,0 +1,45 @@
+module test.claim.openbmc_message_registry_witness
+
+import std.types { Bool, String }
+import extdeps.bmc.openbmc_message_registry {
+  AmpereDimmHot,
+  OpenBmcMemoryEcc,
+  OpenBmcMemoryEccCorrectable,
+  OpenBmcMemoryEccDetail,
+  SelLoggerThreshold,
+  openbmc_event_class,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The five message shapes srv3's OpenBMC 3.22 log carried on 2026-09-18, verbatim, each classified,
+// and three near-misses that must not be.
+test fn every_observed_shape_classifies() -> Bool {
+  let ecc = match openbmc_event_class(message: "OpenBMC.0.1.MemoryECCCorrectable.Critical \n 0,2,0,9") { Present { value: OpenBmcMemoryEcc { ecc: OpenBmcMemoryEccCorrectable } } => true _ => false }
+  let detail = match openbmc_event_class(message: "OpenBMC.0.1.MemoryExtendedECCCEData.Warning \n 1,140,96") { Present { value: OpenBmcMemoryEccDetail } => true _ => false }
+  let hot = match openbmc_event_class(message: "OpenBMC.0.1.AmpereWarning.Warning \n Event DIMM_HOT at DIMM0 of channel 2 of Socket 0,Asserted.") {
+    Present { value: AmpereDimmHot { subject, asserted } } => subject == "DIMM0 of channel 2 of Socket 0" && asserted
+    _ => false
+  }
+  let cool = match openbmc_event_class(message: "OpenBMC.0.1.AmpereWarning.Warning \n Event DIMM_HOT at DIMM0 of channel 6 of Socket 0,Deasserted.") {
+    Present { value: AmpereDimmHot { subject: _, asserted } } => !asserted
+    _ => false
+  }
+  let fan = match openbmc_event_class(message: "FAN4 critical low threshold deassert. Reading=806.000000 Threshold=100.000000.") {
+    Present { value: SelLoggerThreshold { sensor, critical, high, asserted } } => sensor == "FAN4" && critical && !high && !asserted
+    _ => false
+  }
+  let warm = match openbmc_event_class(message: "TEMP_X550 warning high threshold assert. Reading=81.000000 Threshold=80.000000.") {
+    Present { value: SelLoggerThreshold { sensor, critical, high, asserted } } => sensor == "TEMP_X550" && !critical && high && asserted
+    _ => false
+  }
+  ecc && detail && hot && cool && fan && warm
+}
+
+test fn near_misses_stay_unclassified() -> Bool {
+  let lookalike = match openbmc_event_class(message: "OpenBMC.0.1.MemoryECCCorrectableSomethingElse.Critical \n 0") { Present { value: _ } => false none => true }
+  let other_ampere = match openbmc_event_class(message: "OpenBMC.0.1.AmpereWarning.Warning \n Event VRD_HOT at Socket 0,Asserted.") { Present { value: _ } => false none => true }
+  let prose = match openbmc_event_class(message: "System restarted by the operator.") { Present { value: _ } => false none => true }
+  lookalike && other_ampere && prose
+}

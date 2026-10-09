@@ -1,0 +1,99 @@
+module gunbc.source_root_read
+
+import std.types { Bool, List, String }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemExactRead, FilesystemExactPathRead,
+  FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read, filesystem_failure_kind_name, admit_filesystem_failure_kind,
+  FilesystemFailureKindAdmitted, FilesystemFailureKindUnrecognized, FilesystemNotDirectory,
+  filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
+}
+import std.optional { Absent, Present }
+
+// Compiler policy over the existing file transport. A failed listing is never an empty
+// directory. Only the host's NotADirectory observation admits a candidate as a file; every
+// other failure stops the walk. In particular a disappearing entry or a broken symlink cannot
+// silently shrink the compiler's source population. The transport refuses lossy name encodings.
+type SourceRootWalkTask { path: String, root: Bool }
+type SourceRootPaths
+  = SourceRootPathsRead { paths: List<String> }
+  | SourceRootPathsRefused { path: String, kind: String, cause: String }
+type SourceRootFile { path: String, content: String }
+type SourceRootFiles
+  = SourceRootFilesRead { files: List<SourceRootFile> }
+  | SourceRootFilesRefused { path: String, kind: String, cause: String }
+
+fn source_root_child_path(directory: String, name: String) -> String {
+  if directory.ends_with(suffix: "/") { concat(directory, name) }
+  else { concat(directory, "/", name) }
+}
+
+fn source_root_candidate_is_file(root: Bool, error_kind: String) -> Bool {
+  if root { false } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindAdmitted { kind: FilesystemNotDirectory } => true
+      FilesystemFailureKindAdmitted { kind: _ } => false
+      FilesystemFailureKindUnrecognized { observed: _ } => false
+    }
+  }
+}
+
+fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<String>) -> SourceRootPaths {
+  match pending |> first {
+    Absent => SourceRootPathsRead { paths: paths |> sort_by(path => path) }
+    Present { value: task } => {
+      let rest = pending.skip(n: 1)
+      let listed = Filesystem.List(path: task.path)
+      match filesystem_listing_observation(directory: task.path, success: listed.success,
+        entries: listed.entries, error: listed.error) {
+        FilesystemDirectoryListed(listing) => {
+          let children = filesystem_listing_entry_names(listing: listing) |> map(name => SourceRootWalkTask {
+            path: source_root_child_path(directory: task.path, name: name), root: false
+          })
+          source_root_walk(pending: concat(children, rest), paths: paths)
+        }
+        FilesystemDirectoryListingRefused { directory: _, error: cause } =>
+          if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
+            let next = if task.path.ends_with(suffix: ".dag") { concat(paths, [task.path]) } else { paths }
+            source_root_walk(pending: rest, paths: next)
+          } else {
+            SourceRootPathsRefused { path: task.path, kind: listed.error_kind, cause: cause }
+          }
+        FilesystemDirectorySubjectRefused { directory: path, cause: cause } =>
+          SourceRootPathsRefused { path: path, kind: "invalid_subject", cause: cause }
+      }
+    }
+  }
+}
+
+fn source_root_read_file(path: String) -> FilesystemExactRead {
+  let read = Filesystem.Read(path: path)
+  filesystem_exact_read(path: path, content: read.content, success: read.success,
+    error: read.error, error_kind: read.error_kind)
+}
+
+fn source_root_read_paths(pending: List<String>, files: List<SourceRootFile>) -> SourceRootFiles {
+  match pending |> first {
+    Absent => SourceRootFilesRead { files: files }
+    Present { value: path } => match source_root_read_file(path: path) {
+      FilesystemExactPathRead { path: observed, content: content } =>
+        source_root_read_paths(pending: pending.skip(n: 1),
+          files: concat(files, [SourceRootFile { path: observed, content: content }]))
+      FilesystemExactPathAbsent { path: observed } =>
+        SourceRootFilesRefused { path: observed, kind: "not_found", cause: "source disappeared before it could be read" }
+      FilesystemExactPathUnreadable { path: observed, kind: kind, error: cause } =>
+        SourceRootFilesRefused { path: observed, kind: filesystem_failure_kind_name(kind: kind), cause: cause }
+      FilesystemExactPathKindUnrecognized { path: observed, observed: kind, error: cause } =>
+        SourceRootFilesRefused { path: observed, kind: kind, cause: concat("unrecognized filesystem failure kind: ", cause) }
+    }
+  }
+}
+
+fn source_root_read(roots: List<String>) -> SourceRootFiles {
+  match source_root_walk(pending: roots |> map(path => SourceRootWalkTask { path: path, root: true }), paths: []) {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
+      SourceRootFilesRefused { path: path, kind: kind, cause: cause }
+    SourceRootPathsRead { paths: paths } => source_root_read_paths(pending: paths, files: [])
+  }
+}

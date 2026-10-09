@@ -1,0 +1,9 @@
+module test.fixture.evaluation_store_address_alias.home
+
+fn evaluation_store_address() -> Int {
+  0
+}
+
+fn home_marker() -> Int {
+  1
+}

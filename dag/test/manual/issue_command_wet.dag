@@ -1,0 +1,53 @@
+module test.manual.issue_command_wet
+
+import std.types { String, NonEmptyStr, FilePath, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, roadmap_event_envelope, roadmap_issue_comments, roadmap_event_heads, roadmap_node_standing, roadmap_node_standing_key }
+import gunbc.roadmap.roadmap_event_carrier { carrier_snapshot_close_failures, RoadmapEventAppend, roadmap_event_carrier_layout, roadmap_events_read, EventsRead, EventAppended, EventAlreadyPresent, EventAppendRefused }
+import gunbc.roadmap_issue_command { IssueCommandSubject, CreateComment, issue_command_event, issue_command_apply }
+
+// Local throwaway Git remote only. Drives the command -> conditional carrier -> fold -> readback.
+fn issue_command_wet(repo: String, mode: String = "sequential", git_program: String = "/usr/bin/git") -> ProcessExit {
+  if !starts_with(s: repo, prefix: "/tmp/gunbc-issue-command-") { exit_failure(reason: "temporary fixture required") }
+  else {
+    let layout = roadmap_event_carrier_layout(repo_root: repo as FilePath, instance_root: concat(repo, "/instance") as FilePath, git_program: git_program, directory_program: "/usr/bin/install")
+    let author = EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "fixture-owner" } }
+    let node = "fixture-issue" as RoadmapNodeId
+    let first = CreateComment { subject: IssueCommandSubject { node: node, author: author, operation: "first", expected: none }, body: "one intentional comment" }
+    let first_id = roadmap_event_envelope(e: issue_command_event(command: first, recorded_at: "2026-09-28T00:00:00Z")).id
+    if mode == "sequential" {
+      let created = issue_command_apply(layout: layout, command: first, recorded_at: "2026-09-28T00:00:00Z")
+      let later = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: node, author: author, operation: "later", expected: Present { value: first_id } }, body: "one intentional comment" }, recorded_at: "2026-09-28T00:01:00Z")
+      let retry = issue_command_apply(layout: layout, command: first, recorded_at: "2026-09-28T00:02:00Z")
+      let stale = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: node, author: author, operation: "stale", expected: none }, body: "stale command" }, recorded_at: "2026-09-28T00:03:00Z")
+      let reused = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: node, author: author, operation: "first", expected: none }, body: "different content" }, recorded_at: "2026-09-28T00:04:00Z")
+      let readback = roadmap_events_read(layout: layout, node: node)
+      let passed = match created.result { EventAppended { id } => id == first_id EventAlreadyPresent { id: _ } => false EventAppendRefused { id: _, step: _, reason: _ } => false }
+        && match later.result { EventAppended { id: _ } => true EventAlreadyPresent { id: _ } => false EventAppendRefused { id: _, step: _, reason: _ } => false }
+        && match retry.result { EventAlreadyPresent { id } => id == first_id EventAppended { id: _ } => false EventAppendRefused { id: _, step: _, reason: _ } => false }
+        && match stale.result { EventAppendRefused { id: _, step, reason: _ } => step == "revision-conflict" EventAppended { id: _ } => false EventAlreadyPresent { id: _ } => false }
+        && match reused.result { EventAppendRefused { id: _, step, reason: _ } => step == "operation-conflict" EventAppended { id: _ } => false EventAlreadyPresent { id: _ } => false }
+        && count(carrier_snapshot_close_failures(closes: [created.close, later.close, retry.close, stale.close, reused.close, readback.close])) == 0
+        && match readback.result {
+          EventsRead { node: _, envelopes } => count(envelopes) == 2 && count(roadmap_event_heads(envs: envelopes)) == 1
+            && count(roadmap_issue_comments(envs: envelopes)) == 2
+            && match roadmap_issue_comments(envs: envelopes).first() { Present { value: comment } => comment.ordinal == 1 && comment.comment == "first" Absent => false }
+          EventsReadRefused { node: _, step: _, reason: _ } => false
+        }
+      if passed { ExitSuccess } else { exit_failure(reason: join(["command/CAS/retry/readback control failed", issue_wet_outcome(result: created.result), issue_wet_outcome(result: later.result), issue_wet_outcome(result: retry.result), issue_wet_outcome(result: stale.result), issue_wet_outcome(result: reused.result)], "\n")) }
+    } else {
+      let raced = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: "raced-issue" as RoadmapNodeId, author: author, operation: mode as NonEmptyStr, expected: none }, body: "race" }, recorded_at: "2026-09-28T00:00:00Z")
+      match raced.result { EventAppended { id: _ } => match carrier_snapshot_close_failures(closes: [raced.close]).first() { Absent => ExitSuccess Present { value: leak } => exit_failure(reason: leak) } EventAlreadyPresent { id: _ } => exit_failure(reason: "conditional append lost or refused") EventAppendRefused { id: _, step: _, reason: _ } => exit_failure(reason: "conditional append lost or refused") }
+    }
+  }
+}
+
+fn issue_wet_outcome(result: RoadmapEventAppend) -> String {
+  match result {
+    EventAppended { id } => concat("appended ", id as String)
+    EventAlreadyPresent { id } => concat("already ", id as String)
+    EventAppendRefused { id: _, step, reason } => concat(step, concat(": ", reason))
+  }
+}

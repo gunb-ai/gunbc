@@ -1,0 +1,130 @@
+module v2.test.claim.arrow_contract_edge_conformance
+
+import std.types { List }
+import std.effects { ReadonlyClaim, IdempotentClaim }
+import std.execution_mode { Hermetic }
+import v2.std.arrow_contract { effect_claim_label, execution_mode_claims_label }
+import v2.std.type_binder { type_binder_node_conforms }
+import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
+import v2.std.node_query { binder_edge }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_signature_edges_conform,
+  content_hash,
+  core_edge,
+  node_synthetic,
+  symbol_intern_lexeme
+}
+
+// THE CONFORMANCE WALL FOR AN ARROW'S CONTRACT EDGES (v2.std.node arrow_signature_edges_conform):
+// ArrowEffectClaimsEdge, a Conj of self-named Atoms from { readonly, idempotent }, and
+// ArrowExecutionModeClaimEdge, one Atom from { hermetic }. The subject is an operation-shaped
+// Arrow built as v2.compiler.body_lowering_fold body_lower_operation builds one: one ^operation_input
+// binder whose target is the input payload. The bare Arrow is the positive control, and every red
+// differs from an accepted Arrow in exactly the property its claim names.
+
+fn ace_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn ace_conj(children: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+}
+
+fn ace_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn ace_payload() -> Node {
+  ace_conj(children: [binder_edge(name: ^page, type_node: ace_atom(identity: ^Int))])
+}
+
+fn ace_arrow(extra: List<Edge>) -> Node {
+  let signature = declared_signature(params: [binder_edge(name: ^operation_input, type_node: ace_payload())], source: ace_payload())
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: concat([signature.domain, Edge { label: Positional, target: ace_conj(children: []) }, signature.order], extra)
+  )
+}
+
+fn ace_claims(names: List<Symbol>) -> Edge {
+  core_edge(marker: ArrowEffectClaimsEdge, target: ace_conj(children: names |> map(n => ace_named(name: n, target: ace_atom(identity: n)))))
+}
+
+fn ace_mode(mode: Symbol) -> Edge {
+  core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_atom(identity: mode))
+}
+
+fn ace_readonly() -> Symbol {
+  effect_claim_label(claim: ReadonlyClaim)
+}
+
+fn ace_idempotent() -> Symbol {
+  effect_claim_label(claim: IdempotentClaim)
+}
+
+// The surface spelling of the one claimable mode. That std.execution_mode Hermetic claims exactly this
+// label is asserted by the positive control below, through v2.std.arrow_contract
+// execution_mode_claims_label, so the spelling here cannot drift from the projection silently.
+fn ace_hermetic() -> Symbol {
+  symbol_intern_lexeme(lexeme: "hermetic")
+}
+
+// Both walls an Arrow meets: the structural one (v2.std.node arrow_signature_edges_conform) and the
+// vocabulary one (v2.std.type_binder type_binder_node_conforms, which runs
+// v2.std.arrow_contract arrow_contract_conforms).
+fn ace_conforms(extra: List<Edge>) -> Bool {
+  let a = ace_arrow(extra: extra)
+  arrow_signature_edges_conform(children: a.children) && type_binder_node_conforms(n: a)
+}
+
+test fn a_claim_free_operation_arrow_conforms() -> Bool {
+  ace_conforms(extra: [])
+}
+
+test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Bool {
+  execution_mode_claims_label(mode: Hermetic, label: ace_hermetic())
+    && ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])
+    && ace_conforms(extra: [ace_mode(mode: ace_hermetic())])
+    && ace_conforms(extra: [ace_claims(names: [ace_idempotent()]), ace_mode(mode: ace_hermetic())])
+}
+
+// Reds, in order: an EMPTY claims edge (the absent edge is the one form of no claims); a repeated
+// claim; two claims edges; an unknown claim; hermetic folded into the
+// effect claims; a claim Atom that is not its own label.
+test fn a_malformed_effect_claim_refuses() -> Bool {
+  !ace_conforms(extra: [ace_claims(names: [])])
+    && !ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_readonly()])])
+    && !ace_conforms(extra: [ace_claims(names: [ace_readonly()]), ace_claims(names: [ace_idempotent()])])
+    && !ace_conforms(extra: [ace_claims(names: [^pure])])
+    && !ace_conforms(extra: [ace_claims(names: [ace_hermetic()])])
+    && !ace_conforms(extra: [core_edge(marker: ArrowEffectClaimsEdge, target: ace_conj(children: [ace_named(name: ace_readonly(), target: ace_atom(identity: ace_idempotent()))]))])
+}
+
+// Reds, in order: an empty Conj where the mode should be one Atom; an unknown mode; an effect claim on the mode edge; two mode edges; a mode that is
+// a Conj rather than one Atom.
+test fn a_malformed_execution_mode_claim_refuses() -> Bool {
+  !ace_conforms(extra: [core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_conj(children: []))])
+    && !ace_conforms(extra: [ace_mode(mode: ^wet)])
+    && !ace_conforms(extra: [ace_mode(mode: ace_readonly())])
+    && !ace_conforms(extra: [ace_mode(mode: ace_hermetic()), ace_mode(mode: ace_hermetic())])
+    && !ace_conforms(extra: [core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_conj(children: [ace_named(name: ace_hermetic(), target: ace_atom(identity: ace_hermetic()))]))])
+}
+
+// Canonical identity does not depend on the authored order of the claims or of the contract edges,
+// and a claim is part of identity (the claimed Arrow is not the claim-free one).
+test fn contract_edge_identity_is_order_independent() -> Bool {
+  (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])) == content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_idempotent(), ace_readonly()])])))
+    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()]), ace_mode(mode: ace_hermetic())])) == content_hash(n: ace_arrow(extra: [ace_mode(mode: ace_hermetic()), ace_claims(names: [ace_readonly()])])))
+    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()])])) != content_hash(n: ace_arrow(extra: [])))
+}

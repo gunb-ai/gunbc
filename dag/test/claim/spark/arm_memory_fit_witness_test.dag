@@ -1,0 +1,3005 @@
+module test.claim.spark.arm_memory_fit_witness
+
+import std.types { Bool, NonEmptyStr, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, measure_le,
+  gibibyte, gibibyte_to_byte_size, gibibyte_scale_factor_bytes, basis_point,
+  token_count, token_count_value,
+  allocator_block_count, attention_layer_count,
+  concurrent_request_hundredths_count, mebibyte,
+ second, second_count }
+import std.interval { closed_interval, IntervalReady, IntervalRefused }
+import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted, PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
+import extdeps.vllm.kv_layout {
+  ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
+  cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
+}
+import gunbc.spark.serving_arm {
+  glm53_native_launch_policy,
+  Glm53NativeFp8, Glm53Exl3_205, GunbcGlm53NopeDerivedGb10, Gitcommit90Sm121Exl3,
+  SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
+  glm_native_initial_profile, glm_native_concurrent_profile,
+  serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ArmNormalServing, ArmBoundedExperiment,
+}
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntent, serving_capacity_intent, uniform_cold_seats,
+  intent_for_launch_profile, intent_max_active_sequences, intent_max_single_sequence_tokens,
+  intent_max_total_resident_tokens, profile_for_envelope, envelope_at_cold_floor,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+import gunbc.spark.pair_serving_capacity_floor {
+  spark_pair_serving_minimum_cold_sessions, minimum_cold_sessions_intent,
+}
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env, glm_group_b_sparse_indexer_max_logits }
+import gunbc.spark.arm_memory_fit {
+  glm_5_3_flash_expected_kv_roster,
+  ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
+  ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded,
+  ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseIdleServing, ArmPhaseLoaderTransform, ArmPhasePeakServing,
+  ArmPhaseGraphCapture,
+  ArmCheckpointResidency, ArmLoaderTransform, ArmRuntimeFixed, ArmCollectiveWorkspace,
+  ArmActivationWorkspace, ArmGraphCapture, ArmKvCache, ArmFragmentationAllowance,
+  ComponentBoundExact, ComponentBoundInterval, ComponentBoundCeiling, ComponentBoundOpen,
+  component_bound_interval, ArmComponentBoundReady, ArmComponentBoundRefused,
+  demand_for_phase,
+  arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
+  arm_memory_fit_verdict, arm_memory_subject_open_components,
+  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply, placed_in, ArmRowView,
+  arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
+  arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_experiment_runtime,
+  ArmAllRanksStopped, ArmRouteEnrollmentProhibited, ArmEveryRankStopped, ArmNoRouteEnrollment,
+  ArmMeasurement, ArmMeasurementProtocol, ProtocolPeakOverRuns, ProtocolEngineReportedMaximum, ProtocolSingleSample,
+  MeasuredUpperBound, MeasuredInterval, ObservationOnly, MeasurementRefused,
+  ArmObservationConsistent, ArmMemoryModelFalsified,
+  ArmComponentReceipt, arm_memory_fit_subject_with_receipts,
+  MemoryProofSubject, MemoryProofSubjectReady, MemoryProofSubjectRefused,
+  memory_proof_subject_for_launch, memory_proof_subject_wire,
+  MemoryTerm, MemoryScalingStaticResidency, MemoryScalingPerSequenceFixed, MemoryScalingPerToken,
+  MemoryScalingPerPooledToken, MemoryScalingPhaseTransient,
+  MemoryPlacementCheckpointPlacement, MemoryPlacementPhaseWorkspace,
+  memory_terms_for_rank,
+  ArmWetDerivedExact, ArmWetDerivedConservativeInterval, ArmWetMeasuredUpperBound,
+  ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
+  ArmWetGraphAttributionUnestablished,
+  arm_wet_standing_credit_bytes, arm_wet_standing_discharges_open,
+  ArmWetReceiptBinding, ArmWetBindingAdmitted, ArmWetBindingRefused, arm_admit_wet_binding,
+  CacheFitProved, CacheFitRefused, CacheFitUnestablished,
+  ArmRankCacheSupply, cache_fit_verdict, CacheCapacityCandidate, cache_capacity_candidate,
+  sparse_indexer_prefill_buffer_candidate, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
+  ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
+  ArmMemoryWholeStanding,
+  PrefillTransientShape, PrefillTransientRankInput, PrefillTransientDemandTerms,
+  prefill_transient_demand_terms, prefill_transient_extras_upper, prefill_transient_fit_verdict,
+  PrefillTransientFitProved, PrefillTransientFitRefused, PrefillTransientFitUnestablished,
+}
+
+import gunbc.spark.arm_memory_experiment_observed {
+  arm_experiment_2026_09_25_subject, arm_experiment_2026_09_25_bindings,
+  arm_experiment_2026_09_25_admit, arm_experiment_2026_09_25_pool_readings,
+  arm_experiment_2026_09_25_envelope_readings, arm_experiment_2026_09_25_reported_capacity,
+  arm_experiment_2026_09_25_six_seat_candidate, arm_experiment_2026_09_25_limiting_rank,
+  arm_experiment_kvplan_v2_2026_09_26_arena_readings,
+  arm_experiment_kvplan_v2_2026_09_26_boot_readings, arm_experiment_kvplan_v2_2026_09_26_boot_derivation_holds,
+  arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes,
+  arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower,
+  arm_experiment_kvplan_v2_2026_09_26_activation_upper,
+  arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks,
+  arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions,
+  arm_experiment_gib_hundredths_floor, arm_experiment_gib_hundredths_lower, arm_experiment_gib_hundredths_upper,
+  glm_checkpoint_index_revision, glm_checkpoint_index_tensor_count, glm_checkpoint_index_shard_count,
+  glm_checkpoint_index_tensor_bytes, glm_checkpoint_index_file_bytes, glm_checkpoint_index_header_overhead_bytes,
+  glm_checkpoint_index_kda_layer_indices, glm_checkpoint_index_sparse_base_layer_indices,
+  glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
+  glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
+  glm_checkpoint_projection_census_holds, glm_checkpoint_projection_per_rank_bytes,
+  glm_checkpoint_projection_visual_bytes,
+  arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
+  arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
+  arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
+  arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook,
+  arm_loader_trace_runs, arm_loader_trace_converged, arm_loader_trace_failed_legs,
+  arm_loader_trace_min_hundredths_gib, arm_loader_trace_bound,
+  arm_loader_trace_receipt, arm_loader_trace_receipt_admitted,
+  arm_experiment_2026_09_27_serving_liveness, arm_experiment_2026_09_27_liveness_repro_matrix,
+  arm_experiment_2026_09_27_churn_run_readiness_gate_passed, arm_experiment_2026_09_27_churn_run_token_exact_no_400s,
+  arm_experiment_2026_09_27_churn_run_completed_prefills, arm_experiment_2026_09_27_churn_run_hung_prefills,
+  arm_experiment_2026_09_27_churn_run_kv_peak_percent, arm_experiment_2026_09_27_churn_run_client_timeout_seconds,
+  arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat,
+  ArmCheckpointTensorRow, ArmPlacementVocabSharded, ArmPlacementColumnSharded, ArmPlacementRowSharded,
+  ArmPlacementExpertSplit, ArmPlacementReplicated,
+  arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
+}
+import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest, glm_5_3_flash_architecture_class }
+import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
+import extdeps.vllm.sparse_prefill_transient {
+  sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
+}
+
+// THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
+// sole-constructor payload's produced identity is erased at the cross-module Present seam).
+fn w_restoration_profile() -> ServingLaunchProfile {
+  match group_b_restoration_executable() {
+    Present { value: executable } => executable.profile
+    Absent => glm_native_initial_profile
+  }
+}
+
+// ── THE WITNESS SUBJECTS ARE FIXTURES WITH REAL PRODUCTION NUMBERS WHERE A DERIVATION EXISTS ────
+//
+// The pool span, the checkpoint aggregate and the envelope derive through the same functions the
+// launch wall uses, against the real GLM-5.3-Flash row (306 ceil-GiB) and the real GB10 pool
+// reading (121 GiB rounded). Measured bounds carry receipts NAMING the checkpoint, runtime and
+// topology they claim to be measured on -- the mint's provenance check is under test here, so the
+// fixtures spell the wires rather than shortcutting them.
+
+fn fx_gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+data fx_pool_low: ByteSize = byte_size(count: 129922760704)
+data fx_pool_high: ByteSize = byte_size(count: 130996502527)
+
+fn fx_pool() -> ArmPoolBound {
+  match closed_interval(low: fx_pool_low, high: fx_pool_high, le: measure_le) {
+    IntervalReady { interval: i } =>
+      ArmPoolBounded {
+        span: i,
+        how: "fixture span identical to the one gunbc.spark.arm_memory_fit gb10_pool_bound derives from the rounded reading" as NonEmptyStr,
+      }
+    IntervalRefused { reason: r } =>
+      ArmPoolUnbounded { obligation: r }
+  }
+}
+
+fn fx_ckpt_wire() -> String {
+  serving_checkpoint_wire(c: Glm53NativeFp8) as String
+}
+
+fn fx_rt_wire() -> String {
+  serving_runtime_wire(r: GunbcGlm53NopeDerivedGb10) as String
+}
+
+fn fx_tp_wire() -> String {
+  serving_topology_wire(t: FourSparkTp4) as String
+}
+
+// A MEASURED RECEIPT NAMES THE IDENTITY, as the provenance check requires: kind, checkpoint,
+// runtime, topology, and the fixture receipt id.
+fn fx_receipt(kind: NonEmptyStr) -> NonEmptyStr {
+  join([
+    kind as String, " measured on ", fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    " rank population (fixture receipt fx-r2)",
+  ], "") as NonEmptyStr
+}
+
+fn fx_how(text: NonEmptyStr) -> NonEmptyStr {
+  join([text as String, " -- ", fx_ckpt_wire(), " ", fx_tp_wire(), " fixture derivation"], "") as NonEmptyStr
+}
+
+fn fx_interval(lower: Nat, upper: Nat, how: NonEmptyStr) -> ArmComponentBound {
+  match component_bound_interval(lower: byte_size(count: lower), upper: byte_size(count: upper), how: how) {
+    ArmComponentBoundReady { bound: b } => b
+    ArmComponentBoundRefused { cause: c } => ComponentBoundOpen { obligation: c }
+  }
+}
+
+fn fx_ceiling(component_kind: NonEmptyStr, gib: Nat) -> ArmComponentBound {
+  ComponentBoundCeiling { bytes: fx_gib(gib), receipt: fx_receipt(kind: component_kind) }
+}
+
+// THE FIXTURE LAYOUT IS HYBRID-SHAPED on purpose: one full-attention group, sixteen-token blocks,
+// sixty-four-KiB pages. GLM-5.3-Flash's real per-group shape (MLA plus linear-attention state) is
+// an open upstream obligation -- the engine emits no group metadata (extdeps.vllm.kv_layout states
+// the trigger) -- so the fixture charges a full-attention cost and says so.
+data fx_layout: ResolvedKvLayout = resolved_kv_layout(
+  allocator_blocks: allocator_block_count(count: 4096),
+  scheduler_block_size: token_count(count: 16),
+  hash_block_size: token_count(count: 16),
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
+  groups: [KvGroupLayout {
+    kind: FullAttention,
+    layer_count: attention_layer_count(count: 1),
+    block_size: token_count(count: 16),
+    page_size_bytes: byte_size(count: 65536),
+  }],
+  established_at_revision: vllm_source_revision_read,
+)
+
+// THE KV TERM IS DERIVED FROM THE SEAT POPULATION OVER THE LAYOUT: a 64K seat at sixteen-token
+// blocks holds 4096 blocks of 64 KiB = 256 MiB, and four seats hold 1 GiB. Carried as an Exact
+// bound -- the derivation is workload x layout arithmetic, not an estimate.
+fn fx_kv_bound() -> ArmComponentBound {
+  let per_seat = match cold_admission_bytes(layout: fx_layout, sequence_budget: token_count(count: 65536)) {
+    AdmissionByteCostBytes { bytes: b } => b
+    AdmissionByteCostUnestablished { cause: _ } => byte_size(count: 0)
+  }
+  ComponentBoundExact {
+    bytes: byte_size(count: byte_size_count(b: per_seat) * 4),
+    how: fx_how(text: "required_kv_bytes: 4 seats x cold_admission_bytes(fixture layout, 64K budget) = 1 GiB exactly" as NonEmptyStr),
+  }
+}
+
+// THE SHRUNK SERVICE: four cold seats of 64K, batched ceiling 2048.
+fn fx_shrunk_intent() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 65536), seats: 4, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+// THE EXECUTABLE PROFILE THE FIXTURE PRICES, derived from the intent through the same function
+// the experiment plan and the subject mint use -- the join under test is between THIS derivation
+// and the subject, not between two independently authored values.
+fn fx_derived_profile() -> ServingLaunchProfile {
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_shrunk_intent()),
+    policy: glm53_native_launch_policy,
+    decided_gpu_memory_basis_points: basis_point(count: 8400),
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+  )
+}
+
+// ONE MEASURED RANK ROW: per-rank checkpoint placement measured even (the ceiling is the split
+// share of the 306 ceil-GiB aggregate), every other mechanism carried as a measured ceiling, the
+// KV demand exact. Receipts name the identity throughout.
+// ONE SUPPLY ROW OVER THE GB10 HOST'S ONE CATALOG MEMORY: every pre-tier fixture is the one-tier
+// case, so its pool and deductions become that tier's.
+fn fx_tiers(pool: ArmPoolBound, deductions: ArmSupplyDeductions) -> List<ArmTierSupply> {
+  [ArmTierSupply { tier: gb10_memory_tier(), pool: pool, deductions: deductions }]
+}
+
+fn fx_rank(rank: Nat, checkpoint: ArmComponentBound) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: rank,
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: checkpoint),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
+  }
+}
+
+fn fx_even_checkpoint() -> ArmComponentBound {
+  fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 77)
+}
+
+fn fx_four_even_ranks() -> List<ArmRankDemand> {
+  [
+    fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
+    fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
+    fx_rank(rank: 2, checkpoint: fx_even_checkpoint()),
+    fx_rank(rank: 3, checkpoint: fx_even_checkpoint()),
+  ]
+}
+
+fn fx_deductions() -> ArmSupplyDeductions {
+  ArmSupplyDeductions {
+    host_os_control_reserve: ComponentBoundCeiling { bytes: fx_gib(8), receipt: "fx-host-reserve-measurement on the serving hosts" as NonEmptyStr },
+    foreign_residency: ComponentBoundCeiling { bytes: fx_gib(2), receipt: "fx-foreign-residency-inventory on the serving hosts" as NonEmptyStr },
+  }
+}
+
+// ── WITNESS 1: THE PRODUCTION TUPLE'S VERDICT, AND THE AGGREGATE FRONTIER AROUND IT ─────────────
+//
+// The production subject as the launch wall mints it -- the serving profile's maximum admitted
+// behavior as the intent, every term open, the rounded pool, both deductions open -- evaluates to
+// FitUnestablished with the missing bounds named. The tp1/tp2 frontier below is REFUSED, but by
+// the aggregate argument, which never names a rank: the sentinel rank field carries the rank
+// count, which is not a valid rank index.
+test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool {
+  match arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    profile: w_restoration_profile(),
+  ) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 34
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 checkpoint-residency has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "per-rank checkpoint placement is unread"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 kv-cache has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
+            && any(os, o => string_contains(s: o as String, pattern: "foreign-residency"))
+        _ => false
+      }
+  }
+}
+
+test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -> Bool {
+  let tp1 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: SingleSparkTp1, profile: glm_native_initial_profile))
+  let tp2 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: SparkPairTp2, profile: glm_native_initial_profile))
+  let tp8 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: EightSparkTp8, profile: glm_native_initial_profile))
+  (match tp1 {
+    Present { value: ArmMemoryFitRefused { rank: r, tiers: _, phase: p, demand_lower: d, supply_upper: _, cause: c } } =>
+      r == 1 && p == ArmPhaseModelLoad && byte_size_count(b: d) == 327491256321
+        && string_contains(s: c as String, pattern: "at least one rank")
+    _ => false
+  })
+    && (match tp2 {
+      Present { value: ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: d, supply_upper: _, cause: c } } =>
+        r == 2 && byte_size_count(b: d) == 163745628161
+          && string_contains(s: c as String, pattern: "at least one rank")
+      _ => false
+    })
+    && (match tp8 {
+      Present { value: ArmMemoryFitUnestablished { obligations: _ } } => true
+      _ => false
+    })
+}
+
+fn verdict_for(subject_mint: ArmMemorySubjectMint) -> ArmMemoryFitVerdict? {
+  match subject_mint {
+    ArmMemorySubjectRefused { cause: _ } => none
+    ArmMemorySubjectReady { subject: s } => Present { value: arm_memory_fit_verdict(subject: s) }
+  }
+}
+
+// ── WITNESS 2: THE JOIN — A PROFILE THAT DOES NOT DERIVE FROM THE INTENT HAS NO SUBJECT ─────────
+//
+// THE BLOCKER'S DISCRIMINATING CONTROL. The 4-seat x 64K intent beside the sixteen-sequence
+// 262K serving profile: the mint refuses, on BOTH mints, before any verdict exists. A FitProved
+// for a small service standing next to a large executable is unwritable, not merely detectable.
+test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint() -> Bool {
+  (match arm_memory_fit_subject(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: glm_native_concurrent_profile,
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match arm_memory_fit_subject_with_rank_demands(
+      checkpoint: Glm53NativeFp8,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_shrunk_intent(),
+      requested_profile: glm_native_concurrent_profile,
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+      ranks: fx_four_even_ranks()) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+// THE FORWARD DIRECTION PROVES: the derived profile joins its intent, and the same subject mints
+// ready -- the Proved witness below stands on this join.
+test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool {
+  match arm_memory_fit_subject(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
+    ArmMemorySubjectReady { subject: _ } => true
+    ArmMemorySubjectRefused { cause: _ } => false
+  }
+}
+
+// ── WITNESS 3: PROVENANCE — A RECEIPT CARRIED ONTO A CHANGED CHECKPOINT OR RUNTIME IS REFUSED ────
+test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -> Bool {
+  (match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53Exl3_205,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: fx_four_even_ranks()) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match arm_memory_fit_subject_with_rank_demands(
+      checkpoint: Glm53NativeFp8,
+      runtime: Gitcommit90Sm121Exl3,
+      topology: FourSparkTp4,
+      intent: fx_shrunk_intent(),
+      requested_profile: fx_derived_profile(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+      ranks: fx_four_even_ranks()) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+// ── WITNESS 4: ROSTER CONSERVATION — DUPLICATED OR ABSENT RANKS REFUSE; THE RECORD IS COMPLETE ────
+test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
+  (match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: [
+      fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 2, checkpoint: fx_even_checkpoint()),
+    ]) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "one row per rank")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match arm_memory_fit_subject_with_rank_demands(
+      checkpoint: Glm53NativeFp8,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_shrunk_intent(),
+      requested_profile: fx_derived_profile(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+      ranks: [
+        fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
+        fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
+        fx_rank(rank: 2, checkpoint: fx_even_checkpoint()),
+      ]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "against a topology of 4")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+// THE RECORD SHAPE IS THE CONSERVATION: a KV-omitted rank, a duplicated component, an omitted
+// deduction have no spelling -- ArmRankDemand and ArmSupplyDeductions carry every field by
+// construction. What CAN be written wrong is a roster whose bounds are all open with the right
+// rank count, and that must never reach FitProved.
+test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool {
+  match arm_memory_fit_subject(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: ArmSupplyDeductions {
+      host_os_control_reserve: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
+      foreign_residency: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
+    })) {
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) > 0
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 kv-cache has no defensible bound"))
+        _ => false
+      }
+    ArmMemorySubjectRefused { cause: _ } => false
+  }
+}
+
+// ── WITNESS 5: THE RANK-SUM CONSERVATION LAW ────────────────────────────────────────────────────
+//
+// MEASURED PER-RANK UPPER BOUNDS MUST BE ABLE TO HOLD THE CHECKPOINT between them. Four one-GiB
+// ceilings cannot hold 306 GiB of checkpoint however honestly they were minted; the law refuses
+// the mismatch as an obligation.
+test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() -> Bool {
+  let tiny = fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: [
+      fx_rank(rank: 0, checkpoint: tiny),
+      fx_rank(rank: 1, checkpoint: tiny),
+      fx_rank(rank: 2, checkpoint: tiny),
+      fx_rank(rank: 3, checkpoint: tiny),
+    ]) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 1
+            && any(os, o => string_contains(s: o as String, pattern: "cannot hold the checkpoint between them"))
+        _ => false
+      }
+  }
+}
+
+// ── WITNESS 6: THE SHRUNK INTENT, FULLY RECEIPTED, DISCRIMINATES TO A PROOF ─────────────────────
+test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: fx_four_even_ranks()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitProved { rank: r, tier: _, phase: p, headroom_bytes: h } =>
+          r == 0 && p == ArmPhasePeakServing && byte_size_count(b: h) == 17867063952
+        _ => false
+      }
+  }
+}
+
+test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
+  let loader_open = ArmRankDemand {
+    rank: 0,
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: fx_even_checkpoint()),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr }),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
+  }
+  let ranks = [loader_open, fx_rank(rank: 1, checkpoint: fx_even_checkpoint()), fx_rank(rank: 2, checkpoint: fx_even_checkpoint()), fx_rank(rank: 3, checkpoint: fx_even_checkpoint())]
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: ranks) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 1
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 loader-transform has no defensible bound: fx-open"))
+        _ => false
+      }
+  }
+}
+
+// ── WITNESS 7: THE WORST RANK DECIDES — A RANK-SPECIFIC MANDATORY DEMAND REFUSES AT THAT RANK ─────
+test fn w_the_worst_rank_decides_the_verdict() -> Bool {
+  let surcharge = fx_interval(
+    lower: 132070244352,
+    upper: 140996502528,
+    how: fx_how(text: "fixture: rank zero carries the replicated tensors and its mandatory residency exceeds the most generous supply on its own" as NonEmptyStr))
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: [
+      fx_rank(rank: 0, checkpoint: surcharge),
+      fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 2, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 3, checkpoint: fx_even_checkpoint()),
+    ]) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: d, supply_upper: _, cause: c } =>
+          r == 0
+            && byte_size_count(b: d) == 132070244352
+            && string_contains(s: c as String, pattern: "checkpoint-residency")
+        _ => false
+      }
+  }
+}
+
+// ── WITNESS 8: THE DECIDED ENVELOPE REFUSES AT THE FIRST ENGINE-ADMITTED PHASE ────────────────────
+test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
+  let between = fx_interval(
+    lower: 123480309760,
+    upper: 124527089664,
+    how: fx_how(text: "fixture: mandatory per-rank demand between the decided envelope's most generous reading and the pool's most generous reading" as NonEmptyStr))
+  let terms = ArmRankDemand {
+    rank: 0,
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: between),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
+  }
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    ranks: [
+      terms,
+      fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 2, checkpoint: fx_even_checkpoint()),
+      fx_rank(rank: 3, checkpoint: fx_even_checkpoint()),
+    ]) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: p, demand_lower: d, supply_upper: s, cause: c } =>
+          r == 0
+            && p == ArmPhaseProfiling
+            && byte_size_count(b: d) == 123480309760
+            && byte_size_count(b: s) == 110037062123
+            && string_contains(s: c as String, pattern: "envelope")
+        _ => false
+      }
+  }
+}
+
+// ── WITNESS 9: PHASES KEEP TRANSIENTS IN THEIR PHASE ────────────────────────────────────────────
+test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
+  let rd = fx_rank(rank: 0, checkpoint: fx_even_checkpoint())
+  let model_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseModelLoad).upper {
+    Absent => 0
+    Present { value: b } => byte_size_count(b: b)
+  }
+  let idle_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseIdleServing).upper {
+    Absent => 0
+    Present { value: b } => byte_size_count(b: b)
+  }
+  let loader_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseLoaderTransform).upper {
+    Absent => 0
+    Present { value: b } => byte_size_count(b: b)
+  }
+  let overlap_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseRestartOverlap).upper {
+    Absent => 0
+    Present { value: b } => byte_size_count(b: b)
+  }
+  loader_upper == overlap_upper
+    && loader_upper - model_upper == byte_size_count(b: fx_gib(1))
+    && idle_upper - model_upper == byte_size_count(b: fx_gib(3))
+}
+
+// ── WITNESS 10: AN UNMODELED POOL IS UNESTABLISHED, NOT REFUSED ───────────────────────────────────
+test fn w_an_unmodeled_pool_is_unestablished_not_refused() -> Bool {
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: ArmPoolUnbounded { obligation: "fx-no-pool-reading: no byte producer has modeled this pool" as NonEmptyStr }, deductions: fx_deductions()),
+    ranks: fx_four_even_ranks()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 1 && any(os, o => o == "fx-no-pool-reading: no byte producer has modeled this pool" as NonEmptyStr)
+        _ => false
+      }
+  }
+}
+
+// ── WITNESS 11: THE MEASUREMENT CONTRACT ────────────────────────────────────────────────────────
+//
+// A MEASUREMENT DISCHARGES AN OBLIGATION ONLY WHEN IT ESTABLISHES A BOUND. A single sample is
+// ObservationOnly and changes nothing; a peak-over-runs protocol with lifetime coverage is a
+// MeasuredUpperBound and discharges; a measurement for a phase where the component is not
+// resident, or with an empty workload, or over zero runs, refuses.
+fn fx_measurement(protocol: ArmMeasurementProtocol, covers_lifetime: Bool, phase_witness: ArmMemoryComponent, phase: ArmMemoryFitPhase, observed_gib: Nat) -> ArmMeasurement {
+  ArmMeasurement {
+    component: phase_witness,
+    rank: 0,
+    phase: phase,
+    workload: token_count(count: 65536),
+    covers_lifetime: covers_lifetime,
+    protocol: protocol,
+    observed: fx_gib(observed_gib),
+    receipt: fx_receipt(kind: "fx-measurement" as NonEmptyStr),
+  }
+}
+
+test fn w_a_single_sample_is_observation_only_and_discharges_nothing() -> Bool {
+  let m = fx_measurement(protocol: ProtocolSingleSample, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
+  (match arm_classify_measurement(m: m) {
+    ObservationOnly { measurement: _, why: w } => string_contains(s: w as String, pattern: "bounds nothing above")
+    MeasuredUpperBound { measurement: _ } => false
+    MeasuredInterval { lower: _, upper: _, measurement: _ } => false
+    MeasurementRefused { cause: _ } => false
+  })
+    && (match arm_apply_measurement(
+      current: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
+      class: arm_classify_measurement(m: m)) {
+      ComponentBoundOpen { obligation: o } => o == "fx-open" as NonEmptyStr
+      _ => false
+    })
+}
+
+test fn w_a_peak_over_runs_protocol_discharges_to_a_ceiling() -> Bool {
+  let m = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
+  (match arm_classify_measurement(m: m) {
+    MeasuredUpperBound { measurement: _ } => true
+    _ => false
+  })
+    && (match arm_apply_measurement(
+      current: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
+      class: arm_classify_measurement(m: m)) {
+      ComponentBoundCeiling { bytes: b, receipt: r } =>
+        byte_size_count(b: b) == 1073741824 && r == fx_receipt(kind: "fx-measurement" as NonEmptyStr)
+      _ => false
+    })
+}
+
+test fn w_a_measurement_that_does_not_cover_the_lifetime_observes_only() -> Bool {
+  let m = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: false, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
+  match arm_classify_measurement(m: m) {
+    ObservationOnly { measurement: _, why: w } => string_contains(s: w as String, pattern: "does not cover the lifetime")
+    _ => false
+  }
+}
+
+test fn w_a_measurement_for_an_absent_mechanism_or_zero_runs_refuses() -> Bool {
+  let wrong_phase = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 3 }, covers_lifetime: true, phase_witness: ArmKvCache, phase: ArmPhaseModelLoad, observed_gib: 1)
+  let zero_runs = fx_measurement(protocol: ProtocolPeakOverRuns { runs: 0 }, covers_lifetime: true, phase_witness: ArmGraphCapture, phase: ArmPhaseGraphCapture, observed_gib: 1)
+  (match arm_classify_measurement(m: wrong_phase) {
+    MeasurementRefused { cause: c } => string_contains(s: c as String, pattern: "not resident")
+    _ => false
+  })
+    && (match arm_classify_measurement(m: zero_runs) {
+      MeasurementRefused { cause: c } => string_contains(s: c as String, pattern: "zero runs")
+      _ => false
+    })
+}
+
+// ── WITNESS 12: READBACK — INSIDE THE INTERVAL IS CONSISTENT, OUTSIDE FALSIFIES ─────────────────
+test fn w_readback_inside_the_predicted_interval_is_consistent_outside_falsifies() -> Bool {
+  let interval = fx_interval(lower: 1073741824, upper: 2147483648, how: fx_how(text: "fixture interval" as NonEmptyStr))
+  (match arm_readback_observation(component: ArmActivationWorkspace, predicted: interval, observed: fx_gib(2), receipt: "fx-readback-1" as NonEmptyStr) {
+    ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+    ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+  })
+    && (match arm_readback_observation(component: ArmActivationWorkspace, predicted: interval, observed: fx_gib(3), receipt: "fx-readback-2" as NonEmptyStr) {
+      ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+      ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+    })
+    && (match arm_readback_observation(
+      component: ArmKvCache,
+      predicted: ComponentBoundExact { bytes: fx_gib(1), how: fx_how(text: "fixture exact" as NonEmptyStr) },
+      observed: fx_gib(2),
+      receipt: "fx-readback-3" as NonEmptyStr) {
+      ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+      ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+    })
+}
+
+// ── WITNESS 13: THE LAUNCH GATE IS VERDICT-AWARE, AND THE EXPERIMENT NEEDS A TYPED PLAN ─────────
+fn fx_unestablished_verdict() -> ArmMemoryFitVerdict {
+  ArmMemoryFitUnestablished { obligations: ["fx-obligation" as NonEmptyStr] }
+}
+
+fn fx_plan() -> ArmMemoryExperimentPlan {
+  match arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    workload: fx_shrunk_intent(),
+    policy_profile: fx_derived_profile(),
+    targets: [ArmKvCache, ArmGraphCapture], deployment_env: glm_group_b_deployment_env()) {
+    ArmMemoryExperimentAdmitted { plan: p } => p
+    ArmMemoryExperimentRefused { cause: _ } => ArmMemoryExperimentPlan {
+      checkpoint: Glm53NativeFp8,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      workload: fx_shrunk_intent(),
+      profile: fx_derived_profile(),
+      targets: [],
+      envelope_basis_points: basis_point(count: 8400),
+      max_runtime_seconds: 0,
+      expected_receipts: [],
+      stop: ArmExperimentStopContract {
+        timeout_preserves: "unreachable" as NonEmptyStr,
+        cleanup: "unreachable" as NonEmptyStr,
+        stops_every_rank: ArmEveryRankStopped { witness: "fx" as NonEmptyStr },
+        route_enrollment: ArmNoRouteEnrollment { witness: "fx" as NonEmptyStr },
+      },
+    }
+  }
+}
+
+test fn w_refused_refuses_the_experiment_too() -> Bool {
+  match arm_memory_launch_gate(
+    intent: ArmBoundedExperiment,
+    verdict: ArmMemoryFitRefused {
+      rank: 1, tiers: [gb10_memory_tier()], phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1),
+      cause: "fx-refusal" as NonEmptyStr },
+    experiment: none) {
+    Present { value: c } => string_contains(s: c as String, pattern: "even a bounded experiment refuses")
+    Absent => false
+  }
+}
+
+test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
+  (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: fx_unestablished_verdict(), experiment: none) {
+    Present { value: c } => string_contains(s: c as String, pattern: "only through a typed experiment plan")
+    Absent => false
+  })
+    && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: fx_unestablished_verdict(), experiment: Present { value: fx_plan() }) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    && (match arm_memory_launch_gate(intent: ArmNormalServing, verdict: ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
+      Present { value: _ } => false
+      Absent => true
+    })
+}
+
+// ── WITNESS 14: THE EXPERIMENT PLAN MINT — TARGETS, ENVELOPE, RUNTIME, RECEIPTS, STOP CONTRACT ────
+test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract() -> Bool {
+  let plan = fx_plan()
+  length(plan.targets) == 2
+    && plan.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: plan.profile.max_num_seqs))
+    && plan.max_runtime_seconds > 0
+    && plan.expected_receipts == ["KvLayoutReceipt" as NonEmptyStr, "GraphCaptureBound" as NonEmptyStr]
+    && (match plan.stop.stops_every_rank { ArmEveryRankStopped { witness: w } => w == "every rank unit of the experiment carries the same admitted runtime bound" as NonEmptyStr })
+    && (match plan.stop.route_enrollment { ArmNoRouteEnrollment { witness: w } => w == "the experiment unit renders no [Install] section, so no target enrolls the route" as NonEmptyStr })
+    && string_contains(s: plan.stop.timeout_preserves as String, pattern: "receipt")
+    && string_contains(s: plan.stop.cleanup as String, pattern: "docker rm -f")
+}
+
+test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool {
+  (match arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+    workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(), targets: [], deployment_env: glm_group_b_deployment_env()) {
+    ArmMemoryExperimentRefused { cause: c } => string_contains(s: c as String, pattern: "names no open obligations")
+    ArmMemoryExperimentAdmitted { plan: _ } => false
+  })
+    && (match arm_memory_fit_experiment_plan(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+      workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(),
+      targets: [ArmGraphCapture, ArmFragmentationAllowance], deployment_env: glm_group_b_deployment_env()) {
+      ArmMemoryExperimentAdmitted { plan: _ } => true
+      ArmMemoryExperimentRefused { cause: _ } => false
+    })
+}
+
+test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile() -> Bool {
+  match arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+    workload: fx_shrunk_intent(), policy_profile: glm_native_concurrent_profile,
+    targets: [ArmKvCache], deployment_env: glm_group_b_deployment_env()) {
+    ArmMemoryExperimentRefused { cause: c } => string_contains(s: c as String, pattern: "do not join")
+    ArmMemoryExperimentAdmitted { plan: _ } => false
+  }
+}
+
+// ── WITNESS 15: THE INTENT PROJECTIONS AND THE FLOOR'S FORWARD PROJECTION ───────────────────────
+test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
+  (match serving_capacity_intent(cold_sequence_budgets: [], max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } => true
+    ServingCapacityIntentAdmitted { intent: _ } => false
+  })
+    && (match uniform_cold_seats(each: token_count(count: 65536), seats: 4, max_batched_tokens: token_count(count: 2048)) {
+      ServingCapacityIntentAdmitted { intent: i } =>
+        intent_max_active_sequences(i: i) == 4
+          && token_count_value(t: intent_max_single_sequence_tokens(i: i)) == 65536
+          && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 262144
+      ServingCapacityIntentRefused { cause: _ } => false
+    })
+    && (match intent_for_launch_profile(p: glm_native_concurrent_profile) {
+      ServingCapacityIntentAdmitted { intent: i } =>
+        intent_max_active_sequences(i: i) == 16
+          && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 4194304
+      ServingCapacityIntentRefused { cause: _ } => false
+    })
+    && (match minimum_cold_sessions_intent(floor: spark_pair_serving_minimum_cold_sessions, max_batched_tokens: token_count(count: 2048)) {
+      ServingCapacityIntentAdmitted { intent: i } =>
+        intent_max_active_sequences(i: i) == spark_pair_serving_minimum_cold_sessions.sessions
+          && token_count_value(t: intent_max_single_sequence_tokens(i: i)) == 500000
+      ServingCapacityIntentRefused { cause: _ } => false
+    })
+}
+
+// ── WITNESS 16: THE KV BYTE DERIVATION ITSELF ───────────────────────────────────────────────────
+test fn w_the_kv_byte_cost_derives_from_the_layout() -> Bool {
+  (match cold_admission_bytes(layout: fx_layout, sequence_budget: token_count(count: 65536)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 268435456
+    AdmissionByteCostUnestablished { cause: _ } => false
+  })
+    && (match cold_admission_bytes(layout: fx_layout, sequence_budget: token_count(count: 0)) {
+      AdmissionByteCostBytes { bytes: _ } => false
+      AdmissionByteCostUnestablished { cause: _ } => true
+    })
+    && (match fx_kv_bound() {
+      ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 1073741824
+      _ => false
+    })
+}
+
+// ── WITNESS 17: THE RECEIPT JOIN — ONE RECEIPT DISCHARGES EXACTLY ITS ONE TERM ──────────────────
+//
+// THE VERTICAL'S JOIN, LANDED: the bounded experiment's captures come back as typed receipts and
+// the roster mint applies them through the measurement contract. A MeasuredUpperBound discharges
+// the term it names -- and never another: rank zero's receipt leaves rank one's obligation
+// standing. An ObservationOnly receipt (a single run's engine log) discharges nothing at all,
+// which is why FitProved waits for protocoled measurements and not one wet afternoon.
+fn fx_measured_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: Nat) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: component,
+    rank: rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolPeakOverRuns { runs: 3 },
+    observed: fx_gib(observed_gib),
+    receipt: fx_receipt(kind: "fx-peak-over-runs" as NonEmptyStr),
+  }
+  ArmComponentReceipt { rank: rank, tier: gb10_memory_tier(), component: component, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_observation_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: Nat) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: component,
+    rank: rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolSingleSample,
+    observed: fx_gib(observed_gib),
+    receipt: fx_receipt(kind: "fx-single-run-observation" as NonEmptyStr),
+  }
+  ArmComponentReceipt { rank: rank, tier: gb10_memory_tier(), component: component, class: arm_classify_measurement(m: m) }
+}
+
+fn join_subject(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
+  arm_memory_fit_subject_with_receipts(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+    receipts: receipts)
+}
+
+fn obligations_of(mint: ArmMemorySubjectMint) -> List<NonEmptyStr> {
+  match mint {
+    ArmMemorySubjectRefused { cause: _ } => ["mint refused" as NonEmptyStr]
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } => os
+        _ => [] as List<NonEmptyStr>
+      }
+  }
+}
+
+test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
+  let mint = join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
+  match mint {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let rank0 = first(filter(subject.ranks, r => r.rank == 0))
+      let rank1 = first(filter(subject.ranks, r => r.rank == 1))
+      (match rank0 {
+        Present { value: rd } => match rd.graph_capture.held.bound {
+          ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 1073741824
+          _ => false
+        }
+        Absent => false
+      })
+        && (match rank1 {
+          Present { value: rd } => match rd.graph_capture.held.bound {
+            ComponentBoundOpen { obligation: _ } => true
+            _ => false
+          }
+          Absent => false
+        })
+        && (match arm_memory_fit_verdict(subject: subject) {
+          ArmMemoryFitUnestablished { obligations: os } =>
+            !any(os, o => string_contains(s: o as String, pattern: "rank 0 graph-capture has no defensible bound"))
+              && any(os, o => string_contains(s: o as String, pattern: "rank 1 graph-capture has no defensible bound"))
+          _ => false
+        })
+    }
+  }
+}
+
+test fn w_an_observation_receipt_discharges_nothing() -> Bool {
+  let observed = join_subject(receipts: [fx_observation_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
+  let bare = arm_memory_fit_subject(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()))
+  length(obligations_of(mint: observed)) == length(obligations_of(mint: bare))
+    && length(obligations_of(mint: observed)) > 0
+}
+
+test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance() -> Bool {
+  (match join_subject(receipts: [
+    fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1),
+    fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 2),
+  ]) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "two receipts name rank 0 graph-capture")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match join_subject(receipts: [fx_measured_receipt(rank: 9, component: ArmGraphCapture, observed_gib: 1)]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "rank 9")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+    && (match arm_memory_fit_subject_with_receipts(
+      checkpoint: Glm53Exl3_205,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_shrunk_intent(),
+      requested_profile: fx_derived_profile(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
+      receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+test fn w_the_joined_bound_participates_in_falsification() -> Bool {
+  match join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match first(filter(subject.ranks, r => r.rank == 0)) {
+        Absent => false
+        Present { value: rd } =>
+          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture.held.bound, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
+            ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+            ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+          }
+      }
+  }
+}
+
+// ── WITNESS 18: THE WET RECEIPT BUNDLE — THE CONVERGED RUN'S RECEIPTS MEET THE 262144x6 SUBJECT ────
+//
+// THE BUNDLE, verbatim from the fleet logs of the converged bounded-experiment run (2026-09-25,
+// engine v0.1.dev1+g8d09804c8, profile 64K window x 1 seat x 2048 batched tokens x fp8 KV x 8567
+// basis points, all lines subject-bound per rank). Head EngineCore line [kv_cache_utils.py:2312]:
+// "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request: 27.55x".
+// Per-rank worker lines [gpu_worker.py:867], figures in 0.01 GiB print precision:
+//
+//   rank 0 (TP0, srv9,  head):  pool 121.69, envelope 104.25, weights+non-torch 77.01, peak activation 3.16, graph 0.02,  KV arena 24.08
+//   rank 1 (TP1, srv10):        pool 121.69, envelope 104.25, weights+non-torch 81.06, peak activation 4.26, graph -2.54, KV arena 18.93
+//   rank 2 (TP2, srv12):        pool 121.69, envelope 104.25, weights+non-torch 80.66, peak activation 3.76, graph 0.07,  KV arena 19.84
+//   rank 3 (TP3, srv11, LIMITING): pool 119.69, envelope 102.54, weights+non-torch 81.59, peak activation 3.92, graph 0.09, KV arena 17.03
+//
+// THE FIVE MODELING LAWS these receipts obey, stated once because each is load-bearing:
+//   1. THE KV ARENA IS SUPPLY, NEVER DEMAND. "Current kv cache memory in use" is the ALLOCATED
+//      RESIDUAL ARENA (envelope - weights - activation - graph): 104.25 - 77.01 - 3.16 - 0.02 = 24.06
+//      on rank 0, matching the printed 24.08 at the line's own rounding. It is never read as the
+//      64K seat's demand and never extrapolated into a seat count.
+//   2. THE KV DEMAND SIDE IS THE ENGINE'S TOKEN INVENTORY, in tokens: 1,805,689 tokens of
+//      group-aware capacity, sized by the engine FROM THE LIMITING RANK's arena. The 262144 x 6
+//      subject's demand is 1,572,864 tokens <= 1,805,689 BY THE ENGINE'S OWN COUNT; the per-rank
+//      BYTE ceiling below is the allocator's arena (a supply fact), not a per-seat derivation.
+//   3. THE 64K PEAK ACTIVATIONS DISCHARGE NOTHING HERE. They are engine-reported peaks at the 64K
+//      window with 2048-token chunked prefill; they do not cover a 262144-window lifetime and are
+//      carried as ObservationOnly, so the 262K prefill workspace (e.g. the sparse-indexer logits
+//      buffer, configuration-capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB) stands as the
+//      named per-rank activation obligation. A zero is not smuggled in.
+//   4. THE CHECKPOINT TERMS ARE THE MEASURED PER-RANK weights+non-torch VALUES, not an even
+//      split: 77.01 / 81.06 / 80.66 / 81.59 GiB falsify the even-placement assumption by
+//      measurement, and each rank carries its own.
+//   5. NO layers x width x tokens FORMULA anywhere: GLM-5.3-Flash is hybrid MLA + linear
+//      attention with per-group cache costs (extdeps.vllm.kv_group_metadata); the engine's own
+//      token-capacity number is the only KV authority these receipts cite.
+//
+// THE EXPECTED VERDICT IS UNESTABLISHED, NAMING THE OPEN TERMS: checkpoint-residency, graph-capture
+// and kv-cache discharge to measured ceilings on all four ranks; loader-transform, runtime-fixed,
+// collective-workspace, fragmentation-allowance stay open (the bundle carries no such receipts) and
+// activation-workspace stays open as the named 262K prefill obligation on every rank; both supply
+// deductions stay open (the bundle reads the device pool, not the host share of it).
+
+// THE PER-RANK FIGURES, stored at the lines' 0.01 GiB print precision (centi-GiB integers); the
+// graph_printed field keeps the engine's verbatim figure because rank 1's is negative.
+type FxWetRank {
+  rank: Nat
+  host: NonEmptyStr
+  weights_centi_gib: Nat
+  activation_centi_gib: Nat
+  graph_printed: NonEmptyStr
+  graph_bound_centi_gib: Nat
+  kv_centi_gib: Nat
+  pool_centi_gib: Nat
+  envelope_centi_gib: Nat
+}
+
+data fx_wet_tp0: FxWetRank = FxWetRank {
+  rank: 0, host: "srv9" as NonEmptyStr,
+  weights_centi_gib: 7701, activation_centi_gib: 316, graph_printed: "0.02" as NonEmptyStr,
+  graph_bound_centi_gib: 3, kv_centi_gib: 2408, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+data fx_wet_tp1: FxWetRank = FxWetRank {
+  rank: 1, host: "srv10" as NonEmptyStr,
+  weights_centi_gib: 8106, activation_centi_gib: 426, graph_printed: "-2.54" as NonEmptyStr,
+  graph_bound_centi_gib: 0, kv_centi_gib: 1893, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+data fx_wet_tp2: FxWetRank = FxWetRank {
+  rank: 2, host: "srv12" as NonEmptyStr,
+  weights_centi_gib: 8066, activation_centi_gib: 376, graph_printed: "0.07" as NonEmptyStr,
+  graph_bound_centi_gib: 8, kv_centi_gib: 1984, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+// THE LIMITING RANK: the smallest pool and the smallest residual arena, which is the rank the
+// engine sized the whole inventory against.
+data fx_wet_tp3: FxWetRank = FxWetRank {
+  rank: 3, host: "srv11" as NonEmptyStr,
+  weights_centi_gib: 8159, activation_centi_gib: 392, graph_printed: "0.09" as NonEmptyStr,
+  graph_bound_centi_gib: 10, kv_centi_gib: 1703, pool_centi_gib: 11969, envelope_centi_gib: 10254,
+}
+
+data fx_wet_ranks: List<FxWetRank> = [fx_wet_tp0, fx_wet_tp1, fx_wet_tp2, fx_wet_tp3]
+
+data fx_wet_kv_inventory_tokens: Nat = 1805689
+
+data fx_wet_head_line: NonEmptyStr = "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request: 27.55x [kv_cache_utils.py:2312, head EngineCore, srv9, 2026-09-25]" as NonEmptyStr
+
+// THE BYTE CONVERSIONS. A printed c centi-GiB is widened by ONE reporter precision unit (0.01 GiB)
+// when it bounds a term above: the true value lies below (c + 1) centi-GiB. Observation samples
+// carry the printed figure itself, rounded to the nearest byte.
+fn fx_wet_ceiling_bytes(centi: Nat) -> ByteSize {
+  byte_size(count: ((centi + 1) * 1073741824 + 99) / 100)
+}
+
+fn fx_wet_observed_bytes(centi: Nat) -> ByteSize {
+  byte_size(count: (centi * 1073741824 + 50) / 100)
+}
+
+// RANK 1's graph figure is the one modeling call in the byte layer: the engine printed -2.54 GiB
+// (capture memory pooled against the profiling buffers, netting BELOW the pre-capture baseline).
+// A demand cannot be negative, so the tight true ceiling is 0 bytes; the verbatim -2.54 rides the
+// receipt text and is never silently dropped.
+fn fx_wet_graph_ceiling_bytes(centi: Nat) -> ByteSize {
+  if centi == 0 {
+    byte_size(count: 0)
+  } else {
+    fx_wet_ceiling_bytes(centi: centi)
+  }
+}
+
+// THE 0.01-GiB FIGURE RENDERER, for quoting the wet lines verbatim inside receipt texts.
+fn fx_wet_gib_wire(centi: Nat) -> String {
+  let whole = centi / 100
+  let frac = centi - whole * 100
+  join([
+    to_string(whole), ".",
+    if frac < 10 { join(["0", to_string(frac)], "") } else { to_string(frac) },
+  ], "")
+}
+
+fn fx_wet_worker_line(r: FxWetRank) -> NonEmptyStr {
+  join([
+    "Free memory on device (", fx_wet_gib_wire(centi: r.pool_centi_gib), "/", fx_wet_gib_wire(centi: r.pool_centi_gib),
+    " GiB). Desired GPU memory utilization is (0.8567, ", fx_wet_gib_wire(centi: r.envelope_centi_gib),
+    " GiB). Actual usage is ", fx_wet_gib_wire(centi: r.weights_centi_gib), " GiB weights+non-torch, ",
+    fx_wet_gib_wire(centi: r.activation_centi_gib), " GiB peak activation, ", r.graph_printed as String,
+    " GiB CUDAGraph. ... Current kv cache memory in use is ", fx_wet_gib_wire(centi: r.kv_centi_gib), " GiB. [gpu_worker.py:867]",
+  ], "") as NonEmptyStr
+}
+
+// THE RECEIPT TEXT NAMES THE SUBJECT on every receipt, as the join's provenance wall requires:
+// checkpoint, runtime and topology wires, host, rank, date, engine version, and the quoted line.
+fn fx_wet_receipt(kind: NonEmptyStr, host: NonEmptyStr, rank: Nat, line: NonEmptyStr) -> NonEmptyStr {
+  join([
+    kind as String, " | wet line: ", line as String,
+    " | measured 2026-09-25 on host ", host as String, " (TP rank ", to_string(rank),
+    ") by engine v0.1.dev1+g8d09804c8 (extdeps.vllm.server Vllm8d09804) | bounded-experiment profile 64K window x 1 seat x 2048 batched tokens x fp8 KV x 8567 basis points | subject ",
+    fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+  ], "") as NonEmptyStr
+}
+
+fn fx_wet_checkpoint_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmCheckpointResidency,
+    rank: r.rank,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: r.weights_centi_gib),
+    receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: r.host, rank: r.rank, line: fx_wet_worker_line(r: r)),
+  }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_wet_graph_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmGraphCapture,
+    rank: r.rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_graph_ceiling_bytes(centi: r.graph_bound_centi_gib),
+    receipt: join([
+      "GraphCaptureBound | wet line: ", fx_wet_worker_line(r: r) as String,
+      " | rank 1's printed -2.54 GiB nets below the pre-capture baseline (capture memory pooled against the profiling buffers); a demand cannot be negative, so the tight true ceiling is 0 bytes and the verbatim figure is quoted, not dropped | measured 2026-09-25 by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmGraphCapture, class: arm_classify_measurement(m: m) }
+}
+
+// THE KV RECEIPT IS THE HEAD INVENTORY, NOT A LAYOUT RECEIPT: it vouches capacity in TOKENS for
+// this subject's seat population and bounds the per-rank allocator bytes by the rank's own arena.
+// It does NOT vouch the per-group page bytes (extdeps.vllm.kv_layout stays open for that); what it
+// discharges is this subject's kv-cache term, on the engine's own group-aware authority.
+fn fx_wet_kv_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmKvCache,
+    rank: r.rank,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: r.kv_centi_gib),
+    receipt: join([
+      "KvTokenCapacityInventory (the engine's group-aware KV cache inventory; NOT a KvLayoutReceipt: per-group page bytes stay open at extdeps.vllm.kv_layout) | wet line: ",
+      fx_wet_head_line as String,
+      " | per-rank residual arena [gpu_worker.py:867]: ", fx_wet_gib_wire(centi: r.kv_centi_gib),
+      " GiB = envelope - weights - activation - graph on this rank, the ALLOCATED RESIDUAL ARENA and a supply fact, never per-seat demand; the engine sized the inventory FROM THE LIMITING RANK (TP3/srv11, 17.03 GiB), and the subject's 6 seats x 262144 tokens = 1,572,864 tokens stand within 1,805,689 by the engine's own count | measured 2026-09-25 on host ",
+      r.host as String, " (TP rank ", to_string(r.rank), ") by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmKvCache, class: arm_classify_measurement(m: m) }
+}
+
+// THE ACTIVATION RECEIPT CARRIES THE NAMED 262K PREFILL OBLIGATION on its receipt text: the
+// measured peak is a 64K-window / 2048-token-chunk figure, it does not cover a 262144-window
+// lifetime, and it therefore discharges nothing on this subject (the classifier reads
+// covers_lifetime and lands ObservationOnly). The 262K-length-dependent workspace term -- e.g. the
+// sparse-indexer logits buffer, configuration-capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB
+// -- is named here so the obligation cannot vanish into a silently unchanged open bound.
+fn fx_wet_activation_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmActivationWorkspace,
+    rank: r.rank,
+    phase: ArmPhaseProfiling,
+    workload: token_count(count: 65536),
+    covers_lifetime: false,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_observed_bytes(centi: r.activation_centi_gib),
+    receipt: join([
+      "ActivationWorkspaceBound-candidate | wet line: ", fx_wet_worker_line(r: r) as String,
+      " | 262K PREFILL WORKSPACE OBLIGATION: this peak is measured at the 64K window with 2048-token chunked prefill (max_num_batched_tokens=2048); it does not cover a 262144-token window lifetime and discharges no 262K-length-dependent workspace term, e.g. the sparse-indexer logits buffer capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB; an ActivationWorkspaceBound receipt measured ON THE 262144 x 6 SUBJECT is what discharges it | measured 2026-09-25 on host ",
+      r.host as String, " (TP rank ", to_string(r.rank), ") by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmActivationWorkspace, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_wet_bundle() -> List<ArmComponentReceipt> {
+  flat_map(fx_wet_ranks, r => [
+    fx_wet_checkpoint_receipt(r: r),
+    fx_wet_graph_receipt(r: r),
+    fx_wet_kv_receipt(r: r),
+    fx_wet_activation_receipt(r: r),
+  ])
+}
+
+// THE POOL THE WET BUNDLE READS: per-rank totals 121.69 / 121.69 / 121.69 / 119.69 GiB. The span
+// runs one reporter precision unit below the smallest reading to one above the largest, so BOTH
+// endpoints cover every rank of the arm and the conservative endpoint is the LIMITING RANK's.
+data fx_wet_pool_low: ByteSize = byte_size(count: 128505421496)
+
+data fx_wet_pool_high: ByteSize = byte_size(count: 130674379980)
+
+fn fx_wet_pool() -> ArmPoolBound {
+  match closed_interval(low: fx_wet_pool_low, high: fx_wet_pool_high, le: measure_le) {
+    IntervalReady { interval: i } =>
+      ArmPoolBounded {
+        span: i,
+        how: "wet per-rank pool readings 2026-09-25 [gpu_worker.py:867]: 121.69 GiB on TP0/srv9, TP1/srv10 and TP2/srv12; 119.69 GiB on TP3/srv11; read to 0.01 GiB, so the span runs one precision unit below the smallest reading (119.68 GiB) to one above the largest (121.70 GiB) and covers every rank" as NonEmptyStr,
+      }
+    IntervalRefused { reason: r } => ArmPoolUnbounded { obligation: r }
+  }
+}
+
+// THE DEDUCTIONS THE BUNDLE DOES NOT COVER: it reads each rank's device pool, nothing about the
+// host share of the unified pool or foreign residency, so both stay open obligations by law
+// ("an unmodeled pool is unestablished, not refused" cuts both ways: no receipt, no bound).
+fn fx_wet_deductions() -> ArmSupplyDeductions {
+  ArmSupplyDeductions {
+    host_os_control_reserve: ComponentBoundOpen {
+      obligation: "no measured upper bound exists for the host/OS/control-plane reserve of the unified pool; the 2026-09-25 bundle reads each rank's device pool but does not inventory the host share of it" as NonEmptyStr,
+    },
+    foreign_residency: ComponentBoundOpen {
+      obligation: "no inventory of protected non-arm residency exists for the serving hosts; the 2026-09-25 bundle reads each rank's own pool only" as NonEmptyStr,
+    },
+  }
+}
+
+// THE SUBJECT: 6 seats of 262144 tokens, 2048 batched, fp8 KV, 8567 basis points -- the derived
+// count the inventory supports -- priced through the receipt join.
+fn fx_wet_intent() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+fn fx_wet_profile() -> ServingLaunchProfile {
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_wet_intent()),
+    policy: glm53_native_launch_policy,
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+  )
+}
+
+fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
+  arm_memory_fit_subject_with_receipts(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_wet_intent(),
+    requested_profile: fx_wet_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
+    receipts: receipts)
+}
+
+test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool {
+  match fx_wet_join(receipts: fx_wet_bundle()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let rank0 = first(filter(subject.ranks, r => r.rank == 0))
+      let rank1 = first(filter(subject.ranks, r => r.rank == 1))
+      let rank3 = first(filter(subject.ranks, r => r.rank == 3))
+      (match rank0 {
+        Present { value: rd } =>
+          match rd.checkpoint_residency.held.bound {
+            ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 82699595285
+            _ => false
+          }
+        Absent => false
+      })
+        && (match rank1 {
+          Present { value: rd } =>
+            match rd.graph_capture.held.bound {
+              ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 0
+              _ => false
+            }
+          Absent => false
+        })
+        && (match rank3 {
+          Present { value: rd } =>
+            match rd.kv_cache.held.bound {
+              ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 18296560681
+              _ => false
+            }
+          Absent => false
+        })
+        && (match arm_memory_fit_verdict(subject: subject) {
+          ArmMemoryFitUnestablished { obligations: _ } => true
+          _ => false
+        })
+    }
+  }
+}
+
+test fn w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
+  match fx_wet_join(receipts: fx_wet_bundle()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 22
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 1 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 2 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 loader-transform has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 1 runtime-fixed has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 2 collective-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 fragmentation-allowance has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
+            && any(os, o => string_contains(s: o as String, pattern: "foreign-residency"))
+            && !any(os, o => string_contains(s: o as String, pattern: "checkpoint-residency has no defensible bound"))
+            && !any(os, o => string_contains(s: o as String, pattern: "graph-capture has no defensible bound"))
+            && !any(os, o => string_contains(s: o as String, pattern: "kv-cache has no defensible bound"))
+        _ => false
+      }
+  }
+}
+
+// THE PREFILL OBLIGATION IS PRESENT AND NAMED: every rank's activation-workspace bound is still
+// open after the join, and every activation receipt is ObservationOnly whose receipt text names
+// the 262144-window lifetime, the sparse-indexer buffer and its 64 MiB configuration cap.
+test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
+  let acts = filter(fx_wet_bundle(), r => r.component == ArmActivationWorkspace)
+  length(acts) == 4
+    && all(acts, r =>
+      match r.class {
+        ObservationOnly { measurement: m, why: _ } =>
+          string_contains(s: m.receipt as String, pattern: "262144")
+            && string_contains(s: m.receipt as String, pattern: "sparse-indexer")
+            && string_contains(s: m.receipt as String, pattern: "64 MiB")
+        _ => false
+      })
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb =>
+          match rb.activation_workspace.held.bound {
+            ComponentBoundOpen { obligation: _ } => true
+            _ => false
+          })
+    })
+}
+
+// THE SIX-SEAT DERIVATION IS PINNED: floor(1,805,689 / 262,144) = 6 by the engine's own inventory,
+// the subject prices exactly that population, and the total resident tokens (6 x 262,144 =
+// 1,572,864) stand inside the inventory with 232,825 tokens of slack.
+test fn w_the_six_seat_derivation_is_pinned_to_the_engine_inventory() -> Bool {
+  fx_wet_kv_inventory_tokens / 262144 == 6
+    && 6 * 262144 == 1572864
+    && 1572864 <= fx_wet_kv_inventory_tokens
+    && fx_wet_kv_inventory_tokens - 1572864 == 232825
+    && string_contains(s: fx_wet_head_line as String, pattern: "1,805,689")
+    && string_contains(s: fx_wet_head_line as String, pattern: "27.55x")
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        intent_max_active_sequences(i: subject.intent) == 6
+          && token_count_value(t: intent_max_single_sequence_tokens(i: subject.intent)) == 262144
+          && token_count_value(t: intent_max_total_resident_tokens(i: subject.intent)) == 1572864
+    })
+}
+
+// THE NO-LINEAR-EXTRAPOLATION LAW AS A RED CONTROL. The engine sized the inventory from TP3/srv11's
+// residual arena (17.03 GiB -- the smallest); TP0/srv9's arena is 24.08 GiB. Deriving a seat count by
+// scaling the inventory linearly from TP0's leftover is the forbidden route, and its number is
+// pinned here so the row goes RED the moment any spelling wires arena bytes into a seat count:
+// floor(1,805,689 x 2408 / 1703 / 262,144) = 9, not 6 -- the linear route fabricates three seats the
+// engine's own count does not admit.
+test fn w_the_linear_arena_route_fabricates_nine_seats_and_is_refused() -> Bool {
+  let seats_via_tp0_arena_linear = (fx_wet_kv_inventory_tokens * 2408 / 1703) / 262144
+  (match first(filter(fx_wet_ranks, r => r.rank == 3)) {
+    Present { value: tp3 } => tp3.host == "srv11" as NonEmptyStr && tp3.pool_centi_gib == 11969 && tp3.kv_centi_gib == 1703
+    Absent => false
+  })
+    && (match first(filter(fx_wet_ranks, r => r.rank == 0)) {
+      Present { value: tp0 } => tp0.kv_centi_gib == 2408
+      Absent => false
+    })
+    && seats_via_tp0_arena_linear == 9
+    && seats_via_tp0_arena_linear != 6
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } => intent_max_active_sequences(i: subject.intent) == 6
+    })
+}
+
+// THE LIMITING-RANK CONTROL ON THE ENVELOPE WALL. The decided envelope the proof prices derives
+// from the pool span (extdeps.vllm.runtime_defaults vllm_requested_envelope_bytes). Priced from
+// the wet span, the conservative wall (102.5298 GiB at 8567 basis points off the 119.68 GiB low)
+// sits BELOW the band TP3/srv11's printed 102.54 GiB envelope implies ([102.535, 102.545) GiB at
+// 0.01 GiB print precision). Priced from TP0's reading alone (121.68 GiB low), the conservative
+// wall would read 104.2433 GiB -- ABOVE the limiting rank's actual envelope, a wall ~1.7 GiB more
+// generous than the engine's own decision on the rank that binds. Swapping TP0's numbers in
+// changes the wall; this row is the discriminator.
+test fn w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall() -> Bool {
+  let tp3_band_low = byte_size(count: 110096117923)
+  let tp3_band_high = byte_size(count: 110106855342)
+  let tp0_only_low = byte_size(count: 130652905144)
+  let wet_env_low = vllm_requested_envelope_bytes(device_total: fx_wet_pool_low, utilization: basis_point(count: 8567))
+  let tp0_env_low = vllm_requested_envelope_bytes(device_total: tp0_only_low, utilization: basis_point(count: 8567))
+  measure_le(a: wet_env_low, b: tp3_band_low)
+    && !measure_le(a: tp0_env_low, b: tp3_band_high)
+}
+
+// THE JOIN'S WALLS EXTEND TO THE WET TERMS: a second receipt for an already-discharged term, a
+// receipt on a rank this topology does not carry, and a bundle whose provenance names another
+// checkpoint are each refused before any verdict exists.
+test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms() -> Bool {
+  (match fx_wet_join(receipts: concat(fx_wet_bundle(), [fx_wet_checkpoint_receipt(r: fx_wet_tp0)])) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "two receipts name rank 0 checkpoint-residency")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match fx_wet_join(receipts: concat(fx_wet_bundle(), [fx_wet_rank4_receipt()])) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "rank 4")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+    && (match arm_memory_fit_subject_with_receipts(
+      checkpoint: Glm53Exl3_205,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_wet_intent(),
+      requested_profile: fx_wet_profile(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
+      receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+// A RECEIPT ON A RANK OUTSIDE THE TOPOLOGY, built from rank 0's own wet figures with the rank
+// index moved: the roster wall must refuse it, not drop it.
+fn fx_wet_rank4_receipt() -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmCheckpointResidency,
+    rank: 4,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: fx_wet_tp0.weights_centi_gib),
+    receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: fx_wet_tp0.host, rank: 4, line: fx_wet_worker_line(r: fx_wet_tp0)),
+  }
+  ArmComponentReceipt { rank: 4, tier: gb10_memory_tier(), component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+}
+
+// ── WITNESS 18: THE UNIFIED PROOF SUBJECT NAMES ITS SEVEN AXES ────────────────────────────────────
+//
+// THE MoA SUBJECT (docs/plans/moa-memory-modeling.md): the wire names model, runtime, topology,
+// the topology-derived parallelism, the allocator decision, the workload and the generation --
+// each axis present, and the unmodeled parallelism sub-axes named as unmodeled rather than
+// invented. THE SUBJECT UNDER READ is the experiment's own: its workload axis is the run the
+// receipt records (one 65536-token seat at a 2048 batch ceiling), independent of whatever the
+// declared restoration intent currently says.
+test fn w_the_unified_subject_names_all_seven_axes() -> Bool {
+  match arm_experiment_2026_09_25_subject() {
+    Absent => false
+    Present { value: s } =>
+      let wire = memory_proof_subject_wire(s: s)
+      string_contains(s: wire, pattern: "model:glm-5.3-flash-native-fp8")
+        && string_contains(s: wire, pattern: "runtime:gunbc-glm53-nope-derived-gb10")
+        && string_contains(s: wire, pattern: "topology:tp4")
+        && string_contains(s: wire, pattern: "parallelism:tp4/pp-unmodeled/ep-unmodeled/dcp-unmodeled")
+        && string_contains(s: wire, pattern: "allocator:hybrid-kv@8567bp-fp8")
+        && string_contains(s: wire, pattern: "workload:1x65536-batch2048")
+        && string_contains(s: wire, pattern: "generation:group-b/bounded-experiment-2026-09-25")
+  }
+}
+
+// ── WITNESS 19: THE CENSUS AS MECHANISM-NAMED TERMS ──────────────────────────────────────────────
+//
+// EVERY COMPONENT CARRIES ONE TERM with its placement and scaling law named: the checkpoint term
+// is checkpoint-placed and workload-static, the activation term is a phase transient, the KV term
+// names the per-token growth law the exact roster fold prices. A component added to the census
+// appears here by construction (the record has no omit spelling), and a law assigned beside the
+// census (a receipt claiming its component scales some other way) is refused at the binding.
+test fn w_the_mechanism_census_names_every_component() -> Bool {
+  let terms = memory_terms_for_rank(rd: fx_rank(rank: 0, checkpoint: fx_even_checkpoint()))
+  let checkpoint_term = first(filter(terms, t => t.component == ArmCheckpointResidency))
+  let kv_term = first(filter(terms, t => t.component == ArmKvCache))
+  let activation_term = first(filter(terms, t => t.component == ArmActivationWorkspace))
+  let loader_term = first(filter(terms, t => t.component == ArmLoaderTransform))
+  length(terms) == 8
+    && (match checkpoint_term {
+      Present { value: t } =>
+        match t.placement_law {
+          MemoryPlacementCheckpointPlacement => t.scaling_law == MemoryScalingStaticResidency
+          _ => false
+        }
+          && string_contains(s: t.derivation as String, pattern: "TP placement")
+      Absent => false
+    })
+    && (match kv_term {
+      Present { value: t } => t.scaling_law == MemoryScalingPerToken
+      Absent => false
+    })
+    && (match activation_term {
+      Present { value: t } => t.scaling_law == MemoryScalingPhaseTransient
+      Absent => false
+    })
+    && (match loader_term {
+      Present { value: t } => t.scaling_law == MemoryScalingPhaseTransient
+      Absent => false
+    })
+}
+
+// ── THE MoA ROSTER FIXTURES ──────────────────────────────────────────────────────────────────────
+//
+// THE EXACT ROSTER the doctrine's fold requires, built from derivable architecture facts
+// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_hybrid_shape: 34 KDA recurrent layers, 11 sparse
+// layers, index_kpool 4) priced with designed page costs: the KDA state at one MiB per layer per
+// sequence, the sparse MLA at 16-token blocks of 8 KiB (eleven 512-byte fp8 latents per token),
+// the KPool index at one block of 16 entries per 64 KiB, and the sparse-indexer tail at one 4 KiB
+// state per sequence. THE NUMBERS ARE SUPPLIED, and say so: the page costs are designed for the
+// claim, and the fold under test is the roster arithmetic, not the prices' provenance.
+fn fx_moa_group_mamba(layers: Nat, page: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: MambaState, layer_count: attention_layer_count(count: layers), block_size: token_count(count: 1), page_size_bytes: byte_size(count: page) }
+}
+
+fn fx_moa_group_sparse() -> KvGroupLayout {
+  fx_moa_group_sparse_block(block: 16)
+}
+
+// THE BLOCK-ARITHMETIC VARIANT of the sparse group: same eleven layers and same 8 KiB page, at a
+// different block size — the roster-shaped way to change the per-seat BLOCK cost without touching
+// the roster obligations (the byte costs stay the page's, and bytes price no capacity).
+fn fx_moa_group_sparse_block(block: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: 11), block_size: token_count(count: block), page_size_bytes: byte_size(count: 8192) }
+}
+
+fn fx_moa_group_kpool(pool_every: Nat, page: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: KPoolIndex { pool_every: token_count(count: pool_every) }, layer_count: attention_layer_count(count: 1), block_size: token_count(count: 16), page_size_bytes: byte_size(count: page) }
+}
+
+fn fx_moa_group_tail(page: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: MambaState, layer_count: attention_layer_count(count: 1), block_size: token_count(count: 1), page_size_bytes: byte_size(count: page) }
+}
+
+fn fx_moa_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: allocator_block_count(count: 4096),
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 262144),
+    max_num_batched_tokens: token_count(count: 2048),
+    groups: groups,
+    established_at_revision: vllm_source_revision_read,
+  )
+}
+
+// THE COMPLETE EXACT ROSTER for the model's shape.
+fn fx_roster_a() -> ResolvedKvLayout {
+  fx_moa_layout(groups: [
+    fx_moa_group_mamba(layers: 34, page: 1048576),
+    fx_moa_group_sparse(),
+    fx_moa_group_kpool(pool_every: 4, page: 65536),
+    fx_moa_group_tail(page: 4096),
+  ])
+}
+
+// THE 33-RECURRENT-LAYER VARIANT SHAPE: one recurrent layer fewer, 44 layers total. A DIFFERENT
+// MODEL'S roster, supplied to show the proof binds the exact roster it priced.
+fn fx_shape_kda33() -> Glm53FlashHybridShape {
+  Glm53FlashHybridShape {
+    num_hidden_layers: 44,
+    kda_linear_attention_layers: 33,
+    sparse_attention_layers: 11,
+    kda_heads: 64,
+    kda_head_dim: 128,
+    index_kpool: 4,
+    mla_latent_dim: 512,
+    read_by: "fixture: the 33-recurrent-layer variant of the hybrid shape, supplied to show a proof at one roster says nothing at another" as NonEmptyStr,
+  }
+}
+
+fn fx_roster_e() -> ResolvedKvLayout {
+  fx_moa_layout(groups: [
+    fx_moa_group_mamba(layers: 33, page: 1048576),
+    fx_moa_group_sparse(),
+    fx_moa_group_kpool(pool_every: 4, page: 65536),
+    fx_moa_group_tail(page: 4096),
+  ])
+}
+
+// THE MISSING-TAIL ROSTER: complete but for the sparse-indexer tail.
+fn fx_roster_no_tail() -> ResolvedKvLayout {
+  fx_moa_layout(groups: [
+    fx_moa_group_mamba(layers: 34, page: 1048576),
+    fx_moa_group_sparse(),
+    fx_moa_group_kpool(pool_every: 4, page: 65536),
+  ])
+}
+
+fn fx_cache_supplies(blocks: Nat, arena_bytes: Nat) -> List<ArmRankCacheSupply> {
+  [
+    ArmRankCacheSupply { rank: 0, allocator_blocks: allocator_block_count(count: blocks), admitted_kv_arena_bytes: byte_size(count: arena_bytes) },
+    ArmRankCacheSupply { rank: 1, allocator_blocks: allocator_block_count(count: blocks), admitted_kv_arena_bytes: byte_size(count: arena_bytes) },
+    ArmRankCacheSupply { rank: 2, allocator_blocks: allocator_block_count(count: blocks), admitted_kv_arena_bytes: byte_size(count: arena_bytes) },
+    ArmRankCacheSupply { rank: 3, allocator_blocks: allocator_block_count(count: blocks), admitted_kv_arena_bytes: byte_size(count: arena_bytes) },
+  ]
+}
+
+// ── WITNESS 20: THE DISCRIMINATING CONTROLS OF THE DIRECT FOLD ───────────────────────────────────
+//
+// SAME INVENTORY, DIFFERENT ROSTER, DIFFERENT CAPACITY — AT THE BLOCK WALL. Roster A charges the
+// sparse MLA at sixteen-token blocks; roster D charges the same eleven sparse layers at
+// eight-token blocks (same layers, same kinds, same pages — only the block arithmetic differs, so
+// the roster obligations pass for both). One 2,000,000-block inventory sits between the two
+// six-seat demands: A proves, D refuses, and the ONLY difference is the roster.
+test fn w_same_inventory_different_roster_different_capacity() -> Bool {
+  let roster_d = fx_moa_layout(groups: [
+    fx_moa_group_mamba(layers: 34, page: 1048576),
+    fx_moa_group_sparse_block(block: 8),
+    fx_moa_group_kpool(pool_every: 4, page: 65536),
+    fx_moa_group_tail(page: 4096),
+  ])
+  let blocks_a = match cold_admission_blocks(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
+    AdmissionCostBlocks { blocks: b } => allocator_block_count_value(c: b)
+    AdmissionCostUnestablished { cause: _ } => 0
+  }
+  let blocks_d = match cold_admission_blocks(layout: roster_d, sequence_budget: token_count(count: 262144)) {
+    AdmissionCostBlocks { blocks: b } => allocator_block_count_value(c: b)
+    AdmissionCostUnestablished { cause: _ } => 0
+  }
+  (blocks_a == 184355 && blocks_d == 364579 && blocks_a != blocks_d)
+    && (match cache_fit_verdict(
+      layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+      seats: 6, at: token_count(count: 262144),
+      supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } =>
+        allocator_block_count_value(c: bu) == 1106130
+      _ => false
+    })
+    && (match cache_fit_verdict(
+      layout: roster_d, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+      seats: 6, at: token_count(count: 262144),
+      supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
+      CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, supply_allocator_blocks: sb, cause: c } =>
+        allocator_block_count_value(c: bu) == 2187474
+          && allocator_block_count_value(c: sb) == 2000000
+          && string_contains(s: c as String, pattern: "REFUSED")
+      _ => false
+    })
+}
+
+// SAME PRINTED TOKEN FIGURE, CHANGED KDA COUNT: the capacity candidate reads 6 either way (it is
+// blind to the roster by construction), the derived demand differs, and the model's own shape
+// REFUSES the foreign roster -- a proof at one roster has no spelling at another.
+test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
+  let demand_a = match cold_admission_bytes(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
+    AdmissionByteCostUnestablished { cause: _ } => 0
+  }
+  let demand_e = match cold_admission_bytes(layout: fx_roster_e(), sequence_budget: token_count(count: 262144)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
+    AdmissionByteCostUnestablished { cause: _ } => 0
+  }
+  (match cache_capacity_candidate(printed_pool_tokens: token_count(count: 1805689), division_length: token_count(count: 262144)) {
+    Present { value: c } => c.seats_by_division == 6
+    Absent => false
+  })
+    && demand_a == 1780486144
+    && demand_e == 1779437568
+    && demand_a != demand_e
+    && (match cache_fit_verdict(
+      layout: fx_roster_e(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+      seats: 6, at: token_count(count: 262144),
+      supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
+      CacheFitUnestablished { obligations: os } =>
+        any(os, o => string_contains(s: o as String, pattern: "KDA state group"))
+      _ => false
+    })
+    && (match cache_fit_verdict(
+      layout: fx_roster_e(), roster: glm_5_3_flash_expected_kv_roster(shape: fx_shape_kda33()),
+      seats: 6, at: token_count(count: 262144),
+      supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
+      CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
+        s == 6
+          && allocator_block_count_value(c: bu) == 1106124
+          && (match be {
+            Absent => true
+            Present { value: _ } => false
+          })
+      _ => false
+    })
+}
+
+// MISSING SPARSE-INDEXER TAIL GROUP: the fold refuses as UNESTABLISHED naming the tail -- it does
+// not charge the omission as a free cache and prove.
+test fn w_missing_tail_group_is_unestablished() -> Bool {
+  match cache_fit_verdict(
+    layout: fx_roster_no_tail(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
+    CacheFitUnestablished { obligations: os } =>
+      length(os) == 1 && string_contains(s: first_of(os: os) as String, pattern: "sparse-indexer tail")
+    _ => false
+  }
+}
+
+// INDEX_KPOOL 4 -> 8 CHANGES THE DERIVED CAPACITY: the same roster with the pool interval
+// doubled halves the KPool entries, and the six-seat demand drops by exactly the six-seat KPool
+// difference -- derived capacity moves with the pool interval.
+test fn w_kpool_4_to_8_changes_derived_capacity() -> Bool {
+  let roster_kpool8 = fx_moa_layout(groups: [
+    fx_moa_group_mamba(layers: 34, page: 1048576),
+    fx_moa_group_sparse(),
+    fx_moa_group_kpool(pool_every: 8, page: 65536),
+    fx_moa_group_tail(page: 4096),
+  ])
+  let demand_4 = match cold_admission_bytes(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
+    AdmissionByteCostUnestablished { cause: _ } => 0
+  }
+  let demand_8 = match cold_admission_bytes(layout: roster_kpool8, sequence_budget: token_count(count: 262144)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
+    AdmissionByteCostUnestablished { cause: _ } => 0
+  }
+  demand_4 == 1780486144
+    && demand_8 == 1646268416
+    && demand_4 - demand_8 == 134217728
+}
+
+fn first_of(os: List<NonEmptyStr>) -> NonEmptyStr {
+  match first(os) {
+    Present { value: o } => o
+    Absent => "unreachable: the caller asserted the singleton obligation" as NonEmptyStr
+  }
+}
+
+// ── WITNESS 21: THE WET BUNDLE BINDS WITH THE DOCTRINE'S STANDINGS ────────────────────────────────
+//
+// THE SIXTEEN BINDINGS, on the experiment's own subject: every one admits; the standings are the
+// doctrine's assignments -- pools and arenas as observed intervals at the reporter's rounding
+// unit, weights+nontorch as composite observations, activation as subject-scoped observations,
+// TP1's negative graph figure preserved raw as the attribution refusal; and the head's printed
+// capacity reads as observed with the six-seat division carried as a candidate, not a proof.
+test fn w_the_wet_bundle_binds_with_the_doctrine_standings() -> Bool {
+  let bindings = arm_experiment_2026_09_25_bindings()
+  match arm_experiment_2026_09_25_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let admissions = arm_experiment_2026_09_25_admit(target: subject)
+      let weights0 = fx_bundle_binding(component: ArmCheckpointResidency, rank: 0)
+      let graph1 = fx_bundle_binding(component: ArmGraphCapture, rank: 1)
+      let act0 = fx_bundle_binding(component: ArmActivationWorkspace, rank: 0)
+      let arena3 = fx_bundle_binding(component: ArmKvCache, rank: 3)
+      length(bindings) == 16
+        && all(admissions, a => match a { ArmWetBindingAdmitted { binding: _ } => true  ArmWetBindingRefused { binding: _, cause: _ } => false })
+        && (match weights0 {
+          Present { value: b } => match b.standing {
+            ArmWetCompositeObservation { bytes: w, receipt: _, why: why } =>
+              byte_size_count(b: w) == 82688857866
+                && string_contains(s: why as String, pattern: "composite")
+            _ => false
+          }
+          Absent => false
+        })
+        && (match graph1 {
+          Present { value: b } => match b.standing {
+            ArmWetGraphAttributionUnestablished { raw_hundredths_gib: raw, receipt: r } =>
+              raw == -254 && string_contains(s: r as String, pattern: "includes a release")
+            _ => false
+          }
+          Absent => false
+        })
+        && (match act0 {
+          Present { value: b } => match b.standing {
+            ArmWetObservationOnly { bytes: a, receipt: _, why: _ } => byte_size_count(b: a) == 3393024163
+            _ => false
+          }
+          Absent => false
+        })
+        && (match arena3 {
+          Present { value: b } => match b.standing {
+            ArmWetObservedInterval { lower: l, upper: u, receipt: _ } =>
+              byte_size_count(b: l) == 18280454553 && byte_size_count(b: u) == 18291191972
+            _ => false
+          }
+          Absent => false
+        })
+        && w_bundle_supply_readings_hold()
+        && w_bundle_reported_capacity_and_candidate_hold()
+  }
+}
+
+fn fx_bundle_binding(component: ArmMemoryComponent, rank: Nat) -> ArmWetReceiptBinding? {
+  first(filter(arm_experiment_2026_09_25_bindings(), b => b.rank == rank && b.term.component == component))
+}
+
+// THE POOL READINGS: four ranks, the limiting rank's interval strictly below the others' -- the
+// supply side of that launch was NOT uniform, and TP3 is locatable as the tight rank.
+fn w_bundle_supply_readings_hold() -> Bool {
+  let pools = arm_experiment_2026_09_25_pool_readings()
+  let envelopes = arm_experiment_2026_09_25_envelope_readings()
+  let tp0 = first(filter(pools, p => p.rank == 0))
+  let tp3 = first(filter(pools, p => p.rank == 3))
+  let env0 = first(filter(envelopes, e => e.rank == 0))
+  (length(pools) == 4 && length(envelopes) == 4 && arm_experiment_2026_09_25_limiting_rank == 3)
+    && (match tp0 {
+      Present { value: p0 } => (match tp3 {
+        Present { value: p3 } => byte_size_count(b: p3.upper) < byte_size_count(b: p0.lower)
+        Absent => false
+      })
+      Absent => false
+    })
+    && (match env0 {
+      Present { value: e } =>
+        let printed_floor = 10425 * gibibyte_scale_factor_bytes() / 100
+        measure_le(a: e.derived_lower, b: byte_size(count: printed_floor))
+          && measure_le(a: byte_size(count: printed_floor), b: e.derived_upper)
+      Absent => false
+    })
+}
+
+fn w_bundle_reported_capacity_and_candidate_hold() -> Bool {
+  (match arm_experiment_2026_09_25_reported_capacity() {
+    Present { value: r } =>
+      token_count_value(t: r.pool.tokens) == 1805689
+        && concurrent_request_hundredths_count(c: r.max_concurrency) == 2755
+    Absent => false
+  })
+    && (match arm_experiment_2026_09_25_six_seat_candidate() {
+      Present { value: c } =>
+        c.seats_by_division == 6 && string_contains(s: c.standing as String, pattern: "never a proof")
+      Absent => false
+    })
+}
+
+// ── WITNESS 22: THE RECEIPT-SUBJECT COMPATIBILITY LAW ────────────────────────────────────────────
+//
+// A TP4 RECEIPT APPLIED TO TP2 IS REFUSED: the measured per-rank spread already says placement
+// across a different degree is a different shape, and the law refuses naming the axis. AND THE
+// STATIC TERMS DO TRANSFER: the same experiment's weights and arena readings admit on a 262Kx6
+// target at the same configuration -- as evidence, discharging nothing.
+test fn w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k() -> Bool {
+  (match memory_proof_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: SparkPairTp2, profile: w_restoration_profile(),
+    launch_generation: "group-b/pair-probe" as NonEmptyStr) {
+    MemoryProofSubjectRefused { cause: _ } => false
+    MemoryProofSubjectReady { subject: tp2 } =>
+      match fx_bundle_binding(component: ArmCheckpointResidency, rank: 0) {
+        Absent => false
+        Present { value: weights0 } =>
+          match arm_admit_wet_binding(binding: weights0, target: tp2) {
+            ArmWetBindingRefused { binding: _, cause: c } =>
+              string_contains(s: c as String, pattern: "tp2") && string_contains(s: c as String, pattern: "not invariant")
+            ArmWetBindingAdmitted { binding: _ } => false
+          }
+      }
+  })
+    && (match fx_262k_subject() {
+      Absent => false
+      Present { value: target262 } =>
+        let act_admission = match fx_bundle_binding(component: ArmActivationWorkspace, rank: 0) {
+          Absent => false
+          Present { value: act0 } =>
+            match arm_admit_wet_binding(binding: act0, target: target262) {
+              ArmWetBindingRefused { binding: _, cause: c } => string_contains(s: c as String, pattern: "6x262144")
+              ArmWetBindingAdmitted { binding: _ } => false
+            }
+        }
+        let weights_admission = match fx_bundle_binding(component: ArmCheckpointResidency, rank: 0) {
+          Absent => false
+          Present { value: weights0 } =>
+            match arm_admit_wet_binding(binding: weights0, target: target262) {
+              ArmWetBindingAdmitted { binding: _ } => true
+              ArmWetBindingRefused { binding: _, cause: _ } => false
+            }
+        }
+        let arena_admission = match fx_bundle_binding(component: ArmKvCache, rank: 0) {
+          Absent => false
+          Present { value: arena0 } =>
+            match arm_admit_wet_binding(binding: arena0, target: target262) {
+              ArmWetBindingAdmitted { binding: _ } => true
+              ArmWetBindingRefused { binding: _, cause: _ } => false
+            }
+        }
+        act_admission && weights_admission && arena_admission
+    })
+}
+
+// THE 262Kx6 TARGET SUBJECT: a supplied intent (the intent change itself is the owner's call and
+// is NOT made here), derived through the same profile function the launch wall uses.
+fn fx_262k_subject() -> MemoryProofSubject? {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } => none
+    ServingCapacityIntentAdmitted { intent: intent } =>
+      match memory_proof_subject_for_launch(
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: intent),
+          policy: glm53_native_launch_policy,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+        ),
+        launch_generation: "group-b/future-262k" as NonEmptyStr) {
+        MemoryProofSubjectReady { subject: s } => Present { value: s }
+        MemoryProofSubjectRefused { cause: _ } => none
+      }
+  }
+}
+
+// ── WITNESS 23: A NEGATIVE OBSERVATION CANNOT IMPROVE HEADROOM ───────────────────────────────────
+//
+// TP1's -2.54 GiB graph figure: preserved raw in its standing, credited EXACTLY ZERO bytes of
+// headroom, refused at every discharge wall -- and the observed intervals credit zero too, because
+// a reading at the reporter's precision bounds nothing until a bounding protocol promotes it.
+// What the bundle's ranks CAN contribute is named beside what they cannot: only the bounding
+// standings (DerivedExact, DerivedConservativeInterval, MeasuredUpperBound) ever carry credit.
+test fn w_negative_observation_cannot_improve_headroom() -> Bool {
+  (match fx_bundle_binding(component: ArmGraphCapture, rank: 1) {
+    Absent => false
+    Present { value: graph1 } =>
+      byte_size_count(b: arm_wet_standing_credit_bytes(s: graph1.standing)) == 0
+        && !arm_wet_standing_discharges_open(standing: graph1.standing, open: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr })
+        && (match graph1.standing {
+          ArmWetGraphAttributionUnestablished { raw_hundredths_gib: raw, receipt: _ } => raw == -254
+          _ => false
+        })
+  })
+    && (match fx_bundle_binding(component: ArmKvCache, rank: 0) {
+      Absent => false
+      Present { value: arena0 } =>
+        byte_size_count(b: arm_wet_standing_credit_bytes(s: arena0.standing)) == 0
+          && !arm_wet_standing_discharges_open(standing: arena0.standing, open: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr })
+    })
+    && arm_wet_standing_discharges_open(
+      standing: ArmWetMeasuredUpperBound { bytes: fx_gib(1), receipt: fx_receipt(kind: "fx-peak-over-runs" as NonEmptyStr) },
+      open: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr })
+    && !arm_wet_standing_discharges_open(
+      standing: ArmWetObservationOnly { bytes: fx_gib(1), receipt: fx_receipt(kind: "fx-single-sample" as NonEmptyStr), why: "fx" as NonEmptyStr },
+      open: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr })
+}
+
+// ── WITNESS 24: ALL CACHE GROUPS PROVE, THE PREFILL TRANSIENT OPEN ────────────────────────────────
+//
+// THE CONJUNCTION SPLIT the doctrine requires: with the exact roster folded against generous
+// supplied supplies the cache subproof is CacheFitProved -- and the whole-arm standing is STILL
+// ArmMemoryFitUnestablished, naming the prefill transient among its open obligations. A proved
+// cache never promotes a verdict whose other subproofs are open.
+test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Bool {
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  let arm = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4, profile: w_restoration_profile()))
+  (match cache {
+    CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
+      s == 6
+        && allocator_block_count_value(c: bu) == 1106130
+        && (match be {
+          Absent => true
+          Present { value: _ } => false
+        })
+    _ => false
+  })
+    && (match arm {
+      Present { value: ArmMemoryFitUnestablished { obligations: _ } } => true
+      _ => false
+    })
+    && (match arm {
+      Present { value: arm_verdict } =>
+        let standing = arm_memory_fit_whole_standing(
+          cache: cache,
+          prefill: PrefillTransientFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] },
+          arm: arm_verdict,
+          serving_liveness: ArmServingLivenessUnestablished { seats: 6, length: token_count(count: 262144), obligations: ["fixture serving-liveness obligation standing in for the launch wall's own" as NonEmptyStr] },
+          subject_length: token_count(count: 262144))
+        (match standing.cache_verdict {
+          CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
+          _ => false
+        })
+          && (match standing.arm_verdict {
+            ArmMemoryFitUnestablished { obligations: _ } => true
+            _ => false
+          })
+          && any(standing.open_obligations, o => string_contains(s: o as String, pattern: "prefill-transient-fit"))
+          && length(standing.open_obligations) > 1
+      _ => false
+    })
+}
+
+// ── WITNESS 25: THE CANDIDATE IS CARRIED, NEVER PROVED ───────────────────────────────────────────
+//
+// THE TOKEN DIVISION REFUSED AT THE FOLD: an empty-group roster refuses while the printed figure
+// divides to six -- the candidate and the proof are different kinds of thing, and the fold has no
+// arm that consumes the candidate. AND THE PREFILL FORMULA rides as a candidate with its
+// citation owed: 40 entries x 132 bytes at 262144 computed, named, and explicitly NOT bounding
+// until read at the pinned source.
+test fn w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its_citation() -> Bool {
+  let empty_roster = resolved_kv_layout(
+    allocator_blocks: allocator_block_count(count: 4096),
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 262144),
+    max_num_batched_tokens: token_count(count: 2048),
+    groups: [] as List<KvGroupLayout>,
+    established_at_revision: vllm_source_revision_read,
+  )
+  (match cache_fit_verdict(
+    layout: empty_roster, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
+    CacheFitUnestablished { obligations: _ } => true
+    _ => false
+  })
+    && (match cache_capacity_candidate(printed_pool_tokens: token_count(count: 1805689), division_length: token_count(count: 262144)) {
+      Present { value: c } =>
+        c.seats_by_division == 6 && string_contains(s: c.standing as String, pattern: "never a proof")
+      Absent => false
+    })
+    && byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: token_count(count: 262144))) == 1384120320
+    && string_contains(s: arm_prefill_transient_obligation(length: token_count(count: 262144)) as String, pattern: "prefill-transient-fit")
+    && string_contains(s: arm_prefill_transient_obligation(length: token_count(count: 262144)) as String, pattern: "8d09804")
+}
+
+// ── WITNESS 26: THE DERIVED TERMS ARE EXACT AT THE GLM SHAPE ───────────────────────────────────────
+//
+// THE PINNED FORMULAS COMPUTE (extdeps.vllm.sparse_prefill_transient, every figure cited there to
+// vllm@8d09804c8): the workspace is the owner-cited 1,384,120,320 bytes -- the candidate formula
+// and the pinned get_max_prefill_buffer_size AGREE at 262144, which is the citation the obligation
+// owed, no looser and no tighter -- the logits ceiling is the fleet's 64 MiB env cap exactly, the
+// flashinfer workspace is the pinned 394 MiB default (the fleet launch overrides it nowhere), and
+// the batch-bounded temporaries are closed forms of the config the engine itself pins (index_topk
+// = 2048 at the reported FLASHINFER_MLA_SPARSE_SM120 backend, attention heads per rank 16 = 64
+// divided across TP4).
+fn fx_prefill_shape() -> PrefillTransientShape {
+  PrefillTransientShape {
+    length: token_count(count: 262144),
+    seats: 6,
+    max_num_batched_tokens: 2048,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
+  }
+}
+
+data fx_prefill_v2_pool_carve_bytes: ByteSize = byte_size(count: 13766049792)
+
+test fn w_the_prefill_terms_derive_exact_from_the_pinned_source() -> Bool {
+  let terms = prefill_transient_demand_terms(shape: fx_prefill_shape())
+  byte_size_count(b: terms.indexer_k_gather_workspace) == 1384120320
+    && byte_size_count(b: terms.indexer_prefill_logits_cap) == 67108864
+    && byte_size_count(b: terms.flashinfer_sparse_workspace) == 413138944
+    && byte_size_count(b: terms.sparse_attn_output_upper) == 33554432
+    && byte_size_count(b: terms.sparse_topk_physical_upper) == 17825792
+    && byte_size_count(b: terms.sparse_chunk_temporaries_upper) == 20971520
+    && byte_size_count(b: prefill_transient_extras_upper(terms: terms)) == 485490688
+    && byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: token_count(count: 262144))) == byte_size_count(b: terms.indexer_k_gather_workspace)
+}
+
+// ── WITNESS 27: THE SUBPROOF PROVES AT THE V2 BUNDLE ───────────────────────────────────────────────
+//
+// THE REAL SUBJECT'S OWN EVIDENCE, no fixture numbers: the v2-plan launch's four envelope-derived
+// readings (envelope, weights+nontorch composite, activation per rank at the reporter's hundredths
+// unit, gunbc.spark.arm_memory_experiment_observed) priced through prefill_transient_fit_verdict
+// against the v2 pool carve (13,766,049,792 bytes, the plan the same launch printed). THE VERDICT:
+// PrefillTransientFitProved at the worst corner -- limiting rank 3 (srv11, the smallest envelope
+// minus composite minus carve), demand 4,410,017,055 bytes against a 7,837,635,706-byte supply
+// floor, headroom 3,427,618,651 bytes. The measured-peak-plus-derived-extras charge fits every
+// rank; the ~1.71 GiB estimate-over-actual graph residue rides inside the supply side's slack,
+// never charged.
+fn fx_prefill_v2_ranks() -> List<PrefillTransientRankInput> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => PrefillTransientRankInput {
+    rank: r.rank,
+    envelope_floor: arm_experiment_gib_hundredths_floor(hundredths: r.envelope_hundredths_gib),
+    composite_floor: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    activation_upper: arm_experiment_gib_hundredths_upper(hundredths: r.activation_hundredths_gib),
+    activation_lower: arm_experiment_gib_hundredths_lower(hundredths: r.activation_hundredths_gib),
+  })
+}
+
+test fn w_the_prefill_subproof_proves_at_the_v2_bundle() -> Bool {
+  match prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitProved { limiting_rank: lr, length: l, seats: s, demand_upper_bytes: d, supply_floor_bytes: sup, headroom_bytes: h, terms: terms } =>
+      lr == 3
+        && token_count_value(t: l) == 262144
+        && s == 6
+        && byte_size_count(b: d) == 4410017055
+        && byte_size_count(b: sup) == 7837635706
+        && byte_size_count(b: h) == 3427618651
+        && byte_size_count(b: terms.indexer_k_gather_workspace) == 1384120320
+    _ => false
+  }
+}
+
+// ── WITNESS 28: THE VERDICT DISCRIMINATES ────────────────────────────────────────────────────────
+//
+// THREE REDS, each a different wall. (1) SHRINK THE LIMITING RANK'S ENVELOPE below
+// composite + carve + demand and the same evidence refuses at rank 3 with both numbers -- the
+// verdict is evidence-priced, not a standing constant. (2) A ZERO ACTIVATION READING bounds
+// nothing: Unestablished at the zero wall, never a generous zero. (3) A MEASURED PEAK whose lower
+// endpoint sits UNDER the derived workspace-plus-ceiling reservation breaks the coverage
+// validation -- the reading and the pinned derivation then describe different launches, and the
+// fold says so rather than pricing a lying receipt.
+test fn w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold() -> Bool {
+  let ranks = fx_prefill_v2_ranks()
+  let shrunk = map(ranks, r =>
+    if r.rank == 3 {
+      PrefillTransientRankInput {
+        rank: r.rank,
+        envelope_floor: byte_size(count: 106673867980),
+        composite_floor: r.composite_floor,
+        activation_upper: r.activation_upper,
+        activation_lower: r.activation_lower,
+      }
+    } else {
+      r
+    })
+  match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: shrunk, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitRefused { rank: r, length: _, seats: _, demand_upper_bytes: d, supply_floor_bytes: sup, cause: c } =>
+      r == 3
+        && byte_size_count(b: d) == 4410017055
+        && byte_size_count(b: sup) == 4410017054
+        && string_contains(s: c as String, pattern: "prefill transient fit REFUSED at rank 3")
+    _ => false
+  }
+}
+
+test fn w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage() -> Bool {
+  let zeroed = map(fx_prefill_v2_ranks(), r =>
+    if r.rank == 1 {
+      PrefillTransientRankInput {
+        rank: r.rank,
+        envelope_floor: r.envelope_floor,
+        composite_floor: r.composite_floor,
+        activation_upper: byte_size(count: 0),
+        activation_lower: r.activation_lower,
+      }
+    } else {
+      r
+    })
+  let broken = map(fx_prefill_v2_ranks(), r =>
+    PrefillTransientRankInput {
+      rank: r.rank,
+      envelope_floor: r.envelope_floor,
+      composite_floor: r.composite_floor,
+      activation_upper: r.activation_upper,
+      activation_lower: byte_size(count: 1),
+    })
+  (match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: zeroed, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitUnestablished { obligations: os } =>
+      any(os, o => string_contains(s: o as String, pattern: "zero envelope, composite or activation reading"))
+    _ => false
+  })
+    && (match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: broken, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+      PrefillTransientFitUnestablished { obligations: os } =>
+        any(os, o => string_contains(s: o as String, pattern: "coverage validation failed"))
+      _ => false
+    })
+}
+
+// ── WITNESS 29: THE DERIVED FIGURES MOVE WITH THE SHAPE ────────────────────────────────────────────
+//
+// THE RED THE OBLIGATION ASKED FOR: a different batch ceiling or a different length changes the
+// derived figures -- the demand record is a function of the priced shape, not a constant wearing
+// its units. Length 524288 doubles the workspace to 2,768,240,640; batch 4096 moves every
+// batch-bounded temporary (attention output 67,108,864, top-k conversion 35,651,584, chunk
+// temporaries 41,943,040 -- extras 557,842,432 against 485,490,688 at 2048); and the two
+// env-configured terms move with their configuration (logits ceiling 134,217,728 at a 128 MiB
+// setting against the fleet's 67,108,864 at 64; flashinfer workspace 134,217,728 at 128 MiB
+// against the pinned 394 MiB default's 413,138,944).
+test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
+  let longer = PrefillTransientShape {
+    length: token_count(count: 524288),
+    seats: 6,
+    max_num_batched_tokens: 2048,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
+  }
+  let wider = PrefillTransientShape {
+    length: token_count(count: 262144),
+    seats: 6,
+    max_num_batched_tokens: 4096,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
+  }
+  let longer_terms = prefill_transient_demand_terms(shape: longer)
+  let wider_terms = prefill_transient_demand_terms(shape: wider)
+  byte_size_count(b: longer_terms.indexer_k_gather_workspace) == 2768240640
+    && byte_size_count(b: longer_terms.indexer_prefill_logits_cap) == 67108864
+    && byte_size_count(b: wider_terms.sparse_attn_output_upper) == 67108864
+    && byte_size_count(b: wider_terms.sparse_topk_physical_upper) == 35651584
+    && byte_size_count(b: wider_terms.sparse_chunk_temporaries_upper) == 41943040
+    && byte_size_count(b: prefill_transient_extras_upper(terms: wider_terms)) == 557842432
+    && byte_size_count(b: prefill_transient_extras_upper(terms: wider_terms)) != byte_size_count(b: prefill_transient_extras_upper(terms: prefill_transient_demand_terms(shape: fx_prefill_shape())))
+    && byte_size_count(b: sparse_indexer_prefill_logits_cap_bytes(max_logits: mebibyte(count: 128))) == 134217728
+    && byte_size_count(b: flashinfer_sparse_workspace_bytes(configured: mebibyte(count: 128))) == 134217728
+}
+
+// ── WITNESS 30: A PROVED PREFILL RIDES IN THE STANDING BESIDE THE ARM'S OPEN TERMS ────────────────
+//
+// THE CONJUNCTION THE DOCTRINE REQUIRES, at the closed subproof: a standing assembled with the
+// v2 bundle's proved prefill verdict carries NO prefill-transient obligation -- and STILL names
+// the arm verdict's own open terms, because a closed prefill transient promotes nothing it does
+// not own. THE WHOLE-ARM QUESTION the restoration sequence asks is answered by the standing's
+// full obligation list, never by one green subproof.
+test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() -> Bool {
+  let prefill = prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
+  let arm = ArmMemoryFitUnestablished { obligations: ["rank 3 fragmentation-allowance has no defensible bound: fixture arm obligation standing in for the launch wall's own" as NonEmptyStr] }
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  (match prefill {
+    PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
+    _ => false
+  })
+    && (match cache {
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
+      _ => false
+    })
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: arm, serving_liveness: ArmServingLivenessUnestablished { seats: 6, length: token_count(count: 262144), obligations: ["fixture serving-liveness obligation standing in for the launch wall's own" as NonEmptyStr] }, subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: p, arm_verdict: _, serving_liveness: _, open_obligations: os } =>
+        (match p {
+          PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
+          _ => false
+        })
+          && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit"))
+          && any(os, o => string_contains(s: o as String, pattern: "fragmentation-allowance"))
+    })
+}
+
+// ── WITNESS 31: THE LAUNCH WALL AT 262144x6 — THE WHOLE-ARM CONJUNCTION ON THIS LAUNCH'S OWN EVIDENCE ──
+//
+// THE SUBJECT the restoration sequence asks about: the group B 262144x6 launch wall, priced on
+// the v2-plan launch's OWN evidence through gunbc.spark.arm_memory_experiment_observed's launch-
+// wall carries. THE CONJUNCTION IS THE VERDICT FOLD over the sealed subject: every rank record
+// complete (the census admits no omit-or-duplicate spelling), the pool the rounded GB10 span, the
+// deductions the carried host-reserve and foreign-occupancy bounds. WHAT THE CARRIES CLOSE:
+// checkpoint placement (the composite-named derived conservative interval — a bound, NOT a
+// placement receipt), runtime-fixed (the pinned top-k buffer lower plus the composite upper),
+// collective workspace (discharged by inclusion, the residual named), activation (bounded by the
+// engine's own conservation), graph capture (the reporter's rounding unit), the KV carve (exact,
+// engine-vouched), and both supply deductions (the 0.8567 carve and the observed foreign band).
+// WHAT STAYS OPEN, exactly: the loader transient and the fragmentation allowance -- each carried
+// as a named obligation with its completing act -- and the indeterminacy the composite carries
+// cannot settle (the summed uppers do not decide against the conservative supply until the
+// composite is decomposed by the safetensors-index projection, and the scalar subject-level
+// deduction pair cannot express the per-device host/foreign coupling). THE VERDICT IS
+// ArmMemoryFitUnestablished NAMING THOSE -- never a silent proof, never a refusal: the mandatory
+// demand fits with room, and the open terms say precisely what would close them.
+
+fn fx_launch_wall_intent() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+fn fx_launch_wall_profile() -> ServingLaunchProfile {
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_launch_wall_intent()),
+    policy: glm53_native_launch_policy,
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+  )
+}
+
+// THE SUBJECT MINT: the launch wall's own ranks and deductions, the rounded pool, the sealed
+// subject the verdict fold prices. Absent means a carry refused -- the witness fails, loudly.
+fn fx_launch_wall_subject_mint() -> ArmMemorySubjectMint {
+  arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_launch_wall_intent(),
+    requested_profile: fx_launch_wall_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: gb10_pool_bound(), deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: fx_pool_high)),
+    ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks())
+}
+
+fn fx_launch_wall_verdict() -> ArmMemoryFitVerdict {
+  match fx_launch_wall_subject_mint() {
+    ArmMemorySubjectReady { subject: s } => arm_memory_fit_verdict(subject: s)
+    ArmMemorySubjectRefused { cause: c } => ArmMemoryFitUnestablished { obligations: [c] }
+  }
+}
+
+// THE MINT SEALS AND EVERY CARRY LANDS WHERE THE CENSUS PUTS IT: four ranks; checkpoint residency
+// is THE PROJECTION'S EXACT PER-RANK FIGURE -- 83,237,158,776 bytes, identical on every rank
+// (the checkpoint places evenly by construction); runtime-fixed an interval from the pinned
+// top-k buffer lower (17,825,792 bytes) to the rank's residue (composite floor minus placement:
+// 106,681,602 at rank 0); collective an interval at [0, the residue]; activation an interval at
+// [0, the conservation bound] (14,779,376,601 bytes at rank 0, 7,735,630,235 at rank 3); graph
+// the reporter's rounding unit; the KV carve exact at 13,766,049,792 bytes; loader and
+// fragmentation open on every rank.
+test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
+  match fx_launch_wall_subject_mint() {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      length(subject.ranks) == 4
+        && all(subject.ranks, rb =>
+          match rb.checkpoint_residency.held.bound {
+            ComponentBoundExact { bytes: b, how: h } =>
+              byte_size_count(b: b) == 83237158776
+                && string_contains(s: h as String, pattern: "DERIVED EXACT by the TP4 placement projection")
+            _ => false
+          })
+        && all(subject.ranks, rb =>
+          match rb.loader_transform.held.bound {
+            ComponentBoundCeiling { bytes: b, receipt: r } =>
+              byte_size_count(b: b) > 0
+                && string_contains(s: r as String, pattern: "page cache")
+                && string_contains(s: r as String, pattern: "OUTER bound")
+            _ => false
+          })
+        && all(subject.ranks, rb =>
+          match rb.fragmentation_allowance.held.bound {
+            ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "churn")
+            _ => false
+          })
+        && all(subject.ranks, rb =>
+          match rb.collective_workspace.held.bound {
+            ComponentBoundInterval { lower: l, upper: _, how: h } =>
+              byte_size_count(b: l) == 0 && string_contains(s: h as String, pattern: "discharged by inclusion")
+            _ => false
+          })
+        && (match first(filter(subject.ranks, rb => rb.rank == 0)) {
+          Present { value: r0 } =>
+            (match r0.checkpoint_residency.held.bound {
+              ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
+              _ => false
+            })
+              && (match r0.runtime_fixed.held.bound {
+                ComponentBoundInterval { lower: l, upper: u, how: _ } =>
+                  byte_size_count(b: l) == 17825792 && byte_size_count(b: u) == 106681602
+                _ => false
+              })
+              && (match r0.activation_workspace.held.bound {
+                ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 14779376601
+                _ => false
+              })
+              && (match r0.graph_capture.held.bound {
+                ComponentBoundInterval { lower: l, upper: u, how: _ } =>
+                  byte_size_count(b: l) == 53687091 && byte_size_count(b: u) == 59055801
+                _ => false
+              })
+              && (match r0.kv_cache.held.bound {
+                ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 13766049792
+                _ => false
+              })
+          Absent => false
+        })
+        && (match first(filter(subject.ranks, rb => rb.rank == 3)) {
+          Present { value: r3 } =>
+            (match r3.checkpoint_residency.held.bound {
+              ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
+              _ => false
+            })
+              && (match r3.activation_workspace.held.bound {
+                ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 7735630235
+                _ => false
+              })
+          Absent => false
+        })
+  }
+}
+
+// THE CONJUNCTION RUNS AND NAMES EXACTLY WHAT REMAINS: 22 obligations -- the fragmentation
+// allowance alone still open, on all four ranks (4); the indeterminacy the landed evidence
+// carries (17: the loader-transient receipts closed the four OPEN loader obligations, and the
+// page-cache-inclusive bound they mint -- 111.8-114.0 GiB of unified-pool pressure, charged
+// whole to the load phases with the checkpoint double-count named -- does not decide against
+// the conservative supply at loader-transform or restart-overlap, 8; graph-capture, the
+// heaviest phase, still passes both walls at all four ranks, 8; idle-serving fires only rank
+// 3's supply wall, 107.64 GiB against 106.94 GiB, 1), and the scalar deduction pair's
+// conservation (1). NOTHING for the checkpoint, runtime-fixed, collective, activation, graph, KV
+// or the loader OPEN terms -- those are bounded, and the fold says so by staying silent about
+// them. THE MANDATORY DEMAND FITS: no refusal mints -- Unestablished, not Refused. 18 -> 22 is
+// the receipts' honest signature: four vague opens became eight precise pinches, each with its
+// completing act -- the loader pinch closes on the engine's byte-exact load accounting (or a
+// drop-caches rerun), the graph-capture and idle pinches on the CollectiveWorkspaceBound
+// measurement pricing NCCL alone inside the residue (runtime and collective uppers then
+// partition the residue once instead of double-charging it), and the conservation pinch on the
+// byte-exact pool producer with same-device deductions.
+test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
+  match fx_launch_wall_verdict() {
+    ArmMemoryFitUnestablished { obligations: os } =>
+      length(os) == 22
+        && !any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
+        && any(os, o => string_contains(s: o as String, pattern: "rank 0 fragmentation-allowance has no defensible bound"))
+        && any(os, o => string_contains(s: o as String, pattern: "rank 3 fragmentation-allowance has no defensible bound"))
+        && any(os, o => string_contains(s: o as String, pattern: "does not decide"))
+        && any(os, o => string_contains(s: o as String, pattern: "unified-pool conservation does not decide"))
+        && any(os, o => string_contains(s: o as String, pattern: "does not decide against the decided envelope"))
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase graph-capture does not decide"))) == 8
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase idle-serving does not decide"))) == 1
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase loader-transform does not decide"))) == 4
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase restart-overlap does not decide"))) == 4
+        && any(os, o => string_contains(s: o as String, pattern: "rank 3 phase idle-serving does not decide: demand upper"))
+        && !any(os, o => string_contains(s: o as String, pattern: "phase model-load does not decide"))
+        && !any(os, o => string_contains(s: o as String, pattern: "phase profiling does not decide"))
+        && !any(os, o => string_contains(s: o as String, pattern: "checkpoint-residency has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "runtime-fixed has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "collective-workspace has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "activation-workspace has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "graph-capture has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "kv-cache has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve has no defensible bound"))
+        && !any(os, o => string_contains(s: o as String, pattern: "foreign-residency has no defensible bound"))
+    _ => false
+  }
+}
+
+// THE FORBIDDEN-MOVE LAW, PINNED BESIDE THE CARRY: the composite observation still discharges
+// NOTHING -- arm_wet_standing_discharges_open refuses ArmWetCompositeObservation against the
+// open checkpoint obligation, exactly as the doctrine's weaker-evidence-cannot-improve-admission
+// rule requires -- while the carried DERIVED CONSERVATIVE INTERVAL (a different standing, bound
+// from the composite by an explicit derivation that names its composite-ness) is what closes the
+// term in the launch-wall record. The two facts travel apart so no reader can cite the carry as
+// a placement receipt.
+test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool {
+  let open_checkpoint = ComponentBoundOpen { obligation: "per-rank checkpoint placement is unread: an even tensor-parallel split is an assumption, not a measurement" as NonEmptyStr }
+  let composite = ArmWetCompositeObservation {
+    bytes: byte_size(count: 88497801134),
+    receipt: "2026-09-26 v2-plan bounded experiment (6x262144, fp8 KV, 8567 basis points) on srv11, per-rank memory-profile line at gpu_worker.py:867" as NonEmptyStr,
+    why: "composite: does not separate checkpoint tensors from runtime-fixed, allocator, communication or other non-Torch allocations, so it is admitted as evidence but can never discharge the checkpoint-placement obligation" as NonEmptyStr,
+  }
+  !arm_wet_standing_discharges_open(standing: composite, open: open_checkpoint)
+    && (match fx_launch_wall_subject_mint() {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb => match rb.checkpoint_residency.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
+    })
+}
+
+// THE FOREIGN BAND, CHECKED NOT TRUSTED: boot foreign occupancy = total - free in the hundredths
+// arithmetic (14.49 / 13.17 / 12.80 / 10.58 GiB at srv9/srv10/srv12/srv11), the derivation the
+// deduction carry prices, and the largest observed foreign occupancy rides at its hundredths
+// floor -- 15,558,519,029 bytes (14.49 GiB), the band the foreign deduction's upper endpoint
+// widens to the reporter's rounding unit.
+test fn w_the_boot_foreign_band_holds_at_the_reporters_unit() -> Bool {
+  arm_experiment_kvplan_v2_2026_09_26_boot_derivation_holds()
+    && length(arm_experiment_kvplan_v2_2026_09_26_boot_readings) == 4
+    && byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: 1449)) == 15558519029
+}
+
+// THE RED WALL: THE SAME SUBJECT ON A TOY POOL REFUSES, IT DOES NOT STAY OPEN. Swapping the
+// rounded GB10 span for a one-GiB pool leaves every carry unchanged, and the aggregate
+// impossibility argument fires before anything else: at least one rank must hold at least
+// 81,872,814,081 bytes of this checkpoint (327,491,256,321 bytes total across four ranks, by
+// pigeonhole), which exceeds the toy pool's most favorable reading. Unestablished is not a
+// verdict a shrunken supply can hide behind.
+test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
+  let toy_pool = match closed_interval(low: byte_size(count: 1073741824), high: byte_size(count: 2147483647), le: measure_le) {
+    IntervalReady { interval: i } =>
+      ArmPoolBounded { span: i, how: "toy one-GiB span for the refusal wall" as NonEmptyStr }
+    IntervalRefused { reason: _ } =>
+      ArmPoolUnbounded { obligation: "toy span refused" as NonEmptyStr }
+  }
+  match arm_memory_fit_subject_with_rank_demands(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_launch_wall_intent(),
+    requested_profile: fx_launch_wall_profile(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: toy_pool, deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: byte_size(count: 2147483647))),
+    ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: dl, supply_upper: _, cause: c } =>
+          r == 4
+            && byte_size_count(b: dl) == 81872814081
+            && string_contains(s: c as String, pattern: "at least one rank must hold at least")
+            && string_contains(s: c as String, pattern: "No rank is named because placement is unread")
+        _ => false
+      }
+  }
+}
+
+// THE WHOLE-ARM CONJUNCTION AT 262144x6: the proved cache subproof (the fixture roster fold, the
+// same standing witness 30 prices) beside the proved prefill transient (the v2 bundle's own
+// evidence, witness 27) beside the launch-wall verdict above -- the standing's open obligations
+// carry the arm prefix and NOTHING from the cache or prefill subproofs: two green subproofs
+// promote nothing they do not own, and the whole-arm verdict is exactly the launch wall's own
+// list, 22 obligations naming the fragmentation allowance, the loader-receipt pinches, and
+// the graph-capture/idle-serving indeterminacy the landed evidence leaves open.
+test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> Bool {
+  let prefill = prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  (match prefill {
+    PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
+    _ => false
+  })
+    && (match cache {
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
+      _ => false
+    })
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: fx_launch_wall_verdict(), serving_liveness: arm_experiment_2026_09_27_serving_liveness(), subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: lv, open_obligations: os } =>
+        length(os) == 23
+          && !any(os, o => string_contains(s: o as String, pattern: "cache-capacity-fit:"))
+          && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit:"))
+          && any(os, o => string_contains(s: o as String, pattern: "serving-liveness-fit:"))
+          && any(os, o => string_contains(s: o as String, pattern: "the sixth hung indefinitely"))
+          && all(os, o => string_contains(s: o as String, pattern: "arm-memory-fit:") || string_contains(s: o as String, pattern: "serving-liveness-fit:"))
+          && (match lv {
+            ArmServingLivenessUnestablished { seats: s, length: l, obligations: _ } =>
+              s == 6 && token_count_value(t: l) == 262144
+            _ => false
+          })
+          && !any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
+          && any(os, o => string_contains(s: o as String, pattern: "fragmentation-allowance has no defensible bound"))
+          && any(os, o => string_contains(s: o as String, pattern: "phase loader-transform does not decide"))
+          && any(os, o => string_contains(s: o as String, pattern: "phase restart-overlap does not decide"))
+          && any(os, o => string_contains(s: o as String, pattern: "unified-pool conservation does not decide"))
+    })
+}
+
+// ── WITNESS 32: THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT PROJECTION ─────────────────────
+//
+// THE INDEX READ (fetched 2026-09-26) LANDED: the population census, the tensor-byte total, the
+// shard-header overhead, and the pinned source's placement rules. The shard-header and
+// config.json fetches have since COMPLETED and the exact byte projection is landed (witness 34
+// prices it); these witnesses pin what the index itself establishes -- the census and its
+// cross-authority agreement with the corpus shape row and the manifest module, the classifier's
+// rules on the census's own name shapes, the conservation law as the exactness wall, and the
+// exactness RED: a tensor moved to a different shard changes a rank figure while conservation
+// keeps holding. The Absent-bytes claim below is the machinery's fail-closed property, kept as a
+// RED against reading an unpriced tensor as zero.
+
+test fn w_the_checkpoint_index_census_holds() -> Bool {
+  glm_checkpoint_index_census_holds()
+    && byte_size_count(b: glm_checkpoint_index_file_bytes) == byte_size_count(b: glm_5_3_flash_native_manifest.safetensors_bytes)
+    && glm_checkpoint_index_revision == glm_5_3_flash_native_manifest.revision
+}
+
+test fn w_the_index_confirms_the_hybrid_shape_and_names_the_mtp() -> Bool {
+  length(glm_checkpoint_index_kda_layer_indices) == glm_5_3_flash_hybrid_shape.kda_linear_attention_layers
+    && length(glm_checkpoint_index_sparse_base_layer_indices) == glm_5_3_flash_hybrid_shape.sparse_attention_layers
+    && length(glm_checkpoint_index_mtp_layer_indices) == 1
+    && glm_checkpoint_index_routed_experts_per_layer > 0
+}
+
+test fn w_the_placement_rules_classify_the_census_name_shapes() -> Bool {
+  arm_checkpoint_classify(name: "model.language_model.embed_tokens.weight") == ArmPlacementVocabSharded
+    && arm_checkpoint_classify(name: "lm_head.weight") == ArmPlacementVocabSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight") == ArmPlacementExpertSplit
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.288.down_proj.weight_scale_inv") == ArmPlacementExpertSplit
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.gate.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.gate.e_score_correction_bias") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.shared_experts.gate_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.shared_experts.down_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.q_a_proj.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.kv_a_proj_with_mqa.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.q_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.kv_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.o_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.wq_b.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.wk.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.weights_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.q_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.f_a_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.g_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.q_conv1d.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.A_log") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.dt_bias") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.o_norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.input_layernorm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.hc_attn_base") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.mlp.gate_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.mlp.down_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.45.eh_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.45.shared_head.norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.visual.blocks.0.attn.qkv.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.visual.merger.proj.weight") == ArmPlacementReplicated
+}
+
+// THE EXACTNESS RED: A TENSOR MOVED TO A DIFFERENT SHARD CHANGES A RANK FIGURE. Three rows --
+// 8 GiB vocab-sharded, 16 GiB expert-split, 4 GiB replicated -- price to 10 GiB on every rank at
+// rank count 4. Moving the replicated row to column-sharded reprices every rank to 7 GiB, the
+// conservation law keeps holding in BOTH classifications, and the figures provably differ -- so
+// the projection cannot absorb a tensor's movement silently, and a misclassification is a
+// decidable violation of the conservation wall, not a rounding anecdote.
+test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool {
+  let before = [
+    ArmCheckpointTensorRow { name: "probe.embed" as NonEmptyStr, kind: ArmPlacementVocabSharded, bytes: Present { value: fx_gib(8) } },
+    ArmCheckpointTensorRow { name: "probe.expert" as NonEmptyStr, kind: ArmPlacementExpertSplit, bytes: Present { value: fx_gib(16) } },
+    ArmCheckpointTensorRow { name: "probe.replicated" as NonEmptyStr, kind: ArmPlacementReplicated, bytes: Present { value: fx_gib(4) } },
+  ]
+  let after = [
+    ArmCheckpointTensorRow { name: "probe.embed" as NonEmptyStr, kind: ArmPlacementVocabSharded, bytes: Present { value: fx_gib(8) } },
+    ArmCheckpointTensorRow { name: "probe.expert" as NonEmptyStr, kind: ArmPlacementExpertSplit, bytes: Present { value: fx_gib(16) } },
+    ArmCheckpointTensorRow { name: "probe.replicated" as NonEmptyStr, kind: ArmPlacementColumnSharded, bytes: Present { value: fx_gib(4) } },
+  ]
+  let before_figures = arm_checkpoint_placement_rank_figures(rows: before, rank_count: 4)
+  let after_figures = arm_checkpoint_placement_rank_figures(rows: after, rank_count: 4)
+  arm_checkpoint_placement_conserved(rows: before, rank_count: 4)
+    && arm_checkpoint_placement_conserved(rows: after, rank_count: 4)
+    && length(before_figures) == 4
+    && all(before_figures, f => match f { Present { value: v } => byte_size_count(b: v) == byte_size_count(b: fx_gib(10)) Absent => false })
+    && all(after_figures, f => match f { Present { value: v } => byte_size_count(b: v) == byte_size_count(b: fx_gib(7)) Absent => false })
+}
+
+// THE UNPRICED ROW REFUSES TO TOTAL: a census row built from a real tensor name with Absent
+// bytes makes every rank's figure Absent -- the projection has no spelling for an unpriced
+// tensor. The header fetch has completed and the byte census is landed; this claim is the
+// machinery's fail-closed property, kept as the RED against ever reading an unpriced tensor as
+// zero.
+test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool {
+  let row = ArmCheckpointTensorRow {
+    name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight" as NonEmptyStr,
+    kind: arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight"),
+    bytes: none,
+  }
+  let figures = arm_checkpoint_placement_rank_figures(rows: [row], rank_count: 4)
+  length(figures) == 4
+    && all(figures, f => match f { Present { value: _ } => false Absent => true })
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "config.json")
+}
+
+// ── WITNESS 34: THE EXACT PROJECTION PRICED, AND THE TWO COMPLETING RUNS IN EXECUTABLE FORM ──────
+//
+// THE BYTE ROWS LAND: the five kind sums reconstruct the index tensor total exactly, the
+// conservation law holds with slack zero, and the per-rank figure is uniform -- 83,237,158,776
+// bytes on every rank. THE RESIDUE TABLE pins what the composite observation now decomposes
+// into: 106,681,602 / 3,274,219,983 / 4,412,386,317 / 5,260,642,358 bytes across TP0-TP3, the
+// rank-varying shape the collective workspace wears. THE VISION TOWER LOADS, cited from
+// config.json's architectures field. THE TWO RUN DESIGNS are minted plans beside runbook rows --
+// the executable form the bracket consumes.
+
+test fn w_the_projection_census_and_conservation_hold_exact() -> Bool {
+  glm_checkpoint_projection_census_holds()
+    && byte_size_count(b: glm_checkpoint_projection_per_rank_bytes()) == 83237158776
+    && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) == 1127254016
+    && byte_size_count(b: glm_checkpoint_index_tensor_bytes) == 328326771576
+}
+
+test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool {
+  let ranks = arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()
+  length(ranks) == 4
+    && all(ranks, rb => match rb.checkpoint_residency.held.bound {
+      ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
+      _ => false
+    })
+    && (match first(filter(ranks, rb => rb.rank == 1)) {
+      Present { value: r1 } =>
+        (match r1.runtime_fixed.held.bound {
+          ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
+          _ => false
+        })
+          && (match r1.collective_workspace.held.bound {
+            ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
+            _ => false
+          })
+      Absent => false
+    })
+    && (match first(filter(ranks, rb => rb.rank == 3)) {
+      Present { value: r3 } =>
+        (match r3.runtime_fixed.held.bound {
+          ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 5260642358
+          _ => false
+        })
+          && (match r3.collective_workspace.held.bound {
+            ComponentBoundInterval { lower: l, upper: u, how: _ } => byte_size_count(b: l) == 0 && byte_size_count(b: u) == 5260642358
+            _ => false
+          })
+      Absent => false
+    })
+}
+
+test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
+  glm_5_3_flash_architecture_class == "Glm5NextForConditionalGeneration"
+    && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
+}
+
+// THE LOADER-TRANSIENT PLAN ADMITS, NAMED EXACTLY: the mint's own walls pass -- the workload
+// joins the policy profile, the target is open at the launch wall, the envelope is the
+// normal-serving decision, the runtime bound is the engine's own ready timeout, and the receipt
+// the run must mint is CheckpointRankResidencyBound. The runbook row pins the bracket, the
+// cadence, and the pass/fail bounds.
+test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
+  match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      p.targets == [ArmLoaderTransform]
+        && length(p.expected_receipts) == 1
+        && p.expected_receipts == ["CheckpointRankResidencyBound"]
+        && basis_point_count(bp: p.envelope_basis_points) == 8567
+        && p.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.plan == "loader-transient"
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.poll_seconds == 2
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.runs == 3
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_loader_runbook.anchor_end as String, pattern: "Free memory on device")
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_loader_runbook.fail_bound as String, pattern: "envelope floor")
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+}
+
+// THE FRAGMENTATION-CHURN PLAN ADMITS, NAMED EXACTLY: same walls, the
+// AllocatorFragmentationBound receipt, the warm-engine churn anchors, and the pass bound that
+// keeps the peak-serving demand within supply.
+test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
+  match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      p.targets == [ArmFragmentationAllowance]
+        && p.expected_receipts == ["AllocatorFragmentationBound"]
+        && basis_point_count(bp: p.envelope_basis_points) == 8567
+        && arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.plan == "fragmentation-churn"
+        && arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.poll_seconds == 5
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.anchor_start as String, pattern: "profile line")
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.pass_bound as String, pattern: "peak-serving mandatory demand within supply")
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+}
+
+// ── WITNESS 35: THE LOADER-TRANSIENT RECEIPTS, MINTED AND GATED ──────────────────────────────────
+//
+// THE BRACKET EXECUTED and the receipts mint: three converged launches, zero failed legs, the
+// peak-over-loads bound per rank at the conservative hundredths-floor spelling. The four OPEN
+// loader obligations close (the term now carries a defensible bound) -- and the bound is the
+// pinch the interpretation law anticipated: page-cache-inclusive pressure against the
+// conservative supply. THE RED beside it: the same reading claimed as engine-pinned demand is
+// refused at the typed gate, and the rank record would carry an OPEN term if a receipt ever
+// passed without the mechanism named.
+
+test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
+  arm_loader_trace_runs == 3
+    && arm_loader_trace_converged == 3
+    && arm_loader_trace_failed_legs == 0
+    && length(arm_loader_trace_min_hundredths_gib) == 4
+    && byte_size_count(b: arm_loader_trace_bound(rank: 0)) == 122395830517
+    && byte_size_count(b: arm_loader_trace_bound(rank: 1)) == 121923384115
+    && byte_size_count(b: arm_loader_trace_bound(rank: 2)) == 121869697024
+    && byte_size_count(b: arm_loader_trace_bound(rank: 3)) == 120076548177
+    && (match fx_launch_wall_subject_mint() {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb => match rb.loader_transform.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
+    })
+}
+
+test fn w_the_loader_receipt_names_the_page_cache_mechanism() -> Bool {
+  let receipt = arm_loader_trace_receipt(rank: 3, host: "srv11" as NonEmptyStr)
+  arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: receipt)
+    && string_contains(s: receipt as String, pattern: "page cache")
+    && string_contains(s: receipt as String, pattern: "NOT engine-pinned device demand")
+    && string_contains(s: receipt as String, pattern: "zero failed legs")
+}
+
+// THE RED: A TRACE READING CLAIMED AS ENGINE-PINNED DEMAND IS REFUSED. The gate is the typed
+// wall: the same numbers, receipted as "engine-pinned device demand" with no page-cache naming,
+// fail admission -- the model has no spelling for a soft observation bounding a hard quantity
+// unnamed. And a receipt with the mechanism but no subject identity fails the provenance wall.
+test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
+  let pinned_claim = "loader peak 111.83 GiB engine-pinned device demand, measured on glm-5.3-flash-native-fp8 x gunbc-glm53-nope-derived-gb10 x tp4" as NonEmptyStr
+  let no_identity = "loader peak 111.83 GiB, OUTER bound, page cache included, peak over 3 runs" as NonEmptyStr
+  !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: pinned_claim)
+    && !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: no_identity)
+    && !arm_loader_trace_receipt_admitted(bytes: byte_size(count: 0), receipt: arm_loader_trace_receipt(rank: 0, host: "srv9" as NonEmptyStr))
+}
+
+// ── WITNESS 36: THE SIXTH-SEAT HANG AS AN OPEN LIVENESS OBLIGATION ───────────────────────────────
+//
+// THE STANDING'S PRESENCE BLOCKS THE WHOLE-ARM PROOF: a fully proved memory arm beside the
+// Unestablished liveness verdict still carries the hang's obligation -- the cache fitting was
+// never the engine serving. THE REPRO MATRIX discriminates each axis of the hang with both
+// outcomes named. THE INTERIM FIVE-SEAT PROTOCOL is pinned with its named limitation. THE INTENT
+// STAYS SIX throughout: no memory-grounds re-price rides a scheduler/liveness defect.
+
+test fn w_the_churn_run_finding_is_pinned() -> Bool {
+  arm_experiment_2026_09_27_churn_run_readiness_gate_passed
+    && arm_experiment_2026_09_27_churn_run_token_exact_no_400s
+    && arm_experiment_2026_09_27_churn_run_completed_prefills == 5
+    && arm_experiment_2026_09_27_churn_run_hung_prefills == 1
+    && arm_experiment_2026_09_27_churn_run_kv_peak_percent == 6
+    && arm_experiment_2026_09_27_churn_run_client_timeout_seconds == 1800
+    && (match arm_experiment_2026_09_27_serving_liveness() {
+      ArmServingLivenessUnestablished { seats: s, length: l, obligations: os } =>
+        s == 6
+          && token_count_value(t: l) == 262144
+          && length(os) == 1
+          && string_contains(s: first_of(os: os) as String, pattern: "Running: 1 reqs, Waiting: 0")
+          && string_contains(s: first_of(os: os) as String, pattern: "not a memory term")
+      _ => false
+    })
+}
+
+test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  let prefill = prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
+  let proved_memory_arm = ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: byte_size(count: 1) }
+  (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: proved_memory_arm, serving_liveness: arm_experiment_2026_09_27_serving_liveness(), subject_length: token_count(count: 262144)) {
+    ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: _, open_obligations: os } =>
+      any(os, o => string_contains(s: o as String, pattern: "serving-liveness-fit: six-seat full-window concurrency is unestablished"))
+        && length(os) == 1
+  })
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: proved_memory_arm, serving_liveness: ArmServingLivenessProved { seats: 6, length: token_count(count: 262144), protocol: "fixture bounding protocol" as NonEmptyStr }, subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: _, open_obligations: os2 } =>
+        length(os2) == 0
+    })
+}
+
+test fn w_the_repro_matrix_discriminates_each_axis() -> Bool {
+  length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
+    && all(arm_experiment_2026_09_27_liveness_repro_matrix, r =>
+      string_contains(s: r.workload as String, pattern: "prefill")
+        && length(r.if_completes as String) > 0
+        && length(r.if_hangs as String) > 0)
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "b-five-concurrent-full-window")) {
+      Present { value: b } => string_contains(s: b.if_completes as String, pattern: "SIX-WAY occupancy")
+      Absent => false
+    })
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "c-six-concurrent-short-window")) {
+      Present { value: c } => string_contains(s: c.if_completes as String, pattern: "LENGTH-DEPENDENT")
+      Absent => false
+    })
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "e-stall-captured-six-full-window")) {
+      Present { value: e } =>
+        string_contains(s: e.workload as String, pattern: "py-spy dump")
+          && string_contains(s: e.if_hangs as String, pattern: "MUST RIDE EVERY HANGING RUN")
+      Absent => false
+    })
+}
+
+test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
+  arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.plan == "fragmentation-churn-five-seat-interim"
+    && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.anchor_start as String, pattern: "FIVE concurrent cold 262144-token prefills")
+    && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.fail_bound as String, pattern: "does not price six-seat full occupancy")
+    && arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.receipt_kind == "AllocatorFragmentationBound"
+    && (match fx_launch_wall_subject_mint() {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb => match rb.fragmentation_allowance.held.bound {
+          ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "NEVER RAN")
+          _ => false
+        })
+    })
+}
+

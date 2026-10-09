@@ -1,6 +1,7 @@
 module gunbc.generated_artifact_observation
 
-import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifacts, artifact_path, artifact_location, artifact_directory }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path, artifact_location, artifact_directory }
+import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate, artifact_extra_valid }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -19,7 +20,7 @@ import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactCommittedAbsent, GeneratedArtifactObservationRefused
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

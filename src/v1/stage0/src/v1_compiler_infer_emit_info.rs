@@ -2,18 +2,29 @@
 // Source module: v1.compiler.infer_emit_info
 
 use self::DataVariantWireSpelling::*;
+use self::TypeDeclReferenceRoute::*;
+use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
+use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_types::is_kernel_type;
+pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
-pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{SymbolIndex, TypeEnv};
+use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
+use crate::v1_compiler_infer_types::TextNotAskedReason::{
+    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
 };
+pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
@@ -21,18 +32,18 @@ use crate::v1_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-use crate::v1_std_core::LeafOwner::*;
+use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality,
+    authored_name_at, callable_identity, find_child_named, has_child_named, param_node_name_at,
+    qualified_last_segment, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
+    Cardinality, Connective, DeclaredCallableIdentity, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -150,11 +161,18 @@ pub fn collect_type_node_import_surface_occurrences(
             let mut __result = Vec::new();
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_type_node_import_surface_occurrences(
-                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                        children_are_applied_arguments.clone(),
-                        source_indices.clone(),
-                    ))
+                    (*{
+                        let walked = if children_are_applied_arguments.clone() {
+                            ch.clone()
+                        } else {
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                        };
+                        collect_type_node_import_surface_occurrences(
+                            walked.clone(),
+                            children_are_applied_arguments.clone(),
+                            source_indices.clone(),
+                        )
+                    })
                     .iter()
                     .cloned(),
                 );
@@ -205,9 +223,413 @@ pub enum DataVariantWireSpelling {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeDeclIndex {
+    pub by_identity: Rc<HashMap<String, Rc<Node>>>,
+    pub identity_by_declaring_span: Rc<HashMap<String, String>>,
+    pub leaf_owners: Rc<HashMap<String, Rc<LeafOwner>>>,
+    pub identities_by_leaf: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub qualified_names: Rc<SymbolIndex>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeDeclResolution {
+    TypeDeclResolved { identity: String, decl: Rc<Node> },
+    TypeDeclLeafAmbiguous { leaf: String },
+    TypeDeclKernelSpellingUndecided { leaf: String },
+    TypeDeclNotDeclared,
+}
+
+pub fn empty_type_decl_index() -> Rc<TypeDeclIndex> {
+    Rc::new(TypeDeclIndex {
+        by_identity: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        identity_by_declaring_span: v1_rt::rc_empty_map::<String, String>(),
+        leaf_owners: v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+        identities_by_leaf: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        qualified_names: crate::v1_compiler_infer_env::empty_symbol_index(),
+    })
+}
+
+pub fn type_decl_identity(owner_module: String, decl_name: String) -> String {
+    crate::v1_std_core::callable_identity(Rc::new(DeclaredCallableIdentity {
+        owner_module_path: owner_module.clone(),
+        decl_name: decl_name.clone(),
+    }))
+}
+
+pub fn declaring_span_key(sp: Rc<SourceSpan>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(sp.file.clone(), "@".to_string()),
+        (sp.start.clone()).to_string(),
+    )
+}
+
+pub fn type_decl_leaf_owner_after(
+    prior: Option<Rc<LeafOwner>>,
+    owner_module: String,
+) -> Rc<LeafOwner> {
+    match prior.clone().as_deref().cloned() {
+        Some(LeafOwner::SingleOwner { module: m, .. }) => {
+            if (m.clone() == owner_module.clone()) {
+                Rc::new(LeafOwner::SingleOwner { module: m.clone() })
+            } else {
+                Rc::new(LeafOwner::LeafAmbiguous)
+            }
+        }
+        Some(LeafOwner::LeafAmbiguous) => Rc::new(LeafOwner::LeafAmbiguous),
+        std::option::Option::None => Rc::new(LeafOwner::SingleOwner {
+            module: owner_module.clone(),
+        }),
+    }
+}
+
+pub fn type_decl_leaf_identities_with(
+    prior: Option<Rc<Vec<String>>>,
+    identity: String,
+) -> Rc<Vec<String>> {
+    match prior.clone() {
+        Some(identities) => {
+            if {
+                let mut __found = false;
+                for i in identities.iter().cloned() {
+                    if (i.clone() == identity.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                identities.clone()
+            } else {
+                v1_rt::rc_list_push(identities.clone(), identity.clone())
+            }
+        }
+        std::option::Option::None => Rc::new(vec![identity.clone()]),
+    }
+}
+
+pub fn type_decl_identities_of_leaf(index: Rc<TypeDeclIndex>, leaf: String) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&index.identities_by_leaf.clone(), leaf.clone()) {
+        Some(identities) => identities.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn type_decl_index_insert(
+    index: Rc<TypeDeclIndex>,
+    owner_module: String,
+    decl_name: String,
+    item: Rc<Node>,
+) -> Rc<TypeDeclIndex> {
+    {
+        let identity = type_decl_identity(owner_module.clone(), decl_name.clone());
+        Rc::new(TypeDeclIndex {
+            by_identity: v1_rt::rc_map_insert(
+                index.by_identity.clone(),
+                identity.clone(),
+                item.clone(),
+            ),
+            identity_by_declaring_span: match item.ident_span.clone() {
+                Some(sp) => v1_rt::rc_map_insert(
+                    index.identity_by_declaring_span.clone(),
+                    declaring_span_key(sp.clone()),
+                    identity.clone(),
+                ),
+                std::option::Option::None => index.identity_by_declaring_span.clone(),
+            },
+            leaf_owners: v1_rt::rc_map_insert(
+                index.leaf_owners.clone(),
+                decl_name.clone(),
+                type_decl_leaf_owner_after(
+                    v1_rt::map_get(&index.leaf_owners.clone(), decl_name.clone()),
+                    owner_module.clone(),
+                ),
+            ),
+            identities_by_leaf: v1_rt::rc_map_insert(
+                index.identities_by_leaf.clone(),
+                decl_name.clone(),
+                type_decl_leaf_identities_with(
+                    v1_rt::map_get(&index.identities_by_leaf.clone(), decl_name.clone()),
+                    identity.clone(),
+                ),
+            ),
+            qualified_names: index.qualified_names.clone(),
+        })
+    }
+}
+
+pub fn type_decl_resolution_at_identity(
+    index: Rc<TypeDeclIndex>,
+    identity: String,
+) -> Rc<TypeDeclResolution> {
+    match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+        Some(decl) => Rc::new(TypeDeclResolution::TypeDeclResolved {
+            identity: identity.clone(),
+            decl: decl.clone(),
+        }),
+        std::option::Option::None => Rc::new(TypeDeclResolution::TypeDeclNotDeclared),
+    }
+}
+
+pub fn resolve_type_decl_leaf(index: Rc<TypeDeclIndex>, leaf: String) -> Rc<TypeDeclResolution> {
+    match v1_rt::map_get(&index.leaf_owners.clone(), leaf.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(LeafOwner::SingleOwner { module: m, .. }) => type_decl_resolution_at_identity(
+            index.clone(),
+            type_decl_identity(m.clone(), leaf.clone()),
+        ),
+        Some(LeafOwner::LeafAmbiguous) => {
+            if crate::std_types::is_kernel_type(leaf.clone()) {
+                Rc::new(TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf.clone() })
+            } else {
+                Rc::new(TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf.clone() })
+            }
+        }
+        std::option::Option::None => Rc::new(TypeDeclResolution::TypeDeclNotDeclared),
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TypeDeclReferenceRoute {
+    RouteCarriedDeclaration,
+    RouteCarriedBinder,
+    RouteDeclaringSpan,
+    RouteReferencingModuleDeclarer,
+    RouteQualifiedSpelling,
+    RouteLeafSpelling,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeDeclRoutedResolution {
+    pub route: TypeDeclReferenceRoute,
+    pub resolution: Rc<TypeDeclResolution>,
+}
+
+pub fn type_decl_reference_interim_arms_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("RouteDeclaringSpan and RouteLeafSpelling dissolve when EVERY type reference the Rust emitter reads carries a declaration stamp: v1.tests.claim.carrier_realization_census reports emitter_decl_route carried_declaration or carried_binder at every position whose resolution is Resolved, over the self-host and dag closures, at identity grain. One stamped position, or one closure, is not that capability. Then resolve_type_decl_routed keeps its first arm, TypeDeclIndex drops identity_by_declaring_span and leaf_owners, and TypeDeclLeafAmbiguous has no producer.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn resolve_type_decl_routed(
+    index: Rc<TypeDeclIndex>,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeDeclRoutedResolution> {
+    match type_expr.declaration.clone() {
+        Some(d) => match (*d.field.clone()).clone() {
+            DeclField::WholeDeclaration => Rc::new(TypeDeclRoutedResolution {
+                route: TypeDeclReferenceRoute::RouteCarriedDeclaration,
+                resolution: type_decl_resolution_at_identity(
+                    index.clone(),
+                    type_decl_identity(d.module_path.clone(), d.decl_name.clone()),
+                ),
+            }),
+            DeclField::NamedField { field_name: _, .. } => Rc::new(TypeDeclRoutedResolution {
+                route: TypeDeclReferenceRoute::RouteCarriedBinder,
+                resolution: Rc::new(TypeDeclResolution::TypeDeclNotDeclared),
+            }),
+            DeclField::TypeParameter { name: _, .. } => Rc::new(TypeDeclRoutedResolution {
+                route: TypeDeclReferenceRoute::RouteCarriedBinder,
+                resolution: Rc::new(TypeDeclResolution::TypeDeclNotDeclared),
+            }),
+        },
+        std::option::Option::None => {
+            let by_span = match type_expr.ident_span.clone() {
+                Some(sp) => v1_rt::map_get(
+                    &index.identity_by_declaring_span.clone(),
+                    declaring_span_key(sp.clone()),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            };
+            match by_span.clone() {
+                Some(identity) => Rc::new(TypeDeclRoutedResolution {
+                    route: TypeDeclReferenceRoute::RouteDeclaringSpan,
+                    resolution: type_decl_resolution_at_identity(index.clone(), identity.clone()),
+                }),
+                std::option::Option::None => {
+                    let authored = crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        type_expr.clone(),
+                    );
+                    let leaf = crate::v1_std_core::qualified_last_segment(authored.clone());
+                    let by_spelling = resolve_type_decl_leaf(index.clone(), leaf.clone());
+                    let referencing_module_identity = match (*by_spelling.clone()).clone() {
+                        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
+                            if (authored.clone() == l.clone()) {
+                                type_decl_referencing_module_declarer(
+                                    index.clone(),
+                                    l.clone(),
+                                    type_expr.clone(),
+                                )
+                            } else {
+                                type_decl_qualifier_declarer(index.clone(), authored.clone())
+                            }
+                        }
+                        TypeDeclResolution::TypeDeclResolved { .. } => std::option::Option::None,
+                        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                            std::option::Option::None
+                        }
+                        TypeDeclResolution::TypeDeclNotDeclared => std::option::Option::None,
+                    };
+                    match referencing_module_identity.clone() {
+                        Some(identity) => Rc::new(TypeDeclRoutedResolution {
+                            route: if (authored.clone() == leaf.clone()) {
+                                TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
+                            } else {
+                                TypeDeclReferenceRoute::RouteQualifiedSpelling
+                            },
+                            resolution: type_decl_resolution_at_identity(
+                                index.clone(),
+                                identity.clone(),
+                            ),
+                        }),
+                        std::option::Option::None => Rc::new(TypeDeclRoutedResolution {
+                            route: TypeDeclReferenceRoute::RouteLeafSpelling,
+                            resolution: by_spelling.clone(),
+                        }),
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) -> Option<String> {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        index.qualified_names.clone(),
+        authored.clone(),
+    ) {
+        Some(decl) => match decl.ident_span.clone() {
+            Some(sp) => v1_rt::map_get(
+                &index.identity_by_declaring_span.clone(),
+                declaring_span_key(sp.clone()),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn type_decl_index_with_qualified_names(
+    index: Rc<TypeDeclIndex>,
+    qualified_names: Rc<SymbolIndex>,
+) -> Rc<TypeDeclIndex> {
+    Rc::new(TypeDeclIndex {
+        by_identity: index.by_identity.clone(),
+        identity_by_declaring_span: index.identity_by_declaring_span.clone(),
+        leaf_owners: index.leaf_owners.clone(),
+        identities_by_leaf: index.identities_by_leaf.clone(),
+        qualified_names: qualified_names.clone(),
+    })
+}
+
+pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn type_decl_referencing_module_declarer(
+    index: Rc<TypeDeclIndex>,
+    leaf: String,
+    reference: Rc<Node>,
+) -> Option<String> {
+    {
+        let local = Rc::new({
+            let mut __result = Vec::new();
+            for identity in type_decl_identities_of_leaf(index.clone(), leaf.clone())
+                .iter()
+                .cloned()
+            {
+                if match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                    Some(decl) => {
+                        (decl.span.clone().file.clone() == reference.span.clone().file.clone())
+                    }
+                    std::option::Option::None => false,
+                } {
+                    __result.push(identity);
+                }
+            }
+            __result
+        });
+        if (local
+            .iter()
+            .cloned()
+            .fold(0, |n: i64, _identity: String| v1_rt::int_add(n, 1))
+            == 1)
+        {
+            local
+                .iter()
+                .cloned()
+                .fold(std::option::Option::None, |acc: _, identity: String| {
+                    Some(identity.clone())
+                })
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn resolve_type_decl_reference(
+    index: Rc<TypeDeclIndex>,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeDeclResolution> {
+    resolve_type_decl_routed(index.clone(), type_expr.clone(), source_indices.clone())
+        .resolution
+        .clone()
+}
+
+pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -> String {
+    {
+        let route = match routed.route.clone() {
+            TypeDeclReferenceRoute::RouteCarriedDeclaration => "carried_declaration".to_string(),
+            TypeDeclReferenceRoute::RouteCarriedBinder => "carried_binder".to_string(),
+            TypeDeclReferenceRoute::RouteDeclaringSpan => "declaring_span".to_string(),
+            TypeDeclReferenceRoute::RouteReferencingModuleDeclarer => {
+                "referencing_module_declarer".to_string()
+            }
+            TypeDeclReferenceRoute::RouteQualifiedSpelling => "qualified_spelling".to_string(),
+            TypeDeclReferenceRoute::RouteLeafSpelling => "leaf_spelling".to_string(),
+        };
+        match (*routed.resolution.clone()).clone() {
+            TypeDeclResolution::TypeDeclResolved { identity, .. } => v1_rt::concat(
+                v1_rt::concat(route.clone(), ":Resolved:".to_string()),
+                identity.clone(),
+            ),
+            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => v1_rt::concat(
+                v1_rt::concat(route.clone(), ":LeafAmbiguous:".to_string()),
+                leaf.clone(),
+            ),
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
+                v1_rt::concat(
+                    v1_rt::concat(route.clone(), ":KernelSpellingUndecided:".to_string()),
+                    leaf.clone(),
+                )
+            }
+            TypeDeclResolution::TypeDeclNotDeclared => {
+                v1_rt::concat(route.clone(), ":NotDeclared".to_string())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub type_decl_items: Rc<TypeDeclIndex>,
     pub data_variant_wire_spellings: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub recursive_type_set: Rc<BTreeSet<String>>,
@@ -233,7 +655,7 @@ pub struct EmitGraphInfo {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub type_decl_items: Rc<TypeDeclIndex>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
@@ -243,7 +665,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         item_leaf_owner_modules: v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        type_decl_items: empty_type_decl_index(),
         data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(),
         fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
@@ -383,10 +805,6 @@ pub fn lookup_emit_type_summary(
     type_name: String,
 ) -> Option<Rc<TypeSummary>> {
     v1_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone())
-}
-
-pub fn lookup_emit_type_decl(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<Node>> {
-    v1_rt::map_get(&emit_info.type_decl_items.clone(), type_name.clone())
 }
 
 pub fn emit_graph_records_type_decl(
@@ -653,6 +1071,9 @@ pub fn enum_field_type_consistent(
                     crate::v1_compiler_infer_types::child_type_node(field_child.clone()),
                     expected.clone(),
                     source_indices.clone(),
+                    Rc::new(TextJudgment::TextNotAsked {
+                        reason: TextNotAskedReason::TextNotAskedInVariantFieldSummary,
+                    }),
                 ),
                 std::option::Option::None => false,
             }) {
@@ -953,73 +1374,143 @@ pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     }
 }
 
-pub fn type_summary_or_structural_alias_reaches_fn(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FnReachRound {
+    pub reached: Rc<BTreeSet<String>>,
+    pub grew: bool,
+}
+
+pub fn fn_reach_holds_directly(
+    name: String,
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+) -> bool {
+    match v1_rt::map_get(&summaries, name.clone()) {
+        Some(s) => s.has_fn_fields.clone(),
+        std::option::Option::None => {
+            v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
+        }
+    }
+}
+
+pub fn fn_reach_targets(
     name: String,
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
-    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
-    visited: Rc<BTreeSet<String>>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v1_rt::set_contains(&visited, name.clone()) {
-            false
-        } else {
-            {
-                let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
-                match v1_rt::map_get(&summaries, name.clone()) {
-                    Some(s) => {
-                        (s.has_fn_fields.clone() || {
-                            let mut __found = false;
-                            for target in v1_rt::concat(
-                                Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
-                                s.field_import_surface_names.clone(),
-                            )
-                            .iter()
-                            .cloned()
-                            {
-                                if type_summary_or_structural_alias_reaches_fn(
-                                    target.clone(),
-                                    summaries.clone(),
-                                    structural_alias_fn_surface_names.clone(),
-                                    structural_alias_direct_fn_names.clone(),
-                                    v2.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        })
-                    }
-                    std::option::Option::None => {
-                        (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
-                            || match v1_rt::map_get(
-                                &structural_alias_fn_surface_names,
-                                name.clone(),
-                            ) {
-                                Some(targets) => {
-                                    let mut __found = false;
-                                    for target in targets.iter().cloned() {
-                                        if type_summary_or_structural_alias_reaches_fn(
-                                            target.clone(),
-                                            summaries.clone(),
-                                            structural_alias_fn_surface_names.clone(),
-                                            structural_alias_direct_fn_names.clone(),
-                                            v2.clone(),
-                                        ) {
-                                            __found = true;
-                                            break;
-                                        }
-                                    }
-                                    __found
-                                }
-                                std::option::Option::None => false,
-                            })
-                    }
-                }
+) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&summaries, name.clone()) {
+        Some(s) => v1_rt::concat(
+            Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
+            s.field_import_surface_names.clone(),
+        ),
+        std::option::Option::None => {
+            match v1_rt::map_get(&structural_alias_fn_surface_names, name.clone()) {
+                Some(targets) => targets.clone(),
+                std::option::Option::None => Rc::new(vec![]),
             }
         }
-    })
+    }
+}
+
+pub fn fn_reaching_names_fixpoint(
+    mut __tco_loop_candidates: Rc<Vec<String>>,
+    mut __tco_loop_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    mut __tco_loop_structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut __tco_loop_structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+    mut __tco_loop_reached: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut candidates = __tco_loop_candidates;
+        #[allow(unused_mut)]
+        let mut summaries = __tco_loop_summaries;
+        #[allow(unused_mut)]
+        let mut structural_alias_fn_surface_names = __tco_loop_structural_alias_fn_surface_names;
+        #[allow(unused_mut)]
+        let mut structural_alias_direct_fn_names = __tco_loop_structural_alias_direct_fn_names;
+        #[allow(unused_mut)]
+        let mut reached = __tco_loop_reached;
+        let round = candidates.iter().cloned().fold(
+            Rc::new(FnReachRound {
+                reached: reached.clone(),
+                grew: false,
+            }),
+            |acc: Rc<FnReachRound>, name: String| {
+                if v1_rt::set_contains(&acc.reached.clone(), name.clone()) {
+                    acc.clone()
+                } else {
+                    if (fn_reach_holds_directly(
+                        name.clone(),
+                        summaries.clone(),
+                        structural_alias_direct_fn_names.clone(),
+                    ) || {
+                        let mut __found = false;
+                        for target in fn_reach_targets(
+                            name.clone(),
+                            summaries.clone(),
+                            structural_alias_fn_surface_names.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            if (v1_rt::set_contains(&acc.reached.clone(), target.clone())
+                                || fn_reach_holds_directly(
+                                    target.clone(),
+                                    summaries.clone(),
+                                    structural_alias_direct_fn_names.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
+                        Rc::new(FnReachRound {
+                            reached: v1_rt::rc_set_insert(acc.reached.clone(), name.clone()),
+                            grew: true,
+                        })
+                    } else {
+                        acc.clone()
+                    }
+                }
+            },
+        );
+        if round.grew.clone() {
+            {
+                let __tco_0 = candidates;
+                let __tco_1 = summaries;
+                let __tco_2 = structural_alias_fn_surface_names;
+                let __tco_3 = structural_alias_direct_fn_names;
+                let __tco_4 = round.reached.clone();
+                __tco_loop_candidates = __tco_0;
+                __tco_loop_summaries = __tco_1;
+                __tco_loop_structural_alias_fn_surface_names = __tco_2;
+                __tco_loop_structural_alias_direct_fn_names = __tco_3;
+                __tco_loop_reached = __tco_4;
+                continue;
+            }
+        } else {
+            break round.reached.clone();
+        }
+    }
+}
+
+pub fn fn_reaching_names(
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
+    fn_reaching_names_fixpoint(
+        v1_rt::concat(
+            Rc::new(v1_rt::map_keys(&summaries)),
+            Rc::new(v1_rt::map_keys(&structural_alias_fn_surface_names)),
+        ),
+        summaries.clone(),
+        structural_alias_fn_surface_names.clone(),
+        structural_alias_direct_fn_names.clone(),
+        v1_rt::rc_empty_set::<String>(),
+    )
 }
 
 pub fn close_fn_fields(
@@ -1027,43 +1518,42 @@ pub fn close_fn_fields(
     structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
     structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
 ) -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
-        summaries.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
-            &summaries,
-            name.clone(),
-        ) {
-            Some(s) => {
-                if (!s.has_fn_fields.clone()
-                    && type_summary_or_structural_alias_reaches_fn(
-                        name.clone(),
-                        summaries.clone(),
-                        structural_alias_fn_surface_names.clone(),
-                        structural_alias_direct_fn_names.clone(),
-                        v1_rt::rc_empty_set::<String>(),
-                    ))
-                {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        name.clone(),
-                        Rc::new(TypeSummary {
-                            name: s.name.clone(),
-                            repr: s.repr.clone(),
-                            field_summaries: s.field_summaries.clone(),
-                            field_type_map: s.field_type_map.clone(),
-                            field_import_surface_names: s.field_import_surface_names.clone(),
-                            variant_name_set: s.variant_name_set.clone(),
-                            generic_param_names: s.generic_param_names.clone(),
-                            has_fn_fields: true,
-                        }),
-                    )
-                } else {
-                    acc.clone()
+    {
+        let reaching = fn_reaching_names(
+            summaries.clone(),
+            structural_alias_fn_surface_names.clone(),
+            structural_alias_direct_fn_names.clone(),
+        );
+        Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
+            summaries.clone(),
+            |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+                &summaries,
+                name.clone(),
+            ) {
+                Some(s) => {
+                    if (!s.has_fn_fields.clone() && v1_rt::set_contains(&reaching, name.clone())) {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            name.clone(),
+                            Rc::new(TypeSummary {
+                                name: s.name.clone(),
+                                repr: s.repr.clone(),
+                                field_summaries: s.field_summaries.clone(),
+                                field_type_map: s.field_type_map.clone(),
+                                field_import_surface_names: s.field_import_surface_names.clone(),
+                                variant_name_set: s.variant_name_set.clone(),
+                                generic_param_names: s.generic_param_names.clone(),
+                                has_fn_fields: true,
+                            }),
+                        )
+                    } else {
+                        acc.clone()
+                    }
                 }
-            }
-            std::option::Option::None => acc.clone(),
-        },
-    )
+                std::option::Option::None => acc.clone(),
+            },
+        )
+    }
 }
 
 pub fn structural_alias_direct_fn_names_with(
@@ -1080,6 +1570,7 @@ pub fn structural_alias_direct_fn_names_with(
 
 pub fn add_emit_item_summary(
     state: Rc<EmitInfoBuildState>,
+    module_name: String,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<EmitInfoBuildState> {
@@ -1129,8 +1620,9 @@ pub fn add_emit_item_summary(
         {
             Rc::new(EmitInfoBuildState {
                 type_summaries: state.type_summaries.clone(),
-                type_decl_items: v1_rt::rc_map_insert(
+                type_decl_items: type_decl_index_insert(
                     state.type_decl_items.clone(),
+                    module_name.clone(),
                     decl_name.clone(),
                     item.clone(),
                 ),
@@ -1259,8 +1751,21 @@ pub fn add_emit_item_summary(
 pub fn emit_dependency_registration_dissolve_on_note() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + reference_derived_use_line_plan and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteCarriedDeclaration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteCarriedBinder;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteDeclaringSpan;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteReferencingModuleDeclarer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteQualifiedSpelling;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteLeafSpelling;

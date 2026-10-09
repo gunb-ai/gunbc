@@ -1,0 +1,234 @@
+module gunbc.fabric_storage_placement
+
+import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
+
+import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
+import std.effect_grant { Read, Write, Execute }
+import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
+import gunbc.ownership { Ensured }
+import gunbc.managed_directory {
+  ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
+  EntriesUnmanaged, EntriesReadableByDependents, managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
+import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
+import extdeps.access.posix { FileMode, file_mode_bits }
+
+// WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
+// POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
+// served handler are its realization, and which host and which root is this row. Moving the store is
+// a row change here; nothing downstream names the host.
+//
+// ONE PLACEMENT, NOT A REPLICA SET (operator approval 2026-09-19): a head needs exactly one
+// linearization point, and an unreachable placement refuses acquisitions rather than failing over.
+// Replication is docs/plans/fabric-storage.md.
+
+type FabricStoragePlacement
+  = FabricStorageUnplaced
+  | FabricStoragePlaced { host: HostIdentity, store_root: NonEmptyStr, endpoint: NonEmptyStr }
+
+// The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
+// fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
+// instead of guessing an address. (gunbc.fleet_tailnet tailnet_base_url_from
+// derives the same URL shape but answers an undeclared domain with a fabricated .invalid address; a
+// placement must refuse there instead, so it is not reused.)
+//
+// A DEDICATED LISTENER AT THE ROOT MOUNT, not a --set-path mount on the dashboard's 443: whether
+// tailscale strips a mount path before proxying is not modeled in extdeps.tailscale.serve, and a root
+// mount makes the question not arise -- the request path the caller sends is the path the handler
+// routes on. 10000 because srv1's 443 carries the dashboard and its 8443 the approval notification
+// server (gunbc.auth.approval_ntfy_publish approval_ntfy_serve_port); tailscale serve admits
+// HTTPS listeners on 443, 8443 and 10000 only.
+data fabric_storage_https_port: Port = 10000
+
+// THE DOOR IS A UNIX SOCKET, NOT A LOOPBACK PORT. A loopback TCP listener is reachable by every
+// account on the placed host, each able to present a forged Tailscale-User-Login; a socket's peer
+// is attested by the kernel (SO_PEERCRED, read by `gunbc serve --unix-socket`), and its directory
+// admits exactly the writers declared below. tailscale serve proxies to it as root
+// (extdeps.tailscale.serve tailscale_serve_unix_target), so a proxied request's peer is root and a
+// local writer's peer is itself -- the two populations the door tells apart.
+fn fabric_storage_door_directory_path() -> NonEmptyStr {
+  dashboard_instance_child(root: fabric_storage_placed_instance().instance_root, child: "fabric-storage-door") as String as NonEmptyStr
+}
+
+fn fabric_storage_door_socket() -> NonEmptyStr {
+  join([fabric_storage_door_directory_path() as String, "/door.sock"], "") as NonEmptyStr
+}
+
+// The peer the tailscale proxy connects as. tailscaled runs as root, and since v1.98.9 only root may
+// configure a unix proxy target at all (TS-2026-005), so a root peer is the proxy and its request's
+// login header is the principal; every other peer is its own principal and the header is ignored.
+data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_peer
+
+
+
+// The store root is the placed instance's fabric DB root -- one authority with the deployment that
+// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
+fn fabric_storage_placed_instance() -> HostDashboardInstance {
+  srv1_live_dashboard_instance()
+}
+
+fn fabric_storage_store_root() -> NonEmptyStr {
+  dashboard_instance_fabric_storage_root(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
+}
+
+// WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
+// there. Identity is the instance's own id, not a path comparison.
+fn fabric_storage_placed_on(instance: HostDashboardInstance) -> Bool {
+  (instance.instance_id as String) == (fabric_storage_placed_instance().instance_id as String)
+}
+
+fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
+  match fleet_intent_network.tailnet_domain {
+    Absent => none
+    Present { value: domain } => Present { value: join(["https://", host as String, ".", domain as String, ":", to_string(fabric_storage_https_port), fabric_storage_route_prefix], "") as NonEmptyStr }
+  }
+}
+
+fn fabric_storage_placement() -> FabricStoragePlacement {
+  match fabric_storage_endpoint_for(host: operator_host_srv1) {
+    Absent => FabricStorageUnplaced
+    Present { value: e } => FabricStoragePlaced { host: operator_host_srv1, store_root: fabric_storage_store_root(), endpoint: e }
+  }
+}
+
+// ── WHO WRITES THE STORE, AND SO WHAT ITS DIRECTORIES ARE ────────────────────────────────────────
+//
+// ONE PRINCIPAL WRITES THIS STORE'S FILES: the served endpoint (gunbc.live_deploy.emit
+// live_deploy_fabric_storage_unit_file), running as the dashboard service principal. Every writer --
+// a remote host through tailscale serve, and the placed host's own jobs and operator through the
+// door socket -- reaches the files only as a request to that process, so the door's admission
+// (gunbc.fabric_storage_serve) is the one wall over every writer. Until 2026-09-27 the CI job
+// principal ALSO wrote the files directly (FabricStorageLocalFiles, bound for the placed host by
+// gunbc.fabric_storage_binding fabric_storage_binding_for), and the areas were group ghrunner so it
+// could; that in-process route is retired (operator ruling relayed by proud-deer-538), and with it
+// the group. A writer now needs no filesystem grant on the store at all: it needs to reach the door.
+//
+// Both writes are create-only in flat directories: an object is an exclusive create, and a head
+// generation is a staged sibling hard-linked into its name (gunbc.durable_cas_file_store
+// DefaultAccessCreateOnly), so the service needs Read, Write and Execute on objects/ and heads/ and
+// Execute on the root. Nothing is writable after publication; the entry mode is derived from the
+// same dependents (gunbc.managed_directory managed_directory_entry_mode).
+//
+// WHAT THIS DOES NOT WALL: root, and the service principal itself -- any process running as the
+// operator account can write the files without passing the door. Those are outside the door's
+// model and stated here so they are chosen, not inherited.
+//
+// THE ENTRIES ARE NOT REPAIRED BY THE ENSURE ANY MORE: the service is the only writer, and it
+// publishes every entry at the declared mode itself (fabric_storage_placed_file_root). Entries the
+// CI principal wrote in process before the door cutover are ghrunner's and were repaired to
+// other-read by the ensure this replaces; the service reads them through that bit, and a read
+// that fails refuses loudly at the store rather than being papered over here.
+fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: member,
+    path: path as String as FilePath,
+    owner: service,
+    group_principal: service,
+    dependents: [
+      DirectoryDependent { who: service, needs: if writes { [Read, Write, Execute] } else { [Execute] } },
+    ],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+// THE DOOR'S DIRECTORY IS THE LOCAL WRITER ROSTER. A local process reaches the socket only by
+// traversing this directory, and the door's handler admits a local peer only if it is one of these
+// dependents (gunbc.fabric_storage_serve fabric_storage_door_local_writers) -- one declaration read
+// twice, by the kernel and by the handler. The service owns it; the CI runner (fleet-converge jobs on
+// the placed host) is its group and needs only to traverse to connect: the socket itself is opened
+// to every class by `gunbc serve --unix-socket`, so its directory is the whole filesystem wall.
+fn fabric_storage_door_directory() -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: "fabric-storage-door",
+    path: fabric_storage_door_directory_path() as String as FilePath,
+    owner: service,
+    group_principal: fleet_posix_ci_runner_user,
+    dependents: [
+      DirectoryDependent { who: service, needs: [Read, Write, Execute] },
+      DirectoryDependent { who: fleet_posix_ci_runner_user, needs: [Execute] },
+    ],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+fn fabric_storage_door_local_writers() -> List<NonEmptyStr> {
+  map(fabric_storage_door_directory().dependents, d => d.who.name)
+}
+
+// ONE ENTRY MODE FOR THE STORE, OR A REFUSAL. Both writable areas derive it from their own
+// dependents; they must agree, because the store publishes objects and heads under one declared
+// mode, and a disagreement means the two areas' readers differ -- a modeling change this function
+// refuses to paper over by picking one.
+type FabricStorageEntryMode
+  = FabricStorageEntryModeDerived { mode: FileMode }
+  | FabricStorageEntryModeRefused { detail: NonEmptyStr }
+
+fn fabric_storage_entry_mode_of(objects: ManagedDirectory, heads: ManagedDirectory) -> FabricStorageEntryMode {
+  match managed_directory_entry_mode(d: objects) {
+    ManagedEntryModeRefused { member, path: _, reason } => FabricStorageEntryModeRefused { detail: join([member as String, ": ", reason as String], "") as NonEmptyStr }
+    ManagedEntryModeDerived { mode: o } =>
+      match managed_directory_entry_mode(d: heads) {
+        ManagedEntryModeRefused { member, path: _, reason } => FabricStorageEntryModeRefused { detail: join([member as String, ": ", reason as String], "") as NonEmptyStr }
+        ManagedEntryModeDerived { mode: h } =>
+          if file_mode_bits(mode: o) == file_mode_bits(mode: h) { FabricStorageEntryModeDerived { mode: o } }
+          else { FabricStorageEntryModeRefused { detail: "the objects and heads areas derive different entry modes" as NonEmptyStr } }
+      }
+  }
+}
+
+fn fabric_storage_entry_mode() -> FabricStorageEntryMode {
+  let areas = fabric_storage_file_root(root: fabric_storage_store_root())
+  fabric_storage_entry_mode_of(
+    objects: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true),
+    heads: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true),
+  )
+}
+
+// THE PLACED STORE'S FILES, WITH THE DERIVED ENTRY MODE, which is what every production writer on the
+// placed host binds -- the served handler and the in-process client alike -- so an entry either
+// writer publishes is readable by the other.
+type FabricStoragePlacedRoot
+  = FabricStoragePlacedRootReady { root: FabricStorageFileRoot }
+  | FabricStoragePlacedRootRefused { detail: NonEmptyStr }
+
+fn fabric_storage_placed_file_root(store_root: NonEmptyStr) -> FabricStoragePlacedRoot {
+  match fabric_storage_entry_mode() {
+    FabricStorageEntryModeRefused { detail } => FabricStoragePlacedRootRefused { detail: detail }
+    FabricStorageEntryModeDerived { mode } => FabricStoragePlacedRootReady { root: fabric_storage_file_root_with(root: store_root, entry_mode: Present { value: mode }) }
+  }
+}
+
+fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
+  let root = fabric_storage_store_root()
+  let areas = fabric_storage_file_root(root: root)
+  [
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root))),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads)),
+    managed_directory_admit(d: fabric_storage_door_directory()),
+  ]
+}
+
+// The authenticated state space shares the fabric DB service and CAS implementation, but never
+// shares its object directory with the legacy CI-writable namespace. A public head alias therefore
+// cannot expose private state objects. Only the store service writes here, even for local callers.
+fn fabric_storage_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: member, path: path as String as FilePath, owner: service, group_principal: service,
+    dependents: [DirectoryDependent { who: service, needs: [Read, Write, Execute] }],
+    ownership: Ensured, entries: EntriesUnmanaged,
+  }
+}

@@ -7,10 +7,10 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_spawner { spawn_frontier }
 import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import gunbc.roadmap_launch_admission { LaunchCensusRow }
 import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count }
 import gunbc.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
   BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
   BeltLaunchPass, belt_tick_launch_pass,
@@ -28,8 +28,7 @@ import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
-  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, launch_cause_label,
@@ -67,6 +66,7 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending,
   launch_fixture_identity,
 }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, readiness_gap_label }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -113,6 +113,18 @@ fn decide(cause: LaunchCause, standing: LaunchHostStanding, g: LaunchGraphStandi
   launch_admission(cause: cause, standing: standing, graph: g, merged: [], node_id: node_id, reserved: 0)
 }
 
+// The readiness refusal names every missing fact; a witness about one of them asks that the refusal
+// is LaunchNotReady and that its missing list carries that fact's label.
+fn not_ready_missing(a: LaunchAdmission, gap: String) -> Bool {
+  match a {
+    LaunchAdmitted { identity: _ } => false
+    LaunchRefused { refusal } => match refusal {
+      LaunchNotReady { missing } => any(missing, g => readiness_gap_label(g: g) == gap)
+      _ => false
+    }
+  }
+}
+
 fn refused_as(a: LaunchAdmission, label: String) -> Bool {
   match a {
     LaunchAdmitted { identity: _ } => false
@@ -132,12 +144,14 @@ test fn witness_operator_admitted_for_ready_parent() -> Bool {
   }
 }
 
-// (a) The blocked child: refused on its dependency, naming the exact parent identity.
-test fn witness_blocked_child_refused_dependencies_blocked() -> Bool {
+// (a) The blocked child: refused NotReady with exactly one missing fact, its dependency, naming the
+// exact parent identity.
+test fn witness_blocked_child_refused_not_ready_on_its_dependency() -> Bool {
   match decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: graph_child_contracted(), node_id: child_id()) {
     LaunchRefused { refusal } =>
       match refusal {
-        LaunchDependenciesBlocked { blockers } => blockers == [parent_id()]
+        LaunchNotReady { missing } =>
+          count(missing) == 1 && all(missing, g => match g { GapDependencies { blockers } => blockers == [parent_id()]  _ => false })
         _ => false
       }
     LaunchAdmitted { identity: _ } => false
@@ -148,6 +162,7 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
   }
 }
@@ -166,10 +181,11 @@ test fn witness_blocked_child_fold_reaches_no_actuation() -> Bool {
   )
   count(outcomes) == 1
     && all(outcomes, o => no_actuation_outcome(o: o))
-    && all(outcomes, o => belt_dispatch_status_label(r: o) == "dependencies_blocked")
+    && all(outcomes, o => belt_dispatch_status_label(r: o) == "not_ready")
 }
 
-// (c) THE MUTATION CONTROL: the same ledger with the dependency verdict replaced admits.
+// (c) THE MUTATION CONTROL: the same ledger with the readiness verdict replaced admits, so the
+// readiness gate (whose only refusing fact here is the dependency) is the load-bearing one.
 test fn witness_dependency_gate_is_load_bearing() -> Bool {
   let facts = launch_decision_facts(
     cause: Operator,
@@ -185,13 +201,12 @@ test fn witness_dependency_gate_is_load_bearing() -> Bool {
     transition: ledger.transition,
     revision: ledger.revision,
     node: ledger.node,
-    contract: ledger.contract,
-    dependencies: GatePassed,
+    readiness: GatePassed,
     live: ledger.live,
     capacity: ledger.capacity,
     cause: ledger.cause,
   }, identity: facts.identity }
-  refused_as(a: launch_admission_of_facts(f: facts), label: "dependencies_blocked")
+  not_ready_missing(a: launch_admission_of_facts(f: facts), gap: "dependencies")
     && (match launch_admission_of_facts(f: mutated) {
       LaunchAdmitted { identity } => launch_identity_node_id_text(id: identity) == child_id()
       LaunchRefused { refusal: _ } => false
@@ -217,13 +232,12 @@ test fn witness_mutating_a_passing_gate_changes_nothing() -> Bool {
     transition: ledger.transition,
     revision: ledger.revision,
     node: ledger.node,
-    contract: ledger.contract,
-    dependencies: ledger.dependencies,
+    readiness: ledger.readiness,
     live: ledger.live,
     capacity: GatePassed,
     cause: GatePassed,
   }, identity: facts.identity }
-  refused_as(a: launch_admission_of_facts(f: mutated), label: "dependencies_blocked")
+  not_ready_missing(a: launch_admission_of_facts(f: mutated), gap: "dependencies")
 }
 
 // (b) The timer in ManualReady never starts a Ready node.
@@ -435,7 +449,7 @@ test fn witness_authority_unobserved_refused_after_host_gates() -> Bool {
 }
 
 test fn witness_accepted_parent_relaunch_refused_already_accepted() -> Bool {
-  refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: graph_parent_accepted(), node_id: parent_id()), label: "already_done_signed_off")
+  not_ready_missing(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: graph_parent_accepted(), node_id: parent_id()), gap: "accepted")
 }
 
 test fn witness_accepted_parent_unlocks_child() -> Bool {
@@ -445,13 +459,22 @@ test fn witness_accepted_parent_unlocks_child() -> Bool {
   }
 }
 
-// The RLM-0 finding, collapsed: the frontier still calls the unspecified-contract child Ready when its
-// edge is removed, and the admission refuses it ExecutionContractMissing -- one answer, and it is No.
+// The RLM-0 finding, collapsed: the frontier still calls an unspecified-contract child Ready when it
+// has no edge, and the admission refuses it NotReady on its contract -- one answer, and it is No.
+fn unbound_child() -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_child_identity,
+    id: roadmap_launch_canary_child_node_id(),
+    execution: ExecutionContractUnspecified,
+    signoff: Unsigned,
+  )
+}
+
 test fn witness_unspecified_contract_refused_where_frontier_admits() -> Bool {
-  let doc = canary_doc(nodes: [canary_child()], edges: [])
+  let doc = canary_doc(nodes: [unbound_child()], edges: [])
   let frontier_admits = any(spawn_frontier(doc: doc, merged: []).ready, n => n.node == roadmap_launch_canary_child_node_id())
   frontier_admits
-    && refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: launch_graph_of_document(doc: doc), node_id: child_id()), label: "execution_contract_missing")
+    && not_ready_missing(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: launch_graph_of_document(doc: doc), node_id: child_id()), gap: "contract")
 }
 
 test fn witness_static_render_refuses_at_instance_gate() -> Bool {
@@ -471,17 +494,17 @@ fn labels_distinct(labels: List<String>) -> Bool {
 
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 23 && labels_distinct(labels: labels)
+  count(labels) == 15 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
   let text = launch_admission_contract_text()
   let hex = launch_admission_contract_digest_hex()
-  string_contains(s: text, pattern: "gates=instance>transition>revision>node>contract>dependencies>live>capacity>cause")
-    && string_contains(s: text, pattern: "dependencies_blocked")
+  string_contains(s: text, pattern: "gates=instance>transition>revision>node>readiness>live>capacity>cause")
+    && string_contains(s: text, pattern: "not_ready")
     && string_contains(s: text, pattern: "modes=paused,manual_ready,automatic_ready")
     && string_length(s: hex) == 16
-    && count(launch_gate_names()) == 9
+    && count(launch_gate_names()) == 8
 }
 
 // Controls for the four production-boundary findings of review 5059520727 on #9696, each enrolled
@@ -497,6 +520,9 @@ test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
 // identity (node, mode, instance, revision), differing only in cause; the route's JSON and the
 // durable tick receipt carry it whole and the receipt round-trips.
 
+// The capacity witnesses need three admission-eligible nodes. Each canary node carries its own
+// centering plan and root lineage (gunbc.roadmap_launch_canary), so a third fixture id is as
+// dispatchable as the two canary ids.
 fn rlm_ready_node(id: String) -> RoadmapNode {
   canary_node(
     identity: roadmap_launch_canary_parent_identity,
@@ -506,8 +532,12 @@ fn rlm_ready_node(id: String) -> RoadmapNode {
   )
 }
 
+fn rlm_centered_ids() -> List<String> {
+  [parent_id(), child_id(), "rlm-third-canary"]
+}
+
 fn rlm_three_ready() -> List<RoadmapNode> {
-  [ rlm_ready_node(id: "rlm-a"), rlm_ready_node(id: "rlm-b"), rlm_ready_node(id: "rlm-c") ]
+  rlm_centered_ids() |> map(id => rlm_ready_node(id: id))
 }
 
 fn rlm_three_graph() -> LaunchGraphStanding {
@@ -546,8 +576,8 @@ test fn witness_three_candidates_one_slot_all_reach_admission() -> Bool {
     merged: [],
   )
   count(ds) == 3
-    && (match nth(ds: ds, n: 0) { Present { value: d } => decision_admits_node(d: d, id: "rlm-a") Absent => false })
-    && (match nth(ds: ds, n: 1) { Present { value: d } => decision_withheld_as(d: d, id: "rlm-b", label: "no_capacity") Absent => false })
+    && (match nth(ds: ds, n: 0) { Present { value: d } => decision_admits_node(d: d, id: parent_id()) Absent => false })
+    && (match nth(ds: ds, n: 1) { Present { value: d } => decision_withheld_as(d: d, id: child_id(), label: "no_capacity") Absent => false })
     && (match nth(ds: ds, n: 2) {
       Present { value: d } =>
         match d {
@@ -604,6 +634,7 @@ fn timer_pass_over_canary(standing: LaunchHostStanding) -> BeltLaunchPass {
     frontier: spawn_frontier(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]), merged: []),
     graph: graph(),
     merged: [],
+    tmux_live: [],
   )
 }
 
@@ -679,7 +710,7 @@ test fn witness_exited_or_absent_process_frees_its_slot() -> Bool {
   one_slot_admits_parent_beside(live: [exited]) && one_slot_admits_parent_beside(live: [absent])
 }
 
-fn one_slot_admits_parent_beside(live: List<DispatchLiveSession>) -> Bool {
+fn one_slot_admits_parent_beside(live: List<LaunchCensusRow>) -> Bool {
   match decide(
     cause: Operator,
     standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: live, max_concurrent: 1),
@@ -765,6 +796,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
+    metering_pass: BeltPassRecorded,
   }
   match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {
     BeltTickReceiptPresent { receipt: back } =>
@@ -785,6 +817,13 @@ fn staged(standing: LaunchHostStanding, g: LaunchGraphStanding, node_id: String)
   launch_admission_staged(cause: Operator, standing: standing, graph: g, merged: [], node_id: node_id, reserved: 0)
 }
 
+fn stage_not_ready_missing(st: LaunchStagedAdmission, gap: String) -> Bool {
+  match st {
+    LaunchStageDecided { admission } => not_ready_missing(a: admission, gap: gap)
+    LaunchStageNeedsSessions => false
+  }
+}
+
 fn stage_refused_as(st: LaunchStagedAdmission, label: String) -> Bool {
   match st {
     LaunchStageDecided { admission } => refused_as(a: admission, label: label)
@@ -797,11 +836,11 @@ test fn witness_pending_sessions_unknown_node_decided_without_sessions() -> Bool
 }
 
 test fn witness_pending_sessions_contract_missing_decided_without_sessions() -> Bool {
-  stage_refused_as(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: child_id()), label: "execution_contract_missing")
+  stage_not_ready_missing(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), unbound_child()], edges: [roadmap_launch_canary_edge()])), node_id: child_id()), gap: "contract")
 }
 
 test fn witness_pending_sessions_blocked_child_decided_without_sessions() -> Bool {
-  stage_refused_as(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph_child_contracted(), node_id: child_id()), label: "dependencies_blocked")
+  stage_not_ready_missing(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph_child_contracted(), node_id: child_id()), gap: "dependencies")
 }
 
 test fn witness_pending_sessions_ready_parent_needs_sessions() -> Bool {
@@ -839,10 +878,10 @@ fn flip_stage(row: LaunchGateRow) -> LaunchGateRow {
 test fn witness_contract_binds_the_session_boundary() -> Bool {
   let rows = launch_gate_template()
   let canonical = launch_contract_text_of_rows(rows: rows)
-  let reclassified = launch_contract_text_of_rows(rows: rows |> map(row => if row.gate == "dependencies" { flip_stage(row: row) } else { row }))
+  let reclassified = launch_contract_text_of_rows(rows: rows |> map(row => if row.gate == "readiness" { flip_stage(row: row) } else { row }))
   let reordered = launch_contract_text_of_rows(rows: concat(rows.skip(n: 1), rows.take(n: 1)))
   canonical == launch_admission_contract_text()
-    && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,contract,dependencies;session=live,capacity,cause")
+    && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,readiness;session=live,capacity,cause")
     && reclassified != canonical
     && reordered != canonical
 }

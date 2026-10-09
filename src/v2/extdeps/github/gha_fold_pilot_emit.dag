@@ -1,18 +1,16 @@
 module v2.extdeps.github.gha_fold_pilot_emit
 
+import std.types { List }
 import extdeps.languages.yaml.types { YamlKeyValue }
+import extdeps.github.action_release { ActionRelease }
 import extdeps.github.actions {
-  ActionRef,
   RunStep,
   ShellType,
   Step,
   UsesStep
 }
 import v2.std.algebra { for_all }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
@@ -20,7 +18,7 @@ import v2.std.optional {
 
 type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
-  | GhaPilotUsesEmit { uses: ActionRef }
+  | GhaPilotUsesEmit { uses: ActionRelease }
 
 fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
   match opt {

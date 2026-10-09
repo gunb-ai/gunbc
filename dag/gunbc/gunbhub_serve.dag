@@ -1,6 +1,7 @@
 module gunbc.gunbhub_serve
 
-import std.types { HttpMethod, HttpStatus, GET }
+import v2.std.algebra { filter }
+import std.types { HttpStatus }
 import extdeps.uri_path { PathTemplate, UrlPathToken }
 import extdeps.uri_path {
   PathTemplateParseResult,
@@ -32,6 +33,7 @@ import extdeps.http.server {
   ServedStaticRoute,
   ServedStaticRouteTable,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET }
 
 type GunbhubServeRequest {
   method: HttpMethod
@@ -234,7 +236,7 @@ fn request_path_segments(path: String) -> List<String> {
   if path_only == "/" {
     []
   } else {
-    filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+    filter(xs: split(s: path_only, delimiter: "/"), predicate: s => s != "")
   }
 }
 

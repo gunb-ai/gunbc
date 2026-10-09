@@ -1,12 +1,15 @@
 module gunbc.witness_floor_workflow
 
+
 import std.measure { Minute, minute, minute_count }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
+import gunbc.ci_release_bins { ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -16,8 +19,9 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import v2.std.algebra { FreeSemigroup, fold_list, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
+import std.algebra { Cons, list_append }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import v2.workflow.ci_heal_revalidation_preflight_emit { ci_heal_revalidation_preflight_script }
@@ -39,8 +43,7 @@ import gunbc.compile_permit_scope {
   fleet_compile_cancellation_standing
 }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  upload_artifact_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
@@ -48,33 +51,32 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
-  RunnerSpec,
-  checkout_action, setup_rust_action,
+  RunnerSpec, 
   github_event_name_pull_request,
   github_event_name_merge_group,
   github_event_name_workflow_dispatch
 }
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
+  checkout_action, setup_rust_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
+}
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.ci_heal_credential {
-  ci_heal_branch_head_checkout_step,
-  ci_regen_heal_if,
-  ci_heal_job_permissions
-}
-import gunbc.ci_spec {
-  gunbc_ci_heal_regen_invoke,
-  gunbc_ci_heal_repair_declaration_invoke,
-  gunbc_ci_heal_repo_local_git_config_invoke,
-  gunbc_ci_heal_commit_push_script,
-  ci_heal_author_commit_artifact_dir,
-  ci_heal_author_commit_artifact_name,
-  ci_heal_author_commit_required_output
-}
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
+import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import gunbc.witness_floor_lanes {
+  floor_lane_job_id,
+  build_lane_job_id,
+  required_lanes_roster,
+  WitnessFloorLane,
+  WitnessFloorBuildLane,
+  WitnessFloorFloorLane,
+  witness_floor_lane_roster,
+}
 import gunbc.ci_failure_class {
   wrap_command_with_floor_attempt_receipt,
   wrap_command_is_renderable,
@@ -88,6 +90,7 @@ import gunbc.ci_failure_class {
 import extdeps.github.expressions {
   ContextAccess,
   Github,
+  Inputs,
   Needs,
   Steps,
   interpolate,
@@ -203,46 +206,6 @@ import std.types { Bool, List, String, Int }
 // two results. Each lane job's log is findable by its lane name, and the aggregator's own output
 // names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
-
-// THE LANE JOB IDS ARE THEIR OWN DECLARATIONS, AND UN-FUSING THEM FROM THE LANE WORDS IS THE WHOLE
-// OF THIS CHANGE.
-//
-// WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
-// context is the job's name -- which workflow published it is not part of the name. So `build` is
-// not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id is also
-// exactly `build`, and a rule naming `build` names two jobs in two workflows, answered by
-// whichever green arrives. Enforcement cannot move onto a lane job until that lane's context is
-// unique across every workflow emitted here.
-//
-// WHY THE NAME IS NOT COMPUTED FROM THE LANE WORD -- the modeling content, not a spelling
-// preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, which read as single
-// authority because the two strings coincided. They are two facts with different authorities and
-// consumers: the LANE WORD is a CLI argument this workflow passes to `claim_executor
-// --required-lane`, owned by `gunbc.fabric_witness_run` and consumed by an exhaustive
-// `RequiredCiPhase::lane` match inside the binary; the JOB ID is a GitHub required-context name,
-// owned here and consumed by a repository ruleset that is not a `.dag` fact at all. Their
-// coincidence was the accident, not the authority. Deriving the job id from the lane word --
-// including by concatenating a prefix -- re-fuses them through a different door and in the
-// dangerous direction: a lane rename, an ordinary CLI-vocabulary edit, would silently move a
-// REQUIRED CONTEXT NAME and a check would stop being required with nothing going red. The rows
-// below are therefore spelled, and every reference to a job id in this file is taken FROM these
-// declarations rather than typed, so a rename here moves the `needs` list and the `needs.*.result`
-// expressions with it.
-//
-// WHAT THIS DOES NOT DO: move enforcement. `witnesses` remains the aggregation job and the one
-// required context the ruleset names, produced exactly as before, so the gate is unchanged and no
-// window opens. The lane contexts are published and ignored until an operator names them in the
-// ruleset -- a repository setting no wall in this repository can constrain. Until that edit lands
-// the aggregator is still what gates; after it, the aggregator's role is diagnosis rather than
-// enforcement, because a same-run dependent job is SKIPPED when a lane fails or the run is
-// cancelled at run level, and a SKIPPED required context does not block a merge (measured:
-// `mergeable=MERGEABLE mergeStateStatus=UNSTABLE`), while root jobs carrying no `needs` edge take
-// cancelled/success/failure and are never skipped.
-data floor_lane_job_id: String = "required-witnesses-floor"
-
-data build_lane_job_id: String = "required-witnesses-build"
-
-data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
@@ -597,7 +560,10 @@ fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -
 // change did not cause. Named rather than absorbed so the gap stays countable -- DESIGN's
 // 2026-08-25 row already declares the class, and this is a specimen escaping by a mode that row
 // does not enumerate (the `.dag` side is clean and the drifted artifact is hand-authored Rust).
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
+// THE FLOOR BUILDS THE CI-INVOKED PAIR, read from its one authority (gunbc.ci_release_bins), because
+// the same pair is the product the floor hands to fleet-desired and hw boot (gunbc.fleet_release_bins_key
+// compiler_pair_release_product): a second spelling here could build one roster and key another.
+data witness_floor_required_bins: List<String> = ci_floor_invoked_bins
 
 // THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
 // job credential, and H1 must be judged on its own tree rather than inherit H0's receipts, which
@@ -684,7 +650,10 @@ data ci_heal_expected_healed_sha_input: DispatchInput = DispatchInput {
 // branch advanced before GitHub resolved the dispatch ref into the run subject. Selection alone
 // would produce a run whose checkout is H1 and whose CHECK is attached to H2, which is exactly the
 // silent wrong answer this input exists to make unwritable.
-data ci_heal_checkout_ref_expression: String = "${{ inputs.expected_healed_sha || github.sha }}"
+data ci_heal_checkout_ref: Expression = LogicalOr {
+  left: ContextAccess { context: Inputs, path: ["expected_healed_sha"] },
+  right: ContextAccess { context: Github, path: ["sha"] },
+}
 
 fn witness_floor_checkout_step() -> Step {
   UsesStep {
@@ -694,7 +663,7 @@ fn witness_floor_checkout_step() -> Step {
     with: Present {
       value: [
         kv(key: "fetch-depth", value: yaml_int(n: 0)),
-        kv(key: "ref", value: yaml_string(s: ci_heal_checkout_ref_expression))
+        checkout_ref_entry(ref_expression: ci_heal_checkout_ref)
       ]
     },
     env: none,
@@ -762,6 +731,12 @@ fn witness_floor_checkout_step() -> Step {
 //
 // `gunbc.fleet_workflow_steps` `ci_setup_rust_step` already passes this same key to this same
 // action; this step was the one that did not.
+// THE DENIAL IS DECLARED HERE, NOT INHERITED FROM THE ACTION'S DEFAULT. Until this row the
+// `rustflags` input was omitted, so every required job's RUSTFLAGS was whatever
+// setup-rust-toolchain happens to default to -- a value this repository never declared and an
+// upstream bump may change, which would silently un-deny warnings for every cargo the job
+// spawns. The value is the repository's own policy row rather than a literal, so this step and
+// the clippy command cannot drift apart (gunbc.repo_self_warning_policy).
 fn witness_floor_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
@@ -771,6 +746,7 @@ fn witness_floor_toolchain_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: repo_self_warning_denial_rustflags())),
       ]
     },
     env: none,
@@ -810,8 +786,6 @@ fn build_lane_build_script() -> String {
 }
 
 data witness_floor_build_step_name: String = "Build the witness fold"
-
-data heal_build_step_name: String = "Build the regenerator this job runs against its own checkout"
 
 // THE STEP NAME IS A PARAMETER BECAUSE THE JOBS BUILD DIFFERENT THINGS FOR DIFFERENT REASONS.
 // It was the literal "Build the witness fold" until the heal job bound this same function to
@@ -1679,6 +1653,45 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
 //
 // Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
 // shell out to cargo. Listing it would trade one false declaration for another.
+// THE PER-CLAIM COST RECEIPT'S UPLOAD, ONE ROW BOUND BY BOTH FLOOR JOBS. The floor writes
+// required_floor_claim_cost.tsv whenever GUNBC_REQUIRED_FLOOR_CLAIM_COST is set, and the required
+// floor job emitted by gunbc.compiler_gate_workflow sets it; the upload is what makes the file an
+// instrument anyone can read. It was authored only in this file's step list, so when the required
+// floor moved to gunbc.compiler_gate_workflow the env came along and the upload did not, and the
+// artifact silently stopped existing while prose kept citing it
+// (gunbc.recurring_failure_mode instrument_artifact_stopped_existing_while_cited). One function,
+// bound by name in both lists, is what keeps the two from parting again.
+fn required_floor_claim_cost_upload_bound_step() -> WitnessFloorBoundStep {
+  WitnessFloorBoundStep {
+    step: witness_floor_tsv_upload_step(
+      step_name: "Upload the floor's per-claim cost receipt",
+      artifact_name: required_floor_claim_cost_artifact_name,
+      path: required_floor_claim_cost_path,
+      condition: witness_floor_precondition()
+    ),
+    role: capability_neutral,
+    step_name: "Upload the floor's per-claim cost receipt",
+  }
+}
+
+// THE ADMISSION ROSTER (required_floor_disposition.tsv) IS BOUND THE SAME WAY, for the same reason:
+// it was one of the four uploads instrument_artifact_stopped_existing_while_cited named as lost with
+// the job move, and it is the only per-identity record of which witnesses the floor declined
+// (declined_outside_gate_closure among them). Its reader is gunbc.instruments
+// gate_closure_decline_census, the census of witness_outside_gate_closure_falsified_by_other_file.
+fn required_floor_disposition_upload_bound_step() -> WitnessFloorBoundStep {
+  WitnessFloorBoundStep {
+    step: witness_floor_tsv_upload_step(
+      step_name: "Upload the floor's admission roster",
+      artifact_name: required_floor_disposition_artifact_name,
+      path: required_floor_disposition_path,
+      condition: witness_floor_precondition()
+    ),
+    role: capability_neutral,
+    step_name: "Upload the floor's admission roster",
+  }
+}
+
 fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1717,16 +1730,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "All witnesses (one prepared subject, one fold)",
       },
     ], concat(required_ci_measurement_bound_steps(), concat([
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's admission roster",
-          artifact_name: required_floor_disposition_artifact_name,
-          path: required_floor_disposition_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's admission roster",
-      },
+      required_floor_disposition_upload_bound_step(),
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the expected-red roster join",
@@ -1747,16 +1751,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the long-home storage agreement",
       },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's per-claim cost receipt",
-          artifact_name: required_floor_claim_cost_artifact_name,
-          path: required_floor_claim_cost_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's per-claim cost receipt",
-      },
+      required_floor_claim_cost_upload_bound_step(),
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's cross-claim demand census",
@@ -1956,6 +1951,7 @@ fn witness_floor_job() -> Job {
     id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: witness_floor_steps(),
     needs: witness_floor_lane_needs(),
     env: none,
@@ -2081,277 +2077,13 @@ fn rust_clippy_all_targets_step() -> Step {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// THE HEAL JOB, RESTORED AS AN EMISSION OF THIS AUTHORITY (gunbc.rung_drop floor_cut_heal).
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// WHAT WAS ACTUALLY MISSING, which is smaller than the row reads and worth stating exactly. The
-// 2026-08-15 floor cut deleted `gunbc.ci_workflow` and `ci.yml` with it, and the heal JOB went
-// with them. Everything the job DOES survived that cut unconsumed: gunbc.heal_push_plan decides
-// per artifact whether the Actions job credential may advance its path, gunbc.ci_spec renders the
-// git config / drift census / staging / commit / push script from that decision, and
-// gunbc.ci_heal_credential models the checkout step whose persisted credential is the push
-// authority. What did not survive was a WORKFLOW that emits a job binding them, so the whole
-// model was a check with no consumer -- specification-without-execution, DESIGN §5. This job is
-// that consumer, and it is emitted here because this file is now the repository's only CI
-// workflow authority.
-//
-// THIS JOB IS SMALLER THAN THE ONE IN HISTORY AND THAT IS A CLIMB, NOT A CAPABILITY LOSS -- read
-// this paragraph before concluding otherwise. `git show 611fd027708^:.github/workflows/ci.yml`
-// carries a 223-line heal_generated_artifacts, and FOUR of its arms are absent here:
-//
-//   * the binary/source revision skew guard (`git rev-list HEAD..$BUILT_FROM -- src/v1`)
-//   * its automatic merge remedy (`git merge --no-edit $BUILT_FROM`)
-//   * the conflict resolution that took the ours side of a generated artifact
-//   * the ~200-path hand-maintained `:(exclude)` roster that classified a conflicting path as
-//     authored or generated
-//
-// All four existed to manage ONE defect, and none of them is a capability in its own right.
-// Incident 2026-07-29: the release binary came from a job that checked out the MERGE ref while
-// the heal checked out the BRANCH HEAD, so the two could name different revisions of `src/v1`;
-// a seed commit adding a Rust->.dag call then made the regen die mid-run on every branch that
-// predated it (#7392, #7394, #7395, none at fault). The guard detected that state, the merge
-// repaired it, the --ours arm resolved what the merge could not, and the roster decided which
-// paths the --ours arm was allowed to touch.
-//
-// THIS JOB BUILDS ITS OWN `gunbc` FROM THE SAME BRANCH-HEAD CHECKOUT IT THEN REGENERATES, in one
-// job, so the binary and the tree are one revision BY CONSTRUCTION. There is no second revision
-// to skew against, hence nothing to detect, nothing to merge, no conflict to resolve, and no
-// authored-versus-generated classification to make. The class moves from `guarded by a check`
-// (DESIGN §4b rung 2) to `has no constructor` (rung 4); the arms are dissolved by the climb, per
-// §4b(4), rather than deleted from a job that still needs them.
-//
-// TWO OF THEM WOULD ALSO BE DEFECTS TO RESTORE, independently of the above, and they are named
-// so a future reader does not helpfully rebuild them. Taking the ours side of a diverged
-// generated artifact is exactly what the generated-artifact merge driver now REFUSES to do
-// (DESIGN, Building & checks: it dropped the other side's authority-derived bytes with no
-// conflict, twice on #7836) -- a silent widen, which §5 forbids. And the `:(exclude)` roster was
-// a second authority for a fact `gunbc.generated_artifact` already owns, which rots silently
-// (§3). The auto-push-versus-author-commit split this job DOES make is derived instead: it folds
-// that registry through gunbc.heal_push_plan, and no path is retyped anywhere.
-//
-// WHY THE BRANCH HEAD AND NOT THE MERGE REF: the job pushes the regeneration back, and a merge
-// ref is not a branch anyone can push. `ci_heal_branch_head_checkout_step` is the modeled step
-// carrying that, including the persisted-credentials binding gunbc.heal_push_plan resolves the
-// push authority from -- so editing the checkout's inputs moves the plan's verdict rather than
-// silently breaking the push.
-//
-// IT MUST NOT BE ADDED TO THE `witnesses` AGGREGATE'S `needs` LIST, and the reason is a role
-// split rather than a preference (manager ruling, 2026-09-02). HEAL REMEDIATES; the build lane's
-// `generated-artifact` phase ADJUDICATES. Drift is caught by that phase whether or not this job
-// ran, so leaving heal out of the required needs does not weaken the gate -- and putting it in
-// would turn a remediator into one, at which point its own nonzero SupersededByHealedHead arm
-// would block the very branch it had just repaired. It also holds contents:write, and a merge
-// gate holding a write credential is a different safety question from the one this row answers.
-// So it carries no lane and no `needs` edge: advisory to the merge, load-bearing to the branch.
-data heal_generated_artifacts_timeout_minutes: Int = 90
+// THE HEAL JOB LEFT THIS WORKFLOW (gunbc#10958). It is now gunbc.heal_workflow, its own
+// pull_request workflow, because the publisher that lands its repair is triggered by workflow_run on
+// its completion -- inside this workflow, publication would have waited for the required floor of a
+// head the repair supersedes. Nothing of the gate moved with it: heal never carried a lane or a
+// `needs` edge here (it remediates; the build lane's generated-artifact phase adjudicates), so the
+// required contexts this workflow publishes are unchanged.
 
-data heal_generated_artifacts_required_bins: List<String> = ["gunbc"]
-
-fn heal_generated_artifacts_build_script() -> String {
-  repo_self_build_command(bins: heal_generated_artifacts_required_bins)
-}
-
-fn heal_regen_step() -> Step {
-  RunStep {
-    name: Present { value: "Regenerate every committed generated artifact" },
-    id: none,
-    run: gunbc_ci_heal_regen_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE ONLY MOMENT THE REPAIR IS OBSERVABLE IS BEFORE THE ACTUATOR RUNS. This step reads the
-// committed projections while they are still the drifted ones and writes the trailer lines the
-// commit step folds into heal's message. Ordering is the whole content of this step: placed after
-// the regeneration it would observe a tree that agrees with its authority by construction and
-// declare nothing, every time, while still looking like a live mechanism.
-fn heal_repair_declaration_step() -> Step {
-  RunStep {
-    name: Present { value: "Declare which ledger rows this heal will repair" },
-    id: none,
-    run: gunbc_ci_heal_repair_declaration_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// The generated pre-commit hook re-asserts core.hooksPath and the generated-artifact merge driver
-// binding. Converging it here is what makes the commit below run under the same hook configuration
-// a developer's clone has, rather than under whatever a fresh runner checkout defaults to.
-fn heal_repo_local_git_config_step() -> Step {
-  RunStep {
-    name: Present { value: "Converge repository-local git config" },
-    id: none,
-    run: gunbc_ci_heal_repo_local_git_config_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-data heal_commit_push_step_id: String = "heal_commit_push"
-
-// env is none: git push uses the checkout action's persisted credential. The former GITHUB_TOKEN
-// binding existed solely so tools.ci_heal_dispatch could auth CreateDispatch; that caller is
-// deleted. A token no step spends is the same capability-without-consumer shape as a dormant
-// actions: write grant.
-fn heal_commit_push_step() -> Step {
-  RunStep {
-    name: Present { value: "Commit and push the regeneration" },
-    id: Present { value: heal_commit_push_step_id },
-    run: gunbc_ci_heal_commit_push_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE REFUSED HALF LEAVES WITH ITS BYTES, WHICH IS THE DIFFERENCE BETWEEN A REFUSAL AND A DEAD
-// END. A path gunbc.heal_push_plan classifies AuthorCommitRequired -- today the workflow
-// projections, because the Actions job credential carries no `workflows` scope -- cannot be pushed
-// by this job at all. Printing "regenerate it yourself" and discarding the regenerated bytes would
-// make the author redo work the runner already did; uploading them means the remedy is a download
-// and a commit. The step that produced them exits nonzero either way, so this is not an escape
-// hatch: the line is stopped, and the repair is handed over rather than withheld.
-// Workflow projections live under .github, so the uploaded bundle is empty without
-// `include-hidden-files`. The live H0 heal for gunbc#10302 proved the failure: it classified
-// witnesses.yml as AuthorCommitRequired, copied it below the bundle root, then upload-artifact's
-// default hidden-file exclusion reported "No files were found". A refused repair must leave with
-// its bytes; include the directory rather than merely printing the path.
-fn heal_author_commit_bundle_step() -> Step {
-  UsesStep {
-    name: Present { value: "Upload the author-commit-required regeneration" },
-    id: none,
-    uses: upload_artifact_action,
-    with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
-        kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 14)),
-        kv(key: "include-hidden-files", value: yaml_bool(b: true)),
-      ]
-    },
-    env: none,
-    if_condition: Present {
-      value: concat(
-        concat(concat("always() && steps.", heal_commit_push_step_id), concat(".outputs.", ci_heal_author_commit_required_output)),
-        " == '1'"
-      )
-    },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE REGEN STEP IS capability_neutral, AND THE FLOOR'S RUN STEP IS NOT THE PRECEDENT IT LOOKS
-// LIKE. That step declares RustfmtCapability because `claim_executor --required-ci` carries a
-// REGEN PHASE that shells to rustfmt to normalize the emitted stage0 mirror. This job's regen step
-// runs a different producer: `main_wet` folds `committed_generated_artifacts()` through
-// `artifact_generate` and writes the bytes, and nothing on that path spawns a formatter -- the
-// emitters that could care author `#[rustfmt::skip]` into their own output instead. Declaring
-// rustfmt here by analogy would be the false declaration this file already caught once on the
-// floor's run step, in the opposite direction: claiming a consumer that does not exist rather than
-// omitting one that does. The toolchain provider is still consumed, by the build step above it.
-fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
-  [
-    WitnessFloorBoundStep {
-      step: ci_heal_branch_head_checkout_step(),
-      role: capability_neutral,
-      step_name: "Checkout triggering branch head (heal pushes the regeneration back to this branch)",
-    },
-    WitnessFloorBoundStep {
-      step: toolchain_home_isolation_step(),
-      role: capability_neutral,
-      step_name: "Isolate toolchain homes",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [
-        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
-      ]),
-      step_name: "Install Rust toolchain",
-    },
-    WitnessFloorBoundStep {
-      step: toolchain_pin_rustup_default_step(),
-      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
-      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_build_step(step_name: heal_build_step_name, build_script: heal_generated_artifacts_build_script()),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: heal_build_step_name,
-    },
-    WitnessFloorBoundStep {
-      step: heal_repair_declaration_step(),
-      role: capability_neutral,
-      step_name: "Declare which ledger rows this heal will repair",
-    },
-    WitnessFloorBoundStep {
-      step: heal_regen_step(),
-      role: capability_neutral,
-      step_name: "Regenerate every committed generated artifact",
-    },
-    WitnessFloorBoundStep {
-      step: heal_repo_local_git_config_step(),
-      role: capability_neutral,
-      step_name: "Converge repository-local git config",
-    },
-    WitnessFloorBoundStep {
-      step: heal_commit_push_step(),
-      role: capability_neutral,
-      step_name: "Commit and push the regeneration",
-    },
-    WitnessFloorBoundStep {
-      step: heal_author_commit_bundle_step(),
-      role: capability_neutral,
-      step_name: "Upload the author-commit-required regeneration",
-    },
-  ]
-}
-
-fn heal_generated_artifacts_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: heal_generated_artifacts_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-      )
-    ),
-  )
-}
-
-fn heal_generated_artifacts_job() -> Job {
-  Job {
-    id: heal_generated_artifacts_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: list_map(xs: heal_generated_artifacts_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: Present { value: ci_regen_heal_if },
-    timeout_minutes: heal_generated_artifacts_timeout_minutes,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present { value: ci_heal_job_permissions }
-  }
-}
 
 fn build_lane_needs() -> List<String> { [] }
 
@@ -2360,6 +2092,7 @@ fn build_lane_job() -> Job {
     id: build_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: build_lane_steps(),
     needs: build_lane_needs(),
     env: none,
@@ -2586,40 +2319,6 @@ fn required_lanes_run_id_expression() -> String {
 // serializes -> the gate; gate rejects but the refusal serializes -> the refusal, which stops every
 // run loudly; both reject -> ABSENT, and `expected_witness_floor_yml` refuses to emit any yaml at
 // all. A `Rejected` fold can therefore never reach a published step.
-data required_lanes_gate_build_var: String = "BUILD"
-data required_lanes_gate_floor_var: String = "FLOOR"
-data required_lanes_gate_build_class_var: String = "BUILD_CLASS"
-data required_lanes_gate_floor_class_var: String = "FLOOR_CLASS"
-
-// THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
-//
-// The gate's verdict and the step's `env` block are the same fact asked in two directions -- which
-// jobs decide the merge -- and they were previously two hand-kept lists whose agreement nothing
-// checked. A lane present here but absent from `needs` reads an unset variable; a lane in `needs`
-// but absent here is a job that runs and cannot block. Both are silent. Deriving both surfaces
-// from this row makes the second state unwritable and leaves only the `needs` edge to keep in
-// step, which is the one edge GitHub owns rather than us.
-//
-// NON-EMPTY BY CONSTRUCTION -- see `RequiredLane` in `gunbc.required_lanes_gate` for why an empty
-// roster is a fail-open rather than a degenerate case.
-fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
-  FreeSemigroup {
-    head: RequiredLane {
-      job_id: build_lane_job_id,
-      label: "build",
-      var_name: required_lanes_gate_build_var,
-      class_var_name: required_lanes_gate_build_class_var
-    },
-    tail: [
-      RequiredLane {
-        job_id: floor_lane_job_id,
-        label: "floor",
-        var_name: required_lanes_gate_floor_var,
-        class_var_name: required_lanes_gate_floor_class_var
-      }
-    ]
-  }
-}
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -2740,6 +2439,7 @@ fn required_lanes_aggregate_job() -> Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: [required_lanes_aggregate_step()],
     needs: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id }),
     env: none,
@@ -2834,75 +2534,16 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
   ]
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// ADDING A JOB TO THIS LIST REQUIRES OPERATOR SIGN-OFF. IT IS NOT AN ORDINARY EDIT.
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// A job here is not a line of configuration, it is a standing claim on a runner that someone pays
-// for, on every push and every pull request, forever. This list was SEVEN on 2026-09-04 and the
-// fleet could not serve seven: the required check's wall is the max over its lanes, so jobs that
-// gated nothing were displacing the ones that do, and the queue -- not any lane's own cost -- was
-// what people waited on. The 2026-09-04 operator ruling cut `rust-unit-tests`, `fabric-evidence`
-// and `emit-copy-qualification-battery` on that basis; the drop rows carry what each cut cost.
-//
-// SO THE ROSTER IS CLOSED TO GROWTH BY DEFAULT, and an author proposing a new lane owes the
-// operator three things BEFORE the edit, not in review of it: the MEASURED wall of the job on a
-// fleet runner (not an estimate, and not a timeout, which says nothing about what the aggregate
-// waits for); what its RED DISCRIMINATES -- a lane that reds for host or shared reasons is worse
-// added than absent, because it converts a known-uninformative signal into repository-wide noise;
-// and why the check cannot be a STEP on a lane that already checks out and builds this tree, which
-// is where every one of these jobs' preludes is otherwise paid a second time.
-//
-// THAT LAST QUESTION IS THE ONE THAT ACTUALLY SHRINKS THIS LIST. A separate job buys isolation and
-// a separate verdict, and it costs a whole checkout, toolchain install and release build of the
-// same tree. `rust_clippy_all_targets_step` is the worked example: it kept its step id, its
-// verdict and its coverage, and stopped costing a job, by moving onto `required-witnesses-build`.
-//
-// THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
-// it records WHY the roster is small so the next author meets the reasoning rather than
-// rediscovering the outage. The construction that would make an over-budget roster unwritable is
-// a runner-wall budget refused at emit time, and it is not built; until it is, this is diligence.
-//
-// THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
-// the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
-// and the aggregate joined that population only as something to filter back out.
-type WitnessFloorLane = WitnessFloorBuildLane | WitnessFloorFloorLane | WitnessFloorHealLane
-
-fn witness_floor_lane_roster() -> FreeSemigroup<WitnessFloorLane> {
-  FreeSemigroup {
-    head: WitnessFloorBuildLane,
-    tail: [WitnessFloorFloorLane, WitnessFloorHealLane]
-  }
-}
-
 fn witness_floor_lane_job(lane: WitnessFloorLane) -> Job {
   match lane {
     WitnessFloorBuildLane => build_lane_job()
     WitnessFloorFloorLane => witness_floor_job()
-    WitnessFloorHealLane => heal_generated_artifacts_job()
   }
 }
 
 fn witness_floor_lane_jobs() -> List<Job> {
   list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
     witness_floor_lane_job(lane: lane)
-  })
-}
-
-// THE IDENTITY PROJECTION IS NARROW ON PURPOSE. A witness deciding which jobs exist must not
-// materialize every job's steps (and therefore the compiler-floor command) merely to read ids.
-// Both this projection and the materialized jobs derive from `witness_floor_lane_roster`, so an
-// added lane cannot enter one without entering the other.
-fn witness_floor_lane_job_id(lane: WitnessFloorLane) -> String {
-  match lane {
-    WitnessFloorBuildLane => build_lane_job_id
-    WitnessFloorFloorLane => floor_lane_job_id
-    WitnessFloorHealLane => heal_generated_artifacts_job_id
-  }
-}
-
-fn witness_floor_lane_job_ids() -> List<String> {
-  list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
-    witness_floor_lane_job_id(lane: lane)
   })
 }
 
@@ -3036,7 +2677,7 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 fn floor_attempt_production_wraps_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_build_script())
     && wrap_command_is_renderable(command: build_lane_build_script())
-    && wrap_command_is_renderable(command: heal_generated_artifacts_build_script())
+   
     && wrap_command_is_renderable(command: witness_floor_run_script())
     && wrap_command_is_renderable(command: build_lane_run_script())
     && wrap_command_is_renderable(command: repo_self_clippy_command())
@@ -3045,16 +2686,27 @@ fn floor_attempt_production_wraps_are_renderable() -> Bool {
 }
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
-        WitnessFloorGenerated {
-          content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+  match admit_workflow_action_uses(workflow: witness_floor_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: witness_floor_workflow, declared: [ci_heal_checkout_ref]) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted =>
+          if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) {
+          EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
+          YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness_floor_workflow", path: p, reason: r) }
         }
-      } else {
-        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+          } else {
+            WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+          }
       }
+  }
   }
 }

@@ -1,5 +1,6 @@
 module v2.test.manual.match_infer_fail_open_audit
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
@@ -20,14 +21,13 @@ import v2.std.diagnostic {
   Rejected,
   Some
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   ComputationNode,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -39,6 +39,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -78,7 +79,7 @@ fn match_infer_fail_open_audit_body() -> Node {
 }
 
 test fn match_infer_fail_open_audit_rejects_holds() -> Bool {
-  match infer(tree: match_infer_fail_open_audit_body()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: match_infer_fail_open_audit_body())) {
     Accepted { value: _, diagnostics: d } => false
     Rejected { diagnostics: _ } => true
   }
@@ -105,7 +106,7 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
 }
 
 test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> Bool {
-  match infer(tree: match_infer_fail_open_audit_non_exhaustive_body()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: match_infer_fail_open_audit_non_exhaustive_body())) {
     Accepted { value: _, diagnostics: d } => false
     Rejected { diagnostics: _ } => true
   }
@@ -146,7 +147,7 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
 }
 
 test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
-  match infer(tree: match_infer_fail_open_audit_extra_arm_body()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: match_infer_fail_open_audit_extra_arm_body())) {
     Accepted { value: _, diagnostics: d } => false
     Rejected { diagnostics: _ } => true
   }
@@ -162,10 +163,10 @@ fn classical_not_int_match_arrow_fixture() -> Node {
     domain: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^dag_binding_param_x },
-          target: dag_type_atom_node(identity: ^dag_binding_type_int)
-        }
+        binder_edge(
+          name: ^dag_binding_param_x,
+          type_node: dag_type_atom_node(identity: ^dag_binding_type_int)
+        )
       ],
       occurrence_id: OccurrenceSynthetic
     },
@@ -185,14 +186,14 @@ fn classical_not_int_match_arrow_fixture() -> Node {
 }
 
 test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
-  match infer(tree: dag_complement_body_fixture) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_body_fixture)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
 test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
-  match infer(tree: classical_not_int_match_arrow_fixture()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: classical_not_int_match_arrow_fixture())) {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_contain_reason(
         d: d,
@@ -207,10 +208,10 @@ fn classical_not_int_match_non_octet_arm_fixture() -> Node {
     domain: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^dag_binding_param_x },
-          target: dag_type_atom_node(identity: ^dag_binding_type_int)
-        }
+        binder_edge(
+          name: ^dag_binding_param_x,
+          type_node: dag_type_atom_node(identity: ^dag_binding_type_int)
+        )
       ],
       occurrence_id: OccurrenceSynthetic
     },
@@ -230,7 +231,7 @@ fn classical_not_int_match_non_octet_arm_fixture() -> Node {
 }
 
 test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
-  match infer(tree: classical_not_int_match_non_octet_arm_fixture()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: classical_not_int_match_non_octet_arm_fixture())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
@@ -243,7 +244,7 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
 // complement_arrow_real_infer_holds.
 
 test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
-  match infer(tree: dag_complement_arrow_with_body_fixture) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_arrow_with_body_fixture)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }

@@ -1,0 +1,105 @@
+module test.claim.roadmap.roadmap_authority_subtree_fixture
+import gunbc.site.document { site_styles }
+
+import std.types { String, Bool, List }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.markup { Fragment }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, section_group }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes, declared_roadmap_edges,
+  RoadmapAuthorityProjection, RoadmapAuthorityProjected,
+}
+import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap_page {
+  roadmap_page_for_projection_launch_with_stylesheet,
+  roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet,
+}
+
+// THE AUTHORITY'S OWN ROWS AT ONE INTERFACE (DESIGN section 3, a witness discriminates at one
+// interface). A claim about how real roadmap rows render -- a row with four prerequisites, a live
+// project with members, the page chrome around a section -- is a claim about the page fold, and its
+// input is a projection. Rendering the whole projected authority made each such claim pay for every
+// row it does not read (about 1.5M eval steps per page against a 72,300 budget). These fixtures
+// supply a projection holding exactly the declared rows a claim names, with the declared edges among
+// them, and render it through the same served folds the authority routes use; only the head's
+// stylesheet is supplied empty. The authority-wide guarantees -- that the projection is the declared
+// active set and that every projected row is declared or derived -- stay with the projection's own
+// census claims (test.claim.roadmap_authority_test), which do not render.
+//
+// The rows are DECLARED rows read from the authority, not hand-built twins, so a change to a named
+// row's ticket, edges or membership reaches every claim here. A claim names only rows that are not
+// accepted, so the declared row is the row the projection carries.
+
+// The rows the authority-page claims read, named once so the projection census
+// (test.claim.roadmap_authority_test witness_authority_subtree_fixture_rows_are_active) proves each
+// is an active row the real projection carries -- the inhabitance half of supplying them.
+// namespace-legacy-choice-retirement and its four prerequisites: the authority's multi-parent row.
+fn fx_multi_parent_ids() -> List<String> {
+  ["namespace-legacy-choice-retirement", "namespace-v2-import-completion", "declaration-identity-switchover", "namespace-semantic-waves", "v1-interpreter-delete"]
+}
+
+// vm-service, a live project with declared members, and the admitted root its lineage reaches.
+fn fx_live_project_ids() -> List<String> {
+  ["gunbc-project-root", "vm-service"]
+}
+
+// shell-dag-cron-entry-line-builder, a ready task, and the lineage chain that roots it (readiness reads
+// the walk to the admitted root over the rendered rows).
+fn fx_ready_task_ids() -> List<String> {
+  ["gunbc-project-root", "debt-payoff", "dp-m2-shell-residue-retired", "shell-typed-invocation", "shell-dag-cron-entry-line-builder"]
+}
+
+fn fx_subtree_fixture_ids() -> List<String> {
+  concat(fx_multi_parent_ids(), concat(fx_live_project_ids(), fx_ready_task_ids()))
+}
+
+fn fx_subtree_id_set(ids: List<String>) -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold(ids, init: empty, f: (acc, i) => map_insert(m: acc, key: i, value: true))
+}
+
+fn fx_subtree_id_in(set: Map<String, Bool>, id: String) -> Bool {
+  match map_lookup(m: set, key: id) { Present { value: _ } => true  Absent => false }
+}
+
+fn fx_authority_subtree_doc(ids: List<String>, title: String) -> RoadmapDocument {
+  let set = fx_subtree_id_set(ids: ids)
+  let nodes = declared_roadmap_nodes() |> filter(rn => fx_subtree_id_in(set: set, id: rn.node as String))
+  let edges = declared_roadmap_edges() |> filter(e => fx_subtree_id_in(set: set, id: e.child as String) && fx_subtree_id_in(set: set, id: e.parent as String))
+  RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
+    title: title,
+    elements: [ section_group(label: "", nodes: nodes, edges: edges) ],
+  } ] }
+}
+
+fn fx_authority_subtree_projection(ids: List<String>) -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjected { doc: fx_authority_subtree_doc(ids: ids, title: "Active deliverables — dependency order"), accepted: [], withheld: [] }
+}
+
+// The /roadmap route's fold over the supplied projection (roadmap_page_for_projection_launch).
+fn fx_authority_subtree_roadmap_page(ids: List<String>) -> Fragment {
+  roadmap_page_for_projection_launch_with_stylesheet(
+    proj: fx_authority_subtree_projection(ids: ids),
+    launch: launch_host_unobserved_static_render(),
+    stylesheet: site_styles(rules: []),
+  )
+}
+
+// The / route's fold over the supplied projection (roadmap_daily_workspace_page_for_projection),
+// with the authority's own membership relation, as the served route reads it.
+fn fx_authority_subtree_daily_page(ids: List<String>) -> Fragment {
+  roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
+    proj: fx_authority_subtree_projection(ids: ids),
+    attempts: [],
+    attempts_refused: none,
+    standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" },
+    launch: launch_host_unobserved_static_render(),
+    stale_nodes: [],
+    profiles: [],
+    memberships: roadmap_memberships(),
+    stylesheet: site_styles(rules: []),
+  )
+}

@@ -14,7 +14,7 @@ import v2.compiler.eval {
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.typescript {
   ts_inhabitant_atom,
   ts_pr3_identity_source_text,
@@ -29,7 +29,7 @@ import v2.std.collection {
   Map,
   empty_map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

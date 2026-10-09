@@ -1,15 +1,17 @@
 module extdeps.docker.container_stats
 
-import std.string_type { String }
+import extdeps.ietf.http_semantics { GET }
 import std.types { Timestamp, Int, Float }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
 import extdeps.docker.endpoint { docker_default_endpoint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { GET }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref, decl_field_ref }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -91,6 +93,7 @@ service docker.ContainerStats {
   }
 
   operation GetStats {
+    requires none
     input {
       container_id: String
       stream: Bool = false

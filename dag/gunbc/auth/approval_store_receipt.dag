@@ -1,0 +1,369 @@
+module gunbc.auth.approval_store_receipt
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, Timestamp, String, Int, List }
+import v2.std.algebra { skip }
+import std.optional { Present, Absent }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set { cas_generation_first }
+import extdeps.crypto.mac {
+  MacKey, MacKeyId, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed,
+  mac_verify, mac_verification_reason,
+}
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent, GenerationRefused, cas_read_generation }
+import gunbc.auth.approval_capability {
+  ApprovalCapability, ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol, approval_capability_signing_input,
+  CapabilityIssuanceRefusal, CapabilityIssued, CapabilityIssuanceRefused, issue_capability,
+  CapabilityExpectation, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused, verify_capability, capability_tag_hex,
+  signing_field_separator,
+}
+import gunbc.auth.approval_request_submission { read_submission_keyring }
+import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
+  observe_escalation, approval_decision_store_root, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
+  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, read_mac_keyring,
+  approval_capability_issuer, approval_capability_authority, approval_mac_key_suite,
+}
+
+// ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
+//
+// WHAT A STORE RECEIPT IS FOR. The fabric DB's door admits an advance of a protected head
+// (gunbc.spark.pair_serving_d0 d0_store_operation_wall) only under a credential the STORE verifies
+// for that operation. For an operator-approved operation that credential is a receipt the approval
+// broker mints over its own recorded decision -- the gunbc.auth.approval_capability envelope, with
+// the fabric store as its audience -- bound to the escalation, the approved revision (the sha256 of
+// the operation's intent text, whose scope the store reads through std.scoped_authorization
+// parse_intent_scopes), the attempt, and the decision's execute-by instant.
+//
+// WHY A THIRD KEY AND NOT THE CAPABILITY KEY. An HMAC verifier holds the signing key, so whatever
+// process verifies receipts can also mint them. The fabric store's serve user must verify; if it
+// read the capability key it could mint operator approval LINKS -- bearer authority to approve
+// anything the broker brokers. A key of its own bounds what that user can forge to store receipts,
+// which the store accepts only for writes that an approved intent already states.
+//
+// NOT YET MINTED. The container is created and its version 1 added by
+// gunbc.auth.approval_mac_key_provision provision_approval_mac_keys under the operator's token; the
+// payload digest prefix that run prints is pinned with the keyring (gunbc.auth.approval_keyring_pins)
+// in the change that installs the key on srv1 and mints the first receipt, which also declares its
+// key id. Pinned to version 1 for
+// the reason the other two keys are: a keyring following `latest` would let a rotation invalidate
+// receipts in flight, and the provisioning run refuses to add a version beside a pin.
+data approval_store_receipt_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-store-receipt-mac-key"),
+  version: "1",
+)
+
+// THE KEY ON THE HOST. Materialized beside the other two approval keys by
+// gunbc.auth.approval_keyring_converge once its payload digest is pinned; until then the keyring
+// reads absent and every mint refuses ReceiptKeyUnavailable -- loud, never a fabricated key.
+data approval_store_receipt_mac_key_id: MacKeyId = "approval-store-receipt-mac-key/1" as MacKeyId
+
+data approval_store_receipt_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-store-receipt-mac-key"
+
+fn read_store_receipt_keyring() -> ApprovalKeyringRead {
+  read_mac_keyring(path: approval_store_receipt_mac_key_path, key_id: approval_store_receipt_mac_key_id)
+}
+
+// ── THE RECEIPT ───────────────────────────────────────────────────────────────────────────────
+//
+// THE SAME ENVELOPE, ANOTHER AUDIENCE. A receipt is a gunbc.auth.approval_capability capability --
+// one signing input, one verifier -- whose audience is the fabric store rather than the broker and
+// whose decision is always approve: it is the broker's statement that it RECORDED an approval of
+// this escalation at this revision, not a link that proposes one. The audience is what keeps the two
+// uses apart: an approval link presented at the store, or a receipt at the broker, fails
+// verify_capability on audience before any claim is read for meaning. issuer and authority are the
+// broker's own (approval_capability_issuer, approval_capability_authority): the receipt reports the
+// broker's decision in the broker's authority, and the store reads the operation's SCOPE from the
+// approved intent (std.scoped_authorization parse_intent_scopes), never from this envelope.
+data approval_store_receipt_audience: NonEmptyStr = "gunbc.fabric_storage_serve"
+
+// Why a mint refuses, one arm per remedy: nothing to receipt yet (not filed, pending), the operator
+// said no (denied), the store could not be read, the filing the decision stands on does not agree
+// with the asker (another attempt) or with the decision (another revision), or no key.
+type StoreReceiptRefusal
+  = ReceiptEscalationNotFiled
+  | ReceiptStillPending
+  | ReceiptDenied { decided_by: NonEmptyStr, reason: NonEmptyStr }
+  | ReceiptStoreUnreadable { detail: NonEmptyStr }
+  | ReceiptFilingUnreadable { detail: NonEmptyStr }
+  | ReceiptAttemptMismatch { presented: AttemptIdentity, filed: AttemptIdentity }
+  | ReceiptRevisionMismatch { filed: NonEmptyStr, decided: NonEmptyStr }
+  | ReceiptKeyUnavailable { cause: ApprovalKeyringRefusal }
+  | ReceiptIssuanceRefused { cause: CapabilityIssuanceRefusal }
+
+type StoreReceiptIssuance
+  = StoreReceiptIssued { receipt: ApprovalCapability }
+  | StoreReceiptRefused { refusal: StoreReceiptRefusal }
+
+// THE CLAIMS ARE THE FILING'S AND THE DECISION'S, never the asker's. The escalation and revision are
+// the decision's; the attempt is the FILED request's (the asker's must equal it, checked before this
+// is called); the window runs from the decision to its execute-by instant, so a receipt outlives
+// neither the operator's consent nor the obligation the broker recorded with it.
+fn store_receipt_claims(filed: StoredApprovalRequest, revision: NonEmptyStr, decided_at: Timestamp, execute_by: Timestamp) -> ApprovalCapabilityClaims {
+  ApprovalCapabilityClaims {
+    protocol: approval_capability_protocol,
+    issuer: approval_capability_issuer,
+    audience: approval_store_receipt_audience,
+    authority: approval_capability_authority,
+    escalation_id: filed.escalation_id,
+    request_revision: revision,
+    decision: ProposeApprove,
+    attempt: filed.attempt,
+    issued_at: decided_at,
+    expires_at: execute_by,
+    key_id: approval_store_receipt_mac_key_id,
+  }
+}
+
+// THE MINT, OVER SUPPLIED READINGS: the escalation's slot, the slot's generation-1 record (the
+// filing the decision superseded -- the durable CAS store keeps every generation, so the request an
+// approval decided is still readable beneath it), the attempt the asker presents, and the keyring.
+// Pure, so every refusal arm is witnessed without a store; the route (store_receipt_answer) takes the
+// reads, after it has authenticated the asker.
+fn issue_store_receipt_over(slot: EscalationSlot, filing: CasGenerationRead, attempt: AttemptIdentity, keyring: ApprovalKeyringRead) -> StoreReceiptIssuance {
+  match slot {
+    EscalationNotFiled => StoreReceiptRefused { refusal: ReceiptEscalationNotFiled }
+    EscalationPending { request: _ } => StoreReceiptRefused { refusal: ReceiptStillPending }
+    EscalationUnreadable { detail: d } => StoreReceiptRefused { refusal: ReceiptStoreUnreadable { detail: d } }
+    EscalationDecided { decision: d } =>
+      match d {
+        BrokerDenied { escalation_id: _, revision: _, decided_by: by, decided_at: _, reason: why } =>
+          StoreReceiptRefused { refusal: ReceiptDenied { decided_by: by, reason: why } }
+        BrokerApproved { escalation_id: _, revision: rev, decided_by: _, decided_at: at, obligation: o } =>
+          match filed_request_of(filing: filing) {
+            StoreReceiptRefusedAtFiling { refusal: r } => StoreReceiptRefused { refusal: r }
+            FiledRequestRead { request: filed } =>
+              if filed.attempt != attempt {
+                StoreReceiptRefused { refusal: ReceiptAttemptMismatch { presented: attempt, filed: filed.attempt } }
+              } else if filed.request_revision != rev {
+                StoreReceiptRefused { refusal: ReceiptRevisionMismatch { filed: filed.request_revision, decided: rev } }
+              } else {
+                match keyring {
+                  ApprovalKeyringRefused { cause: c } => StoreReceiptRefused { refusal: ReceiptKeyUnavailable { cause: c } }
+                  ApprovalKeyLoaded { key: key } =>
+                    match issue_capability(claims: store_receipt_claims(filed: filed, revision: rev, decided_at: at, execute_by: o.execute_by), key: key) {
+                      CapabilityIssuanceRefused { cause: c } => StoreReceiptRefused { refusal: ReceiptIssuanceRefused { cause: c } }
+                      CapabilityIssued { capability: cap } => StoreReceiptIssued { receipt: cap }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+type FiledRequestReading
+  = FiledRequestRead { request: StoredApprovalRequest }
+  | StoreReceiptRefusedAtFiling { refusal: StoreReceiptRefusal }
+
+fn filed_request_of(filing: CasGenerationRead) -> FiledRequestReading {
+  match filing {
+    GenerationAbsent => StoreReceiptRefusedAtFiling { refusal: ReceiptFilingUnreadable { detail: "the decided escalation has no generation-1 filing" as NonEmptyStr } }
+    GenerationRefused { probe: _ } => StoreReceiptRefusedAtFiling { refusal: ReceiptFilingUnreadable { detail: "the generation-1 filing could not be read" as NonEmptyStr } }
+    GenerationPresent { content: c } =>
+      match parse_stored_record(text: c as String) {
+        StoredRequestParsed { request: r } => FiledRequestRead { request: r }
+        StoredDecisionParsed { decision: _ } => StoreReceiptRefusedAtFiling { refusal: ReceiptFilingUnreadable { detail: "generation 1 holds a decision, not a filing" as NonEmptyStr } }
+        StoredRecordUnreadable { detail: d } => StoreReceiptRefusedAtFiling { refusal: ReceiptFilingUnreadable { detail: d } }
+      }
+  }
+}
+
+// ── THE STORE'S SIDE ──────────────────────────────────────────────────────────────────────────
+//
+// CONSUMED BY THE STORE'S DECISION: gunbc.fabric_store_operation_admission admit_store_operation
+// verifies every presented receipt through verify_store_receipt before it reads the approved intent
+// (d0_store_operation_wall PR 4; moved here from the mint's change so the verifier lands with its
+// consumer, proud-deer-538 option D).
+//
+// What the fabric store accepts, configured here and never read from the receipt (the
+// CapabilityExpectation rule): this issuer, this audience, the broker's authority, the suite. The
+// MAC is checked FIRST by verify_capability, before any claim is read.
+data approval_store_receipt_expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: approval_capability_issuer,
+  audience: approval_store_receipt_audience,
+  authority: approval_capability_authority,
+  suite: approval_mac_key_suite,
+}
+
+// THE VERIFICATION A STORE RUNS over a presented receipt: the tag decoded from its one spelling
+// (capability_tag_hex refuses any other), the MAC under the receipt key, then the claims against the
+// expectation and the observed instant. A tag with no hex spelling is refused as a MAC refusal of
+// its own kind rather than verified against something else.
+fn verify_store_receipt(receipt: ApprovalCapability, key: MacKey, observed_at: Timestamp) -> StoreReceiptVerification {
+  match capability_tag_hex(capability: receipt) {
+    Absent => StoreReceiptTagUnreadable
+    Present { value: tag } =>
+      match verify_capability(
+        capability: receipt,
+        expectation: approval_store_receipt_expectation,
+        mac_result: mac_verify(key: key, message: approval_capability_signing_input(c: receipt.claims), tag_hex: tag),
+        observed_at: observed_at,
+      ) {
+        CapabilityRefused { cause: c } => StoreReceiptNotAuthentic { cause: c }
+        CapabilityAuthentic { claims: cl } => StoreReceiptAuthentic { claims: cl }
+      }
+  }
+}
+
+type StoreReceiptVerification
+  = StoreReceiptAuthentic { claims: ApprovalCapabilityClaims }
+  | StoreReceiptNotAuthentic { cause: CapabilityRefusal }
+  | StoreReceiptTagUnreadable
+
+// ── THE ROUTE: POST /approvals/<escalation_id>/store-receipt ────────────────────────────────────
+//
+// A RECEIPT IS BEARER AUTHORITY OVER STORE WRITES, so it is never served on the public status route
+// (GET /approvals/<id>, which any tailnet member may poll). It is served only to an asker that holds
+// the SUBMISSION key -- the key a filer already proves possession of to file at all
+// (gunbc.auth.approval_request_submission) -- as a MAC over this route's own message: the protocol,
+// the escalation and the attempt, joined on the capability's field separator. The protocol word
+// keeps a submission tag from ever authenticating this message or the reverse. RESIDUAL, STATED:
+// every job that can fetch the submission key over WIF can ask; the wall discriminates holders of
+// that key, not individual jobs, and the store additionally binds the receipt to the approved intent.
+data store_receipt_request_protocol: NonEmptyStr = "gunbc.store-receipt-request.v1" as NonEmptyStr
+
+fn store_receipt_request_message(escalation_id: NonEmptyStr, attempt: AttemptIdentity) -> NonEmptyStr {
+  join([store_receipt_request_protocol as String, escalation_id as String, attempt as String], signing_field_separator) as NonEmptyStr
+}
+
+// The request body: two lines, `attempt=<attempt>` then `tag=<lower hex MAC>`, nothing else.
+type StoreReceiptRequest {
+  attempt: AttemptIdentity
+  tag_hex: NonEmptyStr
+}
+
+fn parse_store_receipt_request(body: String) -> StoreReceiptRequest? {
+  let lines = split(s: body, delimiter: "\n")
+  let attempt = request_field(line: receipt_line_at(lines: lines, i: 0), key: "attempt")
+  let tag = request_field(line: receipt_line_at(lines: lines, i: 1), key: "tag")
+  if attempt == "" || tag == "" || count(filter(lines |> skip(n: 2), l => l != "")) != 0 { none }
+  else { Present { value: StoreReceiptRequest { attempt: (attempt as NonEmptyStr) as AttemptIdentity, tag_hex: tag as NonEmptyStr } } }
+}
+
+fn receipt_line_at(lines: List<String>, i: Int) -> String {
+  match (lines |> skip(n: i)).first() { Present { value: l } => l  Absent => "" }
+}
+
+fn request_field(line: String, key: String) -> String {
+  let prefix = join([key, "="], "")
+  if starts_with(s: line, prefix: prefix) { substring(s: line, start: string_length(s: prefix), end: string_length(s: line)) } else { "" }
+}
+
+// THE WIRE A RECEIPT TRAVELS AS: its signing input, then its tag, one line each. The signing input
+// is the capability's one byte projection, so the store rebuilds the claims from it and nothing is
+// serialized twice (the store's reader lands with the door that verifies receipts,
+// d0_store_operation_wall PR 4).
+fn store_receipt_wire(receipt: ApprovalCapability) -> String {
+  join([approval_capability_signing_input(c: receipt.claims) as String, "\n", receipt.tag_b64url as String, "\n"], "")
+}
+
+type StoreReceiptAnswer {
+  status: Int
+  body: String
+}
+
+fn receipt_refused(status: Int, reason: String) -> StoreReceiptAnswer {
+  StoreReceiptAnswer { status: status, body: join(["store-receipt refused: ", reason, "\n"], "") }
+}
+
+// THE ASKER'S STANDING, decided before any escalation is read: either the asker is authenticated
+// under the submission key for the attempt it presents, or the route already has its answer.
+type StoreReceiptAsker
+  = StoreReceiptAskerAuthenticated { attempt: AttemptIdentity }
+  | StoreReceiptAskerRefused { answer: StoreReceiptAnswer }
+
+// THE AUTHENTICATION OVER SUPPLIED READINGS: parse the body, then verify the MAC under the
+// submission key. Pure, and it takes no escalation reading at all -- the order the handler holds
+// (authenticate, and only then read the escalation, so an unauthenticated asker learns nothing
+// about which escalations exist or how they stand) is carried by the route's control flow and not
+// by a deferred reader handed in here.
+fn authenticate_store_receipt_asker(escalation_id: NonEmptyStr, body: String, submission_keyring: ApprovalKeyringRead) -> StoreReceiptAsker {
+  match parse_store_receipt_request(body: body) {
+    Absent => StoreReceiptAskerRefused { answer: receipt_refused(status: 400, reason: "the body is not `attempt=<attempt>` then `tag=<hex>`") }
+    Present { value: req } =>
+      match submission_keyring {
+        ApprovalKeyringRefused { cause: _ } => StoreReceiptAskerRefused { answer: receipt_refused(status: 503, reason: "the submission key is unavailable, so no asker can be authenticated") }
+        ApprovalKeyLoaded { key: key } => {
+          let message = store_receipt_request_message(escalation_id: escalation_id, attempt: req.attempt)
+          let verification: MacVerification = mac_verify(key: key, message: message, tag_hex: req.tag_hex)
+          if mac_verification_covers(verification: verification, message: message) {
+            StoreReceiptAskerAuthenticated { attempt: req.attempt }
+          } else {
+            StoreReceiptAskerRefused { answer: receipt_refused(status: 403, reason: join(["the asker is not authenticated under the submission key: ", mac_verification_reason(v: verification)], "")) }
+          }
+        }
+      }
+  }
+}
+
+fn mac_verification_covers(verification: MacVerification, message: NonEmptyStr) -> Bool {
+  match verification {
+    MacVerified { verified: v } => v.message == message
+    MacTagMismatch { key_id: _ } => false
+    MacKeyUnknown { key_id: _ } => false
+    MacKeyRetired { key_id: _, retired_at: _ } => false
+    MacSuiteMismatch { expected: _, key_suite: _ } => false
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => false
+  }
+}
+
+fn store_receipt_issuance_answer(issuance: StoreReceiptIssuance) -> StoreReceiptAnswer {
+  match issuance {
+    StoreReceiptIssued { receipt: r } => StoreReceiptAnswer { status: 200, body: store_receipt_wire(receipt: r) }
+    StoreReceiptRefused { refusal: why } => receipt_refused(status: store_receipt_refusal_status(r: why), reason: store_receipt_refusal_reason(r: why))
+  }
+}
+
+// THE ROUTE. The three escalation readings (the slot, its generation-1 filing, the receipt keyring)
+// are performed HERE, in the authenticated arm and nowhere else, and handed to the pure mint as
+// values. The decision-store root and the submission keyring are SUPPLIED: a witness discriminates
+// at this interface (DESIGN §3) without a second copy of the fold, and production binds the
+// declared root and the real keyring read.
+fn store_receipt_answer(escalation_id: NonEmptyStr, body: String, root: NonEmptyStr, submission_keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
+  match authenticate_store_receipt_asker(escalation_id: escalation_id, body: body, submission_keyring: submission_keyring) {
+    StoreReceiptAskerRefused { answer: refused } => refused
+    StoreReceiptAskerAuthenticated { attempt: attempt } => {
+      let slot = observe_escalation(root: root, escalation_id: escalation_id)
+      let filing = cas_read_generation(root: root, key: escalation_id, generation: cas_generation_first())
+      let keyring = read_store_receipt_keyring()
+      store_receipt_authenticated_answer(attempt: attempt, slot: slot, filing: filing, keyring: keyring)
+    }
+  }
+}
+
+// The authenticated arm's composition, pure over the readings the route took: the one body both the
+// route and its witness answer through, so the witness does not carry a second copy of it.
+fn store_receipt_authenticated_answer(attempt: AttemptIdentity, slot: EscalationSlot, filing: CasGenerationRead, keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
+  store_receipt_issuance_answer(issuance: issue_store_receipt_over(slot: slot, filing: filing, attempt: attempt, keyring: keyring))
+}
+
+fn store_receipt_refusal_status(r: StoreReceiptRefusal) -> Int {
+  match r {
+    ReceiptEscalationNotFiled => 404
+    ReceiptStillPending => 409
+    ReceiptDenied { decided_by: _, reason: _ } => 403
+    ReceiptStoreUnreadable { detail: _ } => 503
+    ReceiptFilingUnreadable { detail: _ } => 503
+    ReceiptAttemptMismatch { presented: _, filed: _ } => 409
+    ReceiptRevisionMismatch { filed: _, decided: _ } => 409
+    ReceiptKeyUnavailable { cause: _ } => 503
+    ReceiptIssuanceRefused { cause: _ } => 500
+  }
+}
+
+fn store_receipt_refusal_reason(r: StoreReceiptRefusal) -> String {
+  match r {
+    ReceiptEscalationNotFiled => "the escalation is not filed"
+    ReceiptStillPending => "the escalation is still pending the operator's decision"
+    ReceiptDenied { decided_by: by, reason: why } => join(["denied by ", by as String, ": ", why as String], "")
+    ReceiptStoreUnreadable { detail: d } => join(["the approval store could not be read: ", d as String], "")
+    ReceiptFilingUnreadable { detail: d } => join(["the filing the decision stands on could not be read: ", d as String], "")
+    ReceiptAttemptMismatch { presented: p, filed: f } => join(["the asker presents attempt ", p as String, " but the approved filing is attempt ", f as String], "")
+    ReceiptRevisionMismatch { filed: f, decided: d } => join(["the filing is revision ", f as String, " but the decision is over revision ", d as String], "")
+    ReceiptKeyUnavailable { cause: _ } => "the store receipt key is unavailable"
+    ReceiptIssuanceRefused { cause: _ } => "the receipt could not be minted"
+  }
+}

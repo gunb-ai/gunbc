@@ -247,9 +247,13 @@ test fn citation_target_carries_pin_and_selector_not_observation() -> Bool {
     right: witness_citation_pin.subject,
   )
     && match witness_citation_target.selector {
-      TextQuoteSelectorVariant(_) => true
-      FragmentSelectorVariant(_) => false
-      TextPositionSelectorVariant(_) => false
+      Present { value: s } =>
+        match s {
+          TextQuoteSelectorVariant(_) => true
+          FragmentSelectorVariant(_) => false
+          TextPositionSelectorVariant(_) => false
+        }
+      none => false
     }
 }
 

@@ -1,0 +1,121 @@
+module v2.test.parse.list_literal_parse_cost
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the prepared-grammar parse of a list literal, on the real route the native pipeline
+// runs (v2.compiler.program_assembly dag_prepared_grammar, then v2.compiler.parse
+// parse_module_prepared). The specimen is `fn f(x: Int) -> Int { g(xs: [x, x, ..., x]) }`,
+// generated for any N, so one generator serves the fidelity specimen and the route specimen.
+//
+// THIS IS AN INHABITANCE CLAIM, NOT A COST CONTROL, and it says so because the cost defect it sits
+// beside cannot be gated here. The 02_parse list-literal quadratic that blocked #12377 lived in the
+// seed memo's host-side verification (v1_interpreter value_fast_eq), which the floor's eval-step
+// budget does not count: eval steps are identical with and without that repair, and only CPU
+// separates them, first past the per-claim CPU budget at a length whose steps exceed the new-witness
+// gate. So no N here both fits and discriminates. The discriminator is the Rust unit test
+// push_hash_extension_tests memo_verification_equality_agrees_with_value_eq_and_descends_to_sharing,
+// local-only under gunbc.rung_drop rust_unit_tests_off_the_merge_path; the instrument gap is
+// rostered as gunbc.recurring_failure_mode.floor_eval_step_budget_cannot_see_host_side_work. What
+// this claim does establish, by execution on every floor, is that the real route accepts a
+// multi-element list literal.
+//
+// THE PAIRING OBLIGATION (DESIGN section 3): the generator is a hypothesis about what tokenize
+// emits; lpc_fidelity_small runs the real tokenizer over the same generator's text and compares
+// canonically. The generator's shape does not depend on N beyond the element offset 41 + 3i.
+
+fn lpc_tok(class: Symbol, lexeme: String, start: Int, end: Int) -> Token {
+  Token { class: class, lexeme: lexeme, file: ^list_literal_parse_cost_probe, start: start, end: end }
+}
+
+// Tokens from the element at index i to the end of the specimen, for a list of n elements.
+fn lpc_tail_from(i: Int, n: Int) -> List<Token> {
+  if i >= n - 1 {
+    Cons {
+      head: lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 41 + (3 * i), end: 42 + (3 * i)),
+      tail: [
+        lpc_tok(class: ^dag_token_rbracket, lexeme: "]", start: 39 + (3 * n), end: 40 + (3 * n)),
+        lpc_tok(class: ^dag_token_rparen, lexeme: ")", start: 40 + (3 * n), end: 41 + (3 * n)),
+        lpc_tok(class: ^dag_token_rbrace, lexeme: "}", start: 42 + (3 * n), end: 43 + (3 * n))
+      ]
+    }
+  } else {
+    Cons {
+      head: lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 41 + (3 * i), end: 42 + (3 * i)),
+      tail: Cons {
+        head: lpc_tok(class: ^dag_token_comma, lexeme: ",", start: 42 + (3 * i), end: 43 + (3 * i)),
+        tail: lpc_tail_from(i: i + 1, n: n)
+      }
+    }
+  }
+}
+
+fn lpc_stream(n: Int) -> TokenStream {
+  token_stream_new(all: list_append(left: [
+    lpc_tok(class: ^dag_token_kw_module, lexeme: "module", start: 0, end: 6),
+    lpc_tok(class: ^dag_token_ident, lexeme: "m", start: 7, end: 8),
+    lpc_tok(class: ^dag_token_dot, lexeme: ".", start: 8, end: 9),
+    lpc_tok(class: ^dag_token_ident, lexeme: "l", start: 9, end: 10),
+    lpc_tok(class: ^dag_token_kw_fn, lexeme: "fn", start: 12, end: 14),
+    lpc_tok(class: ^dag_token_ident, lexeme: "f", start: 15, end: 16),
+    lpc_tok(class: ^dag_token_lparen, lexeme: "(", start: 16, end: 17),
+    lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 17, end: 18),
+    lpc_tok(class: ^dag_token_colon, lexeme: ":", start: 18, end: 19),
+    lpc_tok(class: ^dag_token_ident, lexeme: "Int", start: 20, end: 23),
+    lpc_tok(class: ^dag_token_rparen, lexeme: ")", start: 23, end: 24),
+    lpc_tok(class: ^dag_token_arrow, lexeme: "->", start: 25, end: 27),
+    lpc_tok(class: ^dag_token_ident, lexeme: "Int", start: 28, end: 31),
+    lpc_tok(class: ^dag_token_lbrace, lexeme: "{", start: 32, end: 33),
+    lpc_tok(class: ^dag_token_ident, lexeme: "g", start: 34, end: 35),
+    lpc_tok(class: ^dag_token_lparen, lexeme: "(", start: 35, end: 36),
+    lpc_tok(class: ^dag_token_ident, lexeme: "xs", start: 36, end: 38),
+    lpc_tok(class: ^dag_token_colon, lexeme: ":", start: 38, end: 39),
+    lpc_tok(class: ^dag_token_lbracket, lexeme: "[", start: 40, end: 41)
+  ], right: lpc_tail_from(i: 0, n: n)))
+}
+
+fn lpc_elements_text(i: Int, n: Int) -> String {
+  if i >= n - 1 {
+    "x"
+  } else {
+    concat("x, ", lpc_elements_text(i: i + 1, n: n))
+  }
+}
+
+fn lpc_text(n: Int) -> String {
+  concat(
+    concat("module m.l\n\nfn f(x: Int) -> Int { g(xs: [", lpc_elements_text(i: 0, n: n)),
+    "]) }\n"
+  )
+}
+
+fn lpc_parses(n: Int) -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: residue } =>
+      match parse_module_prepared(tokens: lpc_stream(n: n), prepared: prepared, validation_residue: residue) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn lpc_fidelity_small() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: lpc_text(n: 3),
+    file: ^list_literal_parse_cost_probe,
+    supplied: lpc_stream(n: 3)
+  )
+}
+
+test fn lpc_list_literal_parses_on_prepared_route() -> Bool {
+  lpc_parses(n: 3)
+}

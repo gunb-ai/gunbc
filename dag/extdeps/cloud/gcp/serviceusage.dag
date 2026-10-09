@@ -5,7 +5,10 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import std.types { List, Secret, String }
-import v2.std.network { POST, GET }
+import extdeps.ietf.http_semantics { POST, GET }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -21,6 +24,7 @@ service gcp.ServiceUsage {
   }
 
   operation BatchEnableServices {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -45,6 +49,7 @@ service gcp.ServiceUsage {
   }
 
   operation EnableService {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -68,6 +73,7 @@ service gcp.ServiceUsage {
   }
 
   operation GetService {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId

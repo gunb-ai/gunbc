@@ -10,6 +10,7 @@ import extdeps.accounting.encumbrance {
   LedgerAdvanced, EncumbranceRefused,
   reserve_encumbrance, settle_encumbrance, release_encumbrance, committed_total,
 }
+import std.algebra { Cons, Empty }
 
 // The fabric's money binding over the generic encumbrance kernel. Everything
 // about reserve-settle-release lives upstream; what is added here is the one

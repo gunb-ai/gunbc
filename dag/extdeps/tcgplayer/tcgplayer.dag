@@ -1,9 +1,12 @@
 module extdeps.tcgplayer.tcgplayer
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
+import std.types { NonEmptyStr, AuthScheme, Secret }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,6 +56,7 @@ service tcgplayer.Auth {
   }
 
   operation MintBearerToken {
+    requires Network
     input {
       client_id: String
       client_secret: Secret

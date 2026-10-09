@@ -199,32 +199,40 @@ fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
   if starts_with(s: s, prefix: sp.end_tag_open) {
     ParseOneRejected { reason: "unexpected end tag" }
   } else if starts_with(s: s, prefix: sp.tag_open) {
-    let open_chunks = split(s: s, delimiter: sp.tag_close)
-    let open_content = open_chunks.first()
-    let after_open_tag = html_strip_prefix(s: s, prefix: join([open_content, sp.tag_close], ""))
-    let tag_and_attrs = html_strip_prefix(s: open_content, prefix: sp.tag_open)
-    let tag_parts = split(s: tag_and_attrs, delimiter: sp.attr_sep)
-    let tag = tag_parts.first()
-    let attrs_raw = join(tag_parts.skip(n: 1), sp.attr_sep)
-    let attr_result = parse_attrs_with(attrs_str: attrs_raw, sp: sp)
-    if attr_result.rejected {
-      ParseOneRejected { reason: attr_result.reject_reason }
-    } else {
-      let split_result = find_matching_close_with(s: after_open_tag, tag: tag, sp: sp)
-      let children_result = parse_children_with(s: split_result.children, sp: sp)
-      match children_result {
-        ChildrenRejected { reason } => ParseOneRejected { reason: reason }
-        ParsedChildren { nodes } =>
-          ParsedOne {
-            node: Element { tag: tag, attributes: attr_result.attributes, children: nodes },
-            rest: split_result.rest,
-          }
-      }
+    match split(s: s, delimiter: sp.tag_close).first() {
+      Absent => ParseOneRejected { reason: "open tag has no content" }
+      Present { value: open_content } =>
+        let after_open_tag = html_strip_prefix(s: s, prefix: join([open_content, sp.tag_close], ""))
+        let tag_and_attrs = html_strip_prefix(s: open_content, prefix: sp.tag_open)
+        let tag_parts = split(s: tag_and_attrs, delimiter: sp.attr_sep)
+        match tag_parts.first() {
+          Absent => ParseOneRejected { reason: "open tag has no name" }
+          Present { value: tag } =>
+            let attrs_raw = join(tag_parts.skip(n: 1), sp.attr_sep)
+            let attr_result = parse_attrs_with(attrs_str: attrs_raw, sp: sp)
+            if attr_result.rejected {
+              ParseOneRejected { reason: attr_result.reject_reason }
+            } else {
+              let split_result = find_matching_close_with(s: after_open_tag, tag: tag, sp: sp)
+              let children_result = parse_children_with(s: split_result.children, sp: sp)
+              match children_result {
+                ChildrenRejected { reason } => ParseOneRejected { reason: reason }
+                ParsedChildren { nodes } =>
+                  ParsedOne {
+                    node: Element { tag: tag, attributes: attr_result.attributes, children: nodes },
+                    rest: split_result.rest,
+                  }
+              }
+            }
+        }
     }
   } else {
-    let text_raw = split(s: s, delimiter: sp.tag_open).first()
-    let rest = html_strip_prefix(s: s, prefix: text_raw)
-    ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+    match split(s: s, delimiter: sp.tag_open).first() {
+      Absent => ParseOneRejected { reason: "text fragment has no content" }
+      Present { value: text_raw } =>
+        let rest = html_strip_prefix(s: s, prefix: text_raw)
+        ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+    }
   }
 }
 

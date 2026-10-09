@@ -1,0 +1,49 @@
+module test.claim.infer_present_arm_unresolved_scrutinee_witness
+
+import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR gunbc.recurring_failure_mode
+// generic_variant_without_expected_type_leaves_a_present_arm_undecided, AND ITS CONTROLS.
+//
+// The red is the minimized shape of the silent wrong answer found on gunbc#12386: a generic variant
+// built with no expected type, flat_mapped through a lambda, and a `Present { value: c }` arm over
+// `first` of the result. Before v1.compiler.infer PresentArmScrutineeTypeUnresolved the interpreter
+// took the `_` arm for a ONE-element list (measured: count 1, arm Absent). The module sits under the
+// test.claim.infer_ prefix the required gate admits, and every fixture is a string handed to a
+// nested compile, because an inline red would be refused by the compiler compiling this file.
+//
+// Fixture type names carry a Probe prefix: bare names resolve by global uniqueness, so `Ok` or
+// `Cause` could bind a corpus declaration instead of the fixture's own.
+data present_arm_unresolved_red_source: String = "module probe_present_arm_unresolved\ntype ProbeCause = | ProbeBad { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> String {\n  let attempts = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => \"present\"  _ => \"absent\" }\n}\n"
+
+// THE REMEDY THE REFUSAL NAMES, WRITTEN: the same program with the producing let given its declared
+// type. This is the positive control, and the difference against the red cancels the live-tree
+// baseline the census compiles against.
+data present_arm_unresolved_green_source: String = "module probe_present_arm_unresolved_typed\ntype ProbeCause = | ProbeBad { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> String {\n  let attempts: List<ProbeAttempt<Int, ProbeCause>> = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => \"present\"  _ => \"absent\" }\n}\n"
+
+data present_arm_unresolved_class: String = "PresentArmScrutineeTypeUnresolved"
+
+test fn a_present_arm_over_an_unresolved_scrutinee_refuses() -> Bool {
+  blocking_class_count_for(source: present_arm_unresolved_red_source, wanted_class: present_arm_unresolved_class) == 1
+}
+
+test fn the_typed_producer_is_accepted() -> Bool {
+  blocking_class_count_for(source: present_arm_unresolved_green_source, wanted_class: present_arm_unresolved_class) == 0
+    && total_blocking_count_for(source: present_arm_unresolved_red_source) - total_blocking_count_for(source: present_arm_unresolved_green_source) == 1
+}
+
+// THE ROUTE, NOT ONLY THE VERDICT (DESIGN section 3, the pairing obligation). The accepted shape is
+// executed here by the interpreter and must take the Present arm for a one-element list whose
+// element is itself a variant -- the exact payload kind that missed the arm before.
+type PresentArmProbeCause = | PresentArmProbeBad { detail: String }
+type PresentArmProbeAttempt<T, E> = PresentArmProbeKept { observed: T } | PresentArmProbeRefused { cause: E }
+
+test fn the_typed_producer_reads_its_variant_payload_as_present() -> Bool {
+  let attempts: List<PresentArmProbeAttempt<Int, PresentArmProbeCause>> = [PresentArmProbeRefused { cause: PresentArmProbeBad { detail: "x" } }]
+  let causes = flat_map(attempts, a => match a { PresentArmProbeRefused { cause: c } => [c]  _ => [] })
+  match first(causes) { Present { value: PresentArmProbeBad { detail: d } } => d == "x"  _ => false }
+}

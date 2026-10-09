@@ -4,7 +4,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { Secret, NonEmptyStr, Bool, String }
 import std.algebra { trim }
-import std.resources { Network }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -15,7 +14,13 @@ import std.upsert_decision {
   UpsertClassification,
 }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import extdeps.cloud.gcp.auth_print_access_token {
   gcloud_stderr_auth_deficit,
 }
@@ -157,7 +162,6 @@ fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
 }
 
 fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
-  uses net: Network
 {
   match source {
     GcloudPrintToken => {
@@ -204,19 +208,21 @@ type SuppliedTokenResolution
   = SuppliedTokenReady { token: Secret }
   | SuppliedTokenUnavailable { cause: NonEmptyStr }
 
-fn classify_supplied_token(success: Bool, error: String, content: String) -> SuppliedTokenResolution {
-  if success == false {
-    SuppliedTokenUnavailable {
-      cause: join(["the access token file could not be read: ", error], "") as NonEmptyStr,
-    }
-  } else {
-    let token = trim(s: content)
-    if token == "" {
+fn classify_supplied_token(read: FilesystemReadOutcome) -> SuppliedTokenResolution {
+  match read {
+    FilesystemReadRefused { error } =>
       SuppliedTokenUnavailable {
-        cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr,
+        cause: join(["the access token file could not be read: ", error], "") as NonEmptyStr,
       }
-    } else {
-      SuppliedTokenReady { token: token as Secret }
+    FilesystemReadSucceeded { content } => {
+      let token = trim(s: content)
+      if token == "" {
+        SuppliedTokenUnavailable {
+          cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr,
+        }
+      } else {
+        SuppliedTokenReady { token: token as Secret }
+      }
     }
   }
 }
@@ -227,7 +233,7 @@ fn read_supplied_access_token() -> SuppliedTokenResolution {
       SuppliedTokenUnavailable {
         cause: join([
           "no ", secret_access_token_path_env as String,
-          " in the environment: this entry needs a path to a file holding an access token",
+          " in the environment: this legacy entry requires an explicit bootstrap credential. For normal secret workflows, request the exact operation through approval/convergence; do not request a pasted GCP login code or bearer token",
         ], "") as NonEmptyStr,
       }
     Present { value: raw } => {
@@ -240,7 +246,7 @@ fn read_supplied_access_token() -> SuppliedTokenResolution {
         }
       } else {
         let read = Filesystem.Read(path: path)
-        classify_supplied_token(success: read.success, error: read.error, content: read.content)
+        classify_supplied_token(read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
       }
     }
   }
@@ -276,7 +282,7 @@ fn no_access_token_source_cause() -> NonEmptyStr {
     "this run has no access token source: neither ", workload_identity_token_env as String,
     " (set by the Workload Identity Federation auth step of a federated workflow run) nor ",
     secret_access_token_path_env as String,
-    " (a path to a file holding an operator access token) is in the environment. A workflow run is missing its auth step; a session run needs an operator token written to a file and that variable set to its path.",
+    " (the explicit legacy bootstrap token-file source) is in the environment. A federated workflow needs its scoped auth step. For missing secret access, use the approval/convergence workflow for the exact secret operation; do not ask the operator to paste a GCP login code or bearer token. Approval alone does not supply a workload credential.",
   ], "") as NonEmptyStr
 }
 
@@ -329,7 +335,7 @@ fn select_access_token_source() -> AccessTokenSourceSelection {
 // exactly the arms a caller has to distinguish, and an unavailable SOURCE is a refused ENSURE from
 // where a caller stands: nothing downstream acts differently on "no variable was set" than on "the
 // variable was set and empty", and both must refuse rather than proceed.
-fn resolve_access_token() -> AccessTokenResolution uses net: Network {
+fn resolve_access_token() -> AccessTokenResolution {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: cause } => AccessTokenEnsureRefused { reason: cause }
     AccessTokenSourceSelected { source: source } => ensure_access_token(source: source)

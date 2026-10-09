@@ -1,10 +1,14 @@
 module gunbc.runner_microvm_attempt
 
+import gunbc.runner_microvm_attempt_identity {
+  AttemptSegmentRefusal, AttemptSegmentEmpty, AttemptSegmentIsRelativeMarker, AttemptSegmentContainsSeparator, AttemptSegmentResult, AttemptSegmentAccepted, AttemptSegmentRefused, AttemptSegment, attempt_segment, attempt_segment_refusal_text, MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt, runner_microvm_attempt_unit_name,
+}
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
-import extdeps.systemd { SystemdUnitProperty, SliceProperty }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
 import gunbc.fabric_cell_converge {
   fabric_cell_attempt_root_path, fabric_cell_slice_name,
 }
@@ -13,7 +17,7 @@ import gunbc.fabric_required_build_cell {
   FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape, members_owned,
 }
 
-data runner_microvm_attempt_disposition: Disposition = SingleAuthority
+data runner_microvm_attempt_disposition: ConstructionMechanism = SingleAuthority
 
 // A GUEST IS RESOURCES BELONGING TO ONE OWNED ATTEMPT, NOT A VM AT A FIXED PATH.
 //
@@ -32,83 +36,15 @@ data runner_microvm_attempt_disposition: Disposition = SingleAuthority
 //   BOUNDARY  the VMM runs in the cell's slice, so the guest's CPU, memory and task consumption is
 //             accounted to the cell that was reserved -- a VM outside the slice is invisible to
 //             every limit the cell carries and to every observation that reads them.
-//   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted.
+//   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted. That verdict is
+//             gunbc.product.fabric.sanitation's CellReadiness, derived from host readbacks by
+//             gunbc.runner_microvm_lifecycle and held across incarnations by
+//             gunbc.runner_microvm_cell_readiness; this module owns no second release verdict.
 //
 // A guest missing any one of these is refused rather than downgraded, because each failure is
 // silent in production: unbound storage looks like a working VM until two attempts collide,
 // unbound accounting looks like a working VM until the host runs out of memory, and unproven
 // teardown looks like a working VM until a leaked VMM outlives its cell.
-// AN ATTEMPT ID IS A PATH SEGMENT, AND A SEGMENT IS NOT AN ARBITRARY STRING.
-//
-// The first draft took a bare NonEmptyStr and joined it under the attempt root. "../shared" then
-// escapes that root entirely and "a/../b" aliases a DIFFERENT attempt's storage -- so the storage
-// isolation this module's header promises could be defeated by the identity it was keyed on
-// (review 61259). Every path below is derived from this one value, so one traversing id moves the
-// rootfs, the JIT drive and the config together, and cleanup would prove the wrong subtree empty.
-//
-// §5 asks for construction over validation, so the refusal lives in the CONSTRUCTOR rather than in
-// a check each path function repeats. attempt_segment is the only way to obtain an AttemptSegment,
-// and it refuses rather than sanitizing: a rewritten id would silently disagree with the id the
-// caller believes it holds, and every receipt naming it would name something else. Emptiness, "."
-// and ".." are refused by name; a separator anywhere is refused wherever it appears, which covers
-// both the leading-slash absolute form and the embedded-traversal form without enumerating them.
-type AttemptSegmentRefusal
-  = AttemptSegmentEmpty
-  | AttemptSegmentIsRelativeMarker { spelling: String }
-  | AttemptSegmentContainsSeparator { spelling: String }
-
-type AttemptSegmentResult
-  = AttemptSegmentAccepted { segment: AttemptSegment }
-  | AttemptSegmentRefused { refusal: AttemptSegmentRefusal }
-
-type AttemptSegment sole_constructor {
-  value: NonEmptyStr
-}
-
-fn attempt_segment(spelling: String) -> AttemptSegmentResult {
-  if spelling == "" {
-    AttemptSegmentRefused { refusal: AttemptSegmentEmpty }
-  } else if spelling == "." || spelling == ".." {
-    AttemptSegmentRefused { refusal: AttemptSegmentIsRelativeMarker { spelling: spelling } }
-  } else if string_contains(s: spelling, pattern: "/") {
-    AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: spelling } }
-  } else {
-    AttemptSegmentAccepted { segment: AttemptSegment { value: spelling as NonEmptyStr } }
-  }
-}
-
-fn attempt_segment_refusal_text(r: AttemptSegmentRefusal) -> String {
-  match r {
-    AttemptSegmentEmpty => "attempt id is empty, so it names no directory under the attempt root"
-    AttemptSegmentIsRelativeMarker { spelling: sp } =>
-      join(["attempt id ", sp, " is a relative-path marker and would resolve to the attempt root or its parent"], "")
-    AttemptSegmentContainsSeparator { spelling: sp } =>
-      join(["attempt id ", sp, " contains a path separator, so it could address storage outside its own attempt"], "")
-  }
-}
-
-// MicroVmAttempt IS SEALED TOO, because a record that merely HOLDS a validated segment can still be
-// assembled beside the validator by anyone who obtains one -- and the seal on AttemptSegment then
-// only guarantees that SOME segment was checked, not that THIS attempt's was. The pair is the unit
-// that has to be constructible in one place, so microvm_attempt is the only entry and it carries the
-// refusal outward rather than resolving it.
-type MicroVmAttempt sole_constructor {
-  slot: RunnerSlotIdentity
-  attempt_id: AttemptSegment
-}
-
-type MicroVmAttemptResult
-  = MicroVmAttemptAccepted { attempt: MicroVmAttempt }
-  | MicroVmAttemptRefused { refusal: AttemptSegmentRefusal }
-
-fn microvm_attempt(slot: RunnerSlotIdentity, attempt_id: String) -> MicroVmAttemptResult {
-  match attempt_segment(spelling: attempt_id) {
-    AttemptSegmentAccepted { segment: seg } =>
-      MicroVmAttemptAccepted { attempt: MicroVmAttempt { slot: slot, attempt_id: seg } }
-    AttemptSegmentRefused { refusal: r } => MicroVmAttemptRefused { refusal: r }
-  }
-}
-
 fn runner_microvm_attempt_dir(attempt: MicroVmAttempt) -> String {
   join([
     fabric_cell_attempt_root_path(slot: attempt.slot),
@@ -121,10 +57,6 @@ fn runner_microvm_attempt_rootfs_path(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/rootfs.ext4"], "")
 }
 
-fn runner_microvm_attempt_jit_drive_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/jit.img"], "")
-}
-
 fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/vm-config.json"], "")
 }
@@ -133,18 +65,6 @@ fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
 // across attempts; the attempt directory is already the storage isolation this module owns.
 fn runner_microvm_attempt_jail_base(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/jail"], "")
-}
-
-// THE VMM'S TRANSIENT UNIT NAMES THE ATTEMPT, so a leaked unit says which attempt leaked it. A
-// name derived from the slot alone would collide across attempts on one slot, which is the case a
-// leak check most needs to tell apart.
-fn runner_microvm_attempt_unit_name(attempt: MicroVmAttempt) -> NonEmptyStr {
-  join([
-    "gunbc-microvm-",
-    runner_slot_instance_name(slot: attempt.slot),
-    "-",
-    attempt.attempt_id.value as String,
-  ], "") as NonEmptyStr
 }
 
 // Slice= IS THE BINDING, AND IT IS THE ONE THAT CANNOT BE ADDED AFTERWARDS. A process placed in a
@@ -158,6 +78,53 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
   }
 }
 
+// THE ATTEMPT UNIT'S LIFETIME IS BOUND TO THE SLOT UNIT THAT SUPERVISES IT, and without this the
+// controller's stop reaches nothing.
+//
+// The VMM does not run inside the controller's service cgroup: it is a SEPARATE transient service
+// unit (systemd-run), placed in the CELL's slice so its memory and tasks are charged to the
+// reservation rather than to the controller. That placement is correct and stays. What it means is
+// that KillMode=control-group on gunbc-microvm-slot@<slot>.service reaches only the processes in
+// THAT unit's control group and does not cross into a transient unit living under another slice --
+// so stopping the slot unit left the guest running, with Restart=no meaning nothing came back to
+// reap it. Every path that ends the controller without its own teardown -- systemctl stop, an OOM
+// kill, a crash, systemd's final SIGKILL after TimeoutStopSec -- leaked a VMM (external review of
+// gunbc#12011; PartOf appears nowhere else in this corpus, so no lifetime edge existed).
+//
+// PartOf IS ONE-WAY IN THE DIRECTION THIS NEEDS: stopping the slot unit stops this attempt unit,
+// while this attempt unit exiting does NOT stop the slot unit -- the controller must outlive its
+// guest to read the teardown back.
+//
+// WHAT PartOf ALONE MAY NOT COVER, AND IT IS NOT YET SETTLED. systemd.unit(5) propagates PartOf on
+// a STOP OR RESTART of the listed unit, which is a stop JOB. A controller that is OOM-killed,
+// crashes, or is SIGKILLed by systemd after TimeoutStopSec does not issue one -- its unit enters
+// inactive or failed on its own -- so the propagation this row installs may not fire for exactly
+// three of the four paths the note above lists. BindsTo= is the directive that also stops the
+// dependent when the listed unit enters inactive for ANY reason, and it is the SAME DIRECTION as
+// PartOf when written here, on the attempt unit: the slot unit going away stops the attempt, and
+// the attempt exiting still does not stop the slot unit. An earlier revision of this annotation
+// claimed BindsTo "would take the controller down with the guest"; that describes BindsTo written
+// on the SLOT unit pointing at the attempt, which is the opposite direction and not what is
+// proposed. The claim was wrong and is retracted here.
+//
+// THIS IS NOT REPAIRED BY ASSERTION. gunbc.runner_microvm_stop_propagation_probe settles it by
+// running both arms against a stand-in -- an explicit `systemctl stop` of the supervisor, and a
+// kill of the supervisor's main process standing in for the OOM and crash paths -- and reading the
+// stand-in's ActiveState after each. If the kill arm leaves the stand-in active, PartOf is
+// insufficient for those paths and this row gains BindsTo; if both arms stop it, PartOf is enough
+// and that is recorded rather than assumed.
+//
+// THE ALTERNATIVE REPAIR IS REFUSED: moving the VMM into the controller's slice would make one
+// cgroup reach it, and would charge the guest's 28 GiB to the controller instead of to the cell's
+// reservation, discarding the accounting gunbc.runner_microvm_attempt exists to keep. Separate
+// slices, bound lifetimes.
+fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
+  SystemdRunProperty {
+    property: PartOf,
+    value: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: attempt.slot) as String),
+  }
+}
+
 // THE CELL MUST BE OWNED BEFORE A GUEST MAY USE IT, and this is a REFUSAL rather than a warning.
 // gunbc.fabric_required_build_cell already decides ownership over cell members; this consumes that
 // verdict instead of re-deriving one, because a second ownership opinion is a second authority for
@@ -166,7 +133,6 @@ type MicroVmCellBinding
   = VmBoundToOwnedCell {
       attempt: MicroVmAttempt
       rootfs_path: String
-      jit_drive_path: String
       vm_config_path: String
       unit_name: NonEmptyStr
       slice_property: SystemdRunProperty
@@ -227,7 +193,6 @@ fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBindin
     VmBoundToOwnedCell {
       attempt: attempt,
       rootfs_path: runner_microvm_attempt_rootfs_path(attempt: attempt),
-      jit_drive_path: runner_microvm_attempt_jit_drive_path(attempt: attempt),
       vm_config_path: runner_microvm_attempt_vm_config_path(attempt: attempt),
       unit_name: runner_microvm_attempt_unit_name(attempt: attempt),
       slice_property: runner_microvm_attempt_slice_property(attempt: attempt),
@@ -240,38 +205,5 @@ fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBindin
         " is not owned, so no guest may consume it; a VM launched here would run outside every limit the cell carries",
       ], ""),
     }
-  }
-}
-
-// TEARDOWN IS PROVEN, NOT ATTEMPTED, AND THE CELL IS NOT RELEASABLE WITHOUT THE PROOF.
-//
-// The arms are separate because they are different events with different remedies. A VMM that
-// exited but left its attempt directory populated is a cleanup bug; a VMM still running is a
-// LEAK, and releasing the cell under it would hand a reserved boundary to a second guest while the
-// first still executes in it. There is deliberately no arm meaning "probably fine".
-type MicroVmTeardownVerdict
-  = TeardownProven
-  | TeardownVmmStillRunning { unit: NonEmptyStr }
-  | TeardownResidueRemains { path: String }
-  | TeardownNotObserved { cause: String }
-
-fn microvm_cell_releasable(verdict: MicroVmTeardownVerdict) -> Bool {
-  match verdict {
-    TeardownProven => true
-    TeardownVmmStillRunning { unit: _ } => false
-    TeardownResidueRemains { path: _ } => false
-    TeardownNotObserved { cause: _ } => false
-  }
-}
-
-fn microvm_teardown_verdict_text(v: MicroVmTeardownVerdict) -> String {
-  match v {
-    TeardownProven => "teardown=proven"
-    TeardownVmmStillRunning { unit: u } =>
-      join(["teardown=REFUSED vmm still running (", u as String, "); releasing the cell would hand a live boundary to a second guest"], "")
-    TeardownResidueRemains { path: p } =>
-      join(["teardown=REFUSED residue remains at ", p], "")
-    TeardownNotObserved { cause: c } =>
-      join(["teardown=REFUSED not observed (", c, "); an unobserved teardown is not a completed one"], "")
   }
 }

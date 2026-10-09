@@ -1,0 +1,41 @@
+module extdeps.systemd.udevd
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+// systemd-udevd v255 (255.4-1ubuntu8.10 in the Ubuntu 24.04.3 live-server initrd).
+// run_udevd parses the environment (SYSTEMD_LOG_LEVEL, SYSTEMD_LOG_TARGET) and THEN the kernel
+// command line, so `udev.log_level=` overrides a SYSTEMD_LOG_LEVEL set by the caller -- which is what
+// initramfs-tools' scripts/init-top/udev does (SYSTEMD_LOG_LEVEL=info). The kmod builtin routes
+// libkmod's log function into udev's own log (udev_kmod_log -> log_internalv), and module_load_and_warn
+// logs its own failures at DEBUG (verbose=false). With the default AUTO target and no journal, a
+// daemonized udevd writes to its inherited stderr, i.e. /dev/console -- the LAST console= on the
+// kernel command line -- so SYSTEMD_LOG_TARGET=kmsg is what puts its records in the kernel log.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/systemd/systemd/blob/v255/src/udev/udevd.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systemd.udevd",
+      decl_name: "udevd_log_level_cmdline_key",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data udevd_log_level_cmdline_key: NonEmptyStr = "udev.log_level"
+
+data systemd_log_target_env_name: NonEmptyStr = "SYSTEMD_LOG_TARGET"
+
+data systemd_log_target_kmsg: NonEmptyStr = "kmsg"
+
+data systemd_log_level_debug: NonEmptyStr = "debug"

@@ -1,0 +1,107 @@
+module test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int, List }
+import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE UNIT-HOLD PROOF AND THE SEALED BMC WRITES, ENROLLED AS EXECUTED REDS (side-chat review
+// 5286225278 on gunbc#12101, and the #12077 ruling that an evidence-shaped parameter is a wall only
+// if its sole constructor is mechanically enforced). test.probe.unit_hold_proof_forged_probe authors
+// a UnitHoldProof outside the hold module and calls each sealed write from outside its admitted
+// callers; this witness hands that source to the compiler through the diagnostic-census harness and
+// requires the refusal CLASS at each SUBJECT by name -- an identity join, so a probe refusing for any
+// other reason measures another wall. The harness control shows the census ran.
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.managed_host_unit_hold { unit_hold_store_root }\nfn root() -> NonEmptyStr { unit_hold_store_root }\n"
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// THE CONTROL IS CLASS-SCOPED, AND WHY. Unlike the hold store's own probe, a source importing this
+// module pulls a closure deep enough that the census, which resolves a lone source string, reports
+// unrelated rows for it (unresolved measure types, incomplete effect summaries in std) -- so "zero
+// blocking rows" is not an honest control here. What the REDs below need is narrower and is what this
+// asserts: the census RAN, and a clean source over the same module yields NO row of either class the
+// REDs count. A red below is therefore the probe's own forgery or outside call, joined by class and
+// subject name, and not background the harness emits for any importer.
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = census_of(source: harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+fn probe() -> CompileDiagnosticCensus {
+  census_of(source: probe_source(name: "unit_hold_proof_forged_probe"))
+}
+
+// A PROOF CANNOT BE AUTHORED OUTSIDE THE LIVE ACQUIRE.
+test fn a_forged_unit_hold_proof_is_refused_at_the_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "UnitHoldProof") >= 1
+}
+
+// EACH SEALED WRITE REFUSES A CALLER FROM OUTSIDE ITS ADMITTED ROOTS, named per callee.
+test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "boot_drive_handoff") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_handoff_when_media_ready") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_observe_boot_presentation") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_boot_image") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_action_after_confirmed_selection") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_actuate_and_read_back") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_remote_image") >= 1
+}
+
+// NO PUBLIC ROUTE REACHES A PROOF OR AN ACTUATION FROM OUTSIDE ITS ROOTS: the hold-owning boot path
+// admits only the wet entry, the boot's actuation is sealed to the hold-owning path, and the unit-hold
+// acquire (the proof's only mint) is sealed to the two roots.
+test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "unit_hold_acquire") >= 1
+}
+
+// THE HOLD'S OBSERVATIONS ARE ORDERED BEFORE ITS RELEASE BY CONSTRUCTION (side chat on gunbc#12263,
+// review 5326689644). Boot parameter 5 before and after and the final power reading are sealed to
+// mtcollins1_boot_actuate, which returns -- carrying all three frozen in its record -- before
+// mtcollins1_boot_under_live_unit_hold applies unit_hold_release to the same proof. So none of them
+// can be taken after the release: each outside call below is refused at compile time.
+test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_param5_under_hold") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_power_after_poll") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_param5") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_chassis_power") >= 1
+}

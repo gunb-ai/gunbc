@@ -7,9 +7,8 @@ import v2.compiler.compile {
 }
 
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_atom_node }
 import v2.test.lens_application.empty_required_lenses_skip_gate {
   non_empty_diagnostics_contain_reason
 }
@@ -24,7 +23,7 @@ data hollow_alias_el_authority: Node = claim_atom_node(s: ^hollow_alias_el_symbo
 
 test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
   match validate_then_compile(
-    source: hollow_alias_el_root,
+    source: claim_resolved_tree_without_declarations(root: hollow_alias_el_root),
     lenses: [],
     mode: Eval { runtime: hollow_alias_el_root }
   ) {

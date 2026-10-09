@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.emit_stage_cost_dominates_its_closure
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emit_stage_cost_dominates_its_closure: RecurringFailureMode = RecurringFailureMode {
+  identity: "emit_stage_cost_dominates_its_closure" as NonEmptyStr,
+
+  receipts: [
+    "emit stage cost dominates its closure (over ONE closure, the seed's Rust emit stage spends an order of magnitude more than every earlier stage combined: for gunbc.live_deploy.repository_convergence_placement's 547-module closure, compile.reconcile took ~2 min and compile.emit took ~38 min, 2602s wall / 2587s CPU / 10.0 GiB peak RSS, session container arm64, 2026-09-24. Re-derive with `gunbc compile --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/repository_convergence_placement.dag --target rust`, which prints per-stage durations.)",
+    "INVALID STATE, as a hypothesis: emit work that grows faster than the closure it renders -- a per-module or per-item step that re-derives a closure-wide fact, the reuse-obligation shape DESIGN section 2 names. It is not established which step; emit is 562 files, so ~4s per file is either one quadratic fold or a repeated closure-wide derivation. HARM: an ahead-of-time realization of a small program (option (b) of the repository-convergence lane) costs ~43 CPU-min per build, more than interpreting it on the host, so the lane parked it.",
+    "DISTINGUISHING FACTS: the time is inside compile.emit, after reconcile and analyses finish; the same closure refused at emit in ~25s while a collision diagnostic stopped it early, so the cost is in rendering rather than in emit's admission checks.",
+    "RUNG FOUND AT: outside the ladder as a cost defect with no budget on this route. CEILING: a declared complexity bound on the emit stage checked by execution (DESIGN section 4b names 'a computation exceeding its declared complexity bound'). NEXT TRIGGER: attribute the dominant emit step with the stage's own timing slots, then re-derive its demand graph per DESIGN section 6b. Filed as a finding (session crisp-lark-489); nothing here is fixed.",
+  ],
+
+  evidence: [],
+}

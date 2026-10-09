@@ -11,7 +11,7 @@ import extdeps.github.push_event { PushRefUpdate }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import std.types { CommitSha }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_string, kv }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name }
@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // through the production reader, and fed to the production composition.
 //
 // THE TWO FIXTURE DOCUMENTS ARE EMITTED, NOT TYPED. Both come from one function differing only in
-// its epoch argument, and both are serialized by extdeps.languages.yaml.emit serialize_yaml -- the
+// its epoch argument, and both are written by extdeps.languages.yaml.emit emit_yaml -- the
 // same emitter that writes the committed workflow -- so "the trees differ only in the epoch member"
 // is a property of the construction rather than of an author's care with two string literals.
 //
@@ -66,7 +66,7 @@ data fixture_mismatching_epoch: String = "1999-01-01.0"
 data fixture_repo_full_name: String = "gunb-ai/gunbc"
 
 fn fixture_workflow_source(epoch: String) -> String {
-  serialize_yaml(v: yaml_mapping(entries: [
+  emitted_yaml_text(v: yaml_mapping(entries: [
     kv(key: "name", value: yaml_string(s: witness_floor_workflow_name)),
     kv(key: "env", value: yaml_mapping(entries: [
       kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: epoch)),
@@ -293,5 +293,14 @@ test fn a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreada
   match observe_in_fixture_repo(head_sha: "", commit_the_workflow: false) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochPathUnreadable { detail: _ } } => true
     _ => false
+  }
+}
+
+// The emitted text, or "" when the writer refuses: every claim below asserts content the refused
+// value does not have, so a refusal cannot pass one.
+fn emitted_yaml_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
   }
 }

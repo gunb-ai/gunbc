@@ -3,14 +3,14 @@ module v2.workflow.bootstrap
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
+import v2.std.node { Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq }
 import v2.std.algebra {
   bag_eq,
   contains,
   fold_list,
-  list_snoc_item,
   unique
 }
+import std.algebra { list_snoc_item }
 import v2.std.language_model {
   LanguageModel,
   language_model_to_node,
@@ -24,7 +24,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
   v2_evaluator_runtime
 }
-import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
+import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_fatal, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
 import std.types { NonEmptyStr }
 
@@ -163,10 +163,6 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
-  left == right
-}
-
 fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -> Bool {
   left.identity == right.identity
 }
@@ -213,19 +209,19 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^bootstrap_construct_source_language_subset },
+        label: Authored { name: ^bootstrap_construct_source_language_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
       },
       Edge {
-        label: Named { name: ^bootstrap_construct_target_model_subset },
+        label: Authored { name: ^bootstrap_construct_target_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset)
       },
       Edge {
-        label: Named { name: ^bootstrap_construct_runtime_model_subset },
+        label: Authored { name: ^bootstrap_construct_runtime_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset)
       },
       Edge {
-        label: Named { name: ^bootstrap_construct_lowering_subset },
+        label: Authored { name: ^bootstrap_construct_lowering_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
     ],
@@ -243,7 +239,8 @@ fn bootstrap_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
       BootstrapConstructFoldState {
         constructs: [BootstrapConstruct { identity: sym }]
       }
-    _ => BootstrapConstructFoldState { constructs: [] }
+    TypeNode { connective: _ } => BootstrapConstructFoldState { constructs: [] }
+    ComputationNode { behavior: _ } => BootstrapConstructFoldState { constructs: [] }
   }
 }
 
@@ -292,7 +289,8 @@ fn bootstrap_target_model_bundle_construct_fold_step(
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
-    Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
+    Authored { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
+    StructuralLabel { label: _ } => []
     Positional => []
   }
 
@@ -349,7 +347,7 @@ fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
+  bag_eq(xs: a, ys: b, eq: symbol_eq)
 }
 
 fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
@@ -411,7 +409,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
+        label: Authored { name: ^bootstrap_projection_hash_pin_slot_edge },
         target: Node {
           kind: TypeNode { connective: Atom { identity: pin } },
           children: [],
@@ -419,7 +417,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
 }
       },
       Edge {
-        label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
+        label: Authored { name: ^bootstrap_projection_hash_digest_slot_edge },
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
     ],
@@ -512,23 +510,23 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_root_edge },
+        label: Authored { name: ^bootstrap_projection_snapshot_root_edge },
         target: inputs.snapshot.root
       },
       Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
+        label: Authored { name: ^bootstrap_projection_snapshot_language_model_edge },
         target: language_model_to_node(lm: inputs.snapshot.language_model)
       },
       Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
+        label: Authored { name: ^bootstrap_projection_snapshot_content_hash_edge },
         target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin)
       },
       Edge {
-        label: Named { name: ^bootstrap_projection_target_bundle_edge },
+        label: Authored { name: ^bootstrap_projection_target_bundle_edge },
         target: inputs.target_model.bundle
       },
       Edge {
-        label: Named { name: ^bootstrap_projection_runtime_identity_edge },
+        label: Authored { name: ^bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
     ],
@@ -815,5 +813,5 @@ data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstra
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+  Rejected { diagnostics: nd } => Violates { diagnostic: diagnostics_fatal(d: nd) }
 }

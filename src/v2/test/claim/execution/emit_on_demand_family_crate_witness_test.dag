@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_family_crate_witness
 
 import std.logic { Bool }
-import std.types { String }
+import std.types { String, List }
 import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.emit_on_demand {
   NativeArtifact,
@@ -51,11 +51,9 @@ import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
   emit_complement_eval_subject,
 }
-import v2.std.algebra { Cons, Empty, length, list_append }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty, list_append }
+import std.optional {
   Optional,
   Present,
   Absent
@@ -173,9 +171,9 @@ fn family_crate_native_key(members: List<EmitFamilyMember>) -> ContentHash {
 // required floor measured all six within one runner-swing of the 500ms per-claim ceiling (run
 // 34315228217: 458-487ms cpu against limit_ms=500). The members are not portable (InferredTree's
 // facts PartialFunction), so the share point is the deepest portable stage: the emitted crate
-// source plus its native key. Nullary and warm-enrolled in
-// `v2.workflow.floor_pure_producer_share` (floor_cross_claim_pure_producers_warm), which carries
-// the measured recompute/sharing/serve case; the required floor forces it during strict
+// source plus its native key. Nullary, so the derived cross-claim share
+// (`v2.workflow.floor_pure_producer_share` derive_cross_claim_share) admits it when several planned
+// claims reach it; the required floor forces it during strict
 // preparation, outside every per-claim budget, and each claim pays only the cached native run.
 fn logic_family_primary_emitted() -> Outcome<EmittedFamilyCrate> {
   let members = family_crate_members()

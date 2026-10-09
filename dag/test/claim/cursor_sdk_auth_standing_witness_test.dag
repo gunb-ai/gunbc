@@ -101,14 +101,3 @@ test fn provider_standing_usage_is_capability_gap() -> Bool {
   )
   cursor_sdk_local_provider_standing_has_usage_capability_gap(standing: standing)
 }
-
-test fn cursor_sdk_auth_standing_witness_keystone_holds() -> Bool {
-  auth_probe_authenticated_on_finished_result()
-    && auth_probe_rejects_authentication_error()
-    && auth_probe_rate_limit_is_auth_neutral_not_credential_rejection()
-    && provider_standing_derives_authentication_from_probe()
-    && provider_standing_rejects_credentials_on_auth_error()
-    && provider_standing_rate_limit_keeps_authentication_not_absent()
-    && provider_standing_unrecognised_error_code_stays_unobserved()
-    && provider_standing_usage_is_capability_gap()
-}

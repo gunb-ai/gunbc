@@ -1,5 +1,6 @@
 module test.claim.native_driver_cost_partition
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { nanosecond }
 import std.compiler_entry {
   NativeDriverExclusiveRows,
@@ -13,6 +14,9 @@ import std.compiler_entry {
   ExclusiveRowSerialization,
   ExclusiveModuleRelease,
   ExclusiveRelayEmit,
+  ExclusiveDemandScheduling,
+  ExclusiveDriverCollection,
+  ExclusiveOccurrenceCensus,
   NativeDriverCostOverAttributed,
   NativeDriverCostReconciled,
   NativeDriverCostRemainderExceedsTolerance,
@@ -41,6 +45,9 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 101)
       ExclusiveModuleRelease => nanosecond(count: 1009)
       ExclusiveRelayEmit => nanosecond(count: 10007)
+      ExclusiveDemandScheduling => nanosecond(count: 7000003)
+      ExclusiveDriverCollection => nanosecond(count: 20011)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }
@@ -58,12 +65,12 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
 // fails here, rather than silently dropping that phase's time into the remainder.
 test fn exclusive_sum_is_every_row_the_law_folds() -> Bool {
   native_driver_exclusive_sum(rows: sample_exclusive_rows())
-    == nanosecond(count: 3440612021434)
+    == nanosecond(count: 3440619041448)
 }
 
 test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool {
   match native_driver_cost_account(
-    parent_span: nanosecond(count: 3440621826750),
+    parent_span: nanosecond(count: 3440628826753),
     exclusive: sample_exclusive_rows(),
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -87,6 +94,9 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -112,6 +122,9 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -135,6 +148,40 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
 // native_driver_exclusive_sum the remaining rows sum to 50 against a parent of 100 and the call
 // RECONCILES, so each probe fails exactly when its own row has been dropped from the fold.
 
+// THE SAME PROBE FOR DEMAND SCHEDULING, the row added because leaving the scheduler's own work
+// unattributed was a correctness defect and not a reporting gap: the driver closed its scheduling span
+// BEFORE calling the engine, so plan construction, ready-queue selection, binding lookup, settlement,
+// readiness recomputation and row collection fell into the remainder, and a large enough selected
+// universe made a VALID adjudication exit RemainderExceedsTolerance. This probe fails exactly when the
+// row is dropped from the fold -- the remaining rows sum to 50 against a parent of 100 and reconcile.
+test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal() -> Bool {
+  match native_driver_cost_account(
+    parent_span: nanosecond(count: 100),
+    exclusive: native_driver_exclusive_rows(measure: fn(k) {
+      match k {
+        ExclusiveLoad => nanosecond(count: 10)
+        ExclusiveUniverseDerivation => nanosecond(count: 10)
+        ExclusiveContext => nanosecond(count: 10)
+        ExclusivePrepare => nanosecond(count: 10)
+        ExclusiveEval => nanosecond(count: 10)
+        ExclusiveReceiptAdmission => nanosecond(count: 0)
+        ExclusiveRowSerialization => nanosecond(count: 0)
+        ExclusiveModuleRelease => nanosecond(count: 0)
+        ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 80)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
+      }
+    }),
+    tolerance: native_driver_cost_remainder_tolerance_nanos
+  ) {
+    NativeDriverCostOverAttributed { sum_exclusive: sum, parent_span: parent } =>
+      (sum == nanosecond(count: 130)) && (parent == nanosecond(count: 100))
+    NativeDriverCostReconciled { residual: _, tolerance: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual: _, tolerance: _ } => false
+  }
+}
+
 test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refusal() -> Bool {
   match native_driver_cost_account(
     parent_span: nanosecond(count: 100),
@@ -149,6 +196,9 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -174,6 +224,9 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -204,6 +257,9 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -228,6 +284,9 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+        ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -294,6 +353,9 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 158600186)
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusiveDemandScheduling => nanosecond(count: 0)
+      ExclusiveDriverCollection => nanosecond(count: 0)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }
@@ -310,6 +372,9 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 0)
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusiveDemandScheduling => nanosecond(count: 0)
+      ExclusiveDriverCollection => nanosecond(count: 0)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }

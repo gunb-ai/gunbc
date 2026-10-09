@@ -1,0 +1,69 @@
+module v2.test.claim.parse.data_keyword_as_value
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// `data` NAMES A VALUE IN EXPRESSION POSITION (v2.extdeps.languages.dag dag_grammar_primary_name_expr),
+// as `module` already does and as v1 reads it: a parameter named `data` can be returned. A clause
+// keyword is still not a value, so the admission is exactly the declaration-heading keyword.
+fn value_source(name: String) -> String {
+  "module probe.keyword_value\n\nfn pick(data: Int) -> Int { " + name + " }\n"
+}
+
+fn value_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^data_keyword_value_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn value_parses(name: String) -> Bool {
+  match value_parse(text: value_source(name: name)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Each parse or normalize is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it (a claim that parsed its own source
+// is over the new-witness eval-step budget).
+fn data_value_parsed() -> Bool { value_parses(name: "data") }
+
+fn data_value_normalized() -> Bool {
+  match conservation_subject_of_text(path: "probe_keyword_value.dag", text: value_source(name: "data")).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn else_value_parsed() -> Bool { value_parses(name: "else") }
+
+test fn the_data_keyword_as_a_value_parses_holds() -> Bool { data_value_parsed() }
+
+// The route past parse: the same module normalizes, so the admitted atom is one lowering reads.
+test fn the_data_keyword_as_a_value_normalizes_holds() -> Bool { data_value_normalized() }
+
+test fn a_clause_keyword_is_still_not_a_value_holds() -> Bool {
+  match else_value_parsed() {
+    true => false
+    false => true
+  }
+}

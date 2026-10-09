@@ -329,6 +329,21 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     }
   },
   AdvisoryClassCeilingRow {
+    class_name: "TestCodeReferenceAdmitted" as NonEmptyStr,
+    ceiling: DeclaredAdmissionRoster {
+      roster: DeclarationRef {
+        module_path: "v1.compiler.compile",
+        decl_name: "test_reference_debt",
+        field: WholeDeclaration
+      }
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
     class_name: "MethodExistenceFrontierAdmitted" as NonEmptyStr,
     ceiling: DeclaredAdmissionRoster {
       roster: DeclarationRef {
@@ -380,6 +395,17 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     class_name: "EffectSummaryIncompleteAtLocalBinding" as NonEmptyStr,
     ceiling: WallAfterGrounding {
       missing_capability: "the effect registry's join through local bindings. A call to a local binding's value should read the summary the binding's own initializer established; the registry is keyed by callable identity and does not reach local bindings, so the join contributes nothing and the caller's summary is published as a lower bound. Decidable -- the marker is present or not -- but promoting now would refuse ordinary calls through locally-bound functions that are right but unproven. Where the binding's value is itself a runtime-chosen function this row degrades to the function-value row's capability, and the two burn down together."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "AlgebraApplicationEvidenceUnavailable" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the grounding gunbc.guarantee_stall.algebra_expansion_positional_argument_stall names: a coproduct-variant record literal produces a nominal application carrying its inferred type arguments. Its construction is derived-node identity step 2 (gunbc.recurring_failure_mode generic_identity_decided_by_spelling), because instantiating the literal mints an applied type node and minting one by parameter name is the spelling-keyed construction that step retires. Every firing is a checker deficit rather than an author defect -- at each measured site an annotated twin of the same code is clean, and the dropped argument is read back as the container (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container) -- so promoting the class before that capability would refuse correct programs, the fabricated refusal DESIGN 4b forbids. The fold-accumulator shape is repaired at its own link and is not part of this residue."
     },
     census: DeclarationRef {
       module_path: "gunbc.instrument_targets",

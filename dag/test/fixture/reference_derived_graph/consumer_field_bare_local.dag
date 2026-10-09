@@ -1,0 +1,15 @@
+module test.fixture.reference_derived_graph.consumer_field_bare_local
+
+import std.types { Int }
+
+type LocalFieldOnly
+
+type LocalParamMarker
+
+type LocalWrapper {
+  f: LocalFieldOnly
+}
+
+fn uses(x: LocalParamMarker) -> Int {
+  1
+}

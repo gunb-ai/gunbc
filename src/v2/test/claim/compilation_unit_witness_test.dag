@@ -1,6 +1,7 @@
 module v2.test.claim.compilation_unit_witness
 
 import std.algebra { Empty }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
@@ -10,9 +11,12 @@ import v2.std.compilers.compilation_unit {
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
+  MembersResolveOk,
+  MembersResolveRefused,
   ModuleTypeDefinitionRow,
   InterfaceClosureUnreachedFixpoint,
   PartitionFoldOk,
+  PartitionFoldOutcome,
   PartitionFoldRefused,
   PartitionInterfaceClosed,
   PartitionInterfaceTruncated,
@@ -21,7 +25,6 @@ import v2.std.compilers.compilation_unit {
   PartitionR4ValidityVerdict,
   PolicyDerived,
   partition_r4_witness_refused_scc_split,
-  partition_fold,
   partition_fold_deps_match_boundary_edges,
   partition_fold_outcome,
   partition_fold_outcome_with_closure_fuel,
@@ -31,14 +34,16 @@ import v2.std.compilers.compilation_unit {
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
   partition_unit_by_id,
+  resolve_member_interfaces,
 }
 import v2.std.collection { empty_map, map_insert }
+import std.optional { Absent, Optional, Present }
 import v2.std.node {
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -46,6 +51,7 @@ import v2.std.node {
   node_synthetic,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -69,29 +75,19 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^x },
-        target: witness_type_atom(sym: witness_type_int),
-      }
+      binder_edge(
+        name: ^x,
+        type_node: witness_type_atom(sym: witness_type_int)
+      )
     ]
   )
 }
 
 fn witness_fn_taking_point_by_value() -> Node {
-  node_synthetic(
-    kind: TypeNode {
-      connective: Arrow,
-    },
-    children: [
-      Edge {
-        label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
-      },
-      Edge {
-        label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
-      }
-    ]
+  anonymous_signature_arrow(
+    domain_types: [witness_type_atom(sym: witness_type_point)],
+    codomain: witness_type_atom(sym: witness_type_int),
+    source: witness_type_atom(sym: witness_type_point)
   )
 }
 
@@ -159,16 +155,29 @@ fn witness_single_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
     |> map_insert(witness_mod_c, witness_unit_all)
 }
 
-fn witness_partition_fold_two_units() -> List<CompilationUnit> {
-  partition_fold(
+fn witness_unit_from_outcome(
+  outcome: PartitionFoldOutcome,
+  unit_id: CompilationUnitId
+) -> Optional<CompilationUnit> {
+  match outcome {
+    PartitionFoldRefused { cause: _ } => Absent
+    PartitionFoldOk { units: units } => partition_unit_by_id(units: units, unit_id: unit_id)
+  }
+}
+
+fn witness_two_unit_outcome() -> PartitionFoldOutcome {
+  partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
   )
 }
 
+fn witness_two_unit(unit_id: CompilationUnitId) -> Optional<CompilationUnit> {
+  witness_unit_from_outcome(outcome: witness_two_unit_outcome(), unit_id: unit_id)
+}
+
 test fn witness_unit_one_members_and_deps() -> Bool {
-  let units = witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+  match witness_two_unit(unit_id: witness_unit_one) {
     Present { value: unit } =>
       (unit.members == [witness_mod_a, witness_mod_b])
         && (unit.deps == [witness_unit_two])
@@ -177,9 +186,8 @@ test fn witness_unit_one_members_and_deps() -> Bool {
 }
 
 test fn witness_unit_two_interface_carries_declaration_content() -> Bool {
-  let units = witness_partition_fold_two_units()
   let export_decl = witness_fn_taking_point_by_value()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+  match witness_two_unit(unit_id: witness_unit_two) {
     Present { value: unit } =>
       (unit.members == [witness_mod_c])
         && (unit.deps == [witness_unit_one])
@@ -189,9 +197,8 @@ test fn witness_unit_two_interface_carries_declaration_content() -> Bool {
 }
 
 test fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
-  let units = witness_partition_fold_two_units()
   let point_def = witness_point_struct_conj_body()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+  match witness_two_unit(unit_id: witness_unit_two) {
     Present { value: unit } =>
       partition_interface_contains_node(interface: unit.interface, needle: point_def)
         && ((unit.interface |> count) >= 2)
@@ -202,16 +209,21 @@ test fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
 test fn witness_interface_closure_saturates_on_triangle() -> Bool {
   let dag = witness_triangle_dag()
   let assignment = witness_two_unit_assignment()
-  let units = partition_fold(module_dag: dag, assignment: assignment)
-  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+  match witness_unit_from_outcome(
+    outcome: partition_fold_outcome(module_dag: dag, assignment: assignment),
+    unit_id: witness_unit_two
+  ) {
     Present { value: unit } =>
-      match partition_interface_closure_saturate_result(
-        seeds: [witness_fn_taking_point_by_value()],
-        module_dag: dag,
-        members: unit.members
-      ) {
-        PartitionInterfaceClosed { nodes: _ } => true
-        PartitionInterfaceTruncated => false
+      match resolve_member_interfaces(module_dag: dag, members: unit.members) {
+        MembersResolveRefused { cause: _ } => false
+        MembersResolveOk { members: resolved } =>
+          match partition_interface_closure_saturate_result(
+            seeds: [witness_fn_taking_point_by_value()],
+            resolved: resolved
+          ) {
+            PartitionInterfaceClosed { nodes: _ } => true
+            PartitionInterfaceTruncated => false
+          }
       }
     Absent => false
   }
@@ -234,11 +246,13 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
 }
 
 test fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
-  let units = partition_fold(
-    module_dag: witness_triangle_dag(),
-    assignment: witness_single_unit_assignment()
-  )
-  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+  match witness_unit_from_outcome(
+    outcome: partition_fold_outcome(
+      module_dag: witness_triangle_dag(),
+      assignment: witness_single_unit_assignment()
+    ),
+    unit_id: witness_unit_all
+  ) {
     Present { value: unit } =>
       (unit.members == [witness_mod_a, witness_mod_b, witness_mod_c])
         && (unit.deps == [])
@@ -248,11 +262,13 @@ test fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
 }
 
 test fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
-  let units = partition_fold(
-    module_dag: witness_chain_dag(),
-    assignment: witness_single_unit_assignment()
-  )
-  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+  match witness_unit_from_outcome(
+    outcome: partition_fold_outcome(
+      module_dag: witness_chain_dag(),
+      assignment: witness_single_unit_assignment()
+    ),
+    unit_id: witness_unit_all
+  ) {
     Present { value: unit } => unit.deps == []
     Absent => false
   }
@@ -273,8 +289,7 @@ test fn witness_fold_deps_match_boundary_edges_single_unit() -> Bool {
 }
 
 test fn witness_misderived_deps_would_fail_receipt() -> Bool {
-  let units = witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+  match witness_two_unit(unit_id: witness_unit_one) {
     Present { value: unit } =>
       !(unit.deps == [])
         && !(unit.deps == [witness_unit_one])
@@ -288,7 +303,7 @@ test fn witness_provenance_variants_distinct() -> Bool {
   let derived = partition_provenance_policy_derived(
     policy: DeclarationRef {
       module_path: "v2.std.compilers.compilation_unit" as NonEmptyStr,
-      decl_name: "partition_fold" as NonEmptyStr,
+      decl_name: "partition_fold_outcome" as NonEmptyStr,
       field: WholeDeclaration,
     }
   )

@@ -1,5 +1,6 @@
 module v2.test.manual.typescript_eager_materialize_forward_dedup
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
 import v2.extdeps.languages.typescript {
@@ -7,9 +8,7 @@ import v2.extdeps.languages.typescript {
   ts_task_type_alias_emitted,
   ts_task_type_alias_relation_row_witness
 }
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
+import std.algebra { Empty, list_append }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node
@@ -22,7 +21,6 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Node,

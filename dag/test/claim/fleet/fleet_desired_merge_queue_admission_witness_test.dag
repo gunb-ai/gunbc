@@ -25,7 +25,7 @@ import gunbc.fleet_desired_admission {
 }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.transports.rest { RestOk, RestResponseObserved, RestBodyRead }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
 import test.fixture.rest_exchange_replay_probe
@@ -317,7 +317,7 @@ test fn the_emitted_fleet_desired_workflow_routes_push_to_its_entry_and_carries_
       contains(y, "push:")
         && contains(y, "--function admit_fleet_desired_from_push_wet")
         && contains(y, "actions: read")
-        && !contains(y, "workflow_run")
+        && !contains(split(s: y, delimiter: "jobs:").first(), "workflow_run")
         && !contains(y, "admit_fleet_desired_from_floor_event_wet")
     FleetDesiredGenerationRefused { reason: _ } => false
   }
@@ -359,27 +359,28 @@ data live_a8d4_merge_group_runs_body: String = "{\"total_count\":1,\"workflow_ru
 data live_a8d4_revision: String = "a8d4fdeb1c2c971fcf9b17614d80e75c63f07d50"
 
 test fn the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision() -> Bool {
-  let result = evaluate_in_witness_frame(
+  match evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "WorkflowRunsPage",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_a8d4_merge_group_runs_body } }
     )]),
-    subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }
-  )
-  match result {
-    WitnessReturned { value } =>
-      match value.observed {
-        RestOk =>
+    subject: fn(_scope) {
+      match test.RestReplay.WorkflowRunsPage() {
+        RestAnswered { answer } =>
           match git_object_id_from_untagged_hex(hex: live_a8d4_revision) {
             Present { value: r } =>
-              match accept_required_ci_merge_group_runs(revision: r, runs: value.runs, observed_epoch: epoch_match()) {
+              match accept_required_ci_merge_group_runs(revision: r, runs: answer.runs, observed_epoch: epoch_match()) {
                 RequiredCiAdmitted { succeeded: _ } => true
                 RequiredCiRefused { cause: _ } => false
               }
             none => false
           }
-        _ => false
+        RestRefused { refusal: _ } => false
       }
+    }
+  ) {
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }

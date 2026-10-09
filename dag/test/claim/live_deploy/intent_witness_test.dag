@@ -5,7 +5,7 @@ import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
   live_deploy_service_ready_gate_for_spec,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }

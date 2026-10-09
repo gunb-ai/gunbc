@@ -1,6 +1,8 @@
 module v1.compiler.runtime_rust
 
 import extdeps.filesystem.rust_realization { rust_file_create_new_canonical_block }
+import extdeps.cargo { CargoFeature }
+import extdeps.posix.clock_gettime { ClockThreadCputimeId, clock_id_label }
 
 fn rt_header() -> String {
   concat(
@@ -12,19 +14,39 @@ fn rt_header() -> String {
     "use std::rc::Rc;\n\n")
 }
 
+// THE RUNTIME OWNS THE FEATURES IT GATES ON. `v1_rt.rs` is copied into every emitted crate and
+// carries `#[cfg(feature = ...)]` arms, so every manifest that compiles it must declare those
+// features or rustc reports `unexpected_cfgs` (a hard error under `-D warnings`). The cfg lines
+// below and every manifest writer read the name from here, so the two cannot drift apart.
+fn rt_text_lookup_work_counter_feature() -> CargoFeature {
+  CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
+}
+
+fn rust_runtime_cargo_features() -> List<CargoFeature> {
+  [rt_text_lookup_work_counter_feature()]
+}
+
+fn rt_text_lookup_work_counter_cfg_on() -> String {
+  concat("#[cfg(feature = \"", rt_text_lookup_work_counter_feature().name, "\")]\n")
+}
+
+fn rt_text_lookup_work_counter_cfg_off() -> String {
+  concat("#[cfg(not(feature = \"", rt_text_lookup_work_counter_feature().name, "\"))]\n")
+}
+
 fn rt_text_lookup_work_counter() -> String {
   concat(
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "thread_local! {\n",
     "    static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);\n",
     "}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn reset_text_lookup_chars_walked() {\n",
     "    TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(0));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn reset_text_lookup_chars_walked() {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn take_text_lookup_chars_walked() -> u64 {\n",
     "    TEXT_LOOKUP_CHARS_WALKED.with(|c| {\n",
     "        let walked = c.get();\n",
@@ -32,9 +54,9 @@ fn rt_text_lookup_work_counter() -> String {
     "        walked\n",
     "    })\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn take_text_lookup_chars_walked() -> u64 { 0 }\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {\n",
     "  let walked = if s.is_ascii() {\n",
     "    take_len as u64\n",
@@ -43,19 +65,19 @@ fn rt_text_lookup_work_counter() -> String {
     "  };\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + walked));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "fn record_substring_chars_walked(_s: &str, _start: usize, _take_len: usize) {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "fn record_source_chars_slice_walked(units: u64) {\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + units));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "fn record_source_chars_slice_walked(_units: u64) {}\n\n",
-    "#[cfg(feature = \"text_lookup_work_counter\")]\n",
+    rt_text_lookup_work_counter_cfg_on(),
     "pub fn record_source_chars_index_lookup() {\n",
     "  TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + 1));\n",
     "}\n\n",
-    "#[cfg(not(feature = \"text_lookup_work_counter\"))]\n",
+    rt_text_lookup_work_counter_cfg_off(),
     "pub fn record_source_chars_index_lookup() {}\n\n")
 }
 
@@ -90,7 +112,7 @@ fn rt_concat_trait() -> String {
     "    fn v1_concat(mut self, other: String) -> String { self.push_str(&other); self }\n",
     "}\n\n",
     "impl<T: Clone> V2Concat for Vec<T> {\n",
-    "    fn v1_concat(mut self, other: Vec<T>) -> Vec<T> { self.extend(other); self }\n",
+    "    fn v1_concat(mut self, other: Vec<T>) -> Vec<T> { self.append(other); self }\n",
     "}\n\n",
     "pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v1_concat(b) }\n\n")
 }
@@ -130,6 +152,20 @@ fn rt_string_ops() -> String {
     "}\n\n",
     "pub fn symbol_intern_lexeme(lexeme: String) -> String {\n",
     "    lexeme\n",
+    "}\n\n",
+    "/// std.bytes bytes_octets: the octets of a Bytes carrier (Vec<u8> on this target), each as\n",
+    "/// the List<Int> member the interpreter's free_call.bytes_octets arm answers.\n",
+    "pub fn bytes_octets(b: Vec<u8>) -> Rc<Vec<i64>> {\n",
+    "    Rc::new(b.iter().map(|octet| *octet as i64).collect())\n",
+    "}\n\n",
+    "/// std.bytes utf8_encode_bytes: RFC 3629 UTF-8 encoding, the inverse of utf8_decode_bytes.\n",
+    "pub fn utf8_encode_bytes(s: String) -> Vec<u8> {\n",
+    "    s.into_bytes().into_iter().collect()\n",
+    "}\n\n",
+    "/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved\n",
+    "/// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.\n",
+    "pub fn pure_dag_seam_unreachable() -> i64 {\n",
+    "    panic!(\"std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated\")\n",
     "}\n\n",
     "/// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.\n",
     "pub fn substring(s: &str, start: i64, end: i64) -> String {\n",
@@ -172,6 +208,9 @@ fn rt_collection_ops() -> String {
     "pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {\n",
     "    m.get(&key).cloned()\n",
     "}\n\n",
+    "pub fn list_get_optional<T: Clone>(items: &Vec<T>, index: i64) -> Option<T> {\n",
+    "    if index < 0 { None } else { items.get(index as usize).cloned() }\n",
+    "}\n\n",
     "pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {\n",
     "    let mut map = HashMap::new();\n",
     "    for item in list { let key = key_fn(&item); map.insert(key, item); }\n",
@@ -188,7 +227,19 @@ fn rt_collection_ops() -> String {
     "    m.get(&key).cloned()\n",
     "}\n\n",
     "pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> { m.keys().cloned().collect() }\n\n",
-    "pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> { let mut keys = map_keys(m); keys.sort(); keys }\n\n",
+    "// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.\n",
+    "// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the\n",
+    "// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a\n",
+    "// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,\n",
+    "// at the call, rather than sorting in an order the interpreter would not produce.\n",
+    "#[diagnostic::on_unimplemented(message = \"EMIT REFUSED: `\{Self\}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations\", label = \"ordering key of a type with no canonical emitted order\")]\n",
+    "pub trait CanonicalOrdKey: Ord \{\}\n",
+    "impl CanonicalOrdKey for String \{\}\n",
+    "impl CanonicalOrdKey for RcStr \{\}\n",
+    "impl CanonicalOrdKey for i64 \{\}\n",
+    "impl CanonicalOrdKey for bool \{\}\n\n",
+    "pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering \{ a.cmp(b) \}\n\n",
+    "pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> \{ let mut keys = map_keys(m); keys.sort(); keys \}\n\n",
     "pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool { m.is_empty() }\n\n",
     "// Sound identity hint (see 04_infer.dag substitute_generics): returns true =>\n",
     "// the two are structurally equal. The compiled realization answers with pointer\n",
@@ -202,7 +253,7 @@ fn rt_collection_ops() -> String {
     "    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Rc::ptr_eq(x, y))\n",
     "}\n\n",
     "pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> { m.values().cloned().collect() }\n\n",
-    "pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }\n\n",
+    "pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.append(b); a }\n\n",
     "pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> { list.push_back(item); list }\n\n",
     "pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {\n",
     "    let mut v = (*list).clone();\n",
@@ -274,15 +325,60 @@ fn rt_string_carrier() -> String {
     "/// free functions' semantics: each method falls back to the function it shadows\n",
     "/// whenever the flag is false, and takes the byte path only under the same\n",
     "/// condition that path is already taken there (byte index == code-point index).\n",
+    "///\n",
+    "/// The content hash is the second carried fact, carried for the same reason as the\n",
+    "/// flag: a pure function of immutable content that a hot consumer re-derived per\n",
+    "/// access. The interpreter's eval-call memo keys every pure call by the content hash\n",
+    "/// of its arguments and rehashed a `Value::Str` in full on EVERY call, so a recursion\n",
+    "/// threading one large text through its steps paid O(|text|) per step and O(|text|^2)\n",
+    "/// overall. It is filled lazily -- most strings are never a call argument -- and it is\n",
+    "/// carried beside the Rc rather than behind it: a clone taken after the first hash\n",
+    "/// inherits it, which is the route a threaded argument takes (the key is read off the\n",
+    "/// argument before it becomes the callee's binding, and the next step's argument is a\n",
+    "/// clone of that binding). An identity memo keyed on the allocation was rejected: a\n",
+    "/// `Weak<str>` keeps the string's inline bytes allocated, so every hashed argument\n",
+    "/// would be retained for the context's lifetime.\n",
     "#[derive(Debug, Clone)]\n",
     "pub struct RcStr \{\n",
     "    rc: Rc<str>,\n",
     "    is_ascii: bool,\n",
-    "\}\n\n",
+    "    content_hash: Cell<Option<u64>>,\n",
+    "\}\n",
+    "\n",
+    "/// The one content hash of interpreted string text. `RcStr::content_hash` carries it and\n",
+    "/// a consumer holding a bare `&str` calls it directly, so a carried hash and a computed\n",
+    "/// one cannot disagree.\n",
+    "pub fn str_content_hash(s: &str) -> u64 \{\n",
+    "    use std::hash::\{Hash, Hasher\};\n",
+    "    let mut h = std::collections::hash_map::DefaultHasher::new();\n",
+    "    s.hash(&mut h);\n",
+    "    h.finish()\n",
+    "\}\n",
+    "\n",
+    "#[cfg(test)]\n",
+    "thread_local! \{\n",
+    "    static STR_CONTENT_HASH_COMPUTED: Cell<u64> = const \{ Cell::new(0) \};\n",
+    "\}\n",
+    "\n",
     "impl RcStr \{\n",
     "    pub fn new(rc: Rc<str>) -> Self \{\n",
     "        let is_ascii = rc.is_ascii();\n",
-    "        RcStr \{ rc, is_ascii \}\n",
+    "        RcStr \{\n",
+    "            rc,\n",
+    "            is_ascii,\n",
+    "            content_hash: Cell::new(None),\n",
+    "        \}\n",
+    "    \}\n\n",
+    "    /// `str_content_hash` of this text, computed at most once per carrier lineage.\n",
+    "    pub fn content_hash(&self) -> u64 \{\n",
+    "        if let Some(h) = self.content_hash.get() \{\n",
+    "            return h;\n",
+    "        \}\n",
+    "        #[cfg(test)]\n",
+    "        STR_CONTENT_HASH_COMPUTED.with(|c| c.set(c.get() + 1));\n",
+    "        let h = str_content_hash(&self.rc);\n",
+    "        self.content_hash.set(Some(h));\n",
+    "        h\n",
     "    \}\n\n",
     "    #[inline]\n",
     "    pub fn as_str(&self) -> &str \{\n",
@@ -356,6 +452,43 @@ fn rt_string_carrier() -> String {
     "impl std::fmt::Display for RcStr \{\n",
     "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result \{\n",
     "        std::fmt::Display::fmt(&*self.rc, f)\n",
+    "    \}\n",
+    "\}\n\n",
+    "#[cfg(test)]\n",
+    "mod rc_str_content_hash_tests \{\n",
+    "    use super::*;\n",
+    "\n",
+    "    fn computed() -> u64 \{\n",
+    "        STR_CONTENT_HASH_COMPUTED.with(|c| c.get())\n",
+    "    \}\n",
+    "\n",
+    "    #[test]\n",
+    "    fn carried_hash_equals_the_free_authority() \{\n",
+    "        for text in [\"\", \"a\", \"\{\\\"weight_map\\\": \{\}\}\", \"caf\\u\{e9\} \\u\{1f600\}\"] \{\n",
+    "            assert_eq!(RcStr::new(Rc::from(text)).content_hash(), str_content_hash(text));\n",
+    "        \}\n",
+    "    \}\n",
+    "\n",
+    "    #[test]\n",
+    "    fn a_threaded_clone_inherits_the_hash_instead_of_rehashing() \{\n",
+    "        let first = RcStr::new(Rc::from(\"x\".repeat(4096).as_str()));\n",
+    "        let before = computed();\n",
+    "        let h = first.content_hash();\n",
+    "        let mut carried = first.clone();\n",
+    "        for _ in 0..1000 \{\n",
+    "            assert_eq!(carried.content_hash(), h);\n",
+    "            carried = carried.clone();\n",
+    "        \}\n",
+    "        assert_eq!(computed() - before, 1, \"one hash per lineage, not one per step\");\n",
+    "    \}\n",
+    "\n",
+    "    #[test]\n",
+    "    fn a_clone_taken_before_the_first_hash_is_an_independent_lineage() \{\n",
+    "        let a = RcStr::new(Rc::from(\"abc\"));\n",
+    "        let b = a.clone();\n",
+    "        let before = computed();\n",
+    "        assert_eq!(a.content_hash(), b.content_hash());\n",
+    "        assert_eq!(computed() - before, 2);\n",
     "    \}\n",
     "\}\n\n",
     "impl PartialEq for RcStr \{\n",
@@ -485,6 +618,63 @@ fn rt_unicode_ops() -> String {
     "pub fn code_point(c: String) -> i64 {\n",
     "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n",
     "}\n\n",
+    "// THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS — the interpreted piece-walk this primitive\n",
+    "// replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the\n",
+    "// measured interpreter constant), which was the read's wall once every quadratic above it was\n",
+    "// gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown\n",
+    "// escape refuses before a value is built) holds at native speed. A \\u high surrogate must be\n",
+    "// followed by a \\u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);\n",
+    "// an unpaired surrogate of either half refuses. It used to decode through from_code_point,\n",
+    "// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).\n",
+    "// The caller owns the span: this kernel takes the already-scanned body and answers the\n",
+    "// decoded value or None.\n",
+    "pub fn json_unescape_checked(s: &str) -> Option<String> {\n",
+    "    if !s.contains('\\\\') {\n",
+    "        return Some(s.to_string());\n",
+    "    }\n",
+    "    let mut out = String::with_capacity(s.len());\n",
+    "    let mut chars = s.chars();\n",
+    "    while let Some(c) = chars.next() {\n",
+    "        if c != '\\\\' {\n",
+    "            out.push(c);\n",
+    "            continue;\n",
+    "        }\n",
+    "        match chars.next() {\n",
+    "            Some('\"') => out.push('\"'),\n",
+    "            Some('\\\\') => out.push('\\\\'),\n",
+    "            Some('/') => out.push('/'),\n",
+    "            Some('b') => out.push('\\x08'),\n",
+    "            Some('f') => out.push('\\x0c'),\n",
+    "            Some('n') => out.push('\\n'),\n",
+    "            Some('r') => out.push('\\r'),\n",
+    "            Some('t') => out.push('\\t'),\n",
+    "            Some('u') => {\n",
+    "                let cp = json_unescape_hex4(&mut chars)?;\n",
+    "                if (0xD800..=0xDBFF).contains(&cp) {\n",
+    "                    if chars.next() != Some('\\\\') || chars.next() != Some('u') {\n",
+    "                        return None;\n",
+    "                    }\n",
+    "                    let lo = json_unescape_hex4(&mut chars)?;\n",
+    "                    if !(0xDC00..=0xDFFF).contains(&lo) {\n",
+    "                        return None;\n",
+    "                    }\n",
+    "                    out.push(char::from_u32(0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00))?);\n",
+    "                } else {\n",
+    "                    out.push(char::from_u32(cp)?);\n",
+    "                }\n",
+    "            }\n",
+    "            _ => return None,\n",
+    "        }\n",
+    "    }\n",
+    "    Some(out)\n",
+    "}\n\n",
+    "fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {\n",
+    "    let mut v: u32 = 0;\n",
+    "    for _ in 0..4 {\n",
+    "        v = v * 16 + chars.next()?.to_digit(16)?;\n",
+    "    }\n",
+    "    Some(v)\n",
+    "}\n\n",
     "pub fn from_code_point(cp: i64) -> String {\n",
     "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n",
     "}\n\n",
@@ -550,7 +740,7 @@ fn rt_rc_container_ops() -> String {
     "}\n\n",
     "pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {\n",
     "    let mut result = a;\n",
-    "    Rc::make_mut(&mut result).extend(b.iter().cloned());\n",
+    "    Rc::make_mut(&mut result).append((*b).clone());\n",
     "    result\n",
     "}\n\n",
     "// Every rc_* update here rides a persistent carrier (im HashMap/Vector/\n",
@@ -589,6 +779,29 @@ fn rt_rc_container_ops() -> String {
 // runtime is mirrored into the partition's foundation crate, so `v1_rt::` resolves from a
 // partitioned crate as well as from the monolithic one. A crate-root definition would not: the
 // partition crates re-export only what stage0_crates names explicitly.
+// THE DIVERGING SEAM HELPER, AND WHY IT IS GENERIC RATHER THAN A BARE `panic!`.
+//
+// An unrealized host seam must refuse, and `panic!` is the refusal: a primitive whose body is a bare
+// self-call has no behaviour on this target, and emitting that shape verbatim produces a function
+// that compiles, runs and returns to no caller (DESIGN section 5 silent wrongness). What `panic!`
+// alone cannot do is stand where its RESULT IS CONSUMED. `!` coerces to any type in value position,
+// but it is not a method receiver, so `panic!("...").len()` refuses with E0599 and every argument
+// after it with `unreachable`. Measured on the v2-native CLI closure: two seams, five errors, none
+// of which named a seam.
+//
+// `unrealized_host_seam::<T>` is the same divergence with a NAME FOR ITS TYPE. The emitter renders
+// the turbofish from the call's own inferred type, so the expression is concrete, method resolution
+// works, and the program still cannot get past it. Nothing is fabricated: the function has no return
+// path.
+//
+// WHY NOT REFUSE THE WHOLE FUNCTION INSTEAD, which type-checks trivially because `!` coerces in
+// return position. That was built and withdrawn: deciding "does this body reach an unrealized seam"
+// needs a realizability predicate the emitter does not have -- `rt_functions()` is not the set of
+// realizable primitives, since collection folds, pipelines and the operators are rendered by
+// dedicated arms with no bridge row -- so a body walk refused `v1.compiler.tokenize
+// source_code_point` and `v1.compiler.infer typecheck_module`, and the rebuilt seed panicked on its
+// own first tokenize. Typing the expression needs no such predicate: the call site already knows
+// what the call was supposed to return.
 fn rt_filesystem() -> String {
   concat(
     rust_file_create_new_canonical_block(), "\n",
@@ -596,11 +809,66 @@ fn rt_filesystem() -> String {
     "pub struct FilesystemReadResult {\n",
     "    pub content: String,\n",
     "}\n\n",
+    "pub fn unrealized_host_seam<T>(seam: &str) -> T {\n",
+    "    panic!(\"{}\", seam);\n",
+    "}\n\n",
     "pub fn filesystem_read(path: String) -> FilesystemReadResult {\n",
     "    let content = std::fs::read_to_string(&path)\n",
     "        .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", path, e));\n",
     "    FilesystemReadResult { content }\n",
     "}\n")
+}
+
+fn rt_checked_int_ops() -> String {
+  concat(
+    "/// Substrate `Int` arithmetic: the interpreter refuses on overflow and on a zero divisor\n",
+    "/// (v1.interpreter eval_int_binop / eval_unaryop); release-profile i64 operators wrap. The emitter\n",
+    "/// realizes every Int operator through these (extdeps.languages.rust.emit\n",
+    "/// rust_refusing_int_operator_helper), and each refusal carries the interpreter's own text.\n",
+    "#[cold]\n",
+    "#[inline(never)]\n",
+    "fn int_overflow(op: &str, lhs: i64, rhs: i64) -> ! \{\n",
+    "    panic!(\"integer overflow: \{\} \{\} \{\} does not fit in a 64-bit Int\", lhs, op, rhs)\n",
+    "\}\n",
+    "\n",
+    "#[cold]\n",
+    "#[inline(never)]\n",
+    "fn int_division_by_zero() -> ! \{\n",
+    "    panic!(\"division by zero\")\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_add(lhs: i64, rhs: i64) -> i64 \{\n",
+    "    match lhs.checked_add(rhs) \{ Some(v) => v, None => int_overflow(\"+\", lhs, rhs) \}\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_sub(lhs: i64, rhs: i64) -> i64 \{\n",
+    "    match lhs.checked_sub(rhs) \{ Some(v) => v, None => int_overflow(\"-\", lhs, rhs) \}\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_mul(lhs: i64, rhs: i64) -> i64 \{\n",
+    "    match lhs.checked_mul(rhs) \{ Some(v) => v, None => int_overflow(\"*\", lhs, rhs) \}\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_div(lhs: i64, rhs: i64) -> i64 \{\n",
+    "    if rhs == 0 \{ int_division_by_zero() \}\n",
+    "    match lhs.checked_div(rhs) \{ Some(v) => v, None => int_overflow(\"/\", lhs, rhs) \}\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_rem(lhs: i64, rhs: i64) -> i64 \{\n",
+    "    if rhs == 0 \{ int_division_by_zero() \}\n",
+    "    match lhs.checked_rem(rhs) \{ Some(v) => v, None => int_overflow(\"%\", lhs, rhs) \}\n",
+    "\}\n",
+    "\n",
+    "#[inline]\n",
+    "pub fn int_neg(operand: i64) -> i64 \{\n",
+    "    match operand.checked_neg() \{ Some(v) => v, None => int_overflow(\"-\", 0, operand) \}\n",
+    "\}\n",
+    "\n")
 }
 
 fn rt_hash_ops() -> String {
@@ -957,6 +1225,67 @@ fn rt_resolution_silent_pick_telemetry() -> String {
     "}\n\n")
 }
 
+// THE REALIZATION-MEASUREMENT FRAGMENT. std.realization_measurement models the observations; this
+// is their emitted-runtime realization, and it is its own fragment rather than lines inside an
+// unrelated block so the population that must grow with the memory program -- peak, current and
+// allocator residency -- has one home to grow in.
+//
+// WHY THIS FRAGMENT HAD TO EXIST AT ALL. The clock was typed on the builtin surface and realized in
+// the interpreter, and the emitted route panicked at its first native call: a modeled operation, an
+// interpreter implementation and an emitted-runtime realization are THREE capabilities, and evidence
+// about either of the first two is not evidence about the third. std.primitive_identity already
+// rosters five derived surfaces including EmitHandler, and a runtime BODY surface is not among them
+// -- which is how a registry row with no body passed every rostered check.
+fn rt_realization_measurement() -> String {
+  concat(
+    "/// THE EMITTED REALIZATION OF std.realization_measurement ObserveElapsedAtSubject.\n",
+    "///\n",
+    "/// The builtin was registered for the INTERPRETER and had no emitted body, so a .dag fold that\n",
+    "/// read the clock typechecked, ran under `gunbc run`, and PANICKED in the emitted binary --\n",
+    "/// which is where the native route actually executes. The two capabilities are different and\n",
+    "/// registering one does not supply the other.\n",
+    "///\n",
+    "/// The label is not identity material and is never hashed or keyed on. It exists so two\n",
+    "/// observations around one subject cannot be collapsed by pure-call memoization into a single\n",
+    "/// read, which would make every measured span zero.\n",
+    "///\n",
+    "/// The epoch is process-local and monotone: callers subtract two readings around the subject\n",
+    "/// they are measuring, so the absolute value is neither calendar time nor comparable across\n",
+    "/// processes. A saturating subtraction at the call site is therefore the caller's obligation.\n",
+    "pub fn observed_monotonic_nanos(_label: String) -> i64 \{\n",
+    "    use std::sync::OnceLock;\n",
+    "    use std::time::Instant;\n",
+    "    static EPOCH: OnceLock<Instant> = OnceLock::new();\n",
+    "    let epoch = EPOCH.get_or_init(Instant::now);\n",
+    "    // i64 nanoseconds saturates at ~292 years of uptime; clamping is honest rather than\n",
+    "    // wrapping into a negative duration that would read as a span running backwards.\n",
+    "    let nanos = epoch.elapsed().as_nanos();\n",
+    "    if nanos > i64::MAX as u128 \{ i64::MAX \} else \{ nanos as i64 \}\n",
+    "\}\n",
+    "\n",
+    "/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.\n",
+    "///\n",
+    "/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances\n",
+    "/// only while this thread executes, so a span read on it is the thread's own work and never an\n",
+    "/// interval the host took the thread away. The label plays the same anti-memoization role as\n",
+    "/// observed_monotonic_nanos's and is never identity material.\n",
+    "///\n",
+    "/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;\n",
+    "/// answering with the monotonic wall instead would put host load back into every verdict read\n",
+    "/// on this clock, and answering zero would make every span vanish. Neither is a reading.\n",
+    "pub fn observed_thread_cpu_nanos(_label: String) -> i64 \{\n",
+    "    let mut ts = libc::timespec \{ tv_sec: 0, tv_nsec: 0 \};\n",
+    "    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.\n",
+    "    let rc = unsafe \{ libc::clock_gettime(libc::", clock_id_label(c: ClockThreadCputimeId), ", &mut ts) \};\n",
+    "    if rc != 0 \{\n",
+    "        eprintln!(\"REFUSED: clock_gettime(", clock_id_label(c: ClockThreadCputimeId), ") is unavailable on this host (\{\}); no thread CPU span is measurable and the wall is not substituted\", std::io::Error::last_os_error());\n",
+    "        std::process::exit(2);\n",
+    "    \}\n",
+    "    (ts.tv_sec as i64).saturating_mul(1_000_000_000).saturating_add(ts.tv_nsec as i64)\n",
+    "\}\n",
+    "\n")
+}
+
 fn rust_runtime_source() -> String {
   concat(
     rt_header(),
@@ -972,6 +1301,8 @@ fn rust_runtime_source() -> String {
     rt_freemonoid_host_ops(),
     rt_hash_ops(),
     rt_filesystem(),
+    rt_checked_int_ops(),
+    rt_realization_measurement(),
     rt_accelerator_demo_kernel())
 }
 

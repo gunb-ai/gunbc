@@ -14,14 +14,16 @@ import v2.std.node {
   Arrow,
   ComputationNode,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
   node_rebuild,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -29,6 +31,15 @@ fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+fn attach_arrow_body_malformed(arrow: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_producer_diagnostic(
+      reason: ^body_producer_reason_malformed_attachment,
+      n: arrow
+    )
+  )
 }
 
 fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
@@ -40,19 +51,18 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
           children: list_snoc_item(
             xs: arrow.children,
             item: Edge {
-              label: Named { name: ^arrow_body_edge },
+              label: core_edge_label(marker: ArrowBodyEdge),
               target: body
             }
           )
         )
       )
-    _ =>
-      outcome_rejected(
-        d: body_producer_diagnostic(
-          reason: ^body_producer_reason_malformed_attachment,
-          n: arrow
-        )
-      )
+    TypeNode { connective: Atom { identity: _ } } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Conj } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Disj } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Cardinality } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Instantiation } => attach_arrow_body_malformed(arrow: arrow)
+    ComputationNode { behavior: _ } => attach_arrow_body_malformed(arrow: arrow)
   }
 }
 
@@ -69,16 +79,24 @@ fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   }
 }
 
+fn body_producer_structured_body_shape_rejected(body: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_producer_diagnostic(
+      reason: ^body_producer_reason_resolved_shape,
+      n: body
+    )
+  )
+}
+
 fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
-    _ =>
-      outcome_rejected(
-        d: body_producer_diagnostic(
-          reason: ^body_producer_reason_resolved_shape,
-          n: body
-        )
-      )
+    TypeNode { connective: Atom { identity: _ } } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Conj } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Disj } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Arrow } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Cardinality } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Instantiation } => body_producer_structured_body_shape_rejected(body: body)
   }
 }
 

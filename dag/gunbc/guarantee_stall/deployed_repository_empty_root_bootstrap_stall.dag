@@ -1,6 +1,5 @@
 module gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall
 
-import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
@@ -21,14 +20,20 @@ import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopul
 // while they assert nothing. Reporting this as MechanicallyPreventable would be the rung inflation
 // DESIGN 4b(1) names -- citing a wall that does not run.
 //
-// THE POPULATION IS ONE PRODUCTION SUBJECT, NOT A SNAPSHOT OF AN OPEN SET. There is one production
-// constructor, deployment_spec_srv1, and the realization binding is global rather than a field a
-// future spec can silently choose, so any later production spec inherits the same route.
+// THE POPULATION IS THE ADMITTED DESIRED-DEPLOYMENT ROSTER AT A FRESH ROOT, not one production
+// constructor. repository_converge_owner_wet takes a caller-supplied instance_id and
+// resolves it through gunbc.live_deploy.desired desired_deployment_for_instance_id; every
+// admitted DesiredDeployment can reach the empty-root bootstrap. The members are those three
+// constructors. A later roster row is a new member, not a silent inherit of a global binding.
 data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeStall {
   subject: "an empty deployed repository root is bootstrapped to the candidate, but nothing enrolled re-establishes that it still is",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "gunbc.live_deploy.spec deployment_spec_srv1 at a fresh repository root", tail: Empty {} } },
+  population: BoundedPopulation { members: [
+    "gunbc.live_deploy.desired srv1_production_desired_deployment at a fresh repository root",
+    "gunbc.live_deploy.desired srv1_lab_desired_deployment at a fresh repository root",
+    "gunbc.live_deploy.desired srv2_deploy_desired_deployment at a fresh repository root",
+  ] },
   next_rung_trigger: climbs_when(capability: "the bootstrap discriminating evidence enrolled in a lane that EXECUTES it. test.claim.repository_bootstrap_wet_witness_test proves both states by execution -- an empty root reads back as the candidate, a root holding content refuses untouched -- but it performs host effects, so the hermetic floor refuses it at the boundary and counts it executed while it asserts nothing. Until a wet lane runs those two rows, a regression in the bootstrap is caught by nothing at merge time")
 }

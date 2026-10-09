@@ -1,0 +1,62 @@
+module v2.test.parse.match_arm_statement_body_parse
+
+import v2.test.parse.expression_bodied_fn_decl_parse { g_tokenize_parse }
+import v2.test.execution.dag_grammar_backward_round_trip { rt_stamp_of }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MATCH-ARM STATEMENT BODY IS PARSED BY ITS OWN ROW, AND ENDS WHERE THE NEXT ARM BEGINS. Over the
+// real dag grammar, an arm whose body is a statement sequence carries the
+// `dag_surface_match_arm_stmt_body` production stamp (v2.extdeps.languages.dag
+// dag_grammar_match_arm_stmt_body_expr), and the match keeps BOTH its arms.
+//
+// The route, not only the answer, is asserted. Measured on this source, on the real route:
+//   * with the row's production stamp removed, the stamp is absent and the backward emit refuses
+//     (grammar_emit_nonterminal_stamp_mismatch) -- the defect this row closes;
+//   * with the arm-head not-predicate removed, the stamp is present and the round trip still
+//     reports identical text, but the match has ONE arm: `B => v` was read as one more statement
+//     of the first arm's body (an arrow lambda). The round trip cannot see that, so the arm count
+//     is the discriminator for the predicate.
+// The source is the smallest module that holds a statement-body arm followed by another arm (one
+// data initializer), so the claim pays one small real-route parse. The round trip of a statement-body
+// arm is the `match_statement_body_arm` case of gunbc.instruments.dag_emit_real_grammar_round_trips.
+
+data match_arm_statement_body_source: String = "module m\ndata d: Int = match t {\n  A =>\n    let w = v\n    w\n  B => v\n}\n"
+
+fn masb_stamp_count(node: Node, emitted: Symbol) -> Int {
+  let here = match rt_stamp_of(node: node) {
+    Present { value: s } => if s == emitted { 1 } else { 0 }
+    Absent => 0
+  }
+  fold(node.children, init: here, f: fn(acc, e) { acc + masb_stamp_count(node: e.target, emitted: emitted) })
+}
+
+// THE SHARE POINT. One real-route tokenize+parse of this source is past one claim's new-witness
+// eval-step budget (the floor at gunbc#12928 c3a8bbbf measured the claim at 105,318 steps against
+// 72,300), and the source is already the smallest module that holds a statement-body arm followed
+// by another arm. So the parse is one nullary producer, enrolled WARM in
+// v2.workflow.floor_pure_producer_share: the floor forces it once during strict preparation and the
+// claim reads the tree. The route stays real -- the producer runs the live dag grammar -- and the
+// stamp and arm-count discriminators below are unchanged.
+fn match_arm_statement_body_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: match_arm_statement_body_source, file: ^probe_match_arm_statement_body)
+}
+
+// TWO body stamps, one per arm. Since #13056 an arm body is ONE production: the expression body is
+// the one-statement case of the statement body (v2.extdeps.languages.dag dag_grammar_match_arm_expr),
+// so `B => v` carries the stamp too. The count expected 1 when the expression body was a second
+// alternative; measured 2 on main after #13056.
+test fn a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds() -> Bool {
+  match match_arm_statement_body_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (masb_stamp_count(node: tree, emitted: ^dag_surface_match_arm_stmt_body) == 2)
+        && (masb_stamp_count(node: tree, emitted: ^dag_surface_match_arm) == 2)
+  }
+}

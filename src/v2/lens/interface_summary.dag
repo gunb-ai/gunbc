@@ -73,11 +73,13 @@ fn interface_summaries_from_facts(
   })
 }
 
-fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> {
-  interface_summaries_from_facts(
-    modules: module_declaration_facts_live(pool_roots: pool_roots),
-    facts: export_signature_facts(pool_roots: pool_roots)
-  )
+fn interface_summaries_live(pool_roots: List<String>) -> Outcome<List<InterfaceSummary>> {
+  bind_outcome(o: export_signature_declared_facts(pool_roots: pool_roots), f: fn(facts) {
+    outcome_accepted(value: interface_summaries_from_facts(
+      modules: module_declaration_facts_live(pool_roots: pool_roots),
+      facts: facts
+    ))
+  })
 }
 
 fn interface_hash_for_module_path(
@@ -134,44 +136,47 @@ fn import_interface_hashes_for_module(
 fn module_key_for_rel_path(
   rel_path: String,
   module_path: NonEmptyStr,
-  source_hash: ContentHash,
+  source_hash: Fnv1a64Structural,
   pool_roots: List<String>
-) -> ModuleKey? {
-  let summaries = interface_summaries_live(pool_roots: pool_roots)
-  let edges = import_resolution_facts_live(
-    pool_roots: pool_roots,
-    importer_roots: pool_roots,
-    exclude_substrings: []
-  )
-  match import_interface_hashes_for_module(
-    rel_path: rel_path,
-    edges: edges,
-    summaries: summaries
-  ) {
-    Present { value: import_hashes } =>
-      Present {
-        value: module_key(
-          source_hash: source_hash,
-          direct_import_interface_hashes: import_hashes
-        )
-      }
-    Absent => Absent
-  }
+) -> Outcome<ModuleKey?> {
+  bind_outcome(o: interface_summaries_live(pool_roots: pool_roots), f: fn(summaries) {
+    let edges = import_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: []
+    )
+    outcome_accepted(value: match import_interface_hashes_for_module(
+      rel_path: rel_path,
+      edges: edges,
+      summaries: summaries
+    ) {
+      Present { value: import_hashes } =>
+        Present {
+          value: module_key(
+            source_hash: source_hash,
+            direct_import_interface_hashes: import_hashes
+          )
+        }
+      Absent => Absent
+    })
+  })
 }
 
 fn interface_summary_for_module(
   module_path: NonEmptyStr,
   pool_roots: List<String>
-) -> InterfaceSummary? {
-  fold(interface_summaries_live(pool_roots: pool_roots), init: optional_absent(), f: fn(found, summary) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        match summary.module_path == module_path {
-          true => Present { value: summary }
-          false => found
-        }
-    }
+) -> Outcome<InterfaceSummary?> {
+  bind_outcome(o: interface_summaries_live(pool_roots: pool_roots), f: fn(summaries) {
+    outcome_accepted(value: fold(summaries, init: optional_absent(), f: fn(found, summary) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match summary.module_path == module_path {
+            true => Present { value: summary }
+            false => found
+          }
+      }
+    }))
   })
 }
 

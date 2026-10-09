@@ -1,9 +1,8 @@
 module gunbc.fleet_known_hosts_anchor
 
-import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
-import std.measure { second }
+import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand }
+import std.measure { Second, second }
 import std.algebra { trim }
-import std.resources { Network }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,
@@ -29,6 +28,8 @@ import extdeps.ssh.client_options {
   User,
   BatchMode,
   ConnectTimeout,
+  ServerAliveInterval,
+  ServerAliveCountMax,
 }
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
@@ -239,7 +240,6 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
 fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
-  uses net: Network
 {
   if length(fleet_known_hosts_rows()) == 0 {
     KnownHostsRefused {
@@ -669,12 +669,43 @@ fn fleet_ssh_password_client_options(
   trust: List<SshClientOption>,
   principal: NonEmptyStr,
 ) -> List<SshClientOption> {
-  concat(trust, [
+  concat(trust, concat([
     PreferredAuthentications { methods: "password,keyboard-interactive" as NonEmptyStr },
     User { name: principal },
     BatchMode { enabled: false },
-    ConnectTimeout { seconds: second(count: 10) },
-  ])
+  ], fleet_ssh_leg_deadline_options(deadline: fleet_ssh_leg_deadline)))
+}
+
+// EVERY FLEET LEG CARRIES A DEADLINE, AND IT IS ONE FACT. A leg has two ways to stall and ssh bounds
+// them with different keywords: the TCP connect (ConnectTimeout) and an established session whose
+// path then goes dark (ServerAliveInterval x ServerAliveCountMax, extdeps.ssh.client_options). The
+// shapers below carried the first, inline, and never the second -- so on 2026-10-03 when the Spark
+// management LAN (wlP9s9, every Spark's only route to the executor) stopped forwarding mid-session,
+// fleet-converge run 37156689444 sat ~1h inside one ssh leg instead of refusing.
+//
+// UNCONSTRUCTIBLE WITHOUT IT, at the grain this module owns: neither shaper takes an options
+// parameter, so no caller can shape a fleet leg that omits these words, and both derive them from
+// this ONE row rather than each spelling its own number. A dark path now ends the leg with ssh's own
+// 255 within interval x count_max (60 s) of the last reply; the sshd answers keepalives itself, so
+// a remote command that is merely silent is NOT cut off -- only a path that returns nothing is.
+type FleetSshLegDeadline {
+  connect: Second
+  alive_interval: Second
+  alive_count_max: Int
+}
+
+data fleet_ssh_leg_deadline: FleetSshLegDeadline = FleetSshLegDeadline {
+  connect: second(count: 10),
+  alive_interval: second(count: 15),
+  alive_count_max: 4,
+}
+
+fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClientOption> {
+  [
+    ConnectTimeout { seconds: deadline.connect },
+    ServerAliveInterval { seconds: deadline.alive_interval },
+    ServerAliveCountMax { count: deadline.alive_count_max },
+  ]
 }
 
 // The password session needs only the trust anchor, so a caller holding no fleet key (the first
@@ -716,11 +747,13 @@ fn shape_fleet_ssh_exec(
     fleet_openssh_trust_options(policy: context.trust),
     concat(
       fleet_ssh_credential_options(binding: context.credential),
-      [
-        User { name: target.principal },
-        BatchMode { enabled: true },
-        ConnectTimeout { seconds: second(count: 10) },
-      ],
+      concat(
+        [
+          User { name: target.principal },
+          BatchMode { enabled: true },
+        ],
+        fleet_ssh_leg_deadline_options(deadline: fleet_ssh_leg_deadline),
+      ),
     ),
   )
   concat(
@@ -743,4 +776,20 @@ fn shape_fleet_ssh_exec(
 // function's own population.
 fn shape_ssh_shell_exec(host: NonEmptyStr, argv: List<String>) -> List<String> {
   concat([host as String, "--"], argv)
+}
+
+// Export only an exact enrolled public row after rereading the sealed anchor's identity.
+// Network scans cannot enter this projection, and aliases require their own enrollment row.
+fn fleet_openssh_known_host_line(policy: FleetOpenSshTrustPolicy, host: NonEmptyStr) -> NonEmptyStr? {
+  let readback = Filesystem.Read(path: policy.anchor.path as String)
+  if !readback.success || readback.content == "" { none }
+  else { match compare_content_hash(left: policy.anchor.registry_identity, right: content_hash_of_value(value: readback.content as NonEmptyStr)) {
+    ContentHashEqual => {
+      let matching = filter(split(s: readback.content, delimiter: "\n"), line => starts_with(s: line, prefix: concat(host as String, " ")))
+      if matching.count() != 1 { none }
+      else { match matching.first() { Present { value: enrolled_line } => Present { value: enrolled_line as NonEmptyStr } Absent => none } }
+    }
+    ContentHashDifferent => none
+    ContentHashCrossFamilyIncomparable => none
+  } }
 }

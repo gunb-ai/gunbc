@@ -2,13 +2,20 @@ module extdeps.pricing.github_actions
 
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.currency.currency { CurrencyCode, Usd }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.measure {
+  Minute,
+  minute,
   HardwareThreadCount,
   hardware_thread_count,
   MoneyPerMinute,
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
+import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -110,6 +117,222 @@ data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActi
     currency: Usd,
   },
   pricing_citation: "actions-runner-pricing#linux_16_core",
+}
+
+data github_actions_billing_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/billing/managing-billing-for-your-products/about-billing-for-github-actions"
+  }
+}
+
+// A RATE IS NOT A BILL, and until this section existed this module carried only rates. A consumer
+// could multiply a per-minute price by observed minutes for ANY repository and get a number, with
+// nothing here saying that for a standard runner in a public repository the answer is zero. That
+// is not a rounding error in a sales model: it is the difference between a prospect and a
+// non-prospect, and it was reached by reasoning rather than by reading until an operator asked for
+// the source on 2026-09-17.
+//
+// The cited text, read 2026-09-17: "The use of standard GitHub-hosted runners is free: In public
+// repositories / For GitHub Pages / For Dependabot", and immediately after it, "Larger runners are
+// always charged for, even when used by public repositories or when you have quota available from
+// your plan."
+//
+// THE INCLUDED-MINUTE ALLOWANCE IS A PRIVATE-REPOSITORY QUOTA. The per-plan table sits above that
+// sentence and governs private usage; public standard-runner minutes are free and do not draw on
+// it. Reading the allowance as a universal cap is the plausible misreading this type exists to
+// make unwritable -- the quota and the visibility are different facts and neither implies the
+// other.
+// The 4, 8 and 16 core SKUs are what the cited page calls larger runners. The 2-core Linux and the
+// slim SKU are standard.
+//
+// THE ARM SKU WAS SETTLED BY EXECUTION, not by reading. This row refused to classify it for an
+// hour, because GitHub has shipped ARM under both standard and larger terms and a per-minute price
+// does not say which. Two probe runs on gunb-ai/gunbc, a public repository, answered it:
+// ubuntu-24.04-arm reported 0 billable ms alongside an ubuntu-latest control that also reported 0
+// (runs 35169284367 and 35169573172, 2026-09-17). The deduction is the cited rule run backwards --
+// a larger runner is charged EVEN on a public repository, so a hosted runner that bills zero on a
+// public repository is not a larger runner.
+//
+// The control is what makes that an argument rather than an anecdote: x86 had already answered
+// zero on this repository half an hour earlier, so the ARM zero is a fact about the SKU and not
+// about the repository, the plan or the day.
+// RunnerClassUnread survives the one SKU that used it, and deliberately. The next hosted SKU
+// GitHub ships arrives unclassified, and the arm is what makes that state sayable instead of
+// forcing a guess into StandardRunner -- which, for a prospect model, is the direction that
+// invents a payer.
+type ActionsRunnerClass
+  = StandardRunner
+  | LargerRunner
+  | RunnerClassUnread { obligation: NonEmptyStr }
+
+fn actions_runner_class(sku: GithubActionsBillingSku) -> ActionsRunnerClass {
+  match sku {
+    ActionsLinuxSlim => StandardRunner
+    ActionsLinux => StandardRunner
+    Linux4Core => LargerRunner
+    Linux8Core => LargerRunner
+    Linux16Core => LargerRunner
+    ActionsLinuxArm => StandardRunner
+  }
+}
+
+type ActionsBillability
+  = FreeInPublicRepository
+  | ChargedAgainstPlanQuota
+  | AlwaysChargedPerMinute
+  | BillabilityUnread { obligation: NonEmptyStr }
+
+// THIS MODULE MINTED ITS OWN ActionsRepositoryVisibility AND IT WAS A NICKNAME. The type was
+// PublicRepository | PrivateRepository, which is character for character what
+// extdeps.github.repository.RepositoryVisibility already declares, down to both variant spellings.
+// DESIGN section 3 calls that out by name -- a second name for one concept, duplicated at the
+// meaning layer and then again in everything derived -- and extdeps.github.hosted_runners was
+// already keying its per-visibility runner specs off the real one, so the fork would have put two
+// answers to "is this repository public" on either side of one billing question.
+fn actions_billability(
+  sku: GithubActionsBillingSku,
+  visibility: RepositoryVisibility,
+) -> ActionsBillability {
+  match actions_runner_class(sku: sku) {
+    RunnerClassUnread { obligation: o } => BillabilityUnread { obligation: o }
+    LargerRunner => AlwaysChargedPerMinute
+    StandardRunner =>
+      match visibility {
+        PublicRepository => FreeInPublicRepository
+        PrivateRepository => ChargedAgainstPlanQuota
+      }
+  }
+}
+
+// CHARGED-AGAINST-QUOTA IS NOT BILLABLE, AND SAYING IT WAS CONTRADICTED THIS MODULE'S OWN
+// ALLOWANCE MODEL. An earlier revision folded ChargedAgainstPlanQuota to billable: true, while
+// allowance_applicability answered AllowanceApplies for the same SKU -- one module giving two
+// answers about whether a private-repo standard job costs its owner anything. It does not, until
+// the account's included minutes are gone: GitHub Free ships 2,000 a month and Team 3,000, and
+// inside that allowance the marginal cost of a standard job is zero. For the prospect model this is
+// the difference that matters, because ranking every private repository as a payer is exactly the
+// false positive a census of actual spend must not produce. The third arm says the answer needs an
+// account fact this module does not observe, rather than guessing which way it falls.
+//
+// A Bool CANNOT SAY UNREAD, so this question is no longer published as one. The predicate here
+// answered false for BillabilityUnread and called that fail-closed; it is the trap DESIGN section 5
+// names by its own words, top-as-answer conflated with top-as-ignorance. "This SKU costs its owner
+// nothing" and "this SKU has not been classified" are different facts about different states of
+// knowledge, and a caller ranking prospects on the Bool cannot tell which one it received. The
+// three-valued form keeps the distinction the coproduct already carried, and the fail-closed
+// direction a prospect model wants -- never rank an unclassified SKU as a payer -- stays available
+// as a match on BillingConfirmed { billable: true } rather than being baked into a collapse the
+// caller cannot see or override.
+type ActionsBillableVerdict
+  = BillingConfirmed { billable: Bool }
+  | BillingDependsOnConsumedAllowance { obligation: NonEmptyStr }
+  | BillingUnread { obligation: NonEmptyStr }
+
+fn actions_usage_billable_verdict(
+  sku: GithubActionsBillingSku,
+  visibility: RepositoryVisibility,
+) -> ActionsBillableVerdict {
+  match actions_billability(sku: sku, visibility: visibility) {
+    AlwaysChargedPerMinute => BillingConfirmed { billable: true }
+    ChargedAgainstPlanQuota =>
+      BillingDependsOnConsumedAllowance {
+        obligation: "this SKU draws on the plan's included minutes, so whether it costs its owner anything depends on how many of those minutes the account has already consumed. That is an account fact this module does not observe: github_actions_plan_allowances says how many are included, and nothing here says how many are left" as NonEmptyStr
+      }
+    FreeInPublicRepository => BillingConfirmed { billable: false }
+    BillabilityUnread { obligation: o } => BillingUnread { obligation: o }
+  }
+}
+
+// The allowance is a DURATION and std.measure already owns that concept -- this module imports
+// MoneyPerMinute from it three lines above. A bare Int here would be a second authority for
+// minutes, which is the failed decomposition DESIGN section 2 names: a fresh leaf minted for a
+// concept that exists.
+type ActionsPlanAllowance {
+  plan: NonEmptyStr
+  included_per_month: Minute
+}
+
+// Read 2026-09-17 from the cited billing page. These are PRIVATE-repository minutes; the page
+// states the allowance and the public-repository exemption in the same section, and conflating
+// them is the error this roster is written to prevent.
+data github_actions_plan_allowances: List<ActionsPlanAllowance> = [
+  ActionsPlanAllowance { plan: "GitHub Free" as NonEmptyStr, included_per_month: minute(count: 2000) },
+  ActionsPlanAllowance { plan: "GitHub Pro" as NonEmptyStr, included_per_month: minute(count: 3000) },
+  ActionsPlanAllowance { plan: "GitHub Free for organizations" as NonEmptyStr, included_per_month: minute(count: 2000) },
+  ActionsPlanAllowance { plan: "GitHub Team" as NonEmptyStr, included_per_month: minute(count: 3000) },
+  ActionsPlanAllowance { plan: "GitHub Enterprise Cloud" as NonEmptyStr, included_per_month: minute(count: 50000) }
+]
+
+// Larger-runner usage never draws on the allowance, which the page states directly: charged "even
+// when you have quota available from your plan". The unread arm is the one that mattered and was
+// wrong: collapsing it to false asserted the allowance does NOT apply, which is the direction that
+// charges a prospect in full for a SKU this model could not classify. It is also the opposite
+// reading of the same false that the billability question above returned, so one Bool meant two
+// contradictory things across two functions in one module. Unread is now its own arm in both.
+type AllowanceApplicability
+  = AllowanceApplies
+  | AllowanceDoesNotApply
+  | AllowanceNeverMetered
+  | AllowanceApplicabilityUnread { obligation: NonEmptyStr }
+
+// VISIBILITY IS AN INPUT BECAUSE THE ANSWER DEPENDS ON IT, and an earlier revision omitted it and
+// answered AllowanceApplies for every standard SKU. That was wrong in the free direction: the
+// allowances this module rosters are PRIVATE-repository minutes, and public standard usage never
+// touches them at all. Saying the allowance "applies" to a public standard job invites a consumer
+// to subtract minutes from a balance the job never drew on, which would report an account as
+// approaching exhaustion on usage that is free. AllowanceNeverMetered is that third state: not
+// charged, and not drawn from anything either.
+fn allowance_applicability(
+  sku: GithubActionsBillingSku,
+  visibility: RepositoryVisibility,
+) -> AllowanceApplicability {
+  match actions_runner_class(sku: sku) {
+    LargerRunner => AllowanceDoesNotApply
+    RunnerClassUnread { obligation: o } => AllowanceApplicabilityUnread { obligation: o }
+    StandardRunner =>
+      match visibility {
+        PublicRepository => AllowanceNeverMetered
+        PrivateRepository => AllowanceApplies
+      }
+  }
+}
+
+// THE ALLOWANCE ROSTER AND ITS PREDICATE ARE DANGLING TOO, and the row below was not covering
+// them. It binds one DeclarationRef, actions_usage_billable_verdict, while its own prose said "these
+// declarations" -- so two declarations sat outside the frontier that was supposed to account for
+// them, which is the §3c red the frontier mechanism exists to avoid rather than reproduce. They are
+// named here one row each, because a frontier that names less than it covers is a tally standing in
+// for an identity join.
+data actions_allowance_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "github_actions_plan_allowances"),
+    reason: "the private-repository monthly minute allowances, read from the cited billing page. No fold in this corpus reads them: the consumer is the same prospect standing in strategy.ci_acquisition that actions_usage_billable_verdict waits on, which lives in gunbc-private and cannot be imported here. The roster is what turns a billable-usage verdict into a question about whether a given account has already spent its included minutes, so it lands with that consumer or not at all",
+    dissolution: unbound_dissolution(description: "a public census producer in this corpus classifies observed runner usage per account and asks whether the account's included minutes are exhausted, which is the first question that reads an allowance rather than a price"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pricing.github_actions", decl_name: "allowance_applicability"),
+    reason: "the predicate separating usage that draws on the plan allowance from usage that is charged regardless, which the cited page states for larger runners as charged even when plan quota is available. It has no consumer for the same reason the roster has none, and it is the half of the allowance model that is easy to get wrong silently: without it, a consumer would subtract larger-runner minutes from an allowance they never touch",
+    dissolution: unbound_dissolution(description: "the same census producer reads github_actions_plan_allowances; the predicate is consumed in the same fold, since an allowance cannot be applied without first deciding whether it applies"),
+  )
+]
+
+// NOTHING IN THIS REPOSITORY CONSUMES THE BILLABILITY FOLD, and that is the §3c state this row
+// exists to declare rather than leave for a reader to discover. Its consumer is the prospect
+// standing in strategy.ci_acquisition, which lives in gunbc-private and cannot be imported here,
+// so every consumption check this corpus runs sees these declarations as dangling and is right to.
+//
+// The trigger is a consumer INSIDE this corpus. The honest one is not "someone imports it" but the
+// thing that would make importing it necessary: a public census producer that classifies observed
+// runner usage, at which point actions_usage_billable_verdict is what separates a payer from a
+// free-tier user and this row goes.
+data actions_billability_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.pricing.github_actions",
+    decl_name: "actions_usage_billable_verdict",
+    field: WholeDeclaration
+  }
 }
 
 fn github_actions_runner_price_catalog() -> List<GithubActionsRunnerPriceRow> {

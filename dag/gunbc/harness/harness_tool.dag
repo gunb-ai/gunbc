@@ -11,6 +11,11 @@ import extdeps.languages.json.parse {
 }
 import extdeps.gunbc
 import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  harness_tool_wire_name,
+  HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
+}
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
 // A TOOL'S CONTRACT IS CARRIED IN ITS DECLARED SHAPE, AND ANY LIMIT IT ENFORCES IS REPORTED IN ITS
@@ -21,41 +26,6 @@ import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
 // undocumented working-directory convention by luck, a build killed by a chat-shaped timeout that
 // arrived looking like the build's own failure, a prompt-shaped hang that presented as a timeout.
 // In each case the harness knew the limit and the caller could not see it.
-
-// WHICH TOOL, as a closed set rather than a name compared at the call site. An unknown tool name off
-// the wire is a REFUSAL below, never a dispatch to a default.
-type HarnessTool
-  = RunCommandTool
-  | ReadFileTool
-  | WriteFileTool
-  | EditFileTool
-
-fn harness_tool_wire_name(tool: HarnessTool) -> String {
-  match tool {
-    RunCommandTool => "run_command"
-    ReadFileTool => "read_file"
-    WriteFileTool => "write_file"
-    EditFileTool => "edit_file"
-  }
-}
-
-type HarnessToolRead
-  = HarnessToolRecognized { tool: HarnessTool }
-  | HarnessToolUnrecognized { name: String }
-
-fn harness_tool_of_wire_name(name: String) -> HarnessToolRead {
-  if name == "run_command" {
-    HarnessToolRecognized { tool: RunCommandTool }
-  } else if name == "read_file" {
-    HarnessToolRecognized { tool: ReadFileTool }
-  } else if name == "write_file" {
-    HarnessToolRecognized { tool: WriteFileTool }
-  } else if name == "edit_file" {
-    HarnessToolRecognized { tool: EditFileTool }
-  } else {
-    HarnessToolUnrecognized { name: name }
-  }
-}
 
 // THE SIX DISPOSITIONS DCH-2 OWES, as one closed coproduct so that a tool result is either an
 // outcome or a NAMED refusal -- never an empty string that the model must guess the meaning of.
@@ -260,11 +230,18 @@ fn harness_tool_use_input_string(block: HarnessWireBlock, member: String) -> Str
         JsonMemberFound { value: v } =>
           match v {
             JsonString { value: s } => Present { value: s }
-            _ => none
+            JsonNull => none
+            JsonBool { value: _ } => none
+            JsonNumber { lexeme: _ } => none
+            JsonArray { elements: _ } => none
+            JsonObject { members: _ } => none
           }
-        _ => none
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
       }
-    _ => none
+    WireTextBlock { text: _ } => none
+    WireThinkingBlock { thinking: _ } => none
   }
 }
 
@@ -311,7 +288,8 @@ fn harness_execute_tool_use(
               }
           }
       }
-    _ => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+    WireTextBlock { text: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+    WireThinkingBlock { thinking: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
   }
 }
 

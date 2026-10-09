@@ -19,8 +19,8 @@ import std.witness_admission {
   DiscoverySelection,
   NoConsumer
 }
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
+import v2.std.algebra { any, length }
+import gunbc.ci_layer_roots { known_red_probe_roster }
 import v2.std.text { String }
 
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
@@ -69,14 +69,31 @@ test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
   )
 }
 
+// The known-red roster is consumed as QuarantineProbeExpectRed for every member it carries, read from
+// the roster rather than pinned to one row: the pinned english_emit_add row left the roster with
+// gunbc#12651 (it passes), and a pin outlives its membership. The roster must be nonempty, or the
+// all-members arm is vacuous.
 test fn witness_known_red_probe_consumer_holds() -> Bool {
+  let roster = known_red_probe_roster()
+  (length(xs: roster) > 0)
+    && !any(xs: roster, predicate: fn(w) {
+      match witness_consumer_cadence_for_row(entry: w.entry, function: w.function, excluded_from_discovery: true) {
+        QuarantineProbeExpectRed => false
+        _ => true
+      }
+    })
+}
+
+// The discriminating side: a row that LEFT the roster (gunbc#12651) no longer classifies as an
+// expected-red probe, so the arm above is decided by roster membership and not by the entry path.
+test fn witness_dequarantined_row_is_not_an_expected_red_probe_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     function: "english_emit_add_ingest_round_trip_holds",
     excluded_from_discovery: true
   ) {
-    QuarantineProbeExpectRed => true
-    _ => false
+    QuarantineProbeExpectRed => false
+    _ => true
   }
 }
 

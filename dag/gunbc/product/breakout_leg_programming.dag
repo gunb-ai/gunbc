@@ -6,7 +6,9 @@ import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, ProvisioningHumanBurden, DeviceOnce,
   NoDischargeSiteModeled,
 }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, ObservedByReceipt, observed_receipt }
+import gunbc.spark.fabric_switch_observed { fabric_leg_eeprom_observations, AcquisitionCurrent, AcquisitionInvalidatedByReflash }
+import std.decl_ref { decl_ref }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.transceiver.sff_8636 {
   ComplianceUnderstood, ComplianceUnspecified, ComplianceCodeUnmodelled,
@@ -122,20 +124,53 @@ fn breakout_leg_programming_intervention(procedure: LegProgrammingProcedure) -> 
 // leg receipt in gunbc.spark.fabric_switch_observed holds, and the re-flash leaves them alone, so
 // they are not restated here.
 //
-// THIS IS NOT AN OBSERVATION. No leg has been read after a re-flash; the observing layer is
-// product.cable_leg_observation and it acquires a row when one is.
+// THE VENDOR'S CLAIM IS NOW GROUNDED BY AN INDEPENDENT READ, AND THE STANDING SAYS SO. The observing
+// layer is product.cable_leg_observation and the acquired rows live in gunbc.spark.fabric_switch_observed
+// `fabric_leg_eeprom_observations`, one row per leg dump. The standing names that declaration
+// (extdeps.external_authority ObservedByReceipt) rather than citing FS, because FS only asserted the
+// value; the reads are what ground it, and they re-derive by dumping a leg again.
+//
+// WHAT THE CONFIRMATION DOES NOT ESTABLISH is that the re-flash achieved its PURPOSE. The coding now
+// attests 100GBASE-CR2 and the ConnectX-7 admits the mode, and the link still trains at 50G:
+// `fabric_forced_100g_attempts` records four switch/NIC combinations, none of which came up. So the
+// burden this module prices was genuinely owed and genuinely paid, and paying it was not sufficient.
 type VendorAssertedLegCoding {
   coding_profile: NonEmptyStr
   extended_compliance_code: Nat
   standing: CitedFigureStanding
 }
 
+data fs_nvidia_eth_extended_compliance_code: Nat = 64
+
+// THE STANDING IS MINTED BY A FOLD OVER THE LEG RECEIPTS, NOT TYPED. It is ObservedByReceipt only when
+// there is at least one CURRENT acquisition and every current one reads the claimed byte-192 code;
+// otherwise the vendor's claim stays a bet with the read that would ground it. The superseded
+// pre-reflash reading is a row too, and is excluded by its acquisition standing, not by position.
+//
+// RUNG OF THE BINDING, STATED: the rows are EEPROM dumps transcribed into the corpus, so the fold
+// executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled guarantee).
+// NEXT-RUNG TRIGGER, as the capability: an executing acquisition route that reads a leg's EEPROM
+// (ethtool -m raw) and hands its bytes to product.cable_leg_observation, whose receipt this fold reads
+// in place of the authored rows.
+fn fs_nvidia_eth_leg_coding_standing() -> CitedFigureStanding {
+  let current = filter(fabric_leg_eeprom_observations, r => match r.acquisition {
+    AcquisitionCurrent => true
+    AcquisitionInvalidatedByReflash { invalidating_event: _ } => false
+  })
+  let disagreeing = filter(current, r => r.coding.primary_compliance_code != fs_nvidia_eth_extended_compliance_code)
+  if length(current) > 0 && length(disagreeing) == 0 {
+    ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.spark.fabric_switch_observed", decl_name: "fabric_leg_eeprom_observations")) }
+  } else {
+    TranscribedUncited {
+      read_obligation: "an EEPROM read (ethtool -m <dev> raw on) of every leg after an NVIDIA (ETH) re-flash, showing byte 192 at 0x40; the V4 data sheet and V3/V4/V5 FAQ do not mention byte 192, so they do not ground this value" as NonEmptyStr
+    }
+  }
+}
+
 data fs_nvidia_eth_leg_coding: VendorAssertedLegCoding = VendorAssertedLegCoding {
   coding_profile: "NVIDIA (ETH)" as NonEmptyStr,
-  extended_compliance_code: 64,
-  standing: TranscribedUncited {
-    read_obligation: "an EEPROM read (ethtool -m <dev> raw on) of a leg after an NVIDIA (ETH) re-flash, showing byte 192 at 0x40; the V4 data sheet and V3/V4/V5 FAQ do not mention byte 192, 0x40, or NVIDIA (ETH) coding, so they do not ground this value; until then it rests on FS sales correspondence of 2026-09-11" as NonEmptyStr
-  },
+  extended_compliance_code: fs_nvidia_eth_extended_compliance_code,
+  standing: fs_nvidia_eth_leg_coding_standing(),
 }
 
 fn vendor_coding_attests(coding: VendorAssertedLegCoding, required: LinkMode) -> Bool {

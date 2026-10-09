@@ -1,11 +1,14 @@
 module extdeps.tcgplayer.pricing
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, AuthScheme }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,6 +55,7 @@ service tcgplayer.Pricing {
   }
 
   operation GetProductPrices {
+    requires Network
     input {
       bearer_token: Secret
       product_ids: NonEmptyStr

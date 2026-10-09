@@ -1,12 +1,43 @@
 module extdeps.github.app
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.credentials { EnvVar }
+import std.dissolution { unbound_dissolution }
+import std.list { first_duplicate_by_key }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
+import extdeps.uri {
+  Uri,
+  Https,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+  UriPercentEncodeRefusalCause,
+  uri_from_wire,
+  uri_percent_encode_component,
+  uri_wire,
+}
 import extdeps.crypto.hash { HashAlgorithm, Sha256, Sha512 }
-import extdeps.github.github { GitHubUser }
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  json_kv,
+  json_bool,
+  json_int,
+  json_string,
+  json_array,
+  json_object,
+  serialize_json,
+}
+import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.algebra { fold_list }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+import v2.std.collection { map_lookup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -22,6 +53,11 @@ data installation_auth_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// GET /app/hook/config documents exactly one response status, 200 OK (read 2026-10-04 against
+// API version 2026-03-10). No 404 is documented, and nothing reads a 404 as "this App has no
+// webhook configured", so a consumer may not mint hook absence from a non-success: it is a refused
+// read (gunbc.fleet.app_control_plane_inspection hook_config_attempt_of_response). The shell
+// transport of GetAppHookConfigJson also carries no status code, only exit success.
 data app_webhook_config_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -53,6 +89,47 @@ type GitHubAppRegistration {
 type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
+
+// WHICH SUBSET OF {read, write} A SURFACE ADMITS ON AN AXIS -- ONE SHAPE, BOUND BY SEVERAL TABLES.
+// This was minted twice: once here as List<GitHubAppPermissionAccess> for the App-manifest table,
+// and once in extdeps.github.actions_token as ActionsAccessSet for the GITHUB_TOKEN table. The
+// TABLES are legitimately independent (DESIGN 3 external upstream decomposition governs the rows,
+// which are different upstream facts about different surfaces); the SHAPE is not, and a second
+// representation of it is the failed decomposition DESIGN 2 names. A List also lost the
+// construction guarantee DESIGN 5 asks for first: it could spell [] and [AppAccessRead,
+// AppAccessRead], which are not access subsets. The closed sum cannot.
+//
+// ActionsAccessNotAvailable was the Actions surface's spelling of "admits neither", which is the
+// same fact as an axis that is not declarable there -- an axis admitting neither access cannot be
+// declared -- so lifting it loses no distinction.
+//
+// WHAT THIS DOES NOT UNIFY: the two tables' ANSWERS. axis_allowed_actions_access says id_token is
+// write-only ON THE ACTIONS TOKEN; that is not evidence about what the App-manifest validator
+// admits, and reading it as such would be exactly the promotion permission_axis_admitted_accesses
+// exists to refuse (DESIGN 4d).
+type GitHubAccessSet
+  = GitHubAccessReadOrWrite
+  | GitHubAccessWriteOnly
+  | GitHubAccessReadOnly
+  | GitHubAccessNeither
+
+fn github_access_set_admits(set: GitHubAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+  match set {
+    GitHubAccessNeither => false
+    GitHubAccessReadOrWrite => match access {
+      AppAccessRead => true
+      AppAccessWrite => true
+    }
+    GitHubAccessWriteOnly => match access {
+      AppAccessRead => false
+      AppAccessWrite => true
+    }
+    GitHubAccessReadOnly => match access {
+      AppAccessRead => true
+      AppAccessWrite => false
+    }
+  }
+}
 
 type GitHubPermissionAxis
   = ActionsAxis
@@ -169,25 +246,12 @@ fn observed_access_for(
   })
 }
 
-fn observed_permission_occurrences(
-  perms: List<ObservedGitHubPermission>,
-  name: ObservedGitHubPermissionName
-) -> Int {
-  fold(perms, init: 0, f: fn(n, p) { if observed_permission_name_eq(a: p.name, b: name) { n + 1 } else { n } })
-}
-
 fn first_duplicated_observed_permission(perms: List<ObservedGitHubPermission>) -> ObservedGitHubPermissionName? {
-  fold(perms, init: none, f: fn(found, p) {
-    match found {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if observed_permission_occurrences(perms: perms, name: p.name) > 1 {
-          Present { value: p.name }
-        } else {
-          none
-        }
-    }
-  })
+  let dup: ObservedGitHubPermission? = first_duplicate_by_key(xs: perms, key: p => p.name.wire_name as String)
+  match dup {
+    Present { value: found } => Present { value: found.name }
+    Absent => none
+  }
 }
 
 fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
@@ -214,33 +278,8 @@ type GitHubAppPermissionSetAdmission
 
 data no_admitted_permissions: List<GitHubAppPermission> = []
 
-fn permission_name_occurrences(
-  perms: List<GitHubAppPermission>,
-  name: GitHubPermissionAxis
-) -> Int {
-  fold_list(
-    xs: perms,
-    empty: 0,
-    cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
-  )
-}
-
 fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
-  fold_list(
-    xs: perms,
-    empty: none,
-    cons: fn(found, p) {
-      match found {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          if permission_name_occurrences(perms: perms, name: p.name) > 1 {
-            Present { value: p }
-          } else {
-            none
-          }
-      }
-    }
-  )
+  first_duplicate_by_key(xs: perms, key: p => permission_axis_wire_name(axis: p.name) as String)
 }
 
 fn admit_permission_set(perms: List<GitHubAppPermission>) -> GitHubAppPermissionSetAdmission {
@@ -509,6 +548,7 @@ fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification)
 // and never evidence of health; preserving that distinction is the consumer's duty.
 service github.CliAppRegistration {
   operation GetAppRegistrationJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -529,6 +569,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookDeliveriesJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -549,6 +590,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookConfigJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -569,6 +611,1061 @@ service github.CliAppRegistration {
   }
 }
 
+data app_manifest_registration_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest"
+  }
+}
+
+data app_manifest_conversion_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#create-a-github-app-from-a-manifest"
+  }
+}
+
+data get_an_app_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#get-an-app"
+  }
+}
+
+data get_authenticated_app_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#get-the-authenticated-app"
+  }
+}
+
+data get_app_installation_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app"
+  }
+}
+
+data list_app_installations_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#list-installations-for-the-authenticated-app"
+  }
+}
+
+data webhook_events_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/webhooks/webhook-events-and-payloads"
+  }
+}
+
+data app_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+// WHAT WOULD GROUND AN UNREAD AXIS. Carried as one row so every AxisAccessesUnread names the
+// same obligation and the reason lives beside the table that owes it.
+data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source that publishes ADMITTED ACCESS LEVELS per App permission (app_permissions_citation is organised by endpoint and does not), or observe a live App-manifest validator refusal for this axis, as workflows was observed on 2026-09-22" as NonEmptyStr
+
+// NOT EVERY AXIS ADMITS EVERY ACCESS LEVEL, AND THE MANIFEST VALIDATOR UPSTREAM REFUSES THE PAIRS
+// THAT DO NOT. This module carried the axis and the access as two independent coproducts, so a
+// GitHubAppPermission could spell `workflows: read` -- and the census manifest did, and GitHub's
+// registration page refused the whole manifest with "Default permission records resource
+// (workflows) is a write-only permission" (2026-09-22, the first live submission).
+//
+// WHAT IS READ IS CITED; WHAT IS NOT READ IS A BET, AND THE BET IS TYPED (DESIGN 4d). Only two
+// rows are grounded: workflows by that live refusal, and metadata because app_permissions_citation
+// documents it read-only and every App holds it. Every other axis is UNREAD, and an unread axis is
+// NOT judged here -- the pair reaches GitHub and GitHub answers. An earlier draft asserted
+// [AppAccessRead, AppAccessWrite] for the other twenty axes on the strength of prose saying the
+// same table admits both; that is a plausible inference standing as a deduced fact, which is the
+// defect this module is careful to avoid on the events side (webhook_event_subscribability
+// deliberately declines to classify installation_target and meta) and was doing the opposite of
+// here.
+//
+// THE READ OBLIGATION NAMES WHY THE CITED PAGE DOES NOT DISCHARGE IT. app_permissions_citation is
+// organised by ENDPOINT, not by admitted level: it lists which endpoints each permission reaches at
+// which level, so "only read endpoints are documented for code_quality" does not establish that the
+// manifest validator REFUSES `code_quality: write`. Reading a level off it is the same promotion
+// one layer down, and in the restrictive direction, which DESIGN 4d names as the costlier arm --
+// an over-broad prohibition refuses a manifest GitHub would have accepted, and the cost is the
+// submission that never happened. Grounding a row therefore takes a source that publishes admitted
+// levels, or a live validator refusal like the one that grounded workflows.
+//
+// THE UNREAD SET IS THE COMPLEMENT OF WHAT WAS READ, so it is a wildcard rather than twenty
+// identical rows: enumerating it would be a second list that must be edited every time a row is
+// grounded (DESIGN 3). A newly added axis therefore defaults to unjudged, which is the fail-safe
+// direction -- it reaches the upstream validator -- and the only way to make a row refuse locally
+// is to ground it.
+//
+// administration additionally documents an `admin` level this module's access type does not spell;
+// that is a partiality of GitHubAppPermissionAccess, not of this table.
+
+type AxisAccessAdmission
+  = AxisAdmitsExactly { set: GitHubAccessSet, authority: ExternalAuthority }
+  | AxisAccessesUnread { read_obligation: NonEmptyStr }
+
+fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAdmission {
+  match axis {
+    MetadataAxis =>
+      AxisAdmitsExactly { set: GitHubAccessReadOnly, authority: app_permissions_citation }
+    WorkflowsAxis =>
+      AxisAdmitsExactly { set: GitHubAccessWriteOnly, authority: app_permissions_citation }
+    ActionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ArtifactMetadataAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AttestationsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ChecksAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    CodeQualityAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ContentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DeploymentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DiscussionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IdTokenAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IssuesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ModelsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PackagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PullRequestsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    RepositoryProjectsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    SecurityEventsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    StatusesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    VulnerabilityAlertsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AdministrationAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    OrganizationSelfHostedRunnersAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+  }
+}
+
+// THREE-VALUED BY CONSTRUCTION: a Bool here would fold "this module read the table and the pair is
+// not on it" together with "this module never read the table", and only the first is a refusal.
+type AxisAccessVerdict
+  = AxisAccessAdmitted { authority: ExternalAuthority }
+  | AxisAccessRefusedByAuthority { authority: ExternalAuthority }
+  | AxisAccessUnjudged { read_obligation: NonEmptyStr }
+
+fn permission_axis_access_verdict(
+  axis: GitHubPermissionAxis,
+  access: GitHubAppPermissionAccess,
+) -> AxisAccessVerdict {
+  match permission_axis_admitted_accesses(axis: axis) {
+    AxisAccessesUnread { read_obligation: o } => AxisAccessUnjudged { read_obligation: o }
+    AxisAdmitsExactly { set: st, authority: auth } =>
+      if github_access_set_admits(set: st, access: access) {
+        AxisAccessAdmitted { authority: auth }
+      } else {
+        AxisAccessRefusedByAuthority { authority: auth }
+      }
+  }
+}
+
+fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match permission_axis_access_verdict(axis: p.name, access: p.access) {
+            AxisAccessAdmitted { authority: _ } => none
+            AxisAccessUnjudged { read_obligation: _ } => none
+            AxisAccessRefusedByAuthority { authority: _ } => Present { value: p }
+          }
+      }
+    }
+  )
+}
+
+// ACCESS HAS A WIRE SPELLING AND THIS MODULE DID NOT CARRY IT. permission_access_rank ordered the
+// two arms for the narrowing check, which is a different question from what GitHub writes in a
+// default_permissions object; a caller rendering a manifest would otherwise spell "read" itself,
+// which is the second representation of a closed sum DESIGN 3 forbids. The from_wire direction is
+// total and REFUSES an unrecognized access rather than defaulting to read: a default there would
+// silently downgrade a write permission the API actually granted (DESIGN 5). BOTH HALVES OF A PERMISSION ROW
+// cross the wire as text -- `{"contents":"write"}` -- so a caller COMPOSING a request body needs the
+// same authority for the value as for the key; gunbc.auth.heal_publisher_federation's down-scoped
+// installation-token body is one such caller.
+fn permission_access_wire_name(access: GitHubAppPermissionAccess) -> NonEmptyStr {
+  match access {
+    AppAccessRead => "read"
+    AppAccessWrite => "write"
+  }
+}
+
+fn permission_access_from_wire(name: String) -> GitHubAppPermissionAccess? {
+  if name == (permission_access_wire_name(access: AppAccessRead) as String) {
+    Present { value: AppAccessRead }
+  } else if name == (permission_access_wire_name(access: AppAccessWrite) as String) {
+    Present { value: AppAccessWrite }
+  } else {
+    none
+  }
+}
+
+// GitHub returns default_permissions and an installation's permissions as a JSON OBJECT keyed by
+// the permission wire name, not as an array, so the decoded carrier is Map<String, String> and the
+// projection onto the observed-permission list this module already speaks is a fold over its keys.
+// It is three-valued deliberately: a key whose VALUE is not read/write is a different failure from
+// a key the map claims and then does not answer for, and neither may become an empty list.
+type ObservedPermissionMapDecode
+  = ObservedPermissionsDecoded { permissions: List<ObservedGitHubPermission> }
+  | ObservedPermissionAccessUnreadable { wire_name: NonEmptyStr, access: String }
+  | ObservedPermissionKeyUnanswered { wire_name: NonEmptyStr }
+
+fn observed_permissions_from_wire_map(m: Map<String, String>) -> ObservedPermissionMapDecode {
+  fold_list(
+    xs: map_keys(m),
+    empty: ObservedPermissionsDecoded { permissions: [] },
+    cons: fn(acc, key) {
+      match acc {
+        ObservedPermissionAccessUnreadable { wire_name, access } =>
+          ObservedPermissionAccessUnreadable { wire_name: wire_name, access: access }
+        ObservedPermissionKeyUnanswered { wire_name } =>
+          ObservedPermissionKeyUnanswered { wire_name: wire_name }
+        ObservedPermissionsDecoded { permissions } =>
+          match map_lookup(m: m, key: key) {
+            Absent => ObservedPermissionKeyUnanswered { wire_name: key as NonEmptyStr }
+            Present { value: raw } =>
+              match permission_access_from_wire(name: raw) {
+                Absent =>
+                  ObservedPermissionAccessUnreadable { wire_name: key as NonEmptyStr, access: raw }
+                Present { value: access } =>
+                  ObservedPermissionsDecoded {
+                    permissions: concat(permissions, [ObservedGitHubPermission {
+                      name: ObservedGitHubPermissionName { wire_name: key as NonEmptyStr },
+                      access: access,
+                    }])
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+// THE EVENT VOCABULARY IS UPSTREAM; WHICH EVENTS AN APP SUBSCRIBES TO IS FLEET POLICY, and this
+// module carries only the first, exactly as the hook-config note above rules for the hook URL. The
+// arms below are a PARTIAL cut of GitHub's documented catalogue (webhook_events_citation), which is
+// safe in the direction that matters: an event this coproduct cannot spell cannot be WRITTEN into a
+// manifest, so the write side is closed by construction, while the read side stays List<NonEmptyStr>
+// on GitHubAppInstallation as it already did. The partiality is a declared frontier row below, not
+// a silent subset.
+//
+// IT OVERLAPS extdeps.github.actions_token GitHubWorkflowEvent AND THAT IS A DECLARED DIVERGENCE,
+// NOT AN OVERSIGHT (DESIGN 3b: a deliberate departure with its reason beside it is the admitted
+// middle value; an unstated one is the red). That type answers WHICH EVENT TRIGGERED A WORKFLOW RUN
+// and its members include workflow_dispatch, merge_group and schedule -- which are workflow triggers
+// an App cannot subscribe to at all -- while this one answers WHICH EVENTS AN APP SUBSCRIBES TO. The
+// two sets intersect at push and pull_request because GitHub draws both from one catalogue, so the
+// arms here are spelled Webhook* rather than *Event: the same upstream name under two different
+// questions is exactly where a bare cross-module reference becomes ambiguous, and it did -- three
+// arms collided by name before this spelling. The consolidation question is the frontier row below.
+type GitHubWebhookEvent
+  = WebhookInstallation
+  | WebhookInstallationRepositories
+  | WebhookInstallationTarget
+  | WebhookMeta
+  | WebhookPush
+  | WebhookPullRequest
+  | WebhookCheckRun
+  | WebhookCheckSuite
+  | WebhookWorkflowRun
+  | WebhookWorkflowJob
+  | WebhookRepository
+  | WebhookPublic
+
+data all_modeled_webhook_events: List<GitHubWebhookEvent> = [
+  WebhookInstallation, WebhookInstallationRepositories, WebhookInstallationTarget, WebhookMeta,
+  WebhookPush, WebhookPullRequest, WebhookCheckRun, WebhookCheckSuite, WebhookWorkflowRun,
+  WebhookWorkflowJob, WebhookRepository, WebhookPublic
+]
+
+// AN APP'S OWN LIFECYCLE EVENTS ARE NOT A SUBSCRIPTION. GitHub delivers `installation` and
+// `installation_repositories` to the App they concern without the App asking, so a manifest that
+// lists them under default_events is refused upstream -- measured on the first live submission of
+// the census manifest (2026-09-22): "Default events unsupported: installation and
+// installation_repositories" and "Default events are not supported by permissions". The coproduct
+// keeps those arms because the READ side (an installation's events list, a public App record) still
+// spells them; what is closed here is the WRITE side, by admission below. Only the two arms GitHub
+// refused are classified DeliveredToEveryApp: installation_target and meta are plausibly in the
+// same class and are deliberately NOT asserted so (DESIGN 4d: a plausible inference typed as a
+// fact is the defect), so a manifest naming them reaches GitHub and is judged there.
+type WebhookEventSubscribability
+  = SubscribableByManifest
+  | DeliveredToEveryApp
+
+fn webhook_event_subscribability(event: GitHubWebhookEvent) -> WebhookEventSubscribability {
+  match event {
+    WebhookInstallation => DeliveredToEveryApp
+    WebhookInstallationRepositories => DeliveredToEveryApp
+    WebhookInstallationTarget => SubscribableByManifest
+    WebhookMeta => SubscribableByManifest
+    WebhookPush => SubscribableByManifest
+    WebhookPullRequest => SubscribableByManifest
+    WebhookCheckRun => SubscribableByManifest
+    WebhookCheckSuite => SubscribableByManifest
+    WebhookWorkflowRun => SubscribableByManifest
+    WebhookWorkflowJob => SubscribableByManifest
+    WebhookRepository => SubscribableByManifest
+    WebhookPublic => SubscribableByManifest
+  }
+}
+
+fn first_event_not_subscribable(events: List<GitHubWebhookEvent>) -> GitHubWebhookEvent? {
+  fold_list(
+    xs: events,
+    empty: none,
+    cons: fn(found, e) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match webhook_event_subscribability(event: e) {
+            SubscribableByManifest => none
+            DeliveredToEveryApp => Present { value: e }
+          }
+      }
+    }
+  )
+}
+
+fn webhook_event_wire_name(event: GitHubWebhookEvent) -> NonEmptyStr {
+  match event {
+    WebhookInstallation => "installation"
+    WebhookInstallationRepositories => "installation_repositories"
+    WebhookInstallationTarget => "installation_target"
+    WebhookMeta => "meta"
+    WebhookPush => "push"
+    WebhookPullRequest => "pull_request"
+    WebhookCheckRun => "check_run"
+    WebhookCheckSuite => "check_suite"
+    WebhookWorkflowRun => "workflow_run"
+    WebhookWorkflowJob => "workflow_job"
+    WebhookRepository => "repository"
+    WebhookPublic => "public"
+  }
+}
+
+fn webhook_event_from_wire(name: String) -> GitHubWebhookEvent? {
+  fold_list(
+    xs: all_modeled_webhook_events,
+    empty: none,
+    cons: fn(found, event) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if name == (webhook_event_wire_name(event: event) as String) {
+            Present { value: event }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+// THE THREE DUPLICATE SCANS IN THIS FILE CONSUME ONE KERNEL. They were three copies of a nested
+// fold, quadratic each, and webhook_event_eq was a bare alias of == beside them (review 67544).
+// std.list first_duplicate_by_key is the single authority and is linear; each site supplies the wire
+// name it was already comparing through, so the projection is not a new fact.
+fn first_duplicated_event(events: List<GitHubWebhookEvent>) -> GitHubWebhookEvent? {
+  first_duplicate_by_key(xs: events, key: e => webhook_event_wire_name(event: e) as String)
+}
+
+// `public` is a two-valued upstream field whose JSON spelling is a bool, and it is modeled as a
+// coproduct rather than a Bool because "public" and "true" are not the same fact: a Bool field named
+// `public` reads the same as a Bool field named `private` inverted, and a caller passing the wrong
+// polarity is unwritable only when the two states have names. The fold to the wire bool is applied
+// at the render site, never implied.
+type GitHubAppVisibility
+  = AppPrivateToOwner
+  | AppPublic
+
+fn app_visibility_wire_bool(v: GitHubAppVisibility) -> Bool {
+  match v {
+    AppPrivateToOwner => false
+    AppPublic => true
+  }
+}
+
+// hook_attributes.url is REQUIRED by the manifest schema even for an App with no receiver, so
+// `active` is what carries "nothing listens here" rather than an omitted URL. Modeling active as a
+// Bool is admissible because the field is genuinely a switch on one named subject and has no second
+// polarity to confuse it with, unlike `public` above.
+type GitHubAppHookAttributes {
+  url: Uri
+  active: Bool
+}
+
+type GitHubAppManifest {
+  name: NonEmptyStr
+  url: Uri
+  hook_attributes: GitHubAppHookAttributes
+  redirect_url: Uri?
+  callback_urls: List<Uri>
+  setup_url: Uri?
+  description: String
+  public: GitHubAppVisibility
+  default_events: List<GitHubWebhookEvent>
+  default_permissions: List<GitHubAppPermission>
+  request_oauth_on_install: Bool
+  setup_on_update: Bool
+}
+
+type GitHubAppManifestAdmission
+  = ManifestAdmitted { manifest: GitHubAppManifest }
+  | ManifestDuplicatePermission { axis: GitHubPermissionAxis }
+  | ManifestDuplicateEvent { event: GitHubWebhookEvent }
+  | ManifestAccessNotAdmittedOnAxis { axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess }
+  | ManifestEventNotSubscribable { event: GitHubWebhookEvent }
+
+// ADMISSION IS WHERE THE UPSTREAM VALIDATOR'S RULES ARE APPLIED BEFORE THE HUMAN CARRIES THE
+// DOCUMENT TO IT. A manifest the browser POST will be refused on is refused here, typed and
+// located, so the operator is never handed a form whose only outcome is GitHub's error page. The
+// rung is mechanically-preventable, not structural: GitHubAppPermission and default_events are
+// still writable with the refused pairs because the same carriers serve the READ side, where
+// `workflows: write` and an installation event are legitimate observations.
+fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
+  match first_duplicated_permission(perms: m.default_permissions) {
+    Present { value: dup } => ManifestDuplicatePermission { axis: dup.name }
+    Absent =>
+      match first_permission_not_admitted(perms: m.default_permissions) {
+        Present { value: p } => ManifestAccessNotAdmittedOnAxis { axis: p.name, access: p.access }
+        Absent =>
+          match first_duplicated_event(events: m.default_events) {
+            Present { value: e } => ManifestDuplicateEvent { event: e }
+            Absent =>
+              match first_event_not_subscribable(events: m.default_events) {
+                Present { value: e } => ManifestEventNotSubscribable { event: e }
+                Absent => ManifestAdmitted { manifest: m }
+              }
+          }
+      }
+  }
+}
+
+// THE MANIFEST IS NOT SENT BY THIS PROCESS. GitHub's registration flow POSTs the manifest as a FORM
+// FIELD from the owner's browser at a settings page, because creating an App is an act of the
+// account's owner and nothing else may perform it. So the wire artifact this module produces is a
+// JSON DOCUMENT handed to that human, not a REST body - which is why there is no manifest operation
+// on any service below, and why default_permissions is built as an object here rather than
+// travelling as a Map through a transport that would have to build one.
+//
+// IT IS BUILT AS A JsonValue AND SERIALIZED BY extdeps.languages.json.emit, WHICH IS CITED TO RFC
+// 8259 AND ESCAPES. An earlier cut of this module hand-rolled five string helpers - json_string,
+// json_bool, json_member, json_object, json_array - and refused any value carrying a quote or a
+// backslash, on the reasoning that writing an escaper here would fork the JSON authority. The
+// reasoning was right and the conclusion was wrong in both directions: the fork was the five helpers
+// themselves (that module already declares those exact names, which is how the collision surfaced),
+// and refusing a legal character the real emitter handles correctly is DESIGN 4d over-prohibition -
+// forbidding more of the world than the evidence supports, and paid for by every future App name
+// with an apostrophe-adjacent character in it. serialize_json is the single authority; a value that
+// needs escaping gets escaped.
+fn manifest_permission_kv(p: GitHubAppPermission) -> JsonKeyValue {
+  json_kv(
+    key: permission_axis_wire_name(axis: p.name) as String,
+    value: json_string(s: permission_access_wire_name(access: p.access) as String),
+  )
+}
+
+fn manifest_optional_uri_kv(key: String, uri: Uri?) -> List<JsonKeyValue> {
+  match uri {
+    Absent => []
+    Present { value: u } => [json_kv(key: key, value: json_string(s: uri_wire(uri: u) as String))]
+  }
+}
+
+fn app_manifest_json_value(admitted: GitHubAppManifest) -> JsonValue {
+  json_object(members: concat(
+    concat(
+      [
+        json_kv(key: "name", value: json_string(s: admitted.name as String)),
+        json_kv(key: "url", value: json_string(s: uri_wire(uri: admitted.url) as String)),
+        json_kv(key: "description", value: json_string(s: admitted.description)),
+        json_kv(key: "public", value: json_bool(b: app_visibility_wire_bool(v: admitted.public))),
+        json_kv(key: "request_oauth_on_install", value: json_bool(b: admitted.request_oauth_on_install)),
+        json_kv(key: "setup_on_update", value: json_bool(b: admitted.setup_on_update)),
+        json_kv(key: "hook_attributes", value: json_object(members: [
+          json_kv(key: "url", value: json_string(s: uri_wire(uri: admitted.hook_attributes.url) as String)),
+          json_kv(key: "active", value: json_bool(b: admitted.hook_attributes.active)),
+        ])),
+        json_kv(key: "callback_urls", value: json_array(elements: map(
+          admitted.callback_urls,
+          u => json_string(s: uri_wire(uri: u) as String)
+        ))),
+        json_kv(key: "default_events", value: json_array(elements: map(
+          admitted.default_events,
+          e => json_string(s: webhook_event_wire_name(event: e) as String)
+        ))),
+        json_kv(key: "default_permissions", value: json_object(members: map(
+          admitted.default_permissions,
+          p => manifest_permission_kv(p: p)
+        ))),
+      ],
+      manifest_optional_uri_kv(key: "redirect_url", uri: admitted.redirect_url)
+    ),
+    manifest_optional_uri_kv(key: "setup_url", uri: admitted.setup_url)
+  ))
+}
+
+fn app_manifest_json_document(admitted: GitHubAppManifest) -> String {
+  serialize_json(v: app_manifest_json_value(admitted: admitted))
+}
+
+type RenderedAppManifest
+  = AppManifestRendered { document: String }
+  | AppManifestNotRenderable { admission: GitHubAppManifestAdmission }
+
+fn render_app_manifest(m: GitHubAppManifest) -> RenderedAppManifest {
+  match admit_app_manifest(m: m) {
+    ManifestAdmitted { manifest: admitted } =>
+      AppManifestRendered { document: app_manifest_json_document(admitted: admitted) }
+    ManifestDuplicatePermission { axis: a } =>
+      AppManifestNotRenderable { admission: ManifestDuplicatePermission { axis: a } }
+    ManifestDuplicateEvent { event: e } =>
+      AppManifestNotRenderable { admission: ManifestDuplicateEvent { event: e } }
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } =>
+      AppManifestNotRenderable { admission: ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } }
+    ManifestEventNotSubscribable { event: e } =>
+      AppManifestNotRenderable { admission: ManifestEventNotSubscribable { event: e } }
+  }
+}
+
+// WHERE THE APP IS REGISTERED IS A DIFFERENT FACT FROM WHAT IT LOOKS LIKE, and the owner decides the
+// first. A user App and an organization App have different settings paths upstream and different
+// consent holders, so a single URL string with the org interpolated would make the personal case
+// unrepresentable rather than merely unused.
+type GitHubAppRegistrationTarget
+  = RegisterUnderAuthenticatedUser
+  | RegisterUnderOrganization { organization: NonEmptyStr }
+
+// THE SETTINGS URLS ARE Uri VALUES, NOT TEXT THAT HAPPENS TO START WITH https. An earlier cut spelled
+// the scheme as characters inside a String and joined the rest, in a file whose every citation above
+// is Uri { scheme: Https, locator: ... } and which imports the URI authority (review 67544). Two
+// spellings of one scheme drift independently, and the text one loses the distinction
+// uri_scheme_is_http exists to make.
+data github_settings_apps_new_uri: Uri = Uri {
+  scheme: Https
+  locator: "github.com/settings/apps/new"
+}
+
+data github_organizations_settings_locator_prefix: String = "github.com/organizations/"
+
+fn app_manifest_registration_base_uri(target: GitHubAppRegistrationTarget) -> Uri {
+  match target {
+    RegisterUnderAuthenticatedUser => github_settings_apps_new_uri
+    RegisterUnderOrganization { organization: org } =>
+      Uri {
+        scheme: Https,
+        locator: join([github_organizations_settings_locator_prefix, org as String, "/settings/apps/new"], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn app_manifest_registration_base_url(target: GitHubAppRegistrationTarget) -> String {
+  uri_wire(uri: app_manifest_registration_base_uri(target: target)) as String
+}
+
+// THE STATE PARAMETER IS THE BINDING BETWEEN THE FLOW WE STARTED AND THE CODE WE ARE HANDED, and
+// treating it as optional because upstream calls it optional would be reading a recommendation as a
+// permission. A code arriving without the state we issued is a code from someone else's flow, and the
+// exchange below would spend it to create an App under OUR redirect that we never declared. So the
+// URL builder here has no arm that omits it, and the percent-encode refusal is carried rather than
+// swallowed: a state that cannot be encoded produces no URL at all.
+type AppManifestRegistrationUrl
+  = RegistrationUrlBuilt { url: String }
+  | RegistrationUrlStateUnencodable { cause: UriPercentEncodeRefusalCause }
+
+fn app_manifest_registration_url(
+  target: GitHubAppRegistrationTarget,
+  state: NonEmptyStr,
+) -> AppManifestRegistrationUrl {
+  match uri_percent_encode_component(value: state) {
+    UriPercentComponentRefused { cause: c } => RegistrationUrlStateUnencodable { cause: c }
+    UriPercentComponentEncoded(encoded) =>
+      RegistrationUrlBuilt {
+        url: join([app_manifest_registration_base_url(target: target), "?state=", encoded as String], "")
+      }
+  }
+}
+
+// THE MANIFEST IS DELIVERED BY A FORM POST AND THERE IS NO FIELD TO PASTE IT INTO. This is the
+// upstream fact the acquisition lane got wrong, observed live: an operator opened the registration
+// URL, was told to "paste the manifest into the form's manifest field", and found a create page with
+// no such field. A GET of that URL renders GitHub's ORDINARY App-creation form, which is the manual
+// route and ignores manifests entirely; the manifest protocol is a POST to the SAME URL carrying one
+// application/x-www-form-urlencoded parameter named `manifest` whose value is the manifest JSON
+// (app_manifest_registration_citation, "Implementing the GitHub App Manifest flow", step 1). So the
+// registration URL alone is not an executable instruction -- it is only the ACTION of a form nobody
+// had written, and the missing form is the whole defect.
+//
+// THE PARAMETER NAME IS A ROW BECAUSE IT IS UPSTREAM'S, not this corpus's choice of spelling. A
+// consumer that spelled it itself would fork the one fact that decides whether the POST is a manifest
+// registration or an ignored request.
+data app_manifest_form_parameter_name: String = "manifest"
+
+// WHY A SUBMIT BUTTON RATHER THAN A SCRIPT THAT POSTS ON LOAD. A page that submits itself would hand
+// the operator's signed-in session to a POST they never read, at the one endpoint in this flow that
+// creates an App and mints a private key shown exactly once. The button is the consent act the
+// endpoint requires anyway (GitHub takes the submission from the account or organization OWNER), so
+// making it a click costs one click and keeps the artifact readable before it is spent.
+data app_manifest_submission_button_label: String = "Create this GitHub App"
+
+// THE ESCAPING IS THE WALL AND IT IS NOT THIS MODULE'S. The manifest document is JSON, so it carries
+// a double quote around every key and every string value; placed unescaped into value="..." it would
+// close the attribute at the first key and the remainder would be parsed as markup -- which is not a
+// cosmetic defect here but a silent one, because the browser would POST a TRUNCATED manifest and
+// GitHub would register an App with permissions nobody declared. std.markup escape_attribute is the
+// single authority for that, reached through extdeps.languages.html's serializer, and this module
+// hands it a Fragment rather than assembling any markup text of its own.
+type AppManifestSubmissionDocument
+  = ManifestSubmissionRendered { html: String }
+  | ManifestSubmissionNotRenderable { cause: NonEmptyStr }
+
+fn app_manifest_submission_fragment(
+  action_url: String,
+  manifest_document: String,
+  heading: String,
+  guidance: String,
+) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [attr(name: "lang", value: "en")],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element { tag: "meta", attributes: [attr(name: "charset", value: "utf-8")], children: [] },
+          Element { tag: "title", attributes: [], children: [FragmentText { content: heading }] },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element { tag: "h1", attributes: [], children: [FragmentText { content: heading }] },
+          Element { tag: "p", attributes: [], children: [FragmentText { content: guidance }] },
+          Element {
+            tag: "form",
+            attributes: [attr(name: "method", value: "post"), attr(name: "action", value: action_url)],
+            children: [
+              Element {
+                tag: "input",
+                attributes: [
+                  attr(name: "type", value: "hidden"),
+                  attr(name: "name", value: app_manifest_form_parameter_name),
+                  attr(name: "value", value: manifest_document),
+                ],
+                children: [],
+              },
+              Element {
+                tag: "button",
+                attributes: [attr(name: "type", value: "submit")],
+                children: [FragmentText { content: app_manifest_submission_button_label }],
+              },
+            ],
+          },
+          Element {
+            tag: "pre",
+            attributes: [],
+            children: [FragmentText { content: manifest_document }],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// THE DOCUMENT REFUSES RATHER THAN RENDERING A FORM THAT WOULD POST SOMETHING ELSE. Three things can
+// go wrong before there is an artifact -- the manifest does not admit, the state nonce does not
+// percent-encode into the action URL, the serializer refuses the fragment -- and each produces no
+// document at all. A partial page here is worse than none: the operator would click it.
+fn app_manifest_submission_document(
+  target: GitHubAppRegistrationTarget,
+  state: NonEmptyStr,
+  m: GitHubAppManifest,
+  heading: String,
+  guidance: String,
+) -> AppManifestSubmissionDocument {
+  match render_app_manifest(m: m) {
+    AppManifestNotRenderable { admission: _ } =>
+      ManifestSubmissionNotRenderable {
+        cause: "the declared manifest is not renderable, so there is nothing to submit" as NonEmptyStr
+      }
+    AppManifestRendered { document: document } =>
+      match app_manifest_registration_url(target: target, state: state) {
+        RegistrationUrlStateUnencodable { cause: _ } =>
+          ManifestSubmissionNotRenderable {
+            cause: "the registration state nonce is not percent-encodable, so the form has no action URL" as NonEmptyStr
+          }
+        RegistrationUrlBuilt { url: url } =>
+          match try_serialize_html_source(
+            node: app_manifest_submission_fragment(
+              action_url: url,
+              manifest_document: document,
+              heading: heading,
+              guidance: guidance,
+            )
+          ) {
+            EmitRejected { reason: r } =>
+              ManifestSubmissionNotRenderable {
+                cause: join(["the submission document was refused by the HTML serializer: ", r], "") as NonEmptyStr
+              }
+            EmitOk { html: html } => ManifestSubmissionRendered { html: html }
+          }
+      }
+  }
+}
+
+// INSTALLATION IS A SECOND CONSENT AT A SECOND URL, AND THAT IS WHY IT IS A SECOND FACT. Registering
+// an App creates it under an owner; it grants that App access to nothing. The permissions in the
+// manifest are what the App may ASK FOR, and an installation is where an account holder agrees to
+// give some of them over some repositories -- so an App can exist with zero installations
+// indefinitely, which is exactly the state a newly converted App is in (installations_count is the
+// field upstream omits at zero). The page that takes that consent is the App's public install page,
+// addressed by the SLUG the conversion returned, and like the registration form it is a browser act
+// by a signed-in account holder with no API behind it (app_install_citation).
+data app_install_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/using-github-apps/installing-your-own-github-app"
+  }
+}
+
+data github_apps_install_locator_prefix: String = "github.com/apps/"
+
+type AppInstallUrl
+  = InstallUrlBuilt { url: String }
+  | InstallUrlSlugUnencodable { cause: UriPercentEncodeRefusalCause }
+
+// THE SLUG IS PERCENT-ENCODED RATHER THAN INTERPOLATED. It is a value GitHub returns, not one this
+// corpus authored, and it is being placed into a URL PATH; a slug carrying a separator would address
+// a different page while the refusal here names it instead.
+fn app_install_url(slug: NonEmptyStr) -> AppInstallUrl {
+  match uri_percent_encode_component(value: slug) {
+    UriPercentComponentRefused { cause: c } => InstallUrlSlugUnencodable { cause: c }
+    UriPercentComponentEncoded(encoded) =>
+      InstallUrlBuilt {
+        url: uri_wire(
+          uri: Uri {
+            scheme: Https,
+            locator: join([github_apps_install_locator_prefix, encoded as String, "/installations/new"], "") as NonEmptyStr,
+          }
+        ) as String
+      }
+  }
+}
+
+// THE TEMPORARY CODE IS SPENDABLE EXACTLY ONCE AND EXPIRES IN ONE HOUR (app_manifest_registration_citation:
+// "Must complete all three steps within one hour"). It is branded so a caller cannot hand the exchange
+// an App slug, a client id, or a state nonce - all of which are NonEmptyStr at this boundary.
+type GitHubAppManifestCode = NonEmptyStr where brand("GitHubAppManifestCode")
+
+type GitHubAppManifestState = NonEmptyStr where brand("GitHubAppManifestState")
+
+// WHAT THE CONVERSION RETURNS, AS IT RETURNS IT (app_manifest_conversion_citation). The three secrets
+// are Secret rather than String so they cannot be concatenated into a diagnostic by accident, and
+// webhook_secret is Optional because GitHub returns null for it when the manifest declared no hook
+// secret - absent is not the empty string. permissions arrives as a JSON object, hence the Map, which
+// observed_permissions_from_wire_map projects onto this module's observed-permission vocabulary.
+// installations_count is Optional on the read side because GitHub omits JSON fields equal to the
+// proto3 default; a newly converted App has zero installations, which is exactly the omitted case.
+type GitHubAppManifestConversion {
+  id: Int
+  slug: String
+  node_id: String
+  name: String
+  owner: GitHubUser
+  html_url: String
+  permissions: Map<String, String>
+  events: List<String>
+  installations_count: Int?
+  client_id: String
+  client_secret: Secret
+  webhook_secret: Secret?
+  pem: Secret
+}
+
+// THE PRIVATE KEY IS RETURNED ONCE AND NEVER AGAIN (private_key_citation). There is no endpoint that
+// re-reads it: a lost pem is recovered only by generating a NEW key in the App's settings, which is
+// another human act, and the App itself is not recoverable at all if its credentials are lost and its
+// name is taken. So the issuance is modeled as a one-shot event with a named custody site rather than
+// as a field a converge may re-derive, and a second exchange of the SAME code does not return it
+// again - the code is spent, and upstream answers 404 (app_manifest_conversion_citation status list).
+type GitHubAppCredentialIssuance
+  = CredentialIssuedOnce { app_id: GitHubAppId, slug: NonEmptyStr, pem: Secret, webhook_secret: Secret?, client_id: NonEmptyStr, client_secret: Secret }
+
+fn conversion_app_id(c: GitHubAppManifestConversion) -> GitHubAppId {
+  GitHubAppId { value: c.id }
+}
+
+type ConversionIssuance
+  = IssuanceRead { issuance: GitHubAppCredentialIssuance }
+  | IssuanceSlugEmpty
+  | IssuanceClientIdEmpty
+
+fn conversion_issuance(c: GitHubAppManifestConversion) -> ConversionIssuance {
+  if c.slug == "" {
+    IssuanceSlugEmpty
+  } else if c.client_id == "" {
+    IssuanceClientIdEmpty
+  } else {
+    IssuanceRead {
+      issuance: CredentialIssuedOnce {
+        app_id: conversion_app_id(c: c),
+        slug: c.slug as NonEmptyStr,
+        pem: c.pem,
+        webhook_secret: c.webhook_secret,
+        client_id: c.client_id as NonEmptyStr,
+        client_secret: c.client_secret,
+      }
+    }
+  }
+}
+
+// THE PUBLIC APP RECORD, which is the only readback of a created App reachable WITHOUT an App JWT
+// (get_an_app_citation). It is deliberately a separate type from GitHubAppManifestConversion even
+// though the documented body is the same shape minus the secrets: the conversion is what the
+// actuation RETURNED, and this is what an independent read SEES. Comparing a record against itself
+// is not a readback (DESIGN 3d: a successful actuation return cannot mint convergence).
+type GitHubAppPublicRecord {
+  id: Int
+  slug: String
+  node_id: String
+  name: String
+  html_url: String
+  permissions: Map<String, String>
+  events: List<String>
+}
+
+service github.AppManifests {
+  config {
+    endpoint: default_api_base
+  }
+
+  operation ConvertManifestCode {
+    requires Network
+    input {
+      code: String
+    }
+    output {
+      result: GitHubAppManifestConversion
+    }
+    transport rest {
+      method: POST,
+      path: "/app-manifests/\{code\}/conversions",
+      body: { }
+    }
+    response {
+      201 => GitHubAppManifestConversion
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+service github.AppPublicRegistry {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+
+  operation GetApp {
+    requires Network
+    input {
+      auth_token: Secret
+      app_slug: String
+    }
+    output {
+      result: GitHubAppPublicRecord
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/apps/\{app_slug\}"
+    }
+    response {
+      200 => GitHubAppPublicRecord
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+// THE APP-JWT CREDENTIAL IS READ AT THE TRANSPORT FROM THE ENVIRONMENT, NOT TAKEN AS AN OPERATION
+// INPUT, following the extdeps.google.sheets and github.Checks precedent and for the reason
+// list_app_installations_citation states outright: "You must use a JWT to access this endpoint." That
+// JWT is RS256-signed with the App's private key. The corpus CAN sign one on a host that holds the key
+// FILE -- the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize, performed by gunbc.github_effect_perform -- but
+// this service's callers (the census and org instruments) run where no key file is custodied, so for
+// them the minting step is still external and hourly (org_admin_auth: iat backdated up to 60s,
+// exp at most 10 minutes), and the boundary this module holds is that no caller can interpolate a token
+// into an argument list: the transport reads GITHUB_APP_JWT or the request goes out unauthenticated and
+// upstream refuses it with a status this operation classifies.
+//
+// A SEPARATE SERVICE FROM github.AppPublicRegistry BECAUSE THE PRINCIPAL IS DIFFERENT. Fusing them
+// would put one auth_source over two endpoints that accept different credentials, and the GITHUB_TOKEN
+// PAT reaches /app/installations with a 401 that would look like a missing installation.
+service github.AppInstallations {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_APP_JWT" }
+  }
+
+  operation ListInstallations {
+    requires Network
+    input {
+      auth_token: Secret
+      per_page: Int = default_per_page
+    }
+    output {
+      result: List<GitHubAppInstallationRecord>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/app/installations",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => List<GitHubAppInstallationRecord>
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+// THE WIRE SHAPE OF AN INSTALLATION, KEPT SEPARATE FROM THE MODELED GitHubAppInstallation ABOVE.
+// The modeled type carries a Uri, a GitHubUser and a closed repository_selection; the wire carries
+// strings and a JSON permissions object. Decoding straight into the modeled type would force the
+// transport to construct a coproduct from a free string with no refusal site, which is the widen
+// DESIGN 5 forbids. single_file_name is Optional because GitHub returns null for it, and
+// repository_selection is decoded through a total fold that refuses an unrecognized value rather
+// than defaulting to SelectionAll - the arm that would silently over-report our API budget.
+type GitHubAppInstallationRecord {
+  id: Int
+  app_id: Int
+  app_slug: String
+  html_url: String
+  account: GitHubUser
+  repository_selection: String
+  permissions: Map<String, String>
+  events: List<String>
+}
+
+fn repository_selection_wire_name(mode: GitHubAppRepositorySelectionMode) -> NonEmptyStr {
+  match mode {
+    SelectionAll => "all"
+    SelectionSelected => "selected"
+  }
+}
+
+fn repository_selection_from_wire(raw: String) -> GitHubAppRepositorySelectionMode? {
+  if raw == (repository_selection_wire_name(mode: SelectionAll) as String) {
+    Present { value: SelectionAll }
+  } else if raw == (repository_selection_wire_name(mode: SelectionSelected) as String) {
+    Present { value: SelectionSelected }
+  } else {
+    none
+  }
+}
+
+type InstallationRecordDecode
+  = InstallationDecoded { installation: GitHubAppInstallation }
+  | InstallationSelectionUnreadable { raw: String }
+  | InstallationPermissionsUnreadable { decode: ObservedPermissionMapDecode }
+  | InstallationSlugEmpty
+  | InstallationHtmlUrlUnreadable { raw: String }
+
+fn installation_from_record(record: GitHubAppInstallationRecord) -> InstallationRecordDecode {
+  match repository_selection_from_wire(raw: record.repository_selection) {
+    Absent => InstallationSelectionUnreadable { raw: record.repository_selection }
+    Present { value: selection } =>
+      match observed_permissions_from_wire_map(m: record.permissions) {
+        ObservedPermissionAccessUnreadable { wire_name: n, access: a } =>
+          InstallationPermissionsUnreadable { decode: ObservedPermissionAccessUnreadable { wire_name: n, access: a } }
+        ObservedPermissionKeyUnanswered { wire_name: n } =>
+          InstallationPermissionsUnreadable { decode: ObservedPermissionKeyUnanswered { wire_name: n } }
+        ObservedPermissionsDecoded { permissions: perms } =>
+          if record.app_slug == "" {
+            InstallationSlugEmpty
+          } else {
+            match uri_from_wire(url: record.html_url) {
+              Absent => InstallationHtmlUrlUnreadable { raw: record.html_url }
+              Present { value: html_url } =>
+                InstallationDecoded {
+                  installation: GitHubAppInstallation {
+                    installation_id: GitHubAppInstallationId { value: record.id },
+                    app_id: GitHubAppId { value: record.app_id },
+                    app_slug: record.app_slug as NonEmptyStr,
+                    html_url: html_url,
+                    account: record.account,
+                    repository_selection: selection,
+                    permissions: perms,
+                    subscribed_events: map(record.events, e => e as NonEmptyStr),
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE INSTALLATION-TOKEN REQUEST IS MODELED TO ITS WIRE EVEN THOUGH THIS PROCESS CANNOT SEND IT.
+// GitHubInstallationTokenRequest above carried the narrowing vocabulary and the verdict fold but had
+// no spelling of the POST body those narrowings become, so the half of the budget path that IS
+// decidable here - what we would ask for, and whether it exceeds the installation - stopped short of
+// the wire. installation_token_request_url names the endpoint through org_admin_auth's
+// citation-bearing builder. The OPERATION is github.AppInstallationAccessTokens below, taking the
+// App JWT as an input; its rest path template is necessarily a transport literal (the template
+// language interpolates the id into the path, it cannot call a builder), and it names the same
+// endpoint -- a divergence of spelling the transport forces, stated rather than hidden.
+fn installation_token_request_url(request: GitHubInstallationTokenRequest) -> String {
+  github_app_installation_access_token_url(installation_id: request.installation_id.value)
+}
+
+fn installation_token_repository_members(narrowing: GitHubInstallationRepositoryNarrowing) -> List<JsonKeyValue> {
+  match narrowing {
+    RepositoryNarrowingOmitted => []
+    SelectedRepositoryNames { names: ns } =>
+      [json_kv(key: "repositories", value: json_array(elements: map(ns, n => json_string(s: n as String))))]
+    SelectedRepositoryIds { ids: ids } =>
+      [json_kv(key: "repository_ids", value: json_array(elements: map(ids, i => json_int(n: i.value))))]
+  }
+}
+
+fn installation_token_permission_members(narrowing: GitHubInstallationPermissionNarrowing) -> List<JsonKeyValue> {
+  match narrowing {
+    PermissionNarrowingOmitted => []
+    SelectedPermissions { permissions: ps } =>
+      [json_kv(key: "permissions", value: json_object(members: map(ps, p => manifest_permission_kv(p: p))))]
+  }
+}
+
+fn installation_token_request_body(request: GitHubInstallationTokenRequest) -> String {
+  serialize_json(v: json_object(members: concat(
+    installation_token_repository_members(narrowing: request.repositories),
+    installation_token_permission_members(narrowing: request.permissions)
+  )))
+}
+
+data modeled_webhook_event_vocabulary_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.app", decl_name: "GitHubWebhookEvent"),
+    reason: "TWO FACTS, ONE ROW, because they retire together. FIRST, partiality: GitHubWebhookEvent spells twelve of the events webhook_events_citation documents, chosen because they are the ones an App-acquisition and census manifest can subscribe to; the write side is closed by construction (an unmodeled event cannot be rendered into a manifest) and the read side stays List<NonEmptyStr> on GitHubAppInstallation, so the partiality costs expressiveness rather than safety. SECOND, overlap: extdeps.github.actions_token GitHubWorkflowEvent independently spells push and pull_request for a different question (which event triggered a workflow run), so one upstream catalogue currently has two partial cuts in this corpus",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ONE cited carrier for GitHub's webhook-event catalogue exists and BOTH consumers derive from it -- this module's manifest default_events and extdeps.github.actions_token GitHubWorkflowEvent's push/pull_request arms -- so that adding an event is one row rather than two. Adding an arm to THIS type alone does not fire it, and neither does a witness that the fold exists. Until then a consumer that declares an event this coproduct cannot spell adds that arm with its wire name from webhook_events_citation; transcribing the whole documented catalogue with no consumer would be the dangling modeling DESIGN 3c refuses"
+    )
+  )
+]
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -581,6 +1678,111 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [
     extdeps.github.app.installation_auth_citation,
     extdeps.github.app.private_key_citation,
-    extdeps.github.app.app_webhook_config_citation
+    extdeps.github.app.app_webhook_config_citation,
+    extdeps.github.app.app_manifest_registration_citation,
+    extdeps.github.app.app_install_citation,
+    extdeps.github.app.app_manifest_conversion_citation,
+    extdeps.github.app.get_an_app_citation,
+    extdeps.github.app.get_authenticated_app_citation,
+    extdeps.github.app.get_app_installation_citation,
+    extdeps.github.app.list_app_installations_citation,
+    extdeps.github.app.webhook_events_citation
   ]
+}
+
+// POST /app/installations/{installation_id}/access_tokens, cited by
+// extdeps.github.org_admin_auth installation_token_citation. It authenticates AS THE APP -- the
+// Bearer is an RS256 App JWT (extdeps.auth.jws), never an installation or user token -- and answers
+// 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
+// String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
+// classifies the refusal through extdeps.transports.rest classify_rest_refusal as RestMutationExchange.
+service github.AppInstallationAccessTokens {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation Create {
+    requires Network
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      token: Secret from "token"
+    }
+    transport rest {
+      method: POST,
+      path: "/app/installations/\{installation_id\}/access_tokens",
+      body: { }
+    }
+    response {
+      201 => GitHubInstallationAccessTokenBody
+    }
+  }
+}
+
+// GET /app and GET /app/installations/{installation_id}, the two App-level READS a process holding
+// the App key performs with the JWT it signed (get_authenticated_app_citation,
+// get_app_installation_citation). The JWT is an INPUT, as on github.AppInstallationAccessTokens and
+// unlike github.AppInstallations: the caller signs it in-process with a custodied key
+// (extdeps.auth.jws), so no environment variable stands between the signer and the request. GET /app
+// answers the same App object GET /apps/{app_slug} does, hence GitHubAppPublicRecord; what differs
+// is the principal, and that difference is the point -- a 200 here is GitHub accepting a JWT signed
+// by the caller's key as the App whose id it returns, and a 401 is GitHub refusing that key.
+service github.AuthenticatedApp {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation GetAuthenticatedApp {
+    requires Network
+    input {
+      app_jwt: Secret
+    }
+    output {
+      result: GitHubAppPublicRecord
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/app"
+    }
+    response {
+      200 => GitHubAppPublicRecord
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation GetAppInstallation {
+    requires Network
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      result: GitHubAppInstallationRecord
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/app/installations/\{installation_id\}"
+    }
+    response {
+      200 => GitHubAppInstallationRecord
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+type GitHubInstallationAccessTokenBody {
+  token: String
+  expires_at: String
 }

@@ -1,24 +1,28 @@
 module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 
-import gunbc.output_policy { OutcomeIsData }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.xorriso
-import extdeps.tools.grep
-import extdeps.tools.sed
+import extdeps.tools.xorriso { xorriso_extract_tree_command, xorriso_replay_build_pinned_dates_command, XorrisoPathListCommand, XorrisoChownRecursive, XorrisoChgrpRecursive, XorrisoChmod }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command, mktemp_directory_command, rm_recursive_force_one_file_system_command }
+import extdeps.tools.chmod { chmod_recursive_set_mode_command, chmod_path_resolved_program }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaGrubConfig, ubuntu_install_media_grub_cfg_for }
 import extdeps.provisioning.ubuntu_seeded_install_media {
-  UbuntuSeededInstallMediaArtifactRow,
-  ubuntu_seeded_install_media_install_path,
-  ubuntu_seeded_install_media_part_path,
+  NoCloudSeedFile,
+  UbuntuSeededInstallMediaBuildInput,
 }
-import extdeps.provisioning.ubuntu_install_media {
-  ubuntu_install_media_install_path,
-  ubuntu_install_media_artifacts_dir,
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.algebra { trim }
+import std.content_hash { sha256_hex_digest }
+import std.optional { Present }
+import gunbc.host_command_binding {
+  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  host_command, host_command_outcome_text, host_run, host_transport_kind,
+  HostFileWrite, HostFileWritten, HostFileWriteRefused, HostFileWriteNotConverged, host_write_file, host_file_write_text,
+  ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
+  CreationNotRequested,
 }
-import std.types { String, NonEmptyStr, FilePath }
-import std.disposition { Disposition, Terminal }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,28 +30,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html"
   }
 }
-
-data install_media_remaster_bash_emit_dissolution_trigger: Disposition = Terminal {
-  reason: "in-process typed reconcile (shell.Test.IsFile, xorriso.Iso.*, grep.Grep.MatchesFixedString, sed.Sed.InPlaceSubstitute, Filesystem.Write, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
-}
-
-data install_media_remaster_classification_scaffold: Disposition = Terminal {
-  reason: "InstallMediaRemasterObservation (Absent|Valid|Stale|VerifyInfraFailure) is the single classification authority, derived by observe_install_media_remaster - no parallel ad hoc staleness check remains"
-}
-
-data install_media_remaster_classification_dissolution_trigger: Disposition = Terminal {
-  reason: "install_media_remaster_reconcile dispatches on InstallMediaRemasterObservation directly, not on inline shell text"
-}
-
-data install_media_remaster_chmod_access_upsert_scaffold: Disposition = Terminal {
-  reason: "shell.Chmod.RecursiveWritable is the single typed authority for making the extracted work tree writable - no inline chmod RawLine remains"
-}
-
-data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition = Terminal {
-  reason: "install_media_remaster_build calls shell.Chmod.RecursiveWritable directly"
-}
-
-data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): install_media_remaster_probe_verdict now returns a 3-way InstallMediaRemasterProbeVerdict (Valid|Stale|InfraFailure\{reason\}) instead of collapsing the mktemp probe into a Bool, so a shell.Mktemp.Dir failure stays distinguishable from a genuine content/grub/seed mismatch (InstallMediaRemasterVerifyInfraFailure vs InstallMediaRemasterStale). observe_install_media_remaster matches this verdict directly, and install_media_remaster_reconcile refuses fail-closed on infra failure instead of silently treating an indeterminate probe as stale-and-rebuild."
 
 // xorriso -boot_image any replay modifies the stock ISO by mapping in only the NoCloud seed dir and
 // grub.cfg, so the arm64 El Torito/ESP boot structure survives; an -as mkisofs rebuild destroyed it
@@ -68,102 +50,168 @@ data esp_boot_structure_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// The boot structure the replay preserves is owned by two specs the fidelity doc names in prose:
-// the El Torito Bootable CD-ROM Format Specification 1.0 (Phoenix/IBM 1995; anchor is a hosted copy
-// of the original) and the UEFI spec's EFI System Partition / media-access section (UEFI 2.10 §13).
-// These are the entities the mkisofs rebuild violated.
-type InstallMediaRemasterProbeVerdict
-  = InstallMediaRemasterProbeValid
-  | InstallMediaRemasterProbeStale
-  | InstallMediaRemasterProbeInfraFailure { reason: NonEmptyStr }
+// THE BUILDER STOPS AT A STAGED IMAGE AND ITS MEASURED DIGEST. Where the image is published, under
+// which name, and who may write there are the publishing layer's decisions; this module's answer is
+// only "these inputs produced bytes whose sha256 is D, and they are at the staging path". The digest
+// is READ from the written file, never computed from the inputs, so a builder that wrote something
+// other than what its inputs describe cannot report the inputs' identity for it.
+//
+// ONE FOLD, ANY HOST. Every effect is one ArgvCommand from its tool's own builder, or one content
+// write, issued through gunbc.host_command_binding: the same fold builds on this machine or on a
+// fleet host over typed argv. The work directory is an exclusively created mktemp -d whose end is
+// reported beside the outcome (`work`), never dropped.
+type SeededInstallMediaStageOutcome
+  = SeededInstallMediaStaged { staging_path: NonEmptyStr, output_digest: NonEmptyStr, work: ScratchOutcome }
+  | SeededInstallMediaStageRefused { reason: NonEmptyStr, work: ScratchOutcome }
 
-type InstallMediaRemasterObservation
-  = InstallMediaRemasterAbsent
-  | InstallMediaRemasterValid
-  | InstallMediaRemasterStale
-  | InstallMediaRemasterVerifyInfraFailure { reason: NonEmptyStr }
-
-type InstallMediaRemasterOutcome
-  = InstallMediaRemasterAlreadyPresent { path: NonEmptyStr }
-  | InstallMediaRemasterRemastered { path: NonEmptyStr }
-  | InstallMediaRemasterRefused { reason: NonEmptyStr }
-
-fn install_media_remaster_sidecar_path(final_path: NonEmptyStr) -> NonEmptyStr {
-  concat(final_path as String, ".gunbc-content-hash") as NonEmptyStr
+fn seeded_install_media_stage_refused(reason: String, work: ScratchOutcome) -> SeededInstallMediaStageOutcome {
+  SeededInstallMediaStageRefused { reason: reason as NonEmptyStr, work: work }
 }
 
-fn install_media_remaster_sidecar_matches(final_path: NonEmptyStr, expected_hash: NonEmptyStr) -> Bool {
-  let read = Filesystem.Read(path: install_media_remaster_sidecar_path(final_path: final_path) as String)
-  read.success && (read.content == expected_hash as String)
+// WHERE THE LIVE-SERVER MEDIUM KEEPS ITS BOOT CONFIGURATION. This is a fact about the Ubuntu medium,
+// not about xorriso, so it is authored here and passed to the replay as an ordinary map destination;
+// the extracted tree's copy is the same path under the work dir.
+data install_media_remaster_grub_cfg_on_iso: NonEmptyStr = "/boot/grub/grub.cfg"
+
+fn install_media_remaster_grub_cfg_path(work_dir: NonEmptyStr) -> NonEmptyStr {
+  concat(work_dir as String, install_media_remaster_grub_cfg_on_iso as String) as NonEmptyStr
 }
 
-fn install_media_remaster_probe_verdict(artifact: UbuntuSeededInstallMediaArtifactRow, final_path: NonEmptyStr) -> InstallMediaRemasterProbeVerdict {
-  let probe = shell.Mktemp.Dir()
-  if probe.success == false {
-    InstallMediaRemasterProbeInfraFailure { reason: "mktemp -d failed for staleness probe" as NonEmptyStr }
+data install_media_remaster_work_prefix: String = "/tmp/gunbc-seeded-media."
+
+data install_media_remaster_work_template: NonEmptyStr = concat(install_media_remaster_work_prefix, "XXXXXXXX") as NonEmptyStr
+
+// The extracted tree is read-only (ISO 9660 modes). User read-write plus execute where already
+// executable, group and other read plus execute where executable: the modes `chmod -R u+w` gives the
+// 0444/0555 members an extracted live-server tree carries, spelled without `+`, which the fleet
+// transport's portable-word allowlist refuses. The mapped members' modes enter the image, so the
+// LocalHost regression (the pinned census image rebuilt byte-identically) is what establishes the
+// equivalence on real bytes.
+data install_media_remaster_tree_mode: NonEmptyStr = "u=rwX,go=rX"
+
+// THE MAPPED MEMBERS' ROCK RIDGE ATTRIBUTES ARE PINNED, NOT INHERITED FROM THE BUILD HOST. xorriso -map
+// records each source file's owner, group and mode, so the same inputs built by two users (or under two
+// umasks) gave different images for one derivation key -- measured 2026-09-29: srv2 as gunbc-fleet
+// 30ca88d4..., srv2 as ubuntu d27d584d..., a container as uid 1000 fb944121...; and one replay as uid
+// 1000 and under fakeroot as uid 0, pinned, byte-identical (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts). Owner and group are root's, as the
+// stock members are; modes are the ones the extracted tree gives them (0755 directories, 0644 files),
+// named per path in octal, which is portable argv.
+data install_media_remaster_pinned_uid: Int = 0
+
+data install_media_remaster_pinned_gid: Int = 0
+
+data install_media_remaster_pinned_directory_mode: NonEmptyStr = "0755"
+
+data install_media_remaster_pinned_file_mode: NonEmptyStr = "0644"
+
+// Each directory level of the seed dir on the ISO: "nocloud/srv3" -> ["/nocloud", "/nocloud/srv3"].
+fn install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: NonEmptyStr) -> List<NonEmptyStr> {
+  let segments = flat_map(split(s: nocloud_dir_on_iso as String, delimiter: "/"), g => if g == "" { [] } else { [g] })
+  map(enumerate(segments), e => concat("/", join(segments.take(n: e.first + 1), "/")) as NonEmptyStr)
+}
+
+// The seed files as the image holds them (grub.cfg is the other mapped file).
+fn install_media_remaster_seed_files(input: UbuntuSeededInstallMediaBuildInput) -> List<NonEmptyStr> {
+  let seed_root = concat("/", input.nocloud_dir_on_iso as String)
+  concat([concat(seed_root, "/user-data") as NonEmptyStr, concat(seed_root, "/meta-data") as NonEmptyStr], map(input.seed_files, f => concat(seed_root, "/", f.name as String) as NonEmptyStr))
+}
+
+// Owner and group are pinned recursively from the TOPMOST directory the seed creates -- for a nested
+// seed dir ("nocloud/srv3") that is /nocloud, which -map creates implicitly and which would otherwise
+// carry the build user -- and mode on every level, so no member the build adds keeps a host attribute.
+fn install_media_remaster_attribute_pins(input: UbuntuSeededInstallMediaBuildInput) -> List<XorrisoPathListCommand> {
+  let directories = install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: input.nocloud_dir_on_iso)
+  let seed_top = match first(directories) {
+    Absent => concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr
+    Present { value: d } => d
+  }
+  concat(
+    [
+      XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: install_media_remaster_pinned_uid }, first_path: seed_top, more_paths: [install_media_remaster_grub_cfg_on_iso] },
+      XorrisoPathListCommand { verb: XorrisoChgrpRecursive { gid: install_media_remaster_pinned_gid }, first_path: seed_top, more_paths: [install_media_remaster_grub_cfg_on_iso] },
+      XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: install_media_remaster_pinned_file_mode }, first_path: install_media_remaster_grub_cfg_on_iso, more_paths: install_media_remaster_seed_files(input: input) },
+    ],
+    match first(directories) {
+      Absent => []
+      Present { value: d } => [XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: install_media_remaster_pinned_directory_mode }, first_path: d, more_paths: directories.skip(n: 1) }]
+    },
+  )
+}
+
+// ---- the grub.cfg kernel cmdline insertion, as a pure fold ----
+//
+// THE RULE IS THE ONE THE EARLIER sed EXPRESSION APPLIED, stated as a transform over text rather than
+// as a shell word: `s|\(linux[[:space:]].*\) ---|\1 CMDLINE ---|g`. Per line, if some "linux"
+// followed by a whitespace character occurs before the LAST " ---" on the line (the regex's greedy
+// `.*`), the cmdline is inserted, space-separated, immediately before that " ---". A file that
+// already contains the cmdline anywhere is left unchanged -- the earlier fixed-string grep probe.
+// As a pure fold the cmdline's `;` and quotes are data, never shell or sed syntax (sed would also
+// have read `&` and `\` in it as replacement syntax). The differential control against GNU sed 4.9
+// over the stock medium's grub.cfg is in test.claim.install_media_remaster_grub_cmdline_witness.
+
+// POSIX [[:space:]] in the C locale: tab, line feed, vertical tab, form feed, carriage return, space.
+fn install_media_remaster_is_posix_space(cp: Int) -> Bool {
+  cp == 32 || (cp >= 9 && cp <= 13)
+}
+
+fn install_media_remaster_has_linux_word(prefix: String) -> Bool {
+  let parts = split(s: prefix, delimiter: "linux")
+  any(parts.skip(n: 1), p => length(p) > 0 && install_media_remaster_is_posix_space(cp: code_point(ch: char_at(p, 0))))
+}
+
+fn install_media_remaster_grub_line_with_cmdline(line: String, cmdline: NonEmptyStr) -> String {
+  let parts = split(s: line, delimiter: " ---")
+  if count(parts) < 2 { line } else {
+    let prefix = join(parts.take(n: count(parts) - 1), " ---")
+    let last = join(parts.skip(n: count(parts) - 1), " ---")
+    if install_media_remaster_has_linux_word(prefix: prefix) {
+      concat(prefix, " ", cmdline as String, " ---", last)
+    } else { line }
+  }
+}
+
+fn install_media_remaster_grub_cfg_with_cmdline(grub_cfg: String, cmdline: NonEmptyStr) -> String {
+  if string_contains(s: grub_cfg, pattern: cmdline as String) { grub_cfg } else {
+    join(map(split(s: grub_cfg, delimiter: "\n"), l => install_media_remaster_grub_line_with_cmdline(line: l, cmdline: cmdline)), "\n")
+  }
+}
+
+type GrubCmdlineEdit
+  = GrubCmdlineApplied
+  | GrubCmdlineRefused { reason: String }
+
+// THE EXTRACTED grub.cfg MUST BE THE STOCK MEMBER, and the edit is written from the modeled member,
+// never read back: captured stdout is not a file's exact bytes (the shell transport trims it), so a
+// cat-transform-write round trip loses the trailing newline and changes the image. The member's
+// sha256 is measured on the host and must equal the artifact row's (extdeps.provisioning.ubuntu_install_media
+// UbuntuInstallMediaGrubConfig); only then is the fold of the modeled content written. A grub.cfg
+// with no linux line takes no insertion and is refused, as the earlier grep post-check did.
+fn install_media_remaster_ensure_grub_cmdline(host: CommandHost, grub_cfg: NonEmptyStr, stock: UbuntuInstallMediaGrubConfig, cmdline: NonEmptyStr, scope_root: NonEmptyStr) -> GrubCmdlineEdit {
+  let after = install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock.content, cmdline: cmdline)
+  if !string_contains(s: after, pattern: cmdline as String) {
+    GrubCmdlineRefused { reason: concat("no linux line in the stock grub.cfg takes the kernel cmdline") }
   } else {
-    let grub_probe = concat(probe.path as String, "/grub.cfg") as NonEmptyStr
-    let user_probe = concat(probe.path as String, "/user-data") as NonEmptyStr
-    let user_internal = concat("/", concat(artifact.nocloud_dir_on_iso as String, "/user-data")) as NonEmptyStr
-    let grub_extracted = xorriso.Iso.ExtractPathBestEffort(
-      iso_path: final_path,
-      iso_internal_path: "/boot/grub/grub.cfg" as NonEmptyStr,
-      destination: grub_probe,
-    )
-    let user_extracted = xorriso.Iso.ExtractPathBestEffort(
-      iso_path: final_path,
-      iso_internal_path: user_internal,
-      destination: user_probe,
-    )
-    let sidecar_matches = install_media_remaster_sidecar_matches(
-      final_path: final_path,
-      expected_hash: artifact.content_hash as NonEmptyStr,
-    )
-    let grub_present = shell.Test.IsFile(path: grub_probe as FilePath)
-    let grub_has_cmdline = grub_present.is_file
-      && grep.Grep.MatchesFixedString(pattern: artifact.grub_kernel_cmdline, path: grub_probe).matches
-    let user_nonempty = shell.Test.IsNonEmpty(path: user_probe as FilePath).nonempty
-    let cleaned = shell.Remove.RecursiveForce(path: probe.path)
-    if sidecar_matches && grub_has_cmdline && user_nonempty {
-      InstallMediaRemasterProbeValid
-    } else {
-      InstallMediaRemasterProbeStale
+    match install_media_remaster_digest(host: host, path: grub_cfg) {
+      Absent => GrubCmdlineRefused { reason: install_media_remaster_digest_refusal(host: host, path: grub_cfg) }
+      Present { value: d } =>
+        if d != (stock.content_sha256 as String) {
+          GrubCmdlineRefused { reason: concat(grub_cfg as String, " hashes to ", d, ", not the stock member's ", stock.content_sha256 as String, "; refusing to write an edit of a file this builder did not model") }
+        } else {
+          match host_write_file(host: host, path: grub_cfg, content: after, scope_root: scope_root) {
+            HostFileWritten => GrubCmdlineApplied
+            other => GrubCmdlineRefused { reason: concat("writing ", grub_cfg as String, ": ", host_file_write_text(w: other)) }
+          }
+        }
     }
   }
 }
 
-fn observe_install_media_remaster(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterObservation {
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
-  let present = shell.Test.IsFile(path: final_path as FilePath)
-  if present.is_file == false {
-    InstallMediaRemasterAbsent
-  } else {
-    match install_media_remaster_probe_verdict(artifact: artifact, final_path: final_path) {
-      InstallMediaRemasterProbeValid => InstallMediaRemasterValid
-      InstallMediaRemasterProbeStale => InstallMediaRemasterStale
-      InstallMediaRemasterProbeInfraFailure { reason: r } => InstallMediaRemasterVerifyInfraFailure { reason: r }
-    }
+fn install_media_remaster_grub_edit(host: CommandHost, grub_cfg: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput, scope_root: NonEmptyStr) -> GrubCmdlineEdit {
+  match ubuntu_install_media_grub_cfg_for(artifact: input.stock_artifact) {
+    Absent => GrubCmdlineRefused { reason: concat("the stock artifact ", input.stock_artifact.content_sha256 as String, " carries no modeled grub.cfg member") }
+    Present { value: stock } => install_media_remaster_ensure_grub_cmdline(host: host, grub_cfg: grub_cfg, stock: stock, cmdline: input.grub_kernel_cmdline, scope_root: scope_root)
   }
-}
-
-// grep exits non-zero when the pattern is ABSENT, and absence is precisely the question this fn
-// asks — the idempotence probe deciding whether to substitute or leave the file alone. Both answers
-// are ordinary: on a fresh image the cmdline is missing and gets inserted; on a re-run it is present
-// and nothing happens. The §5 guard holds on the belt_program_available shape: the Bool is consumed
-// as the branch discriminator, never discarded. A grep that could not RUN is a different event and
-// does not travel this arm.
-fn install_media_remaster_ensure_grub_cmdline(grub_cfg: NonEmptyStr, cmdline: NonEmptyStr) -> Bool {
-  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg, expect: OutcomeIsData).matches
-  let substituted = if already_present {
-    true
-  } else {
-    let expression = concat(
-      "s|\\(linux[[:space:]].*\\) ---|\\1 ",
-      concat(cmdline as String, " ---|g"),
-    ) as NonEmptyStr
-    sed.Sed.InPlaceSubstitute(expression: expression, path: grub_cfg).success
-  }
-  substituted && grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg).matches
 }
 
 fn install_media_remaster_instance_seed_name(nocloud_dir_on_iso: NonEmptyStr) -> String {
@@ -174,151 +222,172 @@ fn install_media_remaster_instance_seed_name(nocloud_dir_on_iso: NonEmptyStr) ->
   )
 }
 
-fn install_media_remaster_write_nocloud_seed(
-  work_dir: NonEmptyStr,
-  nocloud_dir_on_iso: NonEmptyStr,
-  user_data_body: NonEmptyStr,
-) -> Bool {
-  let nocloud_dir = concat(work_dir as String, concat("/", nocloud_dir_on_iso as String)) as NonEmptyStr
-  let mkdir_nocloud = shell.Mkdir.Parents(path: nocloud_dir as FilePath)
-  if mkdir_nocloud.success == false {
-    false
-  } else {
-    let wrote_user_data = Filesystem.Write(
-      path: concat(nocloud_dir as String, "/user-data"),
-      content: user_data_body as String,
-    )
-    let wrote_meta_data = Filesystem.Write(
-      path: concat(nocloud_dir as String, "/meta-data"),
-      content: concat(
-        "instance-id: gunbc-",
-        concat(install_media_remaster_instance_seed_name(nocloud_dir_on_iso: nocloud_dir_on_iso), "-seeded\n"),
-      ),
-    )
-    wrote_user_data.success && wrote_meta_data.success
-  }
+type SeedWrite {
+  path: NonEmptyStr
+  content: String
 }
 
-fn install_media_remaster_build_iso(
-  stock_path: NonEmptyStr,
-  final_path: NonEmptyStr,
-  part_path: NonEmptyStr,
-  content_hash: NonEmptyStr,
-  work_dir: NonEmptyStr,
-  nocloud_dir_on_iso: NonEmptyStr,
-) -> InstallMediaRemasterOutcome {
-  let built = xorriso.Iso.ReplayBuildWithTwoMaps(
-    stock_iso_path: stock_path,
-    output_path: part_path,
-    volume_id: "UBUNTU_SEEDED" as NonEmptyStr,
-    map_one_source: concat(work_dir as String, concat("/", nocloud_dir_on_iso as String)) as NonEmptyStr,
-    map_one_iso_path: concat("/", nocloud_dir_on_iso as String) as NonEmptyStr,
-    map_two_source: concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr,
-    map_two_iso_path: "/boot/grub/grub.cfg" as NonEmptyStr,
+fn install_media_remaster_seed_writes(nocloud_dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> List<SeedWrite> {
+  concat(
+    [
+      SeedWrite { path: concat(nocloud_dir as String, "/user-data") as NonEmptyStr, content: input.user_data_body as String },
+      SeedWrite {
+        path: concat(nocloud_dir as String, "/meta-data") as NonEmptyStr,
+        content: concat("instance-id: gunbc-", install_media_remaster_instance_seed_name(nocloud_dir_on_iso: input.nocloud_dir_on_iso), "-seeded\n"),
+      },
+    ],
+    map(input.seed_files, f => SeedWrite { path: concat(nocloud_dir as String, "/", f.name as String) as NonEmptyStr, content: f.content as String }),
   )
-  if built.success == false {
-    InstallMediaRemasterRefused { reason: "xorriso -boot_image any replay build failed" as NonEmptyStr }
-  } else {
-    let moved = shell.Move.File(source: part_path as FilePath, destination: final_path as FilePath)
-    if moved.success == false {
-      InstallMediaRemasterRefused { reason: "mv failed after replay build" as NonEmptyStr }
-    } else {
-      let wrote_sidecar = Filesystem.Write(
-        path: install_media_remaster_sidecar_path(final_path: final_path) as String,
-        content: content_hash as String,
-      )
-      if wrote_sidecar.success == false {
-        InstallMediaRemasterRefused { reason: "writing content-hash sidecar failed" as NonEmptyStr }
-      } else {
-        InstallMediaRemasterRemastered { path: final_path }
+}
+
+// The first write that did not land, or none. Writes stop at the first refusal: a seed with a
+// missing member is not a seed.
+fn install_media_remaster_write_seeds(host: CommandHost, writes: List<SeedWrite>, scope_root: NonEmptyStr) -> String? {
+  fold(writes, init: none, f: (acc, w) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match host_write_file(host: host, path: w.path, content: w.content, scope_root: scope_root) {
+        HostFileWritten => none
+        other => Present { value: concat("writing ", w.path as String, ": ", host_file_write_text(w: other)) }
       }
-    }
+  })
+}
+
+fn install_media_remaster_write_nocloud_seed(host: CommandHost, work_dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> String? {
+  let nocloud_dir = concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr
+  match host_command(host: host, command: mkdir_parents_command(path: nocloud_dir as String)) {
+    HostCommandDone { stdout: _ } =>
+      install_media_remaster_write_seeds(host: host, writes: install_media_remaster_seed_writes(nocloud_dir: nocloud_dir, input: input), scope_root: work_dir)
+    other => Present { value: concat("mkdir -p ", nocloud_dir as String, ": ", host_command_outcome_text(e: other)) }
   }
 }
 
-fn install_media_remaster_build(
-  artifact: UbuntuSeededInstallMediaArtifactRow,
+fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String? {
+  match host_command(host: host, command: sha256sum_file_command(path: path as String)) {
+    HostCommandDone { stdout: o } =>
+      match sha256_hex_digest(hex: trim(s: first_or_empty(xs: split(s: trim(s: o), delimiter: " ")))) {
+        Absent => none
+        Present { value: d } => Present { value: d.hex as String }
+      }
+    HostCommandFailed { exit_code: _, stderr: _ } => none
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => none
+    HostCommandNotDispatched { reason: _ } => none
+  }
+}
+
+fn first_or_empty(xs: List<String>) -> String {
+  match first(xs) {
+    Absent => ""
+    Present { value: x } => x
+  }
+}
+
+fn install_media_remaster_digest_refusal(host: CommandHost, path: NonEmptyStr) -> String {
+  concat("the sha256 of ", path as String, " could not be read: ", host_command_outcome_text(e: host_command(host: host, command: sha256sum_file_command(path: path as String))))
+}
+
+// The steps inside an acquired work directory, in order; the first that does not hold ends the build.
+fn install_media_remaster_from_tree(
+  host: CommandHost,
+  input: UbuntuSeededInstallMediaBuildInput,
   stock_path: NonEmptyStr,
-  final_path: NonEmptyStr,
-  part_path: NonEmptyStr,
+  staging_path: NonEmptyStr,
   work_dir: NonEmptyStr,
-) -> InstallMediaRemasterOutcome {
-  let extracted = xorriso.Iso.ExtractTree(iso_path: stock_path, destination: work_dir)
-  if extracted.success == false {
-    InstallMediaRemasterRefused { reason: "xorriso -osirrox extract failed" as NonEmptyStr }
-  } else {
-    let chmod = shell.Chmod.RecursiveWritable(path: work_dir as FilePath)
-    if chmod.success == false {
-      InstallMediaRemasterRefused { reason: "chmod -R u+w failed" as NonEmptyStr }
-    } else if install_media_remaster_write_nocloud_seed(
-      work_dir: work_dir,
-      nocloud_dir_on_iso: artifact.nocloud_dir_on_iso,
-      user_data_body: artifact.autoinstall_user_data_body,
-    ) == false {
-      InstallMediaRemasterRefused { reason: "writing NoCloud seed files failed" as NonEmptyStr }
-    } else {
-      let grub_cfg = concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr
-      let grub_present = shell.Test.IsFile(path: grub_cfg as FilePath)
-      if grub_present.is_file == false {
-        InstallMediaRemasterRefused {
-          reason: concat("InstallMediaRemasterRefusal: missing grub.cfg at ", grub_cfg as String) as NonEmptyStr
-        }
-      } else if install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: artifact.grub_kernel_cmdline) == false {
-        InstallMediaRemasterRefused { reason: "InstallMediaRemasterRefusal: grub kernel cmdline not applied" as NonEmptyStr }
-      } else {
-        install_media_remaster_build_iso(
-          stock_path: stock_path,
-          final_path: final_path,
-          part_path: part_path,
-          content_hash: artifact.content_hash as NonEmptyStr,
-          work_dir: work_dir,
-          nocloud_dir_on_iso: artifact.nocloud_dir_on_iso,
-        )
+) -> SeededInstallMediaStageOutcome? {
+  let grub_cfg = install_media_remaster_grub_cfg_path(work_dir: work_dir)
+  match host_command(host: host, command: xorriso_extract_tree_command(iso_path: stock_path, destination: work_dir)) {
+    HostCommandDone { stdout: _ } =>
+      match host_command(host: host, command: chmod_recursive_set_mode_command(chmod_program: chmod_path_resolved_program, mode: install_media_remaster_tree_mode, path: work_dir as String)) {
+        HostCommandDone { stdout: _ } =>
+          match install_media_remaster_write_nocloud_seed(host: host, work_dir: work_dir, input: input) {
+            Present { value: r } => Present { value: seeded_install_media_stage_refused(reason: concat("writing NoCloud seed files failed: ", r), work: CreationNotRequested) }
+            Absent =>
+              match install_media_remaster_grub_edit(host: host, grub_cfg: grub_cfg, input: input, scope_root: work_dir) {
+                GrubCmdlineRefused { reason: r } => Present { value: seeded_install_media_stage_refused(reason: concat("grub kernel cmdline not applied: ", r), work: CreationNotRequested) }
+                GrubCmdlineApplied =>
+                  match host_command(host: host, command: xorriso_replay_build_pinned_dates_command(
+                    stock_iso_path: stock_path,
+                    output_path: staging_path,
+                    volume_id: input.volume_id,
+                    volume_uuid: input.pinned_dates.volume_uuid,
+                    file_date: input.pinned_dates.file_date,
+                    map_one_source: concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
+                    map_one_iso_path: concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
+                    map_two_source: grub_cfg,
+                    map_two_iso_path: install_media_remaster_grub_cfg_on_iso,
+                    attribute_pins: install_media_remaster_attribute_pins(input: input),
+                  )) {
+                    HostCommandDone { stdout: _ } =>
+                      match install_media_remaster_digest(host: host, path: staging_path) {
+                        Absent => Present { value: seeded_install_media_stage_refused(reason: install_media_remaster_digest_refusal(host: host, path: staging_path), work: CreationNotRequested) }
+                        Present { value: d } => Present { value: SeededInstallMediaStaged { staging_path: staging_path, output_digest: d as NonEmptyStr, work: CreationNotRequested } }
+                      }
+                    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -boot_image any replay build: ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
+                  }
+              }
+          }
+        other => Present { value: seeded_install_media_stage_refused(reason: concat("chmod -R ", install_media_remaster_tree_mode as String, ": ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
       }
+    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -osirrox extract: ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
+  }
+}
+
+// The outcome of the build, with the work directory's actual end in place of the placeholder the
+// in-tree steps carry: the build is decided inside the directory, its removal after it.
+fn install_media_remaster_with_work(outcome: SeededInstallMediaStageOutcome, work: ScratchOutcome) -> SeededInstallMediaStageOutcome {
+  match outcome {
+    SeededInstallMediaStaged { staging_path: s, output_digest: d, work: _ } => SeededInstallMediaStaged { staging_path: s, output_digest: d, work: work }
+    SeededInstallMediaStageRefused { reason: r, work: _ } => SeededInstallMediaStageRefused { reason: r, work: work }
+  }
+}
+
+fn install_media_remaster_in_scratch(
+  host: CommandHost,
+  input: UbuntuSeededInstallMediaBuildInput,
+  stock_path: NonEmptyStr,
+  staging_path: NonEmptyStr,
+) -> SeededInstallMediaStageOutcome {
+  let kind = host_transport_kind(host: host)
+  match scratch_acquisition_of(kind: kind, prefix: install_media_remaster_work_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: install_media_remaster_work_template))) {
+    ScratchNotAcquired { outcome: o } =>
+      seeded_install_media_stage_refused(reason: concat("no work directory: ", render_scratch_outcome(label: "work", prefix: install_media_remaster_work_prefix, o: o)), work: o)
+    ScratchAcquired { dir: work_dir } => {
+      let built = match install_media_remaster_from_tree(host: host, input: input, stock_path: stock_path, staging_path: staging_path, work_dir: work_dir) {
+        Absent => seeded_install_media_stage_refused(reason: "the remaster produced no outcome", work: CreationNotRequested)
+        Present { value: o } => o
+      }
+      install_media_remaster_with_work(
+        outcome: built,
+        work: scratch_removal_of(kind: kind, dir: work_dir, leg: host_run(host: host, command: rm_recursive_force_one_file_system_command(path: work_dir as String))),
+      )
     }
   }
 }
 
-fn install_media_remaster_apply(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
-  let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
-  let part_path = ubuntu_seeded_install_media_part_path(install_path: final_path)
-  let stock_present = shell.Test.IsFile(path: stock_path as FilePath)
-  if stock_present.is_file == false {
-    InstallMediaRemasterRefused {
-      reason: concat("InstallMediaRemasterRefusal: stock ISO missing at ", stock_path as String) as NonEmptyStr
-    }
-  } else {
-    let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as FilePath)
-    if mkdir.success == false {
-      InstallMediaRemasterRefused { reason: "mkdir -p failed" as NonEmptyStr }
-    } else {
-      let work = shell.Mktemp.Dir()
-      if work.success == false {
-        InstallMediaRemasterRefused { reason: "mktemp -d failed" as NonEmptyStr }
-      } else {
-        let outcome = install_media_remaster_build(
-          artifact: artifact,
-          stock_path: stock_path,
-          final_path: final_path,
-          part_path: part_path,
-          work_dir: work.path as NonEmptyStr,
-        )
-        let cleaned = shell.Remove.RecursiveForce(path: work.path)
-        outcome
+// THE UPSTREAM BYTES ARE VERIFIED BEFORE THEY ARE BUILT FROM. The derivation key names the stock
+// image by its pinned sha256; a stock file at the expected path whose bytes differ would otherwise
+// produce an image whose recorded derivation is false. A mismatch and an unverifiable stock are
+// separate refusals -- the second says nothing about the file.
+fn seeded_install_media_stage(
+  host: CommandHost,
+  input: UbuntuSeededInstallMediaBuildInput,
+  stock_path: NonEmptyStr,
+  staging_path: NonEmptyStr,
+) -> SeededInstallMediaStageOutcome {
+  match host_command(host: host, command: test_regular_file_command(path: stock_path as String)) {
+    HostCommandDone { stdout: _ } =>
+      match install_media_remaster_digest(host: host, path: stock_path) {
+        Absent => seeded_install_media_stage_refused(reason: concat("stock ISO digest could not be verified: ", install_media_remaster_digest_refusal(host: host, path: stock_path)), work: CreationNotRequested)
+        Present { value: d } =>
+          if d == (input.stock_artifact.content_sha256 as String) {
+            install_media_remaster_in_scratch(host: host, input: input, stock_path: stock_path, staging_path: staging_path)
+          } else {
+            seeded_install_media_stage_refused(reason: concat("stock ISO at ", stock_path as String, " does not hash to the pinned ", input.stock_artifact.content_sha256 as String), work: CreationNotRequested)
+          }
       }
-    }
-  }
-}
-
-fn install_media_remaster_reconcile(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
-  match observe_install_media_remaster(artifact: artifact) {
-    InstallMediaRemasterValid => InstallMediaRemasterAlreadyPresent { path: final_path }
-    InstallMediaRemasterAbsent => install_media_remaster_apply(artifact: artifact)
-    InstallMediaRemasterStale => install_media_remaster_apply(artifact: artifact)
-    InstallMediaRemasterVerifyInfraFailure { reason: r } => InstallMediaRemasterRefused {
-      reason: concat("VerifyInfraFailureRefusal: ", r as String) as NonEmptyStr
-    }
+    HostCommandFailed { exit_code: _, stderr: _ } =>
+      seeded_install_media_stage_refused(reason: concat("stock ISO missing at ", stock_path as String), work: CreationNotRequested)
+    other =>
+      seeded_install_media_stage_refused(reason: concat("stock ISO presence at ", stock_path as String, " unread: ", host_command_outcome_text(e: other)), work: CreationNotRequested)
   }
 }

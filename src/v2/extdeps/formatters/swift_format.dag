@@ -1,6 +1,6 @@
 module v2.extdeps.formatters.swift_format
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Outcome }
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 import v2.std.refinement {
@@ -102,8 +102,6 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
   },
 }
 
-type SwiftFormatConfigPatch = ConfigPatchRecord<SwiftFormatConfig>
-
-fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
+fn swift_format_layer(base: SwiftFormatConfig, patch: ConfigPatchRecord<SwiftFormatConfig>) -> SwiftFormatConfig {
   config_patch_layer(base: base, patch: patch)
 }

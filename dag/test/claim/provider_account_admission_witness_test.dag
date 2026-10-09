@@ -249,17 +249,3 @@ test fn single_session_path_is_total_over_evidenced_disciplines() -> Bool {
     && session_concurrency_total(concurrency: observed.concurrency) == 1
     && session_concurrency_total(concurrency: safe.concurrency) == 1
 }
-
-test fn provider_account_admission_keystone_holds() -> Bool {
-  zero_and_negative_session_counts_refuse()
-    && one_decodes_to_the_single_session_constructor()
-    && many_decodes_and_keeps_its_total()
-    && binding_within_observed_ceiling_is_admitted()
-    && binding_beyond_observed_ceiling_refuses()
-    && observed_login_only_does_not_reach_the_unbounded_arm()
-    && unobserved_credential_admits_nothing_not_even_one()
-    && exclusive_credential_admits_one_and_refuses_two()
-    && fleet_evidence_row_matches_the_observation()
-    && every_instance_carries_an_admitted_binding()
-    && single_session_path_is_total_over_evidenced_disciplines()
-}

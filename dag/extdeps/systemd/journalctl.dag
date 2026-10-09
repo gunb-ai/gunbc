@@ -1,6 +1,6 @@
 module extdeps.systemd.journalctl
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, Bool, Unit, List, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -9,6 +9,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man1/journalctl.1.html"
+  }
+}
+
+data journal_fields_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/systemd.journal-fields.7.html"
   }
 }
 
@@ -21,7 +28,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [journal_fields_authority]
 }
 
 // UnitLog reads the raw journal, unfiltered. Filtering for a specific marker line
@@ -30,8 +37,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // argv — the piped `journalctl -u X | grep -F ... | tail -1` shell body this operation
 // replaces did in one hand-written string what the typed model now does as two named,
 // independently testable functions over one typed read.
+// UnitInvocationLog READS ONE INVOCATION OF A UNIT, NOT EVERY INVOCATION THAT EVER CARRIED ITS NAME.
+// journalctl(1): a FIELD=VALUE match restricts output to entries carrying that field, and matches on
+// DIFFERENT fields are ANDed with -u. systemd.journal-fields(7): _SYSTEMD_INVOCATION_ID is "the
+// invocation ID for the runtime cycle of the unit the message was generated in", a trusted field the
+// journal daemon adds, not one the logging process can set. (man7.org, read 2026-09-23.)
 service systemd.Journalctl {
   operation UnitLog {
+    requires none
     input { unit: NonEmptyStr }
     output {
       stdout: String from "stdout"
@@ -50,4 +63,39 @@ service systemd.Journalctl {
       } "hermetic systemd.Journalctl.UnitLog"
     }
   }
+
+  operation UnitInvocationLog {
+    requires none
+    input { unit: NonEmptyStr, invocation_id: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["journalctl", "-u", "{unit}", "_SYSTEMD_INVOCATION_ID={invocation_id}", "--no-pager", "-o", "short-unix"] }
+    exit {
+      0 => Unit
+      nonzero => String "journalctl failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "1734000000.000000 srv1 firecracker[1234]: gunbc-guest-observation guest-booted image=x\n",
+        success: true,
+      } "hermetic systemd.Journalctl.UnitInvocationLog"
+    }
+  }
+}
+
+// THE KERNEL RING OF THE CURRENT BOOT, AS AN ARGV a remote leg can carry. journalctl(1): `-k`
+// (`--dmesg`) shows only kernel messages and implies `-b`; `-b` with no argument is the current
+// boot. `-b` is spelled anyway so the boot scope is read off the argv rather than an implication.
+// Filtering lines is a fold over stdout in the consumer, never a grep spliced in here.
+fn journalctl_kernel_current_boot_argv() -> List<String> {
+  ["journalctl", "-k", "-b", "--no-pager", "-o", "short-unix"]
+}
+
+// ONE UNIT'S JOURNAL FOR THE CURRENT BOOT, AS AN ARGV. journalctl(1): `-u` (`--unit`) shows messages
+// for the named unit; `-b` the current boot. Same consumer-side filtering rule as above.
+fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
+  ["journalctl", "-u", unit as String, "-b", "--no-pager", "-o", "short-unix"]
 }

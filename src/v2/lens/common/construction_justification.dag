@@ -81,8 +81,10 @@ fn wall_now_total_projection_forbids_outside_modeled_guarantee(
     WallNow { mechanism: _, authority: _ } =>
       match downstream {
         OutsideModeledGuarantee { boundary: _ } => false
-        _ => true
+        WallNow { mechanism: _, authority: _ } => true
+        WallAfterGrounding { dissolves_to: _ } => true
       }
-    _ => true
+    WallAfterGrounding { dissolves_to: _ } => true
+    OutsideModeledGuarantee { boundary: _ } => true
   }
 }

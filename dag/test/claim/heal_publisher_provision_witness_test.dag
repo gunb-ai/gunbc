@@ -1,0 +1,344 @@
+module test.claim.heal_publisher_provision_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
+import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set, heal_publisher_wif_pool_display_name }
+import gunbc.auth.heal_publisher_provision {
+  SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
+  subject_creation, create_if, heal_publisher_impersonation_cell, impersonation_binding_present,
+  DedicatedFederation, heal_publisher_dedicated_federation,
+  PoolReading, PoolObservedAbsent, PoolObserved, ProvidersReading, ProvidersObserved, ProvidersUnreadable,
+  AccountObservedAbsent, AccountObserved,
+  FederationClassification, FederationClassified, FederationUnclassified,
+  classify_dedicated_federation, federation_fully_present,
+}
+import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
+import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
+import std.optional { Present, Absent }
+import extdeps.transports.rest { RestResponseObserved, RestBodyRead, RestBodyUndecodable }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
+import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
+import test.fixture.rest_exchange_replay_probe
+import gunbc.auth.managed_host_boot_federation { provisioned_boot_federations }
+import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
+
+// THE LIVE BOOT FEDERATION THE REPLAYED WIRE WAS READ FROM: the one provisioned managed-host boot
+// pair (gunbc.auth.managed_host_boot_federation), through the record its provisioner takes.
+fn live_boot_federations() -> List<DedicatedFederation> {
+  map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f))
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE PROVISIONING DECISION, not the network calls around it. Three creates cannot be
+// one request, so what this module decides on a PARTIAL result is the whole safety content: which
+// outcomes may be called converged, which must stop the run, and which must reconcile-then-refuse.
+
+fn conflict() -> RestRefusal { RestStatusRefused { status: 409, body: "{\"error\":{\"status\":\"ALREADY_EXISTS\"}}" } }
+fn denied() -> RestRefusal { RestStatusRefused { status: 403, body: "caller lacks iam.workloadIdentityPools.create" } }
+
+fn succeeded(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+fn refusal_text(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason } => reason
+  }
+}
+
+// ── what one create outcome established ─────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL. An answered create is SubjectCreated at the call site and is the only
+// creation the run lets proceed: create_if reports nothing for it and reports a halt for each of the
+// other two arms, so the refusals below are not satisfied by a fold that halts on everything.
+test fn witness_a_created_subject_is_created() -> Bool {
+  create_if(wanted: true, subject: "the pool", creation: SubjectCreated) == ""
+    && create_if(wanted: true, subject: "the pool", creation: subject_creation(o: conflict())) != ""
+    && create_if(wanted: true, subject: "the pool", creation: subject_creation(o: denied())) != ""
+}
+
+// A 409 IS NOT A REFUSAL AND NOT A CONVERGENCE. It says the id is taken and says nothing about the
+// configuration behind it, which for the provider is the attribute condition -- the one fact that
+// decides which workflows may federate at all.
+test fn witness_a_conflict_is_an_unverified_presence() -> Bool {
+  match subject_creation(o: conflict()) {
+    SubjectAlreadyPresentUnverified => true
+    SubjectCreated => false
+    SubjectCreateRefused { cause: _ } => false
+  }
+}
+
+test fn witness_a_denied_create_is_a_refusal_carrying_its_cause() -> Bool {
+  match subject_creation(o: denied()) {
+    SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "403")
+    SubjectCreated => false
+    SubjectAlreadyPresentUnverified => false
+  }
+}
+
+test fn witness_an_unreached_service_is_a_refusal_not_a_presence() -> Bool {
+  match subject_creation(o: RestTransportRefused { cause: "connection reset" }) {
+    SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "transport")
+    SubjectCreated => false
+    SubjectAlreadyPresentUnverified => false
+  }
+}
+
+// ── what the run may do, decided from READINGS before any write (review 5286225278) ─────────
+
+fn heal() -> DedicatedFederation {
+  heal_publisher_dedicated_federation()
+}
+
+fn declared_provider(f: DedicatedFederation) -> WifProviderWire {
+  WifProviderWire {
+    name: join(["projects/1/locations/global/workloadIdentityPools/", f.pool_id as String, "/providers/", f.provider_id as String], ""),
+    disabled: Present { value: false },
+    state: Present { value: "ACTIVE" },
+    attribute_mapping: Present { value: f.attribute_mapping },
+    attribute_condition: Present { value: f.attribute_condition },
+    oidc: Present { value: WifOidcWire { issuer_uri: github_wif_issuer_uri as String } },
+  }
+}
+
+fn declared_pool(f: DedicatedFederation) -> PoolReading {
+  PoolObserved { pool: WifPoolWire { name: join(["projects/1/locations/global/workloadIdentityPools/", f.pool_id as String], ""), display_name: Present { value: f.pool_display_name as String }, disabled: Present { value: false }, state: Present { value: "ACTIVE" } } }
+}
+
+fn classified(c: FederationClassification) -> Bool {
+  match c {
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => true
+    FederationUnclassified { reasons: _ } => false
+  }
+}
+
+fn unclassified_naming(c: FederationClassification, pattern: String) -> Bool {
+  match c {
+    FederationUnclassified { reasons: rs } => string_contains(s: join(rs, "; "), pattern: pattern)
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => false
+  }
+}
+
+// NOTHING EXISTS: every subject is created, and nothing is granted until the readback matches.
+test fn witness_nothing_present_classifies_as_create_all() -> Bool {
+  match classify_dedicated_federation(f: heal(), pool: PoolObservedAbsent, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
+    FederationClassified { create_pool: a, create_provider: b, create_account: c } => a && b && c
+    FederationUnclassified { reasons: _ } => false
+  }
+}
+
+// THE CONTROL FOR EVERY HALT BELOW: all three present and matching is fully present, so a rerun
+// reaches the bindings.
+test fn witness_present_and_matching_is_fully_present() -> Bool {
+  let f = heal()
+  let c = classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [declared_provider(f: f)] }, account: AccountObserved { email: f.service_account as String })
+  classified(c: c) && federation_fully_present(c: c)
+}
+
+// THE RED THE REVIEW NAMED: an EXISTING provider whose condition is not the declared one halts the
+// run, and it halts in the classifier -- before bind_impersonation or any secret cell is reached.
+test fn witness_an_existing_provider_with_another_condition_halts_before_any_grant() -> Bool {
+  let f = heal()
+  let p = declared_provider(f: f)
+  let lax = WifProviderWire { name: p.name, disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: Present { value: "assertion.repository_owner == 'gunb-ai'" }, oidc: p.oidc }
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [lax] }, account: AccountObserved { email: f.service_account as String }), pattern: "not the declared one")
+}
+
+// A SECOND PROVIDER IN THE POOL IS A SECOND ADMISSION RULE, and the pool-wide impersonation member
+// would admit it; so the population must be exactly the declared provider.
+test fn witness_an_extra_provider_in_the_pool_halts() -> Bool {
+  let f = heal()
+  let p = declared_provider(f: f)
+  let extra = WifProviderWire { name: concat(p.name, "-other"), disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: p.attribute_condition, oidc: p.oidc }
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [p, extra] }, account: AccountObserved { email: f.service_account as String }), pattern: "exactly one is declared")
+}
+
+// AN UNREADABLE SUBJECT IS NOT AN ABSENT ONE.
+test fn witness_an_unreadable_population_halts_rather_than_creating() -> Bool {
+  let f = heal()
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersUnreadable { cause: "status 403" }, account: AccountObserved { email: f.service_account as String }), pattern: "could not be read")
+}
+
+// ── the cell this run writes ────────────────────────────────────────────────────────────────
+
+// THE BINDING IS TO THE POOL, NOT TO A USER OR A KEY. Every identity that can impersonate the
+// publisher service account is one that already satisfied the provider's attribute condition, so
+// widening this member is how the whole federation stops being tight.
+test fn witness_the_impersonation_cell_binds_the_publisher_pool_as_workload_identity_user() -> Bool {
+  let c = heal_publisher_impersonation_cell()
+  (c.role as String) == (role_iam_workload_identity_user as String)
+    && (c.member as String) == heal_publisher_wif_principal_set()
+}
+
+fn policy_with(bindings: List<GcpBinding>) -> GcpPolicy {
+  GcpPolicy { bindings: bindings, etag: "BwYabc123=", version: 3 }
+}
+
+// THE READBACK DISCRIMINATES. A 200 that returned a policy without this cell must not read as
+// present, or the readback after setIamPolicy is a decoration.
+test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_that_does_not() -> Bool {
+  let c = heal_publisher_impersonation_cell()
+  impersonation_binding_present(policy: policy_with(bindings: [
+    GcpBinding { role: c.role, members: [c.member], condition: none }
+  ]))
+    && !impersonation_binding_present(policy: policy_with(bindings: [
+      GcpBinding { role: "roles/viewer", members: [c.member], condition: none }
+    ]))
+    && !impersonation_binding_present(policy: policy_with(bindings: []))
+}
+
+// ── the upstream's own limits on what we may declare ────────────────────────────────────────
+
+// A POOL DISPLAY NAME OVER 32 CHARACTERS IS REFUSED BY THE SERVICE, not by us: createWorkloadIdentityPool
+// answers 400 INVALID_ARGUMENT. This was found the expensive way on 2026-09-17 -- a provisioning run
+// that had already been authorized, tokened and launched refused on it -- and the whole cost of that
+// discovery is removed by asserting the length here, where it is checked every time the floor runs.
+//
+// THE BOUND IS SPELLED AS A LITERAL AND THAT IS CORRECT HERE, against the ordinary rule: it is an
+// EXTERNAL authority's published constraint, not a measurement of our own tree, so it is exactly the
+// "external or versioned authority" case DESIGN section 5 admits as an oracle.
+test fn witness_the_pool_display_name_is_within_the_services_limit() -> Bool {
+  string_length(s: heal_publisher_wif_pool_display_name as String) <= 32
+}
+
+// THE DISCRIMINATOR. If string_length answered something constant, the claim above would pass for any
+// name at all; a name known to be over the limit must fail the same predicate.
+test fn witness_a_name_over_the_limit_would_not_pass_that_check() -> Bool {
+  string_length(s: "GitHub heal publisher (protected publication only)") > 32
+}
+
+// ── the readings DECODED FROM THE WIRE, not constructed (2026-09-24) ─────────────────────────
+//
+// Every classifier row above hands the classifier a CONSTRUCTED WifProviderWire, so all of them
+// stayed green while the live run refused the provider it had just created: the IAM API answers in
+// proto3 JSON (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.providers
+// #WorkloadIdentityPoolProvider), so issuerUri, attributeCondition and attributeMapping are
+// lowerCamelCase on the wire, the model's fields carried no `from` key, and the interpreter's nested
+// decode keyed the record by wire spelling -- the provisioner read "issuer is null", an empty
+// condition and a differing mapping off a provider that matched in every field. These bodies are the
+// shapes the service returned for the mtcollins1 boot federation in project 582015116396 on
+// 2026-09-24 (LIST providers and GET pool), served through the REST replay seam so the decode the
+// wet entry runs produces the readings the classifier judges.
+data live_mtcollins1_providers_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"attributeMapping\":{\"attribute.repository_id\":\"assertion.repository_id\",\"attribute.workflow_ref\":\"assertion.workflow_ref\",\"google.subject\":\"assertion.sub\"},\"attributeCondition\":\"assertion.repository_id == '1143718943' && assertion.repository_owner_id == '244123794' && assertion.workflow_ref == 'gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'workflow_dispatch' && assertion.environment == 'mtcollins1-boot'\",\"oidc\":{\"issuerUri\":\"https://token.actions.githubusercontent.com\"}}]}"
+
+data live_mtcollins1_pool_body: String = "{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot\",\"displayName\":\"Mt. Collins boot (one job)\",\"state\":\"ACTIVE\"}"
+
+// The reading is computed inside the subject, where the operation's result is matched directly.
+fn decoded_providers() -> ProvidersReading {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifProvidersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_providers_body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.WifProvidersPage() {
+        RestAnswered { answer } => ProvidersObserved { providers: match answer.providers { Present { value: ps } => ps  Absent => [] } }
+        RestRefused { refusal: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
+    WitnessInterrupted { at: _, route: _, state: _ } => ProvidersUnreadable { cause: "a replay frame carries no modeled realization, so an interruption cannot occur" }
+  }
+}
+
+fn decoded_pool() -> PoolReading {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifPool",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_pool_body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.WifPool() {
+        RestAnswered { answer } => PoolObserved { pool: WifPoolWire { name: answer.pool_name, display_name: answer.display_name, disabled: answer.disabled, state: answer.state } }
+        RestRefused { refusal: _ } => PoolObservedAbsent
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _ } => PoolObservedAbsent
+    WitnessInterrupted { at: _, route: _, state: _ } => PoolObservedAbsent
+  }
+}
+
+// THE DECODED FIELDS ARE THE WIRE'S: each renamed nested field reaches its authored name.
+test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool {
+  match decoded_providers() {
+    ProvidersObserved { providers: ps } => ps.length() == 1 && match first(ps) {
+      Present { value: p } =>
+        (match p.oidc { Present { value: o } => o.issuer_uri == (github_wif_issuer_uri as String)  Absent => false })
+          && (live_boot_federations() |> count) == 1
+          && all(live_boot_federations(), f =>
+            (match p.attribute_condition { Present { value: c } => c == f.attribute_condition  Absent => false })
+              && (match p.attribute_mapping { Present { value: m } => m == f.attribute_mapping  Absent => false }))
+      Absent => false
+    }
+    ProvidersUnreadable { cause: _ } => false
+  }
+}
+
+test fn the_live_pool_decodes_its_display_name() -> Bool {
+  match decoded_pool() {
+    PoolObserved { pool: p } => match p.display_name { Present { value: d } => d == "Mt. Collins boot (one job)"  Absent => false }
+    _ => false
+  }
+}
+
+// THE ROUTE THE RERUN TAKES: the created pool and provider, read back off the wire, classify as
+// present and matching, so the operator's rerun adopts them and proceeds to the bindings.
+test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present() -> Bool {
+  (live_boot_federations() |> count) == 1
+    && all(live_boot_federations(), f => {
+      let c = classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
+      classified(c: c) && federation_fully_present(c: c)
+    })
+}
+
+// ── the authored name of a renamed field is RESERVED, not a second wire spelling ──────────────
+//
+// A member spelled `issuer_uri` is not the wire key of WifOidcWire.issuer_uri (`issuerUri`), so it
+// may not populate the field around `from` and the typed decode; a body carrying both spellings
+// refuses rather than letting member order choose which one the classifier reads.
+data authored_only_issuer_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuer_uri\":\"https://token.actions.githubusercontent.com\"}}]}"
+
+data both_issuer_spellings_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuerUri\":\"https://token.actions.githubusercontent.com\",\"issuer_uri\":\"https://attacker.invalid\"}}]}"
+
+fn providers_body_refusal(body: String) -> String {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifProvidersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.WifProvidersPage() {
+        RestRefused { refusal: RestBodyUndecodable { status: _, cause } } => cause as String
+        _ => ""
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _ } => ""
+    WitnessInterrupted { at: _, route: _, state: _ } => ""
+  }
+}
+
+test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field() -> Bool {
+  string_contains(s: providers_body_refusal(body: authored_only_issuer_body), pattern: "is the authored name of a field whose declared wire key is `issuerUri`")
+}
+
+test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool {
+  string_contains(s: providers_body_refusal(body: both_issuer_spellings_body), pattern: "the field's spelling is ambiguous")
+}

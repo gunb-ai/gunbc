@@ -20,6 +20,7 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
@@ -28,12 +29,12 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
-    expr_var_name_at, field_access_base, field_access_field_at, method_receiver, no_span,
-    param_node_type_expr, unit_type,
+    expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
+    no_span, param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ExprData,
-    InferredNode, NewlineIndex, Node,
+    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
+    DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
@@ -52,12 +53,14 @@ pub struct OpEntry {
     pub name: String,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
+    pub rest: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
     pub result_type: Rc<Node>,
     pub op_params: Rc<Vec<Rc<Node>>>,
+    pub rest: bool,
 }
 
 pub fn service_receiver_resolved_name(
@@ -170,15 +173,39 @@ pub fn collect_typed_service_calls_into(
 pub enum CalleeEdge {
     ResolvedCallee {
         identity: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     PrimitiveCallee,
-    FunctionValueCallee,
+    FunctionValueCallee {
+        call_site: Rc<SourceSpan>,
+    },
     LocalBindingCallee {
         name: String,
+        call_site: Rc<SourceSpan>,
     },
     UnresolvedCallee {
         spelling: String,
+        call_site: Rc<SourceSpan>,
     },
+}
+impl CalleeEdge {
+    pub fn call_site(&self) -> Rc<SourceSpan> {
+        match self {
+            CalleeEdge::ResolvedCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::PrimitiveCallee => panic!("no call_site on unit variant"),
+            CalleeEdge::FunctionValueCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::LocalBindingCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::UnresolvedCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -187,11 +214,20 @@ pub struct CalleeAccum {
     pub result: Rc<Vec<Rc<CalleeEdge>>>,
 }
 
-pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String) -> Rc<CalleeEdge> {
+pub fn callee_edge_of_semantics(
+    cs: Option<Rc<CallSemantics>>,
+    spelling: String,
+    call_site: Rc<SourceSpan>,
+) -> Rc<CalleeEdge> {
     match cs.clone().as_deref().cloned() {
-        Some(CallSemantics::FunctionValueCallSemantics) => Rc::new(CalleeEdge::FunctionValueCallee),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            Rc::new(CalleeEdge::FunctionValueCallee {
+                call_site: call_site.clone(),
+            })
+        }
         std::option::Option::None => Rc::new(CalleeEdge::UnresolvedCallee {
             spelling: spelling.clone(),
+            call_site: call_site.clone(),
         }),
         _ => match (*crate::v1_std_core::call_semantics_target(cs.clone())).clone() {
             CallTargetIdentity::SourceDeclarationCall {
@@ -203,14 +239,19 @@ pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String)
                     owner_module_path: owner.clone(),
                     decl_name: decl.clone(),
                 }),
+                call_site: call_site.clone(),
             }),
             CallTargetIdentity::RuntimePrimitiveCall { .. } => Rc::new(CalleeEdge::PrimitiveCallee),
             CallTargetIdentity::LocallyBoundCall { name: n, .. } => {
-                Rc::new(CalleeEdge::LocalBindingCallee { name: n.clone() })
+                Rc::new(CalleeEdge::LocalBindingCallee {
+                    name: n.clone(),
+                    call_site: call_site.clone(),
+                })
             }
             CallTargetIdentity::CallableTargetUndetermined => {
                 Rc::new(CalleeEdge::UnresolvedCallee {
                     spelling: spelling.clone(),
+                    call_site: call_site.clone(),
                 })
             }
         },
@@ -234,20 +275,16 @@ impl CalleeEdgeDedup {
 
 pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> Rc<CalleeEdgeDedup> {
     match (*edge.clone()).clone() {
-        CalleeEdge::ResolvedCallee {
-            identity: identity, ..
-        } => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::ResolvedCallee { identity, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: v1_rt::concat(
                 "d:".to_string(),
                 crate::v1_std_core::callable_identity(identity.clone()),
             ),
         }),
-        CalleeEdge::UnresolvedCallee {
-            spelling: spelling, ..
-        } => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::UnresolvedCallee { spelling, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: v1_rt::concat("u:".to_string(), spelling.clone()),
         }),
-        CalleeEdge::FunctionValueCallee => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::FunctionValueCallee { call_site: _, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: "v:".to_string(),
         }),
         CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(CalleeEdgeDedup::Tracked {
@@ -270,6 +307,7 @@ pub fn collect_callee_edges_into(
                 let edge = callee_edge_of_semantics(
                     cs.clone(),
                     crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
+                    texpr.span.clone(),
                 );
                 match (*callee_edge_dedup_key(edge.clone())).clone() {
                     CalleeEdgeDedup::NotTracked => acc.clone(),
@@ -434,17 +472,16 @@ pub fn expand_transitive_services_once(
                                                         }
                                                     },
                                                     CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-                                                    CalleeEdge::FunctionValueCallee => {
+                                                    CalleeEdge::FunctionValueCallee {
+                                                        call_site: _,
+                                                        ..
+                                                    } => Rc::new(vec![]),
+                                                    CalleeEdge::LocalBindingCallee { .. } => {
                                                         Rc::new(vec![])
                                                     }
-                                                    CalleeEdge::LocalBindingCallee {
-                                                        name: _,
-                                                        ..
-                                                    } => Rc::new(vec![]),
-                                                    CalleeEdge::UnresolvedCallee {
-                                                        spelling: _,
-                                                        ..
-                                                    } => Rc::new(vec![]),
+                                                    CalleeEdge::UnresolvedCallee { .. } => {
+                                                        Rc::new(vec![])
+                                                    }
                                                 })
                                                 .iter()
                                                 .cloned(),
@@ -486,7 +523,9 @@ pub fn expand_transitive_services_once(
                                                 module_name: info.module_name.clone(),
                                                 kind: info.kind.clone(),
                                                 service_names: merged.clone(),
-                                                resource_names: info.resource_names.clone(),
+                                                resource_requirements: info
+                                                    .resource_requirements
+                                                    .clone(),
                                                 params: info.params.clone(),
                                                 is_self_recursive: info.is_self_recursive.clone(),
                                                 has_non_tail_self_call: info
@@ -511,7 +550,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
         .iter()
         .cloned()
         .fold(0, |acc: i64, info: Rc<ItemInfo>| {
-            (acc + (info.service_names.clone().len() as i64))
+            v1_rt::int_add(acc, (info.service_names.clone().len() as i64))
         })
 }
 
@@ -533,6 +572,7 @@ pub enum EffectIncompleteness {
     UnresolvedCalleeEdge {
         item_identity: Rc<DeclaredCallableIdentity>,
         spelling: String,
+        call_site: Rc<SourceSpan>,
     },
     ExpansionBudgetExhausted {
         remaining_delta: i64,
@@ -540,13 +580,16 @@ pub enum EffectIncompleteness {
     ResolvedCalleeRegistryRowAbsent {
         caller: Rc<DeclaredCallableIdentity>,
         callee: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     FunctionValueEffectsUnresolved {
         caller: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     LocalBindingEffectsUnresolved {
         caller: Rc<DeclaredCallableIdentity>,
         name: String,
+        call_site: Rc<SourceSpan>,
     },
 }
 
@@ -567,20 +610,23 @@ pub fn unresolved_callee_edges(
                                     __result.extend(
                                         (*match (*edge.clone()).clone() {
                                             CalleeEdge::UnresolvedCallee {
-                                                spelling: spelling,
+                                                spelling,
+                                                call_site,
                                                 ..
                                             } => Rc::new(vec![Rc::new(
                                                 EffectIncompleteness::UnresolvedCalleeEdge {
                                                     item_identity: entry.item_identity.clone(),
                                                     spelling: spelling.clone(),
+                                                    call_site: call_site.clone(),
                                                 },
                                             )]),
-                                            CalleeEdge::ResolvedCallee { identity: _, .. } => {
-                                                Rc::new(vec![])
-                                            }
+                                            CalleeEdge::ResolvedCallee { .. } => Rc::new(vec![]),
                                             CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-                                            CalleeEdge::FunctionValueCallee => Rc::new(vec![]),
-                                            CalleeEdge::LocalBindingCallee { name: _, .. } => {
+                                            CalleeEdge::FunctionValueCallee {
+                                                call_site: _,
+                                                ..
+                                            } => Rc::new(vec![]),
+                                            CalleeEdge::LocalBindingCallee { .. } => {
                                                 Rc::new(vec![])
                                             }
                                         })
@@ -617,22 +663,25 @@ pub fn unjoinable_callee_edges(
         Rc::new(vec![])
     } else {
         Rc::new({ let mut __result = Vec::new(); for edge in entry.called.clone().iter().cloned() { __result.extend((*match (*edge.clone()).clone() {
-    CalleeEdge::ResolvedCallee { identity: callee_identity, .. } => match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(callee_identity.clone())) {
+    CalleeEdge::ResolvedCallee { identity: callee_identity, call_site, .. } => match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(callee_identity.clone())) {
     Some(_) => Rc::new(vec![]),
     std::option::Option::None => Rc::new(vec![Rc::new(EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
     caller: entry.item_identity.clone(),
     callee: callee_identity.clone(),
+    call_site: call_site.clone(),
 })]),
 },
-    CalleeEdge::FunctionValueCallee => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
+    CalleeEdge::FunctionValueCallee { call_site: call_site, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
     caller: entry.item_identity.clone(),
+    call_site: call_site.clone(),
 })]),
-    CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
+    CalleeEdge::LocalBindingCallee { name: n, call_site, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
     caller: entry.item_identity.clone(),
     name: n.clone(),
+    call_site: call_site.clone(),
 })]),
     CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-    CalleeEdge::UnresolvedCallee { spelling: _, .. } => Rc::new(vec![]),
+    CalleeEdge::UnresolvedCallee { .. } => Rc::new(vec![]),
 }).iter().cloned()); } __result })
     },
 }).iter().cloned()); } __result })).iter().cloned());
@@ -666,7 +715,7 @@ pub fn expand_transitive_services_loop(
                     partial: next.clone(),
                     causes: Rc::new(vec![Rc::new(
                         EffectIncompleteness::ExpansionBudgetExhausted {
-                            remaining_delta: (after.clone() - before.clone()),
+                            remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
                         },
                     )]),
                 });
@@ -674,7 +723,7 @@ pub fn expand_transitive_services_loop(
                 {
                     let __tco_0 = module_callees;
                     let __tco_1 = next.clone();
-                    let __tco_2 = (remaining_passes - 1);
+                    let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
                     __tco_loop_module_callees = __tco_0;
                     __tco_loop_registry = __tco_1;
                     __tco_loop_remaining_passes = __tco_2;
@@ -703,7 +752,13 @@ pub fn expansion_pass_bound(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 
                 std::option::Option::None => acc.clone(),
             },
         );
-        ((item_count.clone() * (Rc::new(v1_rt::map_keys(&distinct_service_keys)).len() as i64)) + 1)
+        v1_rt::int_add(
+            v1_rt::int_mul(
+                item_count.clone(),
+                (Rc::new(v1_rt::map_keys(&distinct_service_keys)).len() as i64),
+            ),
+            1,
+        )
     }
 }
 
@@ -806,6 +861,7 @@ pub fn check_service_method_call_node(
                             Some(Rc::new(ServiceMethodResult {
                                 result_type: unit_type(),
                                 op_params: op.params.clone(),
+                                rest: op.rest.clone(),
                             }))
                         } else {
                             Some(Rc::new(ServiceMethodResult {
@@ -845,6 +901,8 @@ pub fn check_service_method_call_node(
                                                 match_pattern: std::option::Option::None,
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
+                                                declaration_marker: DeclarationMarker::Unmarked,
+                                                declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -864,10 +922,13 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                    declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
                                 op_params: op.params.clone(),
+                                rest: op.rest.clone(),
                             }))
                         }
                     }
@@ -881,8 +942,23 @@ pub fn check_service_method_call_node(
     }
 }
 
+pub fn service_operation_is_rest(
+    op: Rc<Node>,
+    service: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match op.transport.clone() {
+        Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+        std::option::Option::None => match service.transport.clone() {
+            Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+            std::option::Option::None => false,
+        },
+    }
+}
+
 pub fn service_op_entry(
     child: Rc<Node>,
+    service: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OpEntry> {
     Rc::new(OpEntry {
@@ -893,5 +969,6 @@ pub fn service_op_entry(
             source_indices.clone(),
         ),
         params: child.params.clone(),
+        rest: service_operation_is_rest(child.clone(), service.clone(), source_indices.clone()),
     })
 }

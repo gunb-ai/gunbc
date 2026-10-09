@@ -1,0 +1,2228 @@
+module v2.lens.text_string_importer_census
+
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceAnalysisNotEstablishedCause,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected,
+  SourceUnreadable
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
+import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
+import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
+import std.optional { Optional }
+import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
+import v2.std.algebra { contains, fold_list, length, list_reverse }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Present }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.source_position { source_newline_byte_offsets }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.types { List, NonEmptyStr }
+import std.primitives {
+  primitive_contract_roster,
+  PrimitiveContract,
+  char_at_contract,
+  string_length_contract,
+  substring_contract,
+  string_contains_contract,
+  starts_with_contract,
+  ends_with_contract,
+  trim_contract,
+  split_contract,
+  repeat_contract,
+  chars_contract,
+  to_string_contract,
+  parse_int_contract,
+  str_eq_contract,
+  replace_section_contract,
+  code_point_contract,
+  from_code_point_contract,
+  scan_while_contract,
+  skip_horizontal_ws_contract,
+  scan_to_eol_contract,
+  scan_string_end_contract
+}
+
+// THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;
+// method ruled by neat-boar-16 2026-09-30). v1 binds a bare `String` in these modules to the KERNEL
+// host text whatever the import says (`v1.compiler.infer` `overlay_skips_kernel_name`); v2 binds it
+// to the structural `FreeMonoid<Char>` the import names. The fork resolves at the importers:
+// HOST-USING and MIXED importers drop `String` from the import, STRUCTURAL-USING importers keep it
+// as `gunbc.recurring_failure_mode` `carrier_by_spelling`'s declared v1/v2 divergence. This lens
+// decides which importer is which, and every verdict is a HYPOTHESIS until the executing half below
+// agrees with it.
+//
+// IT READS THE RAW PARSE TREE, NEVER THE NORMALIZED ONE. Normalize and body lowering drop authored
+// sites (`match_arms_after_the_second_are_dropped_at_v2_body_lowering`,
+// `match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering`,
+// `expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering`), and a
+// dropped HOST site reads its module as STRUCTURAL -- the one error direction here that is silent,
+// because a STRUCTURAL verdict keeps the import. The raw `parse_production` tree is the lossless
+// pre-order token stream with production markers, so one left fold over it sees every site.
+//
+// THE TWO OPERATION ROSTERS ARE READ, NOT RETYPED. Structural operations are the functions
+// `v2.std.text` itself declares, read by this same fold over that module's own source. Host
+// operations are the kernel text primitives, each named by its `std.primitives` contract row: the
+// NAME comes from the row, and the MEMBERSHIP (which primitives are text-only) is this lens's own
+// classification, stated in `host_text_primitive_contracts`. `concat` is deliberately absent: it
+// is the free-monoid operation and is equally lawful on the structural carrier, so it decides
+// nothing about which carrier a value is. `+` decides only when an operand is a string literal or
+// a binder annotated bare `String`, because `+` is Int addition too.
+//
+// WHAT THE LENS CANNOT SEE, named so no reader mistakes a verdict for a type judgement. It decides
+// from spelling and position, not from inferred types. (1) A host value that reaches a host
+// operation only through a record field or a non-annotated binder is invisible unless the
+// operation is itself host-only. (2) A literal whose destination is a position other than a bare
+// `String` annotation, a host-primitive argument, a `+` operand or a structural-call argument (a
+// record field, a fn tail returning `String`) is not counted. (3) A structural call's result
+// position is read syntactically: an argument of another structural call is CALL-ARGUMENT,
+// anything else is OTHER. Blind spots (1) and (2) can only under-count HOST, so a module whose
+// only decided evidence is STRUCTURAL is the verdict the executing half must confirm.
+//
+// THE EXECUTING HALF, AND WHAT IT CAN AND CANNOT DISCRIMINATE. v1's kernel-wins typecheck binds
+// every bare `String` in these modules to host text and admits a host value at a structural
+// parameter by leaf-name compat (`gunbc.rung_drop` `text_boundary_identity_wall`), so it accepts
+// every importer whatever its verdict: it cannot disagree with a HOST row. The discriminating
+// execution is the rustc compile of the emitted self-host closure
+// (`gunbc.self_host_compile_phase_frontier`, rustc E0308 at `String`), which reaches only the
+// modules inside that closure. The cross-check is reported per module in the PR, and a module
+// outside the closure is reported as having NO execution half rather than as agreeing.
+
+// WHY A LENS AND NOT CONSTRUCTION: the census exists only because one spelling has two bindings --
+// v1 binds a bare `String` beside `import v2.std.text { String }` to the kernel, v2 to the import.
+// `gunbc.recurring_failure_mode` `carrier_by_spelling`'s trigger capability (one binding per
+// spelling per resolving scope, on both compilers) makes that state unwritable, and at that point
+// there is nothing left to classify: this module dissolves into that single authority.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+// ADMISSION, AND THE PART OF THIS LENS THAT IS SCAFFOLD. The operator admitted this lens as the
+// migration instrument for gunbc#12760 and its deletion PR (operator default via escalation
+// msg_66c019ed, 2026-10-01, relayed by deep-bee-18). The admitted SCAFFOLD is the batch-per-module
+// running: text_string_importer_census and text_string_importer_literal_sites are driven one batch
+// of modules per process from outside the repository, because a one-process run over the whole
+// population dies by native stack exhaustion (gunbc.recurring_failure_mode
+// sweep_terminated_by_process_death_rather_than_a_typed_refusal). It dissolves when gunbc#12760 has
+// landed AND text_string_importer_population returns an empty population for both v2.std.text and
+// std.string_type: with no importer left, there is nothing for the census to classify.
+data text_string_importer_census_batch_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: decl_ref(module_path: "v2.lens.text_string_importer_census" as NonEmptyStr, decl_name: "text_string_importer_census" as NonEmptyStr)
+}
+
+data text_string_importer_census_dissolution: DissolutionCondition = unbound_dissolution(description: "gunbc#12760 has landed AND v2.lens.text_string_importer_census text_string_importer_population returns an empty population for both v2.std.text and std.string_type" as NonEmptyStr)
+
+
+// The host text primitives. Each is a `std.primitives` row; the row supplies the name.
+data host_text_primitive_contracts: List<PrimitiveContract> = [
+  char_at_contract,
+  string_length_contract,
+  substring_contract,
+  string_contains_contract,
+  starts_with_contract,
+  ends_with_contract,
+  trim_contract,
+  split_contract,
+  repeat_contract,
+  chars_contract,
+  to_string_contract,
+  parse_int_contract,
+  str_eq_contract,
+  replace_section_contract,
+  code_point_contract,
+  from_code_point_contract,
+  scan_while_contract,
+  skip_horizontal_ws_contract,
+  scan_to_eol_contract,
+  scan_string_end_contract
+]
+
+data census_pool_roots: List<String> = ["dag", "src/v2"]
+data empty_strings: FreeMonoid<String> = Empty
+data no_exclusions: List<String> = []
+
+// A structural function whose RESULT is a text carrier. Its arguments are always call-argument
+// crossings (host value into a code-point-sequence parameter: the lawful unfold of gunbc#12512);
+// its result is a crossing only when it is a text carrier. `ListTailResult` is `std.algebra`'s
+// cons view of a `FreeMonoid`, so its tail is the structural carrier.
+data text_carrier_heads: List<String> = ["String", "FreeMonoid", "FreeSemigroup", "ListTailResult"]
+
+type StructuralResultPosition
+  = NoTextResult
+  | ResultAtCallArgument
+  | ResultAtOtherPosition
+
+type SiteKind
+  = BareStringSpelling
+  | HostPrimitiveCall { name: String }
+  | HostMethodCall { name: String }
+  | HostLiteralAtStringAnnotation
+  | HostLiteralArgument { callee: String }
+  | HostPlusConcatenation
+  | StructuralCall { name: String, result: StructuralResultPosition }
+  | StructuralLiteralArgument { callee: String }
+  | BinderArgument { callee: String, param: String, module: String }
+  | LiteralAtAnnotation { spelling: String }
+  | LiteralAtReturn { spelling: String }
+  | LiteralAtField { owner: String, field: String }
+  | LiteralArgument { callee: String, param: String, module: String }
+
+// `at` is the byte offset of the token that triggered the site, read from the parse's span index;
+// a stream supplied without positions (a witness row) carries Absent.
+type Site {
+  decl: String
+  kind: SiteKind
+  at: Optional<Int>
+}
+
+// WHAT A VERDICT IS WORTH, TYPED (DESIGN 4d, review 73517): the lens infers from spelling and
+// position, so every verdict it mints is a bet and says so. Only a join that holds an executed
+// receipt for the module -- the self-host closure's rustc compile, the deletion PR's per-module v1
+// compile -- may promote a row to corroborated or mark it contradicted, and it names the receipt.
+// This module never mints those arms; it renders and decodes them so a row that carries one
+// survives the round trip.
+type VerdictStanding
+  = LensHypothesis
+  | ExecutionCorroborated { receipt: DeclarationRef }
+  | ExecutionContradicted { receipt: DeclarationRef }
+
+fn standing_token(s: VerdictStanding) -> String {
+  match s {
+    LensHypothesis => "HYPOTHESIS"
+    ExecutionCorroborated { receipt: r } => concat(concat(concat("CORROBORATED:", r.module_path), "#"), r.decl_name)
+    ExecutionContradicted { receipt: r } => concat(concat(concat("CONTRADICTED:", r.module_path), "#"), r.decl_name)
+  }
+}
+
+fn receipt_of_token(body: String) -> Decoded<DeclarationRef> {
+  let parts = split(s: body, delimiter: "#")
+  if !(length(xs: parts) == 2) {
+    Undecodable { token: body }
+  } else {
+    let m = field_at(fields: parts, i: 0)
+    let d = field_at(fields: parts, i: 1)
+    if (m == "") || (d == "") { Undecodable { token: body } } else {
+      DecodedAs { value: decl_ref(module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr) }
+    }
+  }
+}
+
+fn standing_of_token(token: String) -> Decoded<VerdictStanding> {
+  if token == "HYPOTHESIS" { DecodedAs { value: LensHypothesis } }
+  else if starts_with(s: token, prefix: "CORROBORATED:") {
+    match receipt_of_token(body: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: r } => DecodedAs { value: ExecutionCorroborated { receipt: r } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else if starts_with(s: token, prefix: "CONTRADICTED:") {
+    match receipt_of_token(body: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: r } => DecodedAs { value: ExecutionContradicted { receipt: r } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else { Undecodable { token: token } }
+}
+
+// The verdict arms. `ImportUnused` is a fifth arm beside the brief's four, stated rather than
+// folded into one of them: a module that imports `String` and never spells it bare has no site
+// whose meaning the import changes, which the lens DECIDES -- so it is not UNCLASSIFIED -- and it
+// is neither host nor structural use.
+type ImporterVerdict
+  = HostUsing
+  | StructuralUsing
+  | Mixed
+  | ImportUnused
+  | Unclassified { cause: UnclassifiedCause }
+
+type UnclassifiedCause
+  = NotEstablished { cause: SourceAnalysisNotEstablishedCause }
+  | NoOperationEvidence
+  | UndecidedCrossings
+  | UndecidedAtFixpoint
+
+type ModuleStanding
+  = ModuleParsed { imports_text_string: Bool, sites: FreeMonoid<Site> }
+  | ModuleNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+type WalkStanding
+  = WalkEstablished { walk: Walk }
+  | WalkNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+// A bare-`String` binder passed to a call off both rosters is decided by the callee's DECLARED
+// parameter type, read as spelled from the callee module's own parse -- a signature read, not an
+// interprocedural analysis. Kernel `String` in a module that does not import v2.std.text String is
+// host text under both compilers (HOST); `FreeMonoid` or a qualified `v2.std.text.String` is the
+// structural carrier (STRUCTURAL, a call-argument crossing); a bare `String` in a module that
+// itself imports v2.std.text String is the same ambiguous spelling one module over, and stays
+// undecided with the callee named. Every other outcome is undecided with its reason, never dropped.
+type CrossingVerdict
+  = CrossingHost
+  | CrossingStructural
+  | CrossingUndecided { cause: UndecidedCrossingCause }
+
+// Why a crossing stays undecided, typed so that the fixpoint and every reader decide on the arm and
+// never on its rendering. The two imported-String arms are the fixpoint's edges: to this module
+// (a local callee) or to another importer.
+type UndecidedCrossingCause
+  = ParameterIsImportedStringHere { at: String }
+  | ParameterIsImportedStringIn { module: String, at: String }
+  | PositionalArgument { callee: String }
+  | CalleeNotImportedByName { callee: String }
+  | CalleeModuleNotInPool { module: String }
+  | CalleeModuleNotParsed { module: String, cause: SourceAnalysisNotEstablishedCause }
+  | NoSuchParameter { at: String }
+  | ParameterSpelledOther { at: String, spelling: String }
+
+type CalleeModule {
+  module: String
+  standing: WalkStanding
+}
+
+type Crossing {
+  site: Site
+  verdict: CrossingVerdict
+}
+
+// The fold state. `w1`..`w9` are the previous nine atoms of the pre-order stream (w1 nearest);
+// `chain` is the dotted name read since the last primary expression, reversed; `stack` holds the
+// callee of every open parenthesis ("" for a grouping one); `binders` are the names annotated
+// bare `String` in the current top-level declaration. Every field has its own transition function
+// of (state, rosters, atom) below, and `walk_step` is only their product.
+type Walk {
+  w1: String
+  w2: String
+  w3: String
+  w4: String
+  w5: String
+  w6: String
+  w7: String
+  w8: String
+  w9: String
+  decl: String
+  pending_decl_name: Bool
+  in_text_import: Bool
+  saw_text_import_module: Bool
+  chain: FreeMonoid<String>
+  chain_active: Bool
+  chain_arg: Bool
+  chain_enclosing: String
+  stack: FreeMonoid<String>
+  binders: FreeMonoid<String>
+  imports_text_string: Bool
+  sites: FreeMonoid<Site>
+  last_arrow_head: String
+  return_heads: FreeMonoid<ReturnHead>
+  in_import_header: Bool
+  in_import_block: Bool
+  import_segments: FreeMonoid<String>
+  imported: FreeMonoid<ImportedName>
+  pending_param: String
+  pending_param_segments: FreeMonoid<String>
+  param_types: FreeMonoid<ParamType>
+  at: Optional<Int>
+  pending_kind: TypeSpellingKind
+  annotation_spelling: String
+  arrow_spelling: String
+  return_spelling: String
+  braces: FreeMonoid<String>
+  in_field_block: Bool
+  field_owner: String
+  field_types: FreeMonoid<FieldType>
+  decl_is_type: Bool
+  in_type_rhs: Bool
+  alias_spelling: String
+  alias_invalid: Bool
+  aliases: FreeMonoid<TypeAlias>
+}
+
+// A `type X = Head ...` declaration with no variants and no field block (a `where` refinement
+// keeps its base): X's meaning as text is Head's.
+type TypeAlias {
+  name: String
+  spelling: String
+}
+
+// What a pending type spelling belongs to: a parameter, a `let`/`data` annotation, the type after
+// an arrow (a return, or an arrow inside a fn type), or a record or variant field.
+type TypeSpellingKind
+  = SpellingOfParameter
+  | SpellingOfAnnotation
+  | SpellingOfArrow
+  | SpellingOfField { owner: String }
+  | SpellingOfAlias
+
+// A record or variant field's declared type as SPELLED, keyed by its owner (the type name for a
+// record declaration, the variant name for a variant payload).
+type FieldType {
+  owner: String
+  field: String
+  spelling: String
+}
+
+type ImportedName {
+  name: String
+  module: String
+}
+
+// A parameter's declared type as SPELLED: `String`, `FreeMonoid`, `v2.std.text.String`. The head
+// segments are joined with `.`; generic arguments are not part of the spelling read here.
+type ParamType {
+  decl: String
+  param: String
+  spelling: String
+}
+
+type ReturnHead {
+  decl: String
+  head: String
+}
+
+// `population_module` is the module whose `String` the census is about (v2.std.text or
+// std.string_type): its import decides membership and its functions are the structural roster.
+type Rosters {
+  population_module: String
+  kernel: FreeMonoid<String>
+  host: FreeMonoid<String>
+  structural: FreeMonoid<String>
+  structural_text_result: FreeMonoid<String>
+}
+
+fn walk_start() -> Walk {
+  Walk {
+    w1: "", w2: "", w3: "", w4: "", w5: "", w6: "", w7: "", w8: "", w9: "",
+    decl: "",
+    pending_decl_name: false,
+    in_text_import: false,
+    saw_text_import_module: false,
+    chain: empty_strings,
+    chain_active: false,
+    chain_arg: false,
+    chain_enclosing: "",
+    stack: empty_strings,
+    binders: empty_strings,
+    imports_text_string: false,
+    sites: Empty,
+    last_arrow_head: "",
+    return_heads: Empty,
+    in_import_header: false,
+    in_import_block: false,
+    import_segments: Empty,
+    imported: Empty,
+    pending_param: "",
+    pending_param_segments: Empty,
+    param_types: Empty,
+    at: Absent,
+    pending_kind: SpellingOfParameter,
+    annotation_spelling: "",
+    arrow_spelling: "",
+    return_spelling: "",
+    braces: Empty,
+    in_field_block: false,
+    field_owner: "",
+    field_types: Empty,
+    decl_is_type: false,
+    in_type_rhs: false,
+    alias_spelling: "",
+    alias_invalid: false,
+    aliases: Empty
+  }
+}
+
+fn str_eq_fn(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn member(xs: FreeMonoid<String>, x: String) -> Bool {
+  contains(xs: xs, item: x, eq: str_eq_fn)
+}
+
+fn is_production_or_token(x: String) -> Bool {
+  starts_with(s: x, prefix: "dag_")
+}
+
+fn is_identifier(x: String) -> Bool {
+  !starts_with(s: x, prefix: "dag_") && !(x == "")
+}
+
+fn stack_top(stack: FreeMonoid<String>) -> String {
+  match stack {
+    Empty => ""
+    Cons { head: h, tail: _ } => h
+  }
+}
+
+fn stack_pop(stack: FreeMonoid<String>) -> FreeMonoid<String> {
+  match stack {
+    Empty => empty_strings
+    Cons { head: _, tail: t } => t
+  }
+}
+
+fn is_decl_production(x: String) -> Bool {
+  (x == "dag_surface_fn_decl") || (x == "dag_surface_test_fn_decl") || (x == "dag_surface_data_decl") || (x == "dag_surface_type_decl") || (x == "dag_surface_alias_decl")
+}
+
+// At a primary expression atom: is the expression an argument (named `name: e` or positional)?
+fn primary_is_argument(w: Walk) -> Bool {
+  (w.w1 == "dag_surface_postfix_expr") && (w.w2 == "dag_surface_unary_expr") && (w.w3 == "dag_surface_binary_expr") && (w.w4 == "dag_surface_expr") && ((w.w5 == "dag_surface_arg") || ((w.w5 == "dag_token_colon") && (w.w7 == "dag_surface_arg")))
+}
+
+fn value_prefix(w: Walk) -> Bool {
+  (w.w1 == "dag_surface_primary_expr") && (w.w2 == "dag_surface_postfix_expr") && (w.w3 == "dag_surface_unary_expr")
+}
+
+// At a value atom (literal or identifier): the same argument question one atom later.
+fn value_is_argument(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && ((w.w6 == "dag_surface_arg") || ((w.w6 == "dag_token_colon") && (w.w8 == "dag_surface_arg")))
+}
+
+// At a value atom: is it the initializer of a binding annotated with bare `String`
+// (`data x: String = v`, `let x: String = v`)?
+fn value_initializes_bare_string_annotation(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && (w.w6 == "dag_token_eq") && (w.w7 == "String") && (w.w8 == "dag_surface_qualified_name") && (w.w9 == "dag_surface_type_expr")
+}
+
+fn value_is_right_plus_operand(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_token_plus")
+}
+
+fn is_bare_string_spelling(w: Walk, x: String) -> Bool {
+  (x == "String") && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr")
+}
+
+fn is_text_import_module_tail(w: Walk, x: String) -> Bool {
+  (x == "text") && (w.w1 == "dag_token_dot") && (w.w2 == "std") && (w.w3 == "dag_token_dot") && (w.w4 == "v2") && (w.w5 == "dag_surface_qualified_name")
+}
+
+// A call is recognised at its opening parenthesis from the dotted chain read since the primary
+// expression: one segment is a bare call, `v2.std.text.f` a qualified structural call, anything
+// longer a method call named by its last segment.
+type CallRead {
+  segments: Int
+  last: String
+  qualified_text: Bool
+  structural_name: String
+  callee: String
+}
+
+fn call_read(chain_reversed: FreeMonoid<String>) -> CallRead {
+  let segments = list_reverse(xs: chain_reversed)
+  let n = length(xs: segments)
+  let last = stack_top(stack: chain_reversed)
+  let first = stack_top(stack: segments)
+  let second = stack_top(stack: stack_pop(stack: segments))
+  let third = stack_top(stack: stack_pop(stack: stack_pop(stack: segments)))
+  let qualified_text = (n == 4) && (first == "v2") && (second == "std") && (third == "text")
+  CallRead {
+    segments: n,
+    last: last,
+    qualified_text: qualified_text,
+    structural_name: if (n == 1) || qualified_text { last } else { "" },
+    callee: if (n > 1) && !qualified_text { concat(".", last) } else { last }
+  }
+}
+
+fn call_site_kind_optional(w: Walk, r: Rosters, c: CallRead) -> FreeMonoid<SiteKind> {
+  let result = if member(xs: r.structural_text_result, x: c.structural_name) {
+      if w.chain_arg && member(xs: r.structural, x: w.chain_enclosing) { ResultAtCallArgument } else { ResultAtOtherPosition }
+    } else {
+      NoTextResult
+    }
+  if (c.segments == 1) && member(xs: r.host, x: c.last) {
+    Cons { head: HostPrimitiveCall { name: c.last }, tail: Empty }
+  } else if !(c.structural_name == "") && member(xs: r.structural, x: c.structural_name) {
+    Cons { head: StructuralCall { name: c.structural_name, result: result }, tail: Empty }
+  } else if (c.segments > 1) && !c.qualified_text && member(xs: r.host, x: c.last) {
+    Cons { head: HostMethodCall { name: c.last }, tail: Empty }
+  } else {
+    Empty
+  }
+}
+
+fn method_name_of(callee: String) -> String {
+  if starts_with(s: callee, prefix: ".") { substring(s: callee, start: 1, end: string_length(s: callee)) } else { "" }
+}
+
+fn value_is_statement_or_arm(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && ((w.w6 == "dag_surface_stmt") || (w.w6 == "dag_token_fat_arrow"))
+}
+
+fn value_is_field_init(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && (w.w6 == "dag_token_colon") && (w.w8 == "dag_surface_field_init")
+}
+
+fn value_initializes_annotation(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && (w.w6 == "dag_token_eq") && !(w.annotation_spelling == "")
+}
+
+// Where a literal LANDS, recorded separately from the census's host/structural evidence below: a
+// literal can be both (a literal at a bare `String` annotation is host evidence AND a literal at an
+// annotation), so these sites are additional rows, never a reclassification.
+fn literal_position_kinds(w: Walk, r: Rosters) -> FreeMonoid<SiteKind> {
+  let enclosing = stack_top(stack: w.stack)
+  if value_initializes_annotation(w: w) {
+    Cons { head: LiteralAtAnnotation { spelling: w.annotation_spelling }, tail: Empty }
+  } else if value_is_field_init(w: w) {
+    Cons { head: LiteralAtField { owner: stack_top(stack: w.braces), field: w.w7 }, tail: Empty }
+  } else if value_is_argument(w: w) && !(enclosing == "") && !starts_with(s: enclosing, prefix: ".") && !member(xs: r.host, x: enclosing) && !member(xs: r.structural, x: enclosing) {
+    Cons { head: LiteralArgument { callee: enclosing, param: if w.w6 == "dag_token_colon" { w.w7 } else { "" }, module: imported_module_of(imported: w.imported, name: enclosing) }, tail: Empty }
+  } else if value_is_statement_or_arm(w: w) && !(w.return_spelling == "") {
+    Cons { head: LiteralAtReturn { spelling: w.return_spelling }, tail: Empty }
+  } else {
+    Empty
+  }
+}
+
+fn literal_site_kinds(w: Walk, r: Rosters) -> FreeMonoid<SiteKind> {
+  let enclosing = stack_top(stack: w.stack)
+  if value_initializes_bare_string_annotation(w: w) {
+    Cons { head: HostLiteralAtStringAnnotation, tail: Empty }
+  } else if value_is_right_plus_operand(w: w) {
+    Cons { head: HostPlusConcatenation, tail: Empty }
+  } else if value_is_argument(w: w) && (member(xs: r.host, x: enclosing) || member(xs: r.host, x: method_name_of(callee: enclosing))) {
+    Cons { head: HostLiteralArgument { callee: enclosing }, tail: Empty }
+  } else if value_is_argument(w: w) && member(xs: r.structural, x: enclosing) {
+    Cons { head: StructuralLiteralArgument { callee: enclosing }, tail: Empty }
+  } else {
+    Empty
+  }
+}
+
+// A bare-`String` binder passed to a call that is on neither roster: its meaning is the callee's
+// DECLARED parameter type, read from the callee module's own parse (crossing_verdict below).
+fn binder_argument_crosses(w: Walk, r: Rosters) -> Bool {
+  let callee = stack_top(stack: w.stack)
+  !(callee == "") && !starts_with(s: callee, prefix: ".") && !member(xs: r.host, x: callee) && !member(xs: r.structural, x: callee)
+}
+
+fn site_kinds_at(w: Walk, r: Rosters, x: String) -> FreeMonoid<SiteKind> {
+  if x == "dag_token_lparen" {
+    if w.chain_active { call_site_kind_optional(w: w, r: r, c: call_read(chain_reversed: w.chain)) } else { Empty }
+  } else if x == "dag_token_string_literal" {
+    fold_list(xs: list_reverse(xs: literal_site_kinds(w: w, r: r)), empty: literal_position_kinds(w: w, r: r), cons: fn(acc, k) { Cons { head: k, tail: acc } })
+  } else if x == "dag_token_plus" {
+    if (w.w1 == "dag_token_string_literal") || ((w.w2 == "dag_surface_primary_expr") && member(xs: w.binders, x: w.w1)) { Cons { head: HostPlusConcatenation, tail: Empty } } else { Empty }
+  } else if is_bare_string_spelling(w: w, x: x) {
+    Cons { head: BareStringSpelling, tail: Empty }
+  } else if is_identifier(x: x) && value_is_argument(w: w) && member(xs: w.binders, x: x) && binder_argument_crosses(w: w, r: r) {
+    Cons { head: BinderArgument { callee: stack_top(stack: w.stack), param: if w.w6 == "dag_token_colon" { w.w7 } else { "" }, module: imported_module_of(imported: w.imported, name: stack_top(stack: w.stack)) }, tail: Empty }
+  } else if is_identifier(x: x) && value_is_right_plus_operand(w: w) && member(xs: w.binders, x: x) {
+    Cons { head: HostPlusConcatenation, tail: Empty }
+  } else {
+    Empty
+  }
+}
+
+fn next_sites(w: Walk, r: Rosters, x: String, at: Optional<Int>) -> FreeMonoid<Site> {
+  fold_list(xs: site_kinds_at(w: w, r: r, x: x), empty: w.sites, cons: fn(acc, k) {
+    Cons { head: Site { decl: w.decl, kind: k, at: at }, tail: acc }
+  })
+}
+
+fn next_decl(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else if w.pending_decl_name && is_identifier(x: x) { x } else { w.decl }
+}
+
+fn next_pending_decl_name(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if is_decl_production(x: w.w1) { true } else if is_identifier(x: x) { false } else { w.pending_decl_name }
+}
+
+fn next_saw_text_import_module(w: Walk, x: String) -> Bool {
+  if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else { w.saw_text_import_module || is_text_import_module_tail(w: w, x: x) }
+}
+
+fn next_in_text_import(w: Walk, r: Rosters, x: String) -> Bool {
+  if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else if x == "dag_surface_import_block" { dotted(segments_reversed: w.import_segments) == r.population_module } else { w.in_text_import }
+}
+
+fn next_chain(w: Walk, x: String) -> FreeMonoid<String> {
+  if x == "dag_token_dot" {
+    w.chain
+  } else if is_identifier(x: x) && (w.w1 == "dag_surface_primary_expr") {
+    Cons { head: x, tail: empty_strings }
+  } else if is_identifier(x: x) && w.chain_active && (w.w1 == "dag_token_dot") {
+    Cons { head: x, tail: w.chain }
+  } else {
+    empty_strings
+  }
+}
+
+fn next_chain_active(w: Walk, x: String) -> Bool {
+  if x == "dag_token_dot" {
+    w.chain_active
+  } else if is_identifier(x: x) && (w.w1 == "dag_surface_primary_expr") {
+    true
+  } else if is_identifier(x: x) && w.chain_active && (w.w1 == "dag_token_dot") {
+    true
+  } else {
+    false
+  }
+}
+
+fn next_chain_arg(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_primary_expr" { primary_is_argument(w: w) } else { w.chain_arg }
+}
+
+fn next_chain_enclosing(w: Walk, x: String) -> String {
+  if x == "dag_surface_primary_expr" { stack_top(stack: w.stack) } else { w.chain_enclosing }
+}
+
+fn next_stack(w: Walk, x: String) -> FreeMonoid<String> {
+  if x == "dag_surface_top_level_item" {
+    empty_strings
+  } else if x == "dag_token_lparen" {
+    Cons { head: if w.chain_active { call_read(chain_reversed: w.chain).callee } else { "" }, tail: w.stack }
+  } else if x == "dag_token_rparen" {
+    stack_pop(stack: w.stack)
+  } else {
+    w.stack
+  }
+}
+
+fn next_binders(w: Walk, x: String) -> FreeMonoid<String> {
+  let binder_position = (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_token_kw_let") || (w.w5 == "dag_token_kw_data") || (w.w5 == "dag_surface_param_list"))
+  if x == "dag_surface_top_level_item" {
+    empty_strings
+  } else if is_bare_string_spelling(w: w, x: x) && binder_position {
+    Cons { head: w.w4, tail: w.binders }
+  } else {
+    w.binders
+  }
+}
+
+fn next_imports_text_string(w: Walk, x: String) -> Bool {
+  w.imports_text_string || (w.in_text_import && (x == "String"))
+}
+
+// A fn's return type head: the first name after the LAST `->` before the declaration's body. The
+// head is held at each arrow and recorded only when a function body opens, so an arrow inside a
+// fn-typed parameter or a `type` declaration's field never names a return type.
+fn next_last_arrow_head(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" {
+    ""
+  } else if (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr") && (w.w3 == "dag_token_arrow") && is_identifier(x: x) {
+    x
+  } else {
+    w.last_arrow_head
+  }
+}
+
+fn next_return_heads(w: Walk, x: String) -> FreeMonoid<ReturnHead> {
+  if (x == "dag_surface_fn_body") && !(w.last_arrow_head == "") {
+    Cons { head: ReturnHead { decl: w.decl, head: w.last_arrow_head }, tail: w.return_heads }
+  } else {
+    w.return_heads
+  }
+}
+
+fn dotted(segments_reversed: FreeMonoid<String>) -> String {
+  fold_list(xs: list_reverse(xs: segments_reversed), empty: "", cons: fn(acc, s) {
+    if acc == "" { s } else { concat(concat(acc, "."), s) }
+  })
+}
+
+fn next_in_import_header(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_import_decl" { true } else if (x == "dag_surface_import_block") || (x == "dag_surface_top_level_item") { false } else { w.in_import_header }
+}
+
+fn next_in_import_block(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_import_block" { true } else if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else { w.in_import_block }
+}
+
+fn next_import_segments(w: Walk, x: String) -> FreeMonoid<String> {
+  if x == "dag_surface_import_decl" { Empty } else if w.in_import_header && is_identifier(x: x) { Cons { head: x, tail: w.import_segments } } else { w.import_segments }
+}
+
+fn next_imported(w: Walk, x: String) -> FreeMonoid<ImportedName> {
+  if w.in_import_block && is_identifier(x: x) {
+    Cons { head: ImportedName { name: x, module: dotted(segments_reversed: w.import_segments) }, tail: w.imported }
+  } else {
+    w.imported
+  }
+}
+
+fn is_type_head(w: Walk, x: String) -> Bool {
+  is_identifier(x: x) && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr")
+}
+
+fn is_param_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_surface_param_list"))
+}
+
+fn is_annotation_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_kw_let") || (w.w5 == "dag_token_kw_data"))
+}
+
+fn is_field_type_head(w: Walk, x: String) -> Bool {
+  w.in_field_block && is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon")
+}
+
+fn is_arrow_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_arrow")
+}
+
+fn is_alias_type_head(w: Walk, x: String) -> Bool {
+  w.decl_is_type && w.in_type_rhs && (w.alias_spelling == "") && (w.pending_param == "") && is_type_head(w: w, x: x)
+}
+
+fn starts_pending_spelling(w: Walk, x: String) -> Bool {
+  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_field_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x) || is_alias_type_head(w: w, x: x)
+}
+
+fn continues_pending_param(w: Walk, x: String) -> Bool {
+  !(w.pending_param == "") && ((x == "dag_token_dot") || (is_identifier(x: x) && (w.w1 == "dag_token_dot")))
+}
+
+// The pending spelling's NAME: the parameter, binder or field it types; an arrow types nothing named.
+fn next_pending_param(w: Walk, x: String) -> String {
+  if is_arrow_type_head(w: w, x: x) { "->" } else if is_alias_type_head(w: w, x: x) { "=" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending_param(w: w, x: x) { w.pending_param } else { "" }
+}
+
+fn next_pending_kind(w: Walk, x: String) -> TypeSpellingKind {
+  if is_param_type_head(w: w, x: x) { SpellingOfParameter }
+  else if is_annotation_type_head(w: w, x: x) { SpellingOfAnnotation }
+  else if is_field_type_head(w: w, x: x) { SpellingOfField { owner: w.field_owner } }
+  else if is_arrow_type_head(w: w, x: x) { SpellingOfArrow }
+  else if is_alias_type_head(w: w, x: x) { SpellingOfAlias }
+  else { w.pending_kind }
+}
+
+fn next_pending_param_segments(w: Walk, x: String) -> FreeMonoid<String> {
+  if starts_pending_spelling(w: w, x: x) {
+    Cons { head: x, tail: Empty }
+  } else if continues_pending_param(w: w, x: x) && is_identifier(x: x) {
+    Cons { head: x, tail: w.pending_param_segments }
+  } else if continues_pending_param(w: w, x: x) {
+    w.pending_param_segments
+  } else {
+    Empty
+  }
+}
+
+fn flushes_pending(w: Walk, x: String) -> Bool {
+  !(w.pending_param == "") && !continues_pending_param(w: w, x: x)
+}
+
+fn flushed_spelling(w: Walk) -> String {
+  dotted(segments_reversed: w.pending_param_segments)
+}
+
+// A pending spelling is emitted at the first atom that does not continue it, into the store its
+// kind names.
+fn next_param_types(w: Walk, x: String) -> FreeMonoid<ParamType> {
+  match w.pending_kind {
+    SpellingOfParameter =>
+      if flushes_pending(w: w, x: x) { Cons { head: ParamType { decl: w.decl, param: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.param_types } } else { w.param_types }
+    _ => w.param_types
+  }
+}
+
+fn next_annotation_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfAnnotation => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.annotation_spelling }
+      _ => w.annotation_spelling
+    }
+  }
+}
+
+fn next_arrow_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfArrow => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.arrow_spelling }
+      _ => w.arrow_spelling
+    }
+  }
+}
+
+// The declared return of the function whose body is open: the last arrow spelling before its body,
+// read as of THIS atom, because the arrow's spelling flushes on the very atom that opens the body.
+fn next_return_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else if (x == "dag_surface_fn_body") && (w.return_spelling == "") { next_arrow_spelling(w: w, x: x) } else { w.return_spelling }
+}
+
+fn next_decl_is_type(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if w.w1 == "dag_surface_type_decl" { true } else { w.decl_is_type }
+}
+
+fn next_in_type_rhs(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if w.decl_is_type && (x == "dag_token_eq") { true } else { w.in_type_rhs }
+}
+
+fn next_alias_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfAlias => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.alias_spelling }
+      _ => w.alias_spelling
+    }
+  }
+}
+
+fn next_alias_invalid(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else { w.alias_invalid || (w.in_type_rhs && ((x == "dag_token_pipe") || (x == "dag_surface_field_decl_block"))) }
+}
+
+fn closing_alias(w: Walk) -> FreeMonoid<TypeAlias> {
+  if w.decl_is_type && !(w.alias_spelling == "") && !w.alias_invalid { Cons { head: TypeAlias { name: w.decl, spelling: w.alias_spelling }, tail: w.aliases } } else { w.aliases }
+}
+
+// A declaration's alias is recorded when the NEXT top-level item opens (and once more at the end
+// of the stream, by finish_walk), because a pipe or field block later in the same declaration
+// unmakes it.
+fn next_aliases(w: Walk, x: String) -> FreeMonoid<TypeAlias> {
+  if x == "dag_surface_top_level_item" { closing_alias(w: w) } else { w.aliases }
+}
+
+fn next_field_types(w: Walk, x: String) -> FreeMonoid<FieldType> {
+  match w.pending_kind {
+    SpellingOfField { owner: o } =>
+      if flushes_pending(w: w, x: x) { Cons { head: FieldType { owner: o, field: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.field_types } } else { w.field_types }
+    _ => w.field_types
+  }
+}
+
+// A field declaration block opens after its owner's name (the type for a record, the variant for
+// a payload) and closes at its brace.
+fn next_in_field_block(w: Walk, x: String) -> Bool {
+  if (x == "dag_surface_top_level_item") || (w.in_field_block && (x == "dag_token_rbrace")) { false } else if x == "dag_surface_field_decl_block" { true } else { w.in_field_block }
+}
+
+fn next_field_owner(w: Walk, x: String) -> String {
+  if x == "dag_surface_field_decl_block" { w.w1 } else { w.field_owner }
+}
+
+// The record or variant constructor whose braces are open; any other brace opens as "".
+fn next_braces(w: Walk, x: String) -> FreeMonoid<String> {
+  if x == "dag_surface_top_level_item" { empty_strings }
+  else if x == "dag_token_lbrace" { Cons { head: if w.chain_active { call_read(chain_reversed: w.chain).last } else { "" }, tail: w.braces } }
+  else if x == "dag_token_rbrace" { stack_pop(stack: w.braces) }
+  else { w.braces }
+}
+
+fn imported_module_of(imported: FreeMonoid<ImportedName>, name: String) -> String {
+  fold_list(xs: imported, empty: "", cons: fn(acc, i) { if (acc == "") && (i.name == name) { i.module } else { acc } })
+}
+
+fn walk_step(w: Walk, r: Rosters, x: String, at: Optional<Int>) -> Walk {
+  Walk {
+    w1: x, w2: w.w1, w3: w.w2, w4: w.w3, w5: w.w4, w6: w.w5, w7: w.w6, w8: w.w7, w9: w.w8,
+    decl: next_decl(w: w, x: x),
+    pending_decl_name: next_pending_decl_name(w: w, x: x),
+    in_text_import: next_in_text_import(w: w, r: r, x: x),
+    saw_text_import_module: next_saw_text_import_module(w: w, x: x),
+    chain: next_chain(w: w, x: x),
+    chain_active: next_chain_active(w: w, x: x),
+    chain_arg: next_chain_arg(w: w, x: x),
+    chain_enclosing: next_chain_enclosing(w: w, x: x),
+    stack: next_stack(w: w, x: x),
+    binders: next_binders(w: w, x: x),
+    imports_text_string: next_imports_text_string(w: w, x: x),
+    sites: next_sites(w: w, r: r, x: x, at: at),
+    last_arrow_head: next_last_arrow_head(w: w, x: x),
+    return_heads: next_return_heads(w: w, x: x),
+    in_import_header: next_in_import_header(w: w, x: x),
+    in_import_block: next_in_import_block(w: w, x: x),
+    import_segments: next_import_segments(w: w, x: x),
+    imported: next_imported(w: w, x: x),
+    pending_param: next_pending_param(w: w, x: x),
+    pending_param_segments: next_pending_param_segments(w: w, x: x),
+    param_types: next_param_types(w: w, x: x),
+    at: at,
+    pending_kind: next_pending_kind(w: w, x: x),
+    annotation_spelling: next_annotation_spelling(w: w, x: x),
+    arrow_spelling: next_arrow_spelling(w: w, x: x),
+    return_spelling: next_return_spelling(w: w, x: x),
+    braces: next_braces(w: w, x: x),
+    in_field_block: next_in_field_block(w: w, x: x),
+    field_owner: next_field_owner(w: w, x: x),
+    field_types: next_field_types(w: w, x: x),
+    decl_is_type: next_decl_is_type(w: w, x: x),
+    in_type_rhs: next_in_type_rhs(w: w, x: x),
+    alias_spelling: next_alias_spelling(w: w, x: x),
+    alias_invalid: next_alias_invalid(w: w, x: x),
+    aliases: next_aliases(w: w, x: x)
+  }
+}
+
+// The end of the stream closes the last declaration: a pending spelling flushes and its alias, if
+// any, is recorded, as the next top-level item would have done.
+fn finish_walk(w: Walk, r: Rosters) -> Walk {
+  walk_step(w: walk_step(w: w, r: r, x: "dag_surface_end_of_stream", at: Absent), r: r, x: "dag_surface_top_level_item", at: Absent)
+}
+
+// An atom of the raw parse's pre-order stream, with the byte offset of its token when it has one
+// (production markers have none).
+type PositionedAtom {
+  lexeme: String
+  at: Optional<Int>
+}
+
+fn atom_position(n: Node, spans: SpanIndex) -> Optional<Int> {
+  match node_occurrence_id_optional(node: n) {
+    Absent => Absent
+    Present { value: id } => match span_index_textual_locus_optional(index: spans, id: id) {
+      Absent => Absent
+      Present { value: locus } => match locus {
+        Textual { file: _, extent: e } => match e {
+          ByteRange { start: s, end: _ } => Present { value: s }
+          WholeFile => Absent
+        }
+        _ => Absent
+      }
+    }
+  }
+}
+
+// The pre-order atom stream, built by prepending and reversed once (linear).
+fn atoms_reversed(n: Node, spans: SpanIndex, acc: FreeMonoid<PositionedAtom>) -> FreeMonoid<PositionedAtom> {
+  let here = match n.kind {
+    TypeNode { connective: c } => match c {
+      Atom { identity: i } => Cons { head: PositionedAtom { lexeme: symbol_lexeme(sym: i), at: atom_position(n: n, spans: spans) }, tail: acc }
+      _ => acc
+    }
+    _ => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, spans: spans, acc: a) })
+}
+
+fn is_literal_token(x: String) -> Bool {
+  (x == "dag_token_string_literal") || (x == "dag_token_int_literal") || (x == "dag_token_float_literal")
+}
+
+// The classifier's interface is the pre-order atom stream: the parse tree only supplies it. The
+// atom after a literal token is the literal's CONTENT, never an identifier, so it is skipped here
+// rather than read as a name.
+fn walk_positioned(atoms: FreeMonoid<PositionedAtom>, r: Rosters) -> Walk {
+  finish_walk(w: fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) {
+    if is_literal_token(x: w.w1) && !starts_with(s: a.lexeme, prefix: "dag_") { w } else { walk_step(w: w, r: r, x: a.lexeme, at: a.at) }
+  }), r: r)
+}
+
+fn walk_atoms(atoms: FreeMonoid<String>, r: Rosters) -> Walk {
+  walk_positioned(atoms: fold_list(xs: list_reverse(xs: atoms), empty: Empty, cons: fn(acc, x) { Cons { head: PositionedAtom { lexeme: x, at: Absent }, tail: acc } }), r: r)
+}
+
+fn tree_atoms(root: Node) -> FreeMonoid<String> {
+  fold_list(xs: atoms_reversed(n: root, spans: span_index_empty(), acc: Empty), empty: Empty, cons: fn(acc, a) { Cons { head: a.lexeme, tail: acc } })
+}
+
+fn tree_positioned_atoms(root: Node, spans: SpanIndex) -> FreeMonoid<PositionedAtom> {
+  list_reverse(xs: atoms_reversed(n: root, spans: spans, acc: Empty))
+}
+
+fn walk_tree(root: Node, spans: SpanIndex, r: Rosters) -> Walk {
+  walk_positioned(atoms: tree_positioned_atoms(root: root, spans: spans), r: r)
+}
+
+type RawTreeStanding
+  = RawTreeEstablished { root: Node, spans: SpanIndex, text: String }
+  | RawTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+// The raw parse, without normalize: the same tokenize/validate/parse chain as
+// `v2.lens.complexity_accumulator_copy.roster_gate` `source_tree`, stopped before normalize for the
+// reason stated at the top of this module.
+fn raw_tree(path: String) -> RawTreeStanding {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => RawTreeNotEstablished { cause: SourceUnreadable }
+    FilesystemReadSucceeded { content: text } => raw_tree_of_text(text: text)
+  }
+}
+
+fn raw_tree_of_text(text: String) -> RawTreeStanding {
+  let lm = dag_language_model()
+  let at = invariant_port_locus(port: ^text_string_importer_census_port, invariant: ^text_string_importer_census_source_invariant)
+  match lm.grammar {
+    VoidGrammar => RawTreeNotEstablished { cause: LanguageGrammarUnavailable }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: LanguageGrammarRejected }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: text, file: ^text_string_importer_census_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
+                Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
+                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree, spans: artifact.span_index, text: text }
+              }
+          }
+      }
+  }
+}
+
+// EVERY kernel primitive, read from std.primitives' own roster of its contract rows: a literal
+// passed to one lands in a kernel host position whatever its spelling.
+fn kernel_primitive_names() -> FreeMonoid<String> {
+  fold_list(xs: primitive_contract_roster(), empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } })
+}
+
+fn empty_rosters() -> Rosters {
+  Rosters { population_module: "", kernel: kernel_primitive_names(), host: empty_strings, structural: empty_strings, structural_text_result: empty_strings }
+}
+
+type RostersStanding
+  = RostersEstablished { rosters: Rosters }
+  | RostersRefused { reason: String }
+
+// The structural roster is every function the POPULATION module declares (v2.std.text or
+// std.string_type), read by this fold over that module's own source, found through the module
+// declaration index of `roots`; the host roster is the contract rows' names. The two must be
+// disjoint: a name in both would decide a site both ways, so the census refuses instead.
+fn rosters(population_module: String, roots: List<String>) -> RostersStanding {
+  let path = declared_path_of(decls: module_declaration_facts_live(pool_roots: roots), module: population_module)
+  if path == "" {
+    RostersRefused { reason: concat("no file under the pool roots declares the population module ", population_module) }
+  } else {
+    match raw_tree(path: path) {
+      RawTreeNotEstablished { cause: c } =>
+        RostersRefused { reason: concat(concat(population_module, " itself did not parse, so the structural roster is unknown: "), cause_token(cause: c)) }
+      RawTreeEstablished { root: root, spans: spans, text: _ } => rosters_of_walk(w: walk_tree(root: root, spans: spans, r: empty_rosters()), population_module: population_module)
+    }
+  }
+}
+
+// The roster derivation over v2.std.text's walk, separated from the read so a supplied walk can
+// exercise it.
+fn rosters_of_walk(w: Walk, population_module: String) -> RostersStanding {
+  let structural = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
+    if member(xs: acc, x: rh.decl) { acc } else { Cons { head: rh.decl, tail: acc } }
+  })
+  let text_result = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
+    if member(xs: text_carrier_heads, x: rh.head) { Cons { head: rh.decl, tail: acc } } else { acc }
+  })
+  let host = fold_list(xs: host_text_primitive_contracts, empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } })
+  let overlap = fold_list(xs: host, empty: empty_strings, cons: fn(acc, h) {
+    if member(xs: structural, x: h) { Cons { head: h, tail: acc } } else { acc }
+  })
+  if length(xs: structural) == 0 {
+    RostersRefused { reason: concat(population_module, " parsed but no fn declaration was read from it, so every STRUCTURAL verdict would be vacuous") }
+  } else if length(xs: overlap) > 0 {
+    RostersRefused { reason: concat(concat(concat("a name is both a host primitive and a function of ", population_module), ": "), fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
+  } else {
+    RostersEstablished { rosters: Rosters { population_module: population_module, kernel: kernel_primitive_names(), host: host, structural: structural, structural_text_result: text_result } }
+  }
+}
+
+fn module_walk(path: String, r: Rosters) -> WalkStanding {
+  match raw_tree(path: path) {
+    RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: r) }
+  }
+}
+
+fn param_spelling(walk: Walk, callee: String, param: String) -> String {
+  fold_list(xs: walk.param_types, empty: "", cons: fn(acc, pt) {
+    if (acc == "") && (pt.decl == callee) && (pt.param == param) { pt.spelling } else { acc }
+  })
+}
+
+fn is_structural_spelling(spelling: String) -> Bool {
+  (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid") || (spelling == "v2.std.text.String")
+}
+
+fn spelling_verdict(spelling: String, declaring_module_imports_text_string: Bool, module: String, at: String) -> CrossingVerdict {
+  if spelling == "" {
+    CrossingUndecided { cause: NoSuchParameter { at: at } }
+  } else if is_structural_spelling(spelling: spelling) {
+    CrossingStructural
+  } else if (spelling == "String") && declaring_module_imports_text_string {
+    CrossingUndecided { cause: if module == "" { ParameterIsImportedStringHere { at: at } } else { ParameterIsImportedStringIn { module: module, at: at } } }
+  } else if spelling == "String" {
+    CrossingHost
+  } else {
+    CrossingUndecided { cause: ParameterSpelledOther { at: at, spelling: spelling } }
+  }
+}
+
+fn callee_standing(callees: FreeMonoid<CalleeModule>, module: String) -> FreeMonoid<WalkStanding> {
+  fold_list(xs: callees, empty: Empty, cons: fn(acc, c) {
+    match acc {
+      Empty => if c.module == module { Cons { head: c.standing, tail: Empty } } else { Empty }
+      _ => acc
+    }
+  })
+}
+
+fn crossing_verdict(own: Walk, callees: FreeMonoid<CalleeModule>, callee: String, param: String, module: String) -> CrossingVerdict {
+  let at = concat(concat(callee, "."), param)
+  if param == "" {
+    CrossingUndecided { cause: PositionalArgument { callee: callee } }
+  } else if module == "" {
+    let local = param_spelling(walk: own, callee: callee, param: param)
+    if local == "" {
+      CrossingUndecided { cause: CalleeNotImportedByName { callee: callee } }
+    } else {
+      spelling_verdict(spelling: local, declaring_module_imports_text_string: own.imports_text_string, module: "", at: at)
+    }
+  } else {
+    match callee_standing(callees: callees, module: module) {
+      Empty => CrossingUndecided { cause: CalleeModuleNotInPool { module: module } }
+      Cons { head: standing, tail: _ } => match standing {
+        WalkNotEstablished { cause: c } => CrossingUndecided { cause: CalleeModuleNotParsed { module: module, cause: c } }
+        WalkEstablished { walk: cw } => spelling_verdict(spelling: param_spelling(walk: cw, callee: callee, param: param), declaring_module_imports_text_string: cw.imports_text_string, module: module, at: at)
+      }
+    }
+  }
+}
+
+fn crossings_of(own: Walk, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<Crossing> {
+  list_reverse(xs: fold_list(xs: own.sites, empty: Empty, cons: fn(acc, s) {
+    match s.kind {
+      BinderArgument { callee: c, param: p, module: m } =>
+        Cons { head: Crossing { site: s, verdict: crossing_verdict(own: own, callees: callees, callee: c, param: p, module: m) }, tail: acc }
+      _ => acc
+    }
+  }))
+}
+
+fn crossing_is_host(c: Crossing) -> Bool {
+  match c.verdict {
+    CrossingHost => true
+    _ => false
+  }
+}
+
+fn crossing_is_structural(c: Crossing) -> Bool {
+  match c.verdict {
+    CrossingStructural => true
+    _ => false
+  }
+}
+
+fn count_crossings(xs: FreeMonoid<Crossing>, pred: fn(Crossing) -> Bool) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, c) { if pred(c) { acc + 1 } else { acc } })
+}
+
+fn module_standing(path: String, r: Rosters) -> ModuleStanding {
+  match raw_tree(path: path) {
+    RawTreeNotEstablished { cause: c } => ModuleNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => {
+      let w = walk_tree(root: root, spans: spans, r: r)
+      ModuleParsed { imports_text_string: w.imports_text_string, sites: list_reverse(xs: w.sites) }
+    }
+  }
+}
+
+fn is_host_site(s: Site) -> Bool {
+  match s.kind {
+    HostPrimitiveCall { name: _ } => true
+    HostMethodCall { name: _ } => true
+    HostLiteralAtStringAnnotation => true
+    HostLiteralArgument { callee: _ } => true
+    HostPlusConcatenation => true
+    _ => false
+  }
+}
+
+fn is_structural_site(s: Site) -> Bool {
+  match s.kind {
+    StructuralCall { name: _, result: _ } => true
+    StructuralLiteralArgument { callee: _ } => true
+    _ => false
+  }
+}
+
+fn is_bare_site(s: Site) -> Bool {
+  match s.kind {
+    BareStringSpelling => true
+    _ => false
+  }
+}
+
+fn is_other_site(s: Site) -> Bool {
+  match s.kind {
+    StructuralCall { name: _, result: ResultAtOtherPosition } => true
+    _ => false
+  }
+}
+
+fn count_sites(sites: FreeMonoid<Site>, pred: fn(Site) -> Bool) -> Int {
+  fold_list(xs: sites, empty: 0, cons: fn(acc, s) { if pred(s) { acc + 1 } else { acc } })
+}
+
+fn verdict_of(sites: FreeMonoid<Site>) -> ImporterVerdict {
+  verdict_with_crossings(sites: sites, crossings: Empty)
+}
+
+fn verdict_with_crossings(sites: FreeMonoid<Site>, crossings: FreeMonoid<Crossing>) -> ImporterVerdict {
+  let host = count_sites(sites: sites, pred: is_host_site) + count_crossings(xs: crossings, pred: crossing_is_host)
+  let structural = count_sites(sites: sites, pred: is_structural_site) + count_crossings(xs: crossings, pred: crossing_is_structural)
+  if count_sites(sites: sites, pred: is_bare_site) == 0 {
+    ImportUnused
+  } else if (host > 0) && (structural > 0) {
+    Mixed
+  } else if host > 0 {
+    HostUsing
+  } else if structural > 0 {
+    StructuralUsing
+  } else if count_crossings(xs: crossings, pred: crossing_is_undecided) > 0 {
+    Unclassified { cause: UndecidedCrossings }
+  } else {
+    Unclassified { cause: NoOperationEvidence }
+  }
+}
+
+fn cause_token(cause: SourceAnalysisNotEstablishedCause) -> String {
+  match cause {
+    LanguageGrammarUnavailable => "LanguageGrammarUnavailable"
+    LanguageGrammarRejected => "LanguageGrammarRejected"
+    SourceUnreadable => "SourceUnreadable"
+    SourceTokenizationRejected => "SourceTokenizationRejected"
+    SourceParseRejected => "SourceParseRejected"
+    SourceNormalizationRejected => "SourceNormalizationRejected"
+  }
+}
+
+fn verdict_token(v: ImporterVerdict) -> String {
+  match v {
+    HostUsing => "HOST"
+    StructuralUsing => "STRUCTURAL"
+    Mixed => "MIXED"
+    ImportUnused => "IMPORT_UNUSED"
+    Unclassified { cause: c } => match c {
+      NotEstablished { cause: nc } => concat("UNCLASSIFIED:", cause_token(cause: nc))
+      NoOperationEvidence => "UNCLASSIFIED:NoOperationEvidence"
+      UndecidedCrossings => "UNCLASSIFIED:UndecidedCrossings"
+      UndecidedAtFixpoint => "UNCLASSIFIED:UndecidedAtFixpoint"
+    }
+  }
+}
+
+// EVERY TOKEN THIS MODULE RENDERS HAS ITS DECODER HERE, BESIDE IT. The fixpoint reads the census's
+// rows back across process boundaries (one batch per process), so the rendering is a wire format
+// with one authority: a token no decoder accepts is REFUSED by the reader, never skipped. The
+// witness pins decode(render(x)) for every arm.
+type Decoded<T>
+  = DecodedAs { value: T }
+  | Undecodable { token: String }
+
+fn cause_of_token(token: String) -> Decoded<SourceAnalysisNotEstablishedCause> {
+  if token == "LanguageGrammarUnavailable" { DecodedAs { value: LanguageGrammarUnavailable } }
+  else if token == "LanguageGrammarRejected" { DecodedAs { value: LanguageGrammarRejected } }
+  else if token == "SourceUnreadable" { DecodedAs { value: SourceUnreadable } }
+  else if token == "SourceTokenizationRejected" { DecodedAs { value: SourceTokenizationRejected } }
+  else if token == "SourceParseRejected" { DecodedAs { value: SourceParseRejected } }
+  else if token == "SourceNormalizationRejected" { DecodedAs { value: SourceNormalizationRejected } }
+  else { Undecodable { token: token } }
+}
+
+fn verdict_of_token(token: String) -> Decoded<ImporterVerdict> {
+  if token == "HOST" { DecodedAs { value: HostUsing } }
+  else if token == "STRUCTURAL" { DecodedAs { value: StructuralUsing } }
+  else if token == "MIXED" { DecodedAs { value: Mixed } }
+  else if token == "IMPORT_UNUSED" { DecodedAs { value: ImportUnused } }
+  else if token == "UNCLASSIFIED:NoOperationEvidence" { DecodedAs { value: Unclassified { cause: NoOperationEvidence } } }
+  else if token == "UNCLASSIFIED:UndecidedCrossings" { DecodedAs { value: Unclassified { cause: UndecidedCrossings } } }
+  else if token == "UNCLASSIFIED:UndecidedAtFixpoint" { DecodedAs { value: Unclassified { cause: UndecidedAtFixpoint } } }
+  else if starts_with(s: token, prefix: "UNCLASSIFIED:") {
+    match cause_of_token(token: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: c } => DecodedAs { value: Unclassified { cause: NotEstablished { cause: c } } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else { Undecodable { token: token } }
+}
+
+// A crossing verdict renders as four tab-separated fields: verdict, cause tag, first and second
+// argument (empty where the arm has fewer).
+fn crossing_tokens(v: CrossingVerdict) -> String {
+  match v {
+    CrossingHost => "HOST\t\t\t"
+    CrossingStructural => "STRUCTURAL\t\t\t"
+    CrossingUndecided { cause: c } => concat("UNDECIDED\t", undecided_cause_tokens(c: c))
+  }
+}
+
+fn undecided_cause_tokens(c: UndecidedCrossingCause) -> String {
+  match c {
+    ParameterIsImportedStringHere { at: a } => concat("imported_string_here\t", concat(a, "\t"))
+    ParameterIsImportedStringIn { module: m, at: a } => concat(concat("imported_string_in\t", m), concat("\t", a))
+    PositionalArgument { callee: x } => concat("positional_argument\t", concat(x, "\t"))
+    CalleeNotImportedByName { callee: x } => concat("callee_not_imported_by_name\t", concat(x, "\t"))
+    CalleeModuleNotInPool { module: m } => concat("callee_module_not_in_pool\t", concat(m, "\t"))
+    CalleeModuleNotParsed { module: m, cause: k } => concat(concat("callee_module_not_parsed\t", m), concat("\t", cause_token(cause: k)))
+    NoSuchParameter { at: a } => concat("no_such_parameter\t", concat(a, "\t"))
+    ParameterSpelledOther { at: a, spelling: s } => concat(concat("parameter_spelled_other\t", a), concat("\t", s))
+  }
+}
+
+fn crossing_of_tokens(verdict: String, tag: String, first: String, second: String) -> Decoded<CrossingVerdict> {
+  if verdict == "HOST" { DecodedAs { value: CrossingHost } }
+  else if verdict == "STRUCTURAL" { DecodedAs { value: CrossingStructural } }
+  else if !(verdict == "UNDECIDED") { Undecodable { token: verdict } }
+  else if tag == "imported_string_here" { DecodedAs { value: CrossingUndecided { cause: ParameterIsImportedStringHere { at: first } } } }
+  else if tag == "imported_string_in" { DecodedAs { value: CrossingUndecided { cause: ParameterIsImportedStringIn { module: first, at: second } } } }
+  else if tag == "positional_argument" { DecodedAs { value: CrossingUndecided { cause: PositionalArgument { callee: first } } } }
+  else if tag == "callee_not_imported_by_name" { DecodedAs { value: CrossingUndecided { cause: CalleeNotImportedByName { callee: first } } } }
+  else if tag == "callee_module_not_in_pool" { DecodedAs { value: CrossingUndecided { cause: CalleeModuleNotInPool { module: first } } } }
+  else if tag == "callee_module_not_parsed" {
+    match cause_of_token(token: second) {
+      DecodedAs { value: k } => DecodedAs { value: CrossingUndecided { cause: CalleeModuleNotParsed { module: first, cause: k } } }
+      Undecodable { token: _ } => Undecodable { token: second }
+    }
+  }
+  else if tag == "no_such_parameter" { DecodedAs { value: CrossingUndecided { cause: NoSuchParameter { at: first } } } }
+  else if tag == "parameter_spelled_other" { DecodedAs { value: CrossingUndecided { cause: ParameterSpelledOther { at: first, spelling: second } } } }
+  else { Undecodable { token: tag } }
+}
+
+fn result_token(r: StructuralResultPosition) -> String {
+  match r {
+    NoTextResult => "CALL-ARGUMENT"
+    ResultAtCallArgument => "CALL-ARGUMENT"
+    ResultAtOtherPosition => "OTHER"
+  }
+}
+
+fn site_tokens(k: SiteKind) -> String {
+  match k {
+    BareStringSpelling => "bare_string\t"
+    HostPrimitiveCall { name: n } => concat("host_primitive_call\t", n)
+    HostMethodCall { name: n } => concat("host_method_call\t", n)
+    HostLiteralAtStringAnnotation => "host_literal_at_string_annotation\t"
+    HostLiteralArgument { callee: c } => concat("host_literal_argument\t", c)
+    HostPlusConcatenation => "host_plus_concatenation\t"
+    StructuralCall { name: n, result: r } => concat(concat(concat("structural_call\t", n), "\t"), result_token(r: r))
+    StructuralLiteralArgument { callee: c } => concat("structural_literal_argument\t", c)
+    BinderArgument { callee: c, param: p, module: m } => concat(concat(concat(concat(concat("binder_argument\t", c), "\t"), p), "\t"), m)
+    LiteralAtAnnotation { spelling: s } => concat("literal_at_annotation\t", s)
+    LiteralAtReturn { spelling: s } => concat("literal_at_return\t", s)
+    LiteralAtField { owner: ow, field: f } => concat(concat(concat("literal_at_field\t", ow), "\t"), f)
+    LiteralArgument { callee: c, param: p, module: m } => concat(concat(concat(concat(concat("literal_argument\t", c), "\t"), p), "\t"), m)
+  }
+}
+
+fn int_text(n: Int) -> String {
+  integer_int_to_decimal_string(value: n)
+}
+
+// One module's lines: an `M` row carrying the verdict and the counts (host, structural, OTHER,
+// bare spellings, undecided crossings), then one `S` row per site and one `X` row per crossing with
+// its verdict. A module that parses but does not import `String` from v2.std.text is an `N` row: it
+// is in the import-edge population and outside this census's, and it is listed rather than dropped
+// so the join can account for it.
+fn crossing_is_undecided(c: Crossing) -> Bool {
+  match c.verdict {
+    CrossingUndecided { cause: _ } => true
+    _ => false
+  }
+}
+
+fn module_lines(path: String, standing: WalkStanding, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
+  match standing {
+    WalkNotEstablished { cause: c } =>
+      Cons { head: concat(concat("M\t", path), concat("\t", concat(verdict_token(v: Unclassified { cause: NotEstablished { cause: c } }), concat("\t0\t0\t0\t0\t0\t", concat(standing_token(s: LensHypothesis), "\n"))))), tail: Empty }
+    WalkEstablished { walk: w } =>
+      if !w.imports_text_string {
+        Cons { head: concat(concat("N\t", path), "\n"), tail: Empty }
+      } else {
+        let sites = list_reverse(xs: w.sites)
+        let crossings = crossings_of(own: w, callees: callees)
+        let header = concat(concat("M\t", path), concat(concat("\t", verdict_token(v: verdict_with_crossings(sites: sites, crossings: crossings))),
+          concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_host_site) + count_crossings(xs: crossings, pred: crossing_is_host))),
+          concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_structural_site) + count_crossings(xs: crossings, pred: crossing_is_structural))),
+          concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_other_site))),
+          concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_bare_site))),
+          concat(concat("\t", int_text(n: count_crossings(xs: crossings, pred: crossing_is_undecided))), concat(concat("\t", standing_token(s: LensHypothesis)), "\n"))))))))
+        let site_rows = fold_list(xs: sites, empty: Cons { head: header, tail: Empty }, cons: fn(acc, s) {
+          Cons { head: concat(concat(concat(concat("S\t", path), "\t"), concat(concat(s.decl, "\t"), site_tokens(k: s.kind))), "\n"), tail: acc }
+        })
+        list_reverse(xs: fold_list(xs: crossings, empty: site_rows, cons: fn(acc, c) {
+          Cons { head: concat(concat(concat(concat(concat(concat("X\t", path), "\t"), c.site.decl), "\t"), concat(concat(site_tokens(k: c.site.kind), "\t"), crossing_tokens(v: c.verdict))), "\n"), tail: acc }
+        }))
+      }
+  }
+}
+
+type PathWalk {
+  path: String
+  standing: WalkStanding
+}
+
+// The distinct modules the batch's crossings name, each parsed ONCE per process.
+fn crossing_modules(walks: FreeMonoid<PathWalk>) -> FreeMonoid<String> {
+  fold_list(xs: walks, empty: empty_strings, cons: fn(acc, pw) {
+    match pw.standing {
+      WalkNotEstablished { cause: _ } => acc
+      WalkEstablished { walk: w } =>
+        if !w.imports_text_string { acc } else {
+          fold_list(xs: w.sites, empty: acc, cons: fn(inner, s) {
+            match s.kind {
+              BinderArgument { callee: _, param: _, module: m } =>
+                if (m == "") || member(xs: inner, x: m) { inner } else { Cons { head: m, tail: inner } }
+              _ => inner
+            }
+          })
+        }
+    }
+  })
+}
+
+fn declared_path_of(decls: List<ModuleDeclarationFact>, module: String) -> String {
+  fold_list(xs: decls, empty: "", cons: fn(acc, d) { if (acc == "") && (d.module == module) { d.path } else { acc } })
+}
+
+fn callee_modules(modules: FreeMonoid<String>, r: Rosters, roots: List<String>) -> FreeMonoid<CalleeModule> {
+  let decls = module_declaration_facts_live(pool_roots: roots)
+  fold_list(xs: modules, empty: Empty, cons: fn(acc, m) {
+    let path = declared_path_of(decls: decls, module: m)
+    if path == "" { acc } else { Cons { head: CalleeModule { module: m, standing: module_walk(path: path, r: r) }, tail: acc } }
+  })
+}
+
+fn lines_text(lines: FreeMonoid<String>) -> String {
+  join(lines, "")
+}
+
+// THE POPULATION, discovered by the import-edge authority rather than by a text search: every
+// module under the pool roots with an import edge into v2.std.text. Whether `String` is a member of
+// that import is then read from each module's own parse (`N` rows are the non-members).
+// Import edges into the population module, AND reference-derived edges: a module can spell the
+// population's `String` QUALIFIED without importing it, and that spelling is a structural position
+// too.
+fn population_paths(population_module: String) -> FreeMonoid<String> {
+  let imports = import_resolution_facts_live(pool_roots: census_pool_roots, importer_roots: census_pool_roots, exclude_substrings: no_exclusions)
+  let references = reference_derived_import_resolution_facts_live(pool_roots: census_pool_roots, importer_roots: census_pool_roots, exclude_substrings: no_exclusions)
+  let add = fn(acc, e) { if (e.import_module == population_module) && !member(xs: acc, x: e.path) { Cons { head: e.path, tail: acc } } else { acc } }
+  fold_list(xs: references, empty: fold_list(xs: imports, empty: empty_strings, cons: add), cons: add)
+}
+
+// Phase 1: write the discovered population, one path per line.
+fn text_string_importer_population(out: String, population_module: String) -> ProcessExit {
+  let paths = list_reverse(xs: population_paths(population_module: population_module))
+  if length(xs: paths) == 0 {
+    exit_failure(reason: concat(concat("the edge producers returned no importer of ", population_module), " over dag and src/v2, so the census would be a join over an empty set"))
+  } else {
+    let written = Filesystem.Write(path: out, content: fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(concat(acc, p), "\n") }))
+    if written.success { ExitSuccess } else { exit_failure(reason: concat("population write refused: ", written.error)) }
+  }
+}
+
+// Phase 2: classify one batch of the population (comma-separated paths) and write its lines. The
+// batch is sized by the driver so no process holds the whole population, the same shape as
+// `v2.compiler.reference_conservation_census` `reference_conservation_census_for_paths`.
+// `roots_csv` names the pool the crossing resolution reads callee modules from: the census names
+// `dag,src/v2`, a fixture run names its fixture root. The subject is the caller's, never ambient.
+fn text_string_importer_census(paths_csv: String, out: String, roots_csv: String, population_module: String) -> ProcessExit {
+  match rosters(population_module: population_module, roots: split(s: roots_csv, delimiter: ",")) {
+    RostersRefused { reason: reason } => exit_failure(reason: reason)
+    RostersEstablished { rosters: r } => {
+      let walks = list_reverse(xs: fold_list(xs: split(s: paths_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
+        Cons { head: PathWalk { path: p, standing: module_walk(path: p, r: r) }, tail: acc }
+      }))
+      let callees = callee_modules(modules: crossing_modules(walks: walks), r: r, roots: split(s: roots_csv, delimiter: ","))
+      let lines = fold_list(xs: walks, empty: Empty, cons: fn(acc, pw) {
+        fold_list(xs: module_lines(path: pw.path, standing: pw.standing, callees: callees), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
+      })
+      let written = Filesystem.Write(path: out, content: lines_text(lines: list_reverse(xs: lines)))
+      if written.success { ExitSuccess } else { exit_failure(reason: concat("census write refused: ", written.error)) }
+    }
+  }
+}
+
+// One module's final verdict, crossings resolved against `roots` -- the same composition the batch
+// entry renders, exposed for the witness so a fixture row runs the census's own route.
+fn module_final_verdict(path: String, r: Rosters, roots: List<String>) -> ImporterVerdict {
+  let standing = module_walk(path: path, r: r)
+  let callees = callee_modules(modules: crossing_modules(walks: Cons { head: PathWalk { path: path, standing: standing }, tail: Empty }), r: r, roots: roots)
+  match standing {
+    WalkNotEstablished { cause: c } => Unclassified { cause: NotEstablished { cause: c } }
+    WalkEstablished { walk: w } => verdict_with_crossings(sites: list_reverse(xs: w.sites), crossings: crossings_of(own: w, callees: callees))
+  }
+}
+
+// THE FIXPOINT (neat-boar-16's ruling on #12840): a crossing whose callee parameter is itself an
+// imported bare `String` is decided by what that parameter BECOMES in the deletion's terminal
+// state, which is the callee module's DISPOSITION -- not its verdict flags. A callee that drops
+// the import (HOST, MIXED with no OTHER site, no-evidence) turns the parameter into kernel host
+// text, so the crossing is HOST; a callee that keeps it (STRUCTURAL only, MIXED with an OTHER site
+// per ruling (1), a v2 parse refusal per ruling (4)) leaves the structural carrier, so the
+// crossing is a lawful call-argument STRUCTURAL crossing; an undecided callee contributes nothing
+// yet. Inheriting the callee's FLAGS instead was measured wrong on the real rows: a crossing into
+// a MIXED callee inherited its structural flag and turned 18 HOST modules MIXED, although both ends
+// drop the import and the crossing is host to host. Each round recomputes every node from its own
+// evidence plus its targets' dispositions in the previous round; it stops when the whole state
+// repeats and refuses if it has not within 2n + 1 rounds. What stays undecided (a cycle, or an
+// edge into an undecided or unmeasured module) is UndecidedAtFixpoint, listed with its targets. A
+// local callee is an edge to the module itself.
+type FixpointNode {
+  path: String
+  module: String
+  census_verdict: ImporterVerdict
+  census_standing: VerdictStanding
+  own_host: Bool
+  own_structural: Bool
+  own_other: Bool
+  host: Bool
+  structural: Bool
+  targets: FreeMonoid<String>
+}
+
+fn tsv_fields(line: String) -> List<String> {
+  split(s: line, delimiter: "\t")
+}
+
+fn field_at(fields: List<String>, i: Int) -> String {
+  fold_list(xs: fields, empty: FieldCursor { index: 0, value: "" }, cons: fn(acc, f) {
+    FieldCursor { index: acc.index + 1, value: if acc.index == i { f } else { acc.value } }
+  }).value
+}
+
+type FieldCursor {
+  index: Int
+  value: String
+}
+
+// Built once per run: path to declared module.
+fn module_by_path(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+  fold_list(xs: decls, empty: empty_map(), cons: fn(m, d) { map_insert(m: m, key: d.path, value: d.module) })
+}
+
+fn module_of_path(modules: Map<String, String>, path: String) -> String {
+  match map_lookup(m: modules, key: path) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+type FixpointEdge {
+  path: String
+  callee_module: String
+}
+
+type FixpointRows {
+  nodes: FreeMonoid<FixpointNode>
+  edges: FreeMonoid<FixpointEdge>
+}
+
+// Every row is decoded or the whole read refuses, located at the line: a row the reader cannot
+// decode is a wire-format disagreement with the census that wrote it, and skipping it would drop
+// an edge or a node silently.
+type FixpointRowsStanding
+  = FixpointRowsRead { rows: FixpointRows }
+  | FixpointRowsRefused { line: String, reason: String }
+
+fn count_is_positive(token: String) -> Decoded<Bool> {
+  match parse_int(s: token) {
+    Present { value: n } => DecodedAs { value: n > 0 }
+    Absent => Undecodable { token: token }
+  }
+}
+
+fn fixpoint_rows(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointRowsStanding {
+  let modules = module_by_path(decls: decls)
+  fold_list(xs: lines, empty: FixpointRowsRead { rows: FixpointRows { nodes: Empty, edges: Empty } }, cons: fn(standing, line) {
+    match standing {
+      FixpointRowsRefused { line: _, reason: _ } => standing
+      FixpointRowsRead { rows: acc } => fixpoint_row(acc: acc, line: line, modules: modules)
+    }
+  })
+}
+
+fn fixpoint_row(acc: FixpointRows, line: String, modules: Map<String, String>) -> FixpointRowsStanding {
+  let f = tsv_fields(line: line)
+  let kind = field_at(fields: f, i: 0)
+  if (line == "") || (kind == "S") || (kind == "N") {
+    FixpointRowsRead { rows: acc }
+  } else if kind == "M" {
+    let path = field_at(fields: f, i: 1)
+    match verdict_of_token(token: field_at(fields: f, i: 2)) {
+      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable verdict ", tk) }
+      DecodedAs { value: v } =>
+        match count_is_positive(token: field_at(fields: f, i: 3)) {
+          Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable host count ", tk) }
+          DecodedAs { value: h } =>
+            match count_is_positive(token: field_at(fields: f, i: 4)) {
+              Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable structural count ", tk) }
+              DecodedAs { value: s } =>
+                match count_is_positive(token: field_at(fields: f, i: 5)) {
+                  Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable OTHER count ", tk) }
+                  DecodedAs { value: o } =>
+                    match standing_of_token(token: field_at(fields: f, i: 8)) {
+                      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable or missing verdict standing ", tk) }
+                      DecodedAs { value: st } =>
+                        FixpointRowsRead { rows: FixpointRows {
+                          nodes: Cons { head: FixpointNode { path: path, module: module_of_path(modules: modules, path: path), census_verdict: v, census_standing: st, own_host: h, own_structural: s, own_other: o, host: h, structural: s, targets: empty_strings }, tail: acc.nodes },
+                          edges: acc.edges
+                        } }
+                    }
+                }
+            }
+        }
+    }
+  } else if kind == "X" {
+    match crossing_of_tokens(verdict: field_at(fields: f, i: 7), tag: field_at(fields: f, i: 8), first: field_at(fields: f, i: 9), second: field_at(fields: f, i: 10)) {
+      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable crossing ", tk) }
+      DecodedAs { value: cv } => match cv {
+        CrossingUndecided { cause: ParameterIsImportedStringHere { at: _ } } =>
+          FixpointRowsRead { rows: FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: "" }, tail: acc.edges } } }
+        CrossingUndecided { cause: ParameterIsImportedStringIn { module: m, at: _ } } =>
+          FixpointRowsRead { rows: FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: m }, tail: acc.edges } } }
+        _ => FixpointRowsRead { rows: acc }
+      }
+    }
+  } else {
+    FixpointRowsRefused { line: line, reason: concat("unknown row kind ", kind) }
+  }
+}
+
+fn fixpoint_nodes(rows: FixpointRows) -> FreeMonoid<FixpointNode> {
+  fold_list(xs: rows.nodes, empty: Empty, cons: fn(acc, n) {
+    let targets = fold_list(xs: rows.edges, empty: empty_strings, cons: fn(ts, e) {
+      if e.path == n.path {
+        let target = if e.callee_module == "" { n.module } else { e.callee_module }
+        if member(xs: ts, x: target) { ts } else { Cons { head: target, tail: ts } }
+      } else { ts }
+    })
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, census_standing: n.census_standing, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: n.host, structural: n.structural, targets: targets }, tail: acc }
+  })
+}
+
+type CalleeDisposition
+  = CalleePending
+  | CalleeDropsImport
+  | CalleeKeepsImport
+
+fn is_parse_refused(v: ImporterVerdict) -> Bool {
+  match v {
+    Unclassified { cause: NotEstablished { cause: SourceParseRejected } } => true
+    _ => false
+  }
+}
+
+fn is_census_undecided(v: ImporterVerdict) -> Bool {
+  match v {
+    Unclassified { cause: UndecidedCrossings } => true
+    _ => false
+  }
+}
+
+// A node's disposition in a round. A module the census could not decide is pending until it has
+// decided evidence; a module absent from the rows (not measured) is pending forever.
+fn node_disposition(n: FixpointNode) -> CalleeDisposition {
+  if is_parse_refused(v: n.census_verdict) {
+    CalleeKeepsImport
+  } else if !n.host && !n.structural && is_census_undecided(v: n.census_verdict) {
+    CalleePending
+  } else if n.own_other || (n.structural && !n.host) {
+    CalleeKeepsImport
+  } else {
+    CalleeDropsImport
+  }
+}
+
+fn disposition_of(nodes: FreeMonoid<FixpointNode>, module: String) -> CalleeDisposition {
+  fold_list(xs: nodes, empty: CalleePending, cons: fn(acc, n) {
+    if n.module == module { node_disposition(n: n) } else { acc }
+  })
+}
+
+fn fixpoint_round(nodes: FreeMonoid<FixpointNode>) -> FreeMonoid<FixpointNode> {
+  list_reverse(xs: fold_list(xs: nodes, empty: Empty, cons: fn(acc, n) {
+    let host = fold_list(xs: n.targets, empty: n.own_host, cons: fn(h, tgt) {
+      match disposition_of(nodes: nodes, module: tgt) {
+        CalleeDropsImport => true
+        _ => h
+      }
+    })
+    let structural = fold_list(xs: n.targets, empty: n.own_structural, cons: fn(s, tgt) {
+      match disposition_of(nodes: nodes, module: tgt) {
+        CalleeKeepsImport => true
+        _ => s
+      }
+    })
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, census_standing: n.census_standing, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: host, structural: structural, targets: n.targets }, tail: acc }
+  }))
+}
+
+fn state_signature(nodes: FreeMonoid<FixpointNode>) -> String {
+  join(fold_list(xs: nodes, empty: [], cons: fn(acc, n) { list_push(acc, concat(if n.host { "H" } else { "-" }, if n.structural { "S" } else { "-" })) }), "")
+}
+
+type FixpointOutcome
+  = FixpointReached { nodes: FreeMonoid<FixpointNode>, rounds: Int }
+  | FixpointBoundExceeded { rounds: Int }
+
+fn iterate_fixpoint(nodes: FreeMonoid<FixpointNode>, rounds: Int, bound: Int) -> FixpointOutcome {
+  if rounds > bound {
+    FixpointBoundExceeded { rounds: rounds }
+  } else {
+    let next = fixpoint_round(nodes: nodes)
+    if state_signature(nodes: next) == state_signature(nodes: nodes) { FixpointReached { nodes: next, rounds: rounds + 1 } } else { iterate_fixpoint(nodes: next, rounds: rounds + 1, bound: bound) }
+  }
+}
+
+fn fixpoint_verdict(n: FixpointNode) -> ImporterVerdict {
+  if n.host && n.structural { Mixed }
+  else if n.host { HostUsing }
+  else if n.structural { StructuralUsing }
+  else if length(xs: n.targets) > 0 { Unclassified { cause: UndecidedAtFixpoint } }
+  else { n.census_verdict }
+}
+
+// The pure half of the fixpoint: rows and module declarations in, outcome out.
+type FixpointStanding
+  = FixpointComputed { outcome: FixpointOutcome }
+  | FixpointInputRefused { line: String, reason: String }
+
+fn fixpoint_over_lines(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointStanding {
+  match fixpoint_rows(lines: lines, decls: decls) {
+    FixpointRowsRefused { line: l, reason: why } => FixpointInputRefused { line: l, reason: why }
+    FixpointRowsRead { rows: rows } => {
+      let nodes = fixpoint_nodes(rows: rows)
+      FixpointComputed { outcome: iterate_fixpoint(nodes: nodes, rounds: 0, bound: 2 * length(xs: nodes) + 1) }
+    }
+  }
+}
+
+// Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
+// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets.
+type RowsRead
+  = RowsReadAll { lines: FreeMonoid<String> }
+  | RowsReadRefused { path: String, error: String }
+
+fn read_row_files(paths: List<String>) -> RowsRead {
+  fold_list(xs: paths, empty: RowsReadAll { lines: Empty }, cons: fn(standing, p) {
+    match standing {
+      RowsReadRefused { path: _, error: _ } => standing
+      RowsReadAll { lines: acc } => {
+        let read = Filesystem.Read(path: p)
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error: e } => RowsReadRefused { path: p, error: e }
+          FilesystemReadSucceeded { content: text } =>
+            RowsReadAll { lines: fold_list(xs: split(s: text, delimiter: "\n"), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } }) }
+        }
+      }
+    }
+  })
+}
+
+// Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
+// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets, and the
+// standing -- always a hypothesis, because it is derived from hypotheses. An
+// unreadable rows file or an undecodable row refuses the whole run, located.
+fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: String) -> ProcessExit {
+  match read_row_files(paths: split(s: rows_csv, delimiter: ",")) {
+    RowsReadRefused { path: p, error: e } => exit_failure(reason: concat(concat(concat("census rows unreadable: ", p), ": "), e))
+    RowsReadAll { lines: lines } => {
+      let decls = module_declaration_facts_live(pool_roots: split(s: roots_csv, delimiter: ","))
+      match fixpoint_over_lines(lines: list_reverse(xs: lines), decls: decls) {
+        FixpointInputRefused { line: l, reason: why } => exit_failure(reason: concat(concat(concat("census row refused (", why), "): "), l))
+        FixpointComputed { outcome: outcome } => match outcome {
+          FixpointBoundExceeded { rounds: r } => exit_failure(reason: concat("the fixpoint did not stabilise within its bound of 2n + 1 rounds: ", int_text(n: r)))
+          FixpointReached { nodes: done, rounds: r } => {
+            let rows = fold_list(xs: done, empty: Cons { head: concat(concat("R\trounds\t", int_text(n: r)), "\n"), tail: Empty }, cons: fn(acc, n) {
+              if length(xs: n.targets) == 0 { acc } else {
+                Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), verdict_token(v: n.census_verdict)), "\t"), verdict_token(v: fixpoint_verdict(n: n))), "\t"), join(list_reverse(xs: n.targets), ",")), concat(concat("\t", standing_token(s: LensHypothesis)), "\n")), tail: acc }
+              }
+            })
+            let written = Filesystem.Write(path: out, content: join(list_reverse(xs: rows), ""))
+            if written.success { ExitSuccess } else { exit_failure(reason: concat("fixpoint write refused: ", written.error)) }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE LITERAL SITES (neat-boar-16's gate on #12760): every place a string LITERAL lands in a
+// structural String position of the population module -- the population's `String` reached
+// qualified, or bare in a module that imports it, or `FreeMonoid`. #12760 types a literal as host
+// text, so each such site refuses there; this entry lists them, keyed by module, declaration,
+// position and kind, for pairing with the floor's executed refusals at #12760's head. A site whose
+// position cannot be resolved is listed UNRESOLVED with its cause, never dropped.
+type LiteralPosition
+  = StructuralPosition { spelling: String }
+  | HostPosition
+  | UnresolvedPosition { cause: UnresolvedLiteralCause }
+
+type UnresolvedLiteralCause
+  = PositionalLiteralArgument { callee: String }
+  | LiteralCalleeNotImportedByName { callee: String }
+  | LiteralCalleeModuleNotInPool { module: String }
+  | LiteralCalleeModuleNotParsed { module: String, cause: SourceAnalysisNotEstablishedCause }
+  | LiteralParameterNotDeclared { at: String }
+  | FieldOwnerNotRead { owner: String }
+  | FieldNotDeclared { owner: String, field: String }
+  | SpelledOtherThanText { spelling: String }
+  | AliasChaseExhausted { spelling: String }
+  | QualifiedSpellingNotChased { spelling: String }
+  | SpellingDeclarerNotLoaded { spelling: String, module: String }
+  | CalleeModuleDeclined { module: String }
+
+fn is_population_string(spelling: String, population_module: String, declarer_imports: Bool) -> Bool {
+  (spelling == concat(population_module, ".String")) || ((spelling == "String") && declarer_imports) || (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid")
+}
+
+// What a literal-site resolution can read: the population, the kernel callees, and every module
+// the batch loaded (callees, field owners, and std.types). A second wave loading the declarer of
+// every spelled type was measured too costly to finish (every batch timed out at 7000 s), so a
+// chase that needs a module outside this set stays UNRESOLVED with the spelling named.
+// `declined` names modules the CALLER declined to load (a module whose read is known to end in
+// process death, gunbc.recurring_failure_mode sweep_terminated_by_process_death_rather_than_a_typed_refusal):
+// every resolution that needed one is listed UNRESOLVED as CalleeModuleDeclined, so the gap is
+// counted and named, never read as a judgement.
+type LiteralContext {
+  population_module: String
+  kernel: FreeMonoid<String>
+  modules: FreeMonoid<CalleeModule>
+  declined: FreeMonoid<String>
+}
+
+fn unloaded(cx: LiteralContext, module: String, otherwise: UnresolvedLiteralCause) -> LiteralPosition {
+  if member(xs: cx.declined, x: module) { UnresolvedPosition { cause: CalleeModuleDeclined { module: module } } } else { UnresolvedPosition { cause: otherwise } }
+}
+
+data kernel_types_module: String = "std.types"
+data alias_chase_fuel: Int = 6
+
+fn alias_target(walk: Walk, name: String) -> String {
+  fold_list(xs: walk.aliases, empty: "", cons: fn(acc, a) { if (acc == "") && (a.name == name) { a.spelling } else { acc } })
+}
+
+fn loaded_walk(cx: LiteralContext, module: String) -> FreeMonoid<Walk> {
+  match callee_standing(callees: cx.modules, module: module) {
+    Empty => Empty
+    Cons { head: standing, tail: _ } => match standing {
+      WalkNotEstablished { cause: _ } => Empty
+      WalkEstablished { walk: w } => Cons { head: w, tail: Empty }
+    }
+  }
+}
+
+// THE CHASE: a spelling's meaning as text is decided by the module that DECLARES it -- its own
+// alias, else the module it imports the name from, else std.types for a kernel name. A bare
+// `String` at the end is structural exactly when the declaring module imports the population's
+// String. The chase is bounded by alias_chase_fuel and by the modules the batch loaded; past
+// either it stays UNRESOLVED with the spelling named.
+fn spelling_position(cx: LiteralContext, spelling: String, declarer: Walk, fuel: Int) -> LiteralPosition {
+  if is_population_string(spelling: spelling, population_module: cx.population_module, declarer_imports: declarer.imports_text_string) {
+    StructuralPosition { spelling: spelling }
+  } else if spelling == "String" {
+    HostPosition
+  } else if fuel == 0 {
+    UnresolvedPosition { cause: AliasChaseExhausted { spelling: spelling } }
+  } else if string_contains(s: spelling, pattern: ".") {
+    UnresolvedPosition { cause: QualifiedSpellingNotChased { spelling: spelling } }
+  } else {
+    let local = alias_target(walk: declarer, name: spelling)
+    if !(local == "") {
+      spelling_position(cx: cx, spelling: local, declarer: declarer, fuel: fuel - 1)
+    } else {
+      let m = imported_module_of(imported: declarer.imported, name: spelling)
+      let source = if m == "" { kernel_types_module } else { m }
+      match loaded_walk(cx: cx, module: source) {
+        Empty => unloaded(cx: cx, module: source, otherwise: SpellingDeclarerNotLoaded { spelling: spelling, module: source })
+        Cons { head: dw, tail: _ } => {
+          let target = alias_target(walk: dw, name: spelling)
+          if target == "" { UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } } } else { spelling_position(cx: cx, spelling: target, declarer: dw, fuel: fuel - 1) }
+        }
+      }
+    }
+  }
+}
+
+fn position_of_spelling_in(cx: LiteralContext, spelling: String, declarer: Walk) -> LiteralPosition {
+  spelling_position(cx: cx, spelling: spelling, declarer: declarer, fuel: alias_chase_fuel)
+}
+
+fn field_spelling(walk: Walk, owner: String, field: String) -> String {
+  fold_list(xs: walk.field_types, empty: "", cons: fn(acc, ft) {
+    if (acc == "") && (ft.owner == owner) && (ft.field == field) { ft.spelling } else { acc }
+  })
+}
+
+fn declares_field_owner(walk: Walk, owner: String) -> Bool {
+  fold_list(xs: walk.field_types, empty: false, cons: fn(acc, ft) { acc || (ft.owner == owner) })
+}
+
+fn one(p: LiteralPosition) -> FreeMonoid<LiteralPosition> {
+  Cons { head: p, tail: Empty }
+}
+
+fn literal_position(own: Walk, cx: LiteralContext, kind: SiteKind) -> FreeMonoid<LiteralPosition> {
+  match kind {
+    LiteralAtAnnotation { spelling: s } => one(p: position_of_spelling_in(cx: cx, spelling: s, declarer: own))
+    LiteralAtReturn { spelling: s } => one(p: position_of_spelling_in(cx: cx, spelling: s, declarer: own))
+    StructuralLiteralArgument { callee: c } => one(p: StructuralPosition { spelling: concat(concat(cx.population_module, "."), c) })
+    LiteralAtField { owner: o, field: f } =>
+      if declares_field_owner(walk: own, owner: o) {
+        let s = field_spelling(walk: own, owner: o, field: f)
+        one(p: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: own) })
+      } else {
+        let m = imported_module_of(imported: own.imported, name: o)
+        match callee_standing(callees: cx.modules, module: m) {
+          Empty => one(p: unloaded(cx: cx, module: m, otherwise: FieldOwnerNotRead { owner: o }))
+          Cons { head: standing, tail: _ } => match standing {
+            WalkNotEstablished { cause: c } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: c } })
+            WalkEstablished { walk: cw } => {
+              let s = field_spelling(walk: cw, owner: o, field: f)
+              one(p: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: cw) })
+            }
+          }
+        }
+      }
+    LiteralArgument { callee: c, param: pa, module: m } =>
+      if (m == "") && member(xs: cx.kernel, x: c) {
+        one(p: HostPosition)
+      } else if pa == "" {
+        one(p: UnresolvedPosition { cause: PositionalLiteralArgument { callee: c } })
+      } else if m == "" {
+        let s = param_spelling(walk: own, callee: c, param: pa)
+        one(p: if s == "" { UnresolvedPosition { cause: LiteralCalleeNotImportedByName { callee: c } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: own) })
+      } else {
+        match callee_standing(callees: cx.modules, module: m) {
+          Empty => one(p: unloaded(cx: cx, module: m, otherwise: LiteralCalleeModuleNotInPool { module: m }))
+          Cons { head: standing, tail: _ } => match standing {
+            WalkNotEstablished { cause: k } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: k } })
+            WalkEstablished { walk: cw } => {
+              let s = param_spelling(walk: cw, callee: c, param: pa)
+              one(p: if s == "" { UnresolvedPosition { cause: LiteralParameterNotDeclared { at: concat(concat(c, "."), pa) } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: cw) })
+            }
+          }
+        }
+      }
+    _ => Empty
+  }
+}
+
+type LiteralSite {
+  decl: String
+  kind: SiteKind
+  at: Optional<Int>
+  position: LiteralPosition
+}
+
+fn literal_sites_of(own: Walk, cx: LiteralContext) -> FreeMonoid<LiteralSite> {
+  list_reverse(xs: fold_list(xs: list_reverse(xs: own.sites), empty: Empty, cons: fn(acc, s) {
+    fold_list(xs: literal_position(own: own, cx: cx, kind: s.kind), empty: acc, cons: fn(inner, pos) {
+      Cons { head: LiteralSite { decl: s.decl, kind: s.kind, at: s.at, position: pos }, tail: inner }
+    })
+  }))
+}
+
+// The modules a batch's literal sites need read: callee modules of literal arguments and the
+// declaring modules of imported field owners.
+fn literal_modules(walks: FreeMonoid<PathWalk>) -> FreeMonoid<String> {
+  fold_list(xs: walks, empty: empty_strings, cons: fn(acc, pw) {
+    match pw.standing {
+      WalkNotEstablished { cause: _ } => acc
+      WalkEstablished { walk: w } =>
+        fold_list(xs: w.sites, empty: acc, cons: fn(inner, s) {
+          let m = match s.kind {
+            LiteralArgument { callee: _, param: _, module: mm } => mm
+            LiteralAtField { owner: o, field: _ } => if declares_field_owner(walk: w, owner: o) { "" } else { imported_module_of(imported: w.imported, name: o) }
+            _ => ""
+          }
+          if (m == "") || member(xs: inner, x: m) { inner } else { Cons { head: m, tail: inner } }
+        })
+    }
+  })
+}
+
+// LINE AND COLUMN from the byte offset: the newline offsets come from the one authority,
+// v2.std.source_position source_newline_byte_offsets (a sweep over the UTF-8 octets), and one
+// merge over those and the sites (both ascending: the walk visits atoms in source order) assigns
+// each site its line. Column is the 1-based BYTE column.
+
+// Where a site sits in its source. A site with no position on the production route is a typed
+// arm and is COUNTED in its module's C row, never rendered as a plausible place.
+type SitePlace
+  = AtLineCol { line: Int, column: Int }
+  | Unpositioned
+
+type PlacedSite {
+  site: LiteralSite
+  place: SitePlace
+}
+
+fn place_token(p: SitePlace) -> String {
+  match p {
+    AtLineCol { line: l, column: c } => concat(concat(int_text(n: l), ":"), int_text(n: c))
+    Unpositioned => "UNPOSITIONED"
+  }
+}
+
+fn is_unpositioned(p: PlacedSite) -> Bool {
+  match p.place {
+    Unpositioned => true
+    _ => false
+  }
+}
+
+// The sweep is a FOLD over the newline offsets; the only recursion places the pending sites that
+// fall before the current newline, so its depth is the number of literal sites on one line, never
+// the number of lines (a per-line recursion would reproduce the native stack exhaustion the census
+// hit on large modules).
+type PlacingSweep {
+  line: Int
+  line_start: Int
+  pending: FreeMonoid<LiteralSite>
+  placed: FreeMonoid<PlacedSite>
+}
+
+fn place_at(s: LiteralSite, line: Int, line_start: Int, off: Int) -> PlacedSite {
+  PlacedSite { site: s, place: AtLineCol { line: line, column: off - line_start + 1 } }
+}
+
+fn place_before(sweep: PlacingSweep, limit: Int) -> PlacingSweep {
+  match sweep.pending {
+    Empty => sweep
+    Cons { head: s, tail: rest } => match s.at {
+      Absent => place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: PlacedSite { site: s, place: Unpositioned }, tail: sweep.placed } }, limit: limit)
+      Present { value: off } =>
+        if (limit < 0) || (off < limit) {
+          place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: place_at(s: s, line: sweep.line, line_start: sweep.line_start, off: off), tail: sweep.placed } }, limit: limit)
+        } else { sweep }
+    }
+  }
+}
+
+fn placed_sites(sites: FreeMonoid<LiteralSite>, text: String) -> FreeMonoid<PlacedSite> {
+  let swept = fold_list(xs: source_newline_byte_offsets(text: text), empty: PlacingSweep { line: 1, line_start: 0, pending: sites, placed: Empty }, cons: fn(acc, nl) {
+    let here = place_before(sweep: acc, limit: nl)
+    PlacingSweep { line: here.line + 1, line_start: nl + 1, pending: here.pending, placed: here.placed }
+  })
+  list_reverse(xs: place_before(sweep: swept, limit: -1).placed)
+}
+
+fn literal_kind_token(k: SiteKind) -> String {
+  match k {
+    LiteralAtAnnotation { spelling: _ } => "annotation"
+    LiteralAtReturn { spelling: _ } => "return"
+    LiteralAtField { owner: o, field: f } => concat(concat(concat("field\t", o), "."), f)
+    LiteralArgument { callee: c, param: pa, module: _ } => concat(concat(concat("argument\t", c), "."), pa)
+    StructuralLiteralArgument { callee: c } => concat("structural_argument\t", c)
+    _ => "other"
+  }
+}
+
+fn unresolved_cause_token(c: UnresolvedLiteralCause) -> String {
+  match c {
+    PositionalLiteralArgument { callee: x } => concat("positional_argument:", x)
+    LiteralCalleeNotImportedByName { callee: x } => concat("callee_not_imported_by_name:", x)
+    LiteralCalleeModuleNotInPool { module: m } => concat("callee_module_not_in_pool:", m)
+    LiteralCalleeModuleNotParsed { module: m, cause: k } => concat(concat(concat("callee_module_not_parsed:", m), ":"), cause_token(cause: k))
+    LiteralParameterNotDeclared { at: a } => concat("parameter_not_declared:", a)
+    FieldOwnerNotRead { owner: o } => concat("field_owner_not_read:", o)
+    FieldNotDeclared { owner: o, field: f } => concat(concat(concat("field_not_declared:", o), "."), f)
+    SpelledOtherThanText { spelling: s } => concat("spelled_other_than_text:", s)
+    AliasChaseExhausted { spelling: s } => concat("alias_chase_exhausted:", s)
+    QualifiedSpellingNotChased { spelling: s } => concat("qualified_spelling_not_chased:", s)
+    SpellingDeclarerNotLoaded { spelling: s, module: m } => concat(concat(concat("spelling_declarer_not_loaded:", s), ":"), m)
+    CalleeModuleDeclined { module: m } => concat("callee_module_declined:", m)
+  }
+}
+
+fn position_token(p: LiteralPosition) -> String {
+  match p {
+    StructuralPosition { spelling: s } => concat("STRUCTURAL:", s)
+    HostPosition => "HOST"
+    UnresolvedPosition { cause: c } => concat("UNRESOLVED:", unresolved_cause_token(c: c))
+  }
+}
+
+fn is_listed_position(p: LiteralPosition) -> Bool {
+  match p {
+    HostPosition => false
+    _ => true
+  }
+}
+
+fn count_positions(sites: FreeMonoid<LiteralSite>, pred: fn(LiteralPosition) -> Bool) -> Int {
+  fold_list(xs: sites, empty: 0, cons: fn(acc, s) { if pred(s.position) { acc + 1 } else { acc } })
+}
+
+fn position_is_structural(p: LiteralPosition) -> Bool {
+  match p {
+    StructuralPosition { spelling: _ } => true
+    _ => false
+  }
+}
+
+fn position_is_unresolved(p: LiteralPosition) -> Bool {
+  match p {
+    UnresolvedPosition { cause: _ } => true
+    _ => false
+  }
+}
+
+// One module's rows: `C` with the counts (structural, unresolved, host -- the host count is the
+// decided remainder, so the three partition the module's literal positions -- then how many LISTED
+// sites carry no position, which a pairing by position cannot use), then one `L` row per
+// STRUCTURAL or UNRESOLVED site: path, declaration, line:col, kind (and its operand), position.
+fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>, declined: FreeMonoid<String>) -> FreeMonoid<String> {
+  let cx = LiteralContext { population_module: r.population_module, kernel: r.kernel, modules: callees, declined: declined }
+  match standing {
+    RawTreeNotEstablished { cause: c } => Cons { head: concat(concat(concat("C\t", path), "\tNOT_ESTABLISHED:"), concat(cause_token(cause: c), "\n")), tail: Empty }
+    RawTreeEstablished { root: root, spans: spans, text: text } => {
+      let w = walk_tree(root: root, spans: spans, r: r)
+      let sites = literal_sites_of(own: w, cx: cx)
+      let placed = placed_sites(sites: sites, text: text)
+      let unpositioned = fold_list(xs: placed, empty: 0, cons: fn(acc, ps) { if is_listed_position(p: ps.site.position) && is_unpositioned(p: ps) { acc + 1 } else { acc } })
+      let header = concat(concat("C\t", path), concat(concat(concat(concat(concat(concat(concat(concat("\t", int_text(n: count_positions(sites: sites, pred: position_is_structural))), "\t"), int_text(n: count_positions(sites: sites, pred: position_is_unresolved))), "\t"), int_text(n: length(xs: sites) - count_positions(sites: sites, pred: is_listed_position))), "\t"), int_text(n: unpositioned)), "\n"))
+      list_reverse(xs: fold_list(xs: placed, empty: Cons { head: header, tail: Empty }, cons: fn(acc, ps) {
+        if !is_listed_position(p: ps.site.position) { acc } else {
+          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat(concat("L\t", path), "\t"), ps.site.decl), "\t"), place_token(p: ps.place)), "\t"), literal_kind_token(k: ps.site.kind)), "\t"), concat(position_token(p: ps.site.position), "\n")), tail: acc }
+        }
+      }))
+    }
+  }
+}
+
+type PathTree {
+  path: String
+  standing: RawTreeStanding
+  walk: WalkStanding
+}
+
+// THE ENTRY neat-ibex-696 cites on #12760: literal-at-structural sites for one batch of the
+// population of `population_module`, callee modules read from `roots_csv`. Only STRUCTURAL and
+// UNRESOLVED positions are listed; host positions are counted in each module's `C` row.
+// `declined_csv` names modules (comma-separated, may be empty) the caller declines to load; see
+// LiteralContext.
+fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv: String, population_module: String, declined_csv: String) -> ProcessExit {
+  let declined = fold_list(xs: split(s: declined_csv, delimiter: ","), empty: empty_strings, cons: fn(acc, m) { if m == "" { acc } else { Cons { head: m, tail: acc } } })
+  let roots = split(s: roots_csv, delimiter: ",")
+  match rosters(population_module: population_module, roots: roots) {
+    RostersRefused { reason: reason } => exit_failure(reason: reason)
+    RostersEstablished { rosters: r } => {
+      let trees = list_reverse(xs: fold_list(xs: split(s: paths_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
+        let standing = raw_tree(path: p)
+        let walk = match standing {
+          RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+          RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: r) }
+        }
+        Cons { head: PathTree { path: p, standing: standing, walk: walk }, tail: acc }
+      }))
+      let walks = fold_list(xs: list_reverse(xs: trees), empty: Empty, cons: fn(acc, pt) { Cons { head: PathWalk { path: pt.path, standing: pt.walk }, tail: acc } })
+      let wave1_names = Cons { head: kernel_types_module, tail: literal_modules(walks: walks) }
+      let wave1 = callee_modules(modules: fold_list(xs: wave1_names, empty: empty_strings, cons: fn(acc, m) { if member(xs: declined, x: m) { acc } else { Cons { head: m, tail: acc } } }), r: r, roots: roots)
+      let callees = wave1
+      let lines = fold_list(xs: trees, empty: Empty, cons: fn(acc, pt) {
+        fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees, declined: declined), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
+      })
+      let written = Filesystem.Write(path: out, content: lines_text(lines: list_reverse(xs: lines)))
+      if written.success { ExitSuccess } else { exit_failure(reason: concat("literal-site write refused: ", written.error)) }
+    }
+  }
+}

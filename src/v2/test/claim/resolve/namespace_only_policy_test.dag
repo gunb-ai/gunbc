@@ -1,7 +1,9 @@
 module v2.test.resolve.namespace_only_policy
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
+  NotDeclaring,
   ResolveContext,
   Namespace,
   empty_canonical_symbol_set,
@@ -10,8 +12,7 @@ import v2.compiler.resolve {
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.node {
   Atom,
   Node,
@@ -44,7 +45,10 @@ fn policy_pilot_namespace_with_index(
     bindings: empty_map(),
     canonical_symbols: empty_canonical_symbol_set(),
     symbol_index: symbol_index,
-    module_qn: module_qn
+    module_qn: module_qn,
+    test_code: test_code_index_empty(),
+    declared_in: module_qn,
+    imported_origins: empty_map()
   }
 }
 
@@ -70,11 +74,13 @@ fn policy_pilot_resolve(
   match resolve_atom(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,
       position: position,
       lm: dag_language_model(),
-      under_module_root: true
+      under_module_root: true,
+      declaring: NotDeclaring
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
@@ -112,17 +118,19 @@ fn policy_pilot_resolve_rejects_with_reason(
   match resolve_atom(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,
       position: position,
       lm: dag_language_model(),
-      under_module_root: true
+      under_module_root: true,
+      declaring: NotDeclaring
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == reason
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
 }
 

@@ -1,0 +1,398 @@
+module gunbc.auth.profile_projection
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Timestamp, Email }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_listing_entry_names,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_file_observation,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded,
+}
+import extdeps.languages.json.emit {
+  serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string, json_document_gap_text,
+  JsonDocumentUnreadable, JsonDocumentParsed, FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.uri { Uri, Https, Http, uri_wire }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthProfiles }
+import gunbc.auth.session { AuthenticatedSession }
+
+// THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
+// C4.2): a durable, revisioned per-principal profile record — name, email, picture — with one
+// declared producer today (a completed Google login, the moment the verified ID token's claims
+// are in hand) and the Directory source as the named later producer for principals who never
+// log in. THE PRINCIPAL STAYS THE ONLY IDENTITY: every member is presentation, and the
+// never-blocks law holds end to end — an absent, unreadable, or malformed profile never
+// refuses authentication, authorization, or rendering; the initials/principal-short-form
+// fallback renders instead. THE UPSERT IS A MERGE, never an overwrite: a login whose token
+// omitted a member RETAINS the previously observed value (PhotoNotReturned is not
+// AccountHasNoPhoto — omission is never stored as absence), present members supersede, and
+// updated_at always advances. THE RETENTION POLICY for revoked access is a named follow-up
+// (C4.4's directory refresh); today the projection keeps the last observed members and says
+// so.
+
+type ProfileSource
+  = | ProfileSourceGoogleOidcLogin
+
+type PrincipalProfile {
+  principal: PrincipalRef
+  name: String?
+  email: Email?
+  picture: Uri?
+  updated_at: Timestamp
+  source: ProfileSource
+}
+
+type ProfileStoreLayout {
+  root: FilePath
+}
+
+fn profile_store_layout_for_instance(instance: HostDashboardInstance) -> ProfileStoreLayout {
+  ProfileStoreLayout {
+    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthProfiles),
+  }
+}
+
+// THE FILE NAME is the sha256 of the principal's ruling label: deterministic and
+// filesystem-safe (the label itself carries ':' and '/').
+fn profile_store_file_name(digest_hex: String) -> String {
+  join([digest_hex, ".json"], "")
+}
+
+data profile_file_schema: String = "gunbc-auth-profile/v1"
+
+fn profile_source_label(source: ProfileSource) -> String {
+  match source {
+    ProfileSourceGoogleOidcLogin => "google-oidc-login"
+  }
+}
+
+// THE DURABLE SPELLING: the principal rides its ruling label; the three profile members ride
+// as OPTIONAL members under the session codec's law — absence is the member's ABSENCE, never
+// an empty string standing in for none.
+fn principal_profile_json(profile: PrincipalProfile) -> String {
+  serialize_json(v: json_object(members: concat(concat([
+    json_kv(key: "schema", value: json_string(s: profile_file_schema)),
+    json_kv(key: "principal", value: json_string(s: principal_ref_label(p: profile.principal))),
+    json_kv(key: "updated_at", value: json_string(s: profile.updated_at)),
+    json_kv(key: "source", value: json_string(s: profile_source_label(source: profile.source))),
+  ], profile_name_members(name: profile.name)), concat(profile_email_members(email: profile.email), profile_picture_members(picture: profile.picture)))))
+}
+
+fn profile_name_members(name: String?) -> List<JsonKeyValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
+fn profile_email_members(email: Email?) -> List<JsonKeyValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
+    Absent => []
+  }
+}
+
+fn profile_picture_members(picture: Uri?) -> List<JsonKeyValue> {
+  match picture {
+    Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
+type ProfileFileDecode
+  = ProfileFileDecoded { profile: PrincipalProfile }
+  | ProfileFileMalformed { detail: String }
+
+// THE DECODE: schema, principal (label-parsed), updated_at, and source are required; the three
+// profile members are three-valued OPTIONAL — absent decodes none, present-but-wrong-shape
+// refuses with the member named, so a hand-edited or future file refuses loudly rather than
+// minting a partial profile.
+fn principal_profile_of_json(text: String) -> ProfileFileDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } =>
+      ProfileFileMalformed { detail: concat("the profile file is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match json_field_string(obj: doc, key: "schema") {
+        FieldAbsent => ProfileFileMalformed { detail: "member schema is absent" }
+        FieldMalformed { cause: c } => ProfileFileMalformed { detail: concat("member schema refused: ", c) }
+        FieldRead { value: schema } =>
+          if schema != profile_file_schema {
+            ProfileFileMalformed { detail: join(["member schema is \"", schema, "\", not \"", profile_file_schema, "\""], "") }
+          } else {
+            profile_file_decode_body(doc: doc)
+          }
+      }
+  }
+}
+
+fn profile_file_decode_body(doc: JsonValue) -> ProfileFileDecode {
+  match profile_required_string(doc: doc, key: "principal") {
+    ProfileFieldMalformed { detail: d } => ProfileFileMalformed { detail: d }
+    ProfileFieldRead { value: label } =>
+      match profile_required_string(doc: doc, key: "updated_at") {
+        ProfileFieldMalformed { detail: d } => ProfileFileMalformed { detail: d }
+        ProfileFieldRead { value: updated } =>
+          match profile_required_string(doc: doc, key: "source") {
+            ProfileFieldMalformed { detail: d } => ProfileFileMalformed { detail: d }
+            ProfileFieldRead { value: source } =>
+              if source != "google-oidc-login" {
+                ProfileFileMalformed { detail: join(["member source is \"", source, "\", not the admitted \"google-oidc-login\""], "") }
+              } else {
+                match principal_ref_parse_label(s: label) {
+                  Absent => ProfileFileMalformed { detail: join(["member principal \"", label, "\" is not the principal label spelling"], "") }
+                  Present { value: p } =>
+                    match profile_optional_string_of(doc: doc, key: "name") {
+                      ProfileOptionalMalformed { detail: d } => ProfileFileMalformed { detail: d }
+                      ProfileOptionalRead { value: nm } =>
+                        match profile_optional_string_of(doc: doc, key: "email") {
+                          ProfileOptionalMalformed { detail: d } => ProfileFileMalformed { detail: d }
+                          ProfileOptionalRead { value: em } =>
+                            match profile_optional_picture_of(doc: doc) {
+                              ProfileOptionalPictureMalformed { detail: d } => ProfileFileMalformed { detail: d }
+                              ProfileOptionalPictureRead { picture: pic } =>
+                                ProfileFileDecoded {
+                                  profile: PrincipalProfile {
+                                    principal: p,
+                                    name: nm,
+                                    email: match em {
+                                      Present { value: e } => Present { value: e as Email }
+                                      Absent => none
+                                    },
+                                    picture: pic,
+                                    updated_at: updated,
+                                    source: ProfileSourceGoogleOidcLogin,
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+type ProfileField
+  = ProfileFieldRead { value: String }
+  | ProfileFieldMalformed { detail: String }
+
+fn profile_required_string(doc: JsonValue, key: String) -> ProfileField {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => ProfileFieldMalformed { detail: join(["member ", key, " is absent"], "") }
+    FieldMalformed { cause: c } => ProfileFieldMalformed { detail: join(["member ", key, " refused: ", c], "") }
+    FieldRead { value: v } =>
+      if v == "" {
+        ProfileFieldMalformed { detail: join(["member ", key, " is empty"], "") }
+      } else {
+        ProfileFieldRead { value: v }
+      }
+  }
+}
+
+type ProfileOptional
+  = ProfileOptionalRead { value: String? }
+  | ProfileOptionalMalformed { detail: String }
+
+fn profile_optional_string_of(doc: JsonValue, key: String) -> ProfileOptional {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => ProfileOptionalRead { value: none }
+    FieldMalformed { cause: c } => ProfileOptionalMalformed { detail: join(["member ", key, " refused: ", c], "") }
+    FieldRead { value: v } =>
+      if v == "" {
+        ProfileOptionalMalformed { detail: join(["member ", key, " is present but empty"], "") }
+      } else {
+        ProfileOptionalRead { value: Present { value: v } }
+      }
+  }
+}
+
+// THE PICTURE MEMBER keeps the session codec's admission: only the http/https Uri spellings.
+type ProfileOptionalPicture
+  = ProfileOptionalPictureRead { picture: Uri? }
+  | ProfileOptionalPictureMalformed { detail: String }
+
+fn profile_optional_picture_of(doc: JsonValue) -> ProfileOptionalPicture {
+  match json_field_string(obj: doc, key: "picture") {
+    FieldAbsent => ProfileOptionalPictureRead { picture: none }
+    FieldMalformed { cause: c } => ProfileOptionalPictureMalformed { detail: join(["member picture refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if starts_with(s: raw, prefix: "https://") {
+        ProfileOptionalPictureRead {
+          picture: Present { value: Uri { scheme: Https, locator: substring(s: raw, start: 8, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else if starts_with(s: raw, prefix: "http://") {
+        ProfileOptionalPictureRead {
+          picture: Present { value: Uri { scheme: Http, locator: substring(s: raw, start: 7, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else {
+        ProfileOptionalPictureMalformed { detail: "member picture is present but is not an http/https Uri spelling" }
+      }
+  }
+}
+
+// ── The store operations ───────────────────────────────────────────────────────────────────────
+
+type ProfileStoreUpsert
+  = ProfileStoreUpserted { principal: PrincipalRef }
+  | ProfileStoreUpsertRefused { step: String, reason: String }
+
+// THE UPSERT, merge-retain: the seated session's profile members contribute what they carry;
+// an absent member RETAINS the stored observation (omission is not absence); updated_at
+// advances to the session's authenticated_at. A prior file that exists but is unreadable or
+// malformed REFUSES the upsert with the step named — the projection never clobbers an
+// observation it cannot read — and the login that produced the session is never touched.
+fn profile_store_upsert_from_session(layout: ProfileStoreLayout, session: AuthenticatedSession) -> ProfileStoreUpsert {
+  let label = principal_ref_label(p: session.principal)
+  match sha256sum_stdin_digest_via_shell(content: label) {
+    Sha256FileDigestUnavailable { path: _, reason: r } =>
+      ProfileStoreUpsertRefused { step: "digest", reason: r }
+    Sha256FileDigest { digest: d } =>
+      let name = profile_store_file_name(digest_hex: d.hex as String)
+      let path = join([layout.root as String, "/", name], "")
+      let listing_result = Filesystem.List(path: layout.root as String)
+      let listing = filesystem_listing_observation(
+        directory: layout.root as String,
+        success: listing_result.success,
+        entries: listing_result.entries,
+        error: listing_result.error,
+      )
+      let read_result = Filesystem.Read(path: path)
+      let observation = filesystem_file_observation(
+        listing: listing,
+        name: name,
+        path: path,
+        read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+      )
+      match observation {
+        FilesystemFileIndeterminate { cause: c } =>
+          ProfileStoreUpsertRefused { step: "read", reason: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } =>
+          ProfileStoreUpsertRefused { step: "read", reason: c }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+          ProfileStoreUpsertRefused { step: "read", reason: c }
+        FilesystemFileAbsent(absence) =>
+          profile_store_upsert_write(path: path, session: session, prior: none)
+        FilesystemFileRead { path: _, content: c } =>
+          match principal_profile_of_json(text: c) {
+            ProfileFileMalformed { detail: d2 } =>
+              ProfileStoreUpsertRefused { step: "decode", reason: d2 }
+            ProfileFileDecoded { profile: prior } =>
+              profile_store_upsert_write(path: path, session: session, prior: Present { value: prior })
+          }
+      }
+  }
+}
+
+fn profile_store_upsert_write(path: String, session: AuthenticatedSession, prior: PrincipalProfile?) -> ProfileStoreUpsert {
+  let merged = PrincipalProfile {
+    principal: session.principal,
+    name: match session.profile.name {
+      Present { value: n } => Present { value: n }
+      Absent => match prior {
+        Present { value: p } => p.name
+        Absent => none
+      }
+    },
+    email: match session.profile.email {
+      Present { value: e } => Present { value: e }
+      Absent => match prior {
+        Present { value: p } => p.email
+        Absent => none
+      }
+    },
+    picture: match session.profile.picture {
+      Present { value: u } => Present { value: u }
+      Absent => match prior {
+        Present { value: p } => p.picture
+        Absent => none
+      }
+    },
+    updated_at: session.authenticated_at,
+    source: ProfileSourceGoogleOidcLogin,
+  }
+  let written = Filesystem.WriteOwnerOnly(path: path, content: principal_profile_json(profile: merged))
+  if written.success {
+    ProfileStoreUpserted { principal: session.principal }
+  } else {
+    ProfileStoreUpsertRefused { step: "write", reason: written.error }
+  }
+}
+
+// A SKIPPED ENTRY, NAMED: the never-blocks law still holds (one malformed file must not blank the
+// picker), but the skip is now carried as data with its reason instead of being erased -- a
+// missing-looking avatar must be distinguishable from a profile nobody published (review Cut B).
+type ProfileStoreSkipped {
+  entry: String
+  reason: String
+}
+
+type ProfileStoreReadAll
+  = ProfileStoreRead { profiles: List<PrincipalProfile>, skipped: List<ProfileStoreSkipped> }
+  | ProfileStoreUnread { step: String, reason: String }
+
+// THE READ-ALL, the picker roster's source: every decodable profile file in the store. A file
+// that will not decode is SKIPPED, not fatal — one hand-edited file must not blank the
+// assignee picker (the never-blocks law at the read side; the malformed file stays on disk for
+// inspection).
+fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
+  let listing_result = Filesystem.List(path: layout.root as String)
+  match filesystem_listing_observation(directory: layout.root as String, success: listing_result.success, entries: listing_result.entries, error: listing_result.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnread { step: "list", reason: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnread { step: "list", reason: e }
+    FilesystemDirectoryListed(listing) => {
+      let decoded = profile_store_decode_entries(layout: layout, entries: filesystem_listing_entry_names(listing: listing), acc: [], skipped_acc: [])
+      ProfileStoreRead {
+        profiles: decoded.profiles,
+        skipped: decoded.skipped,
+      }
+    }
+  }
+}
+
+fn profile_store_decode_entries(
+  layout: ProfileStoreLayout,
+  entries: List<String>,
+  acc: List<PrincipalProfile>,
+  skipped_acc: List<ProfileStoreSkipped>,
+) -> { profiles: List<PrincipalProfile>, skipped: List<ProfileStoreSkipped> } {
+  match entries.first() {
+    Absent => {
+      let done = { profiles: acc, skipped: skipped_acc }
+      done
+    }
+    Present { value: entry } =>
+      let stepped = if !ends_with(s: entry, suffix: ".json") {
+        { profiles: acc, skipped: skipped_acc }
+      } else {
+        let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
+        match filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error) {
+          FilesystemReadRefused { error } => {
+            let refused_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
+            refused_file
+          }
+          FilesystemReadSucceeded { content } =>
+            match principal_profile_of_json(text: content) {
+              ProfileFileMalformed { detail } => {
+                let skipped_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
+                skipped_file
+              }
+              ProfileFileDecoded { profile: p } => {
+                let decoded_file = { profiles: concat(acc, [p]), skipped: skipped_acc }
+                decoded_file
+              }
+            }
+        }
+      }
+      profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: stepped.profiles, skipped_acc: stepped.skipped)
+  }
+}

@@ -17,7 +17,6 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
-pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -26,7 +25,7 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
@@ -66,6 +65,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
@@ -361,10 +361,7 @@ pub fn emit_simple_expr(
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
                                 Some(VarBindingKind::MatchBoundBinding) => false,
-                                Some(VarBindingKind::VariantValueBinding {
-                                    parent_enum: _,
-                                    ..
-                                }) => false,
+                                Some(VarBindingKind::VariantValueBinding { .. }) => false,
                                 _ => true,
                             },
                             _ => false,
@@ -399,7 +396,10 @@ pub fn emit_simple_expr(
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -450,23 +450,7 @@ pub fn emit_simple_expr(
                     let field_strs = Rc::new({
                         let mut __result = Vec::new();
                         for f in expr.children.clone().iter().cloned() {
-                            __result.push(v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "\"".to_string(),
-                                        crate::v1_std_core::field_init_node_name_at(
-                                            f.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    ),
-                                    "\": ".to_string(),
-                                ),
-                                emit_simple_expr(
-                                    crate::v1_std_core::field_init_node_value(f.clone()),
-                                    target.clone(),
-                                    source_indices.clone(),
-                                ),
-                            ));
+                            __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone()))), "\": ".to_string()), emit_simple_expr(crate::v1_std_core::field_init_node_value(f.clone()), target.clone(), source_indices.clone())));
                         }
                         __result
                     });
@@ -638,6 +622,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
     })
 }
 
@@ -657,6 +642,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
     })
 }
 
@@ -1350,8 +1336,7 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
             Some(dir) => dir.clone(),
             std::option::Option::None => "".to_string(),
         };
-        let filename =
-            crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
+        let filename = crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -2609,6 +2594,8 @@ pub enum FileVerb {
     FileWrite,
     FileWriteOwnerOnly,
     FileWriteCreateNew,
+    FileWriteCreateNewWithMode,
+    FileLinkCreateNew,
     FileDelete,
     FileList,
 }
@@ -2722,7 +2709,15 @@ pub fn bind_file_verb(
                     if (v.clone() == file_transport_verb_write_create_new()) {
                         FileVerb::FileWriteCreateNew
                     } else {
-                        FileVerb::FileWriteOwnerOnly
+                        if (v.clone() == file_transport_verb_write_create_new_with_mode()) {
+                            FileVerb::FileWriteCreateNewWithMode
+                        } else {
+                            if (v.clone() == file_transport_verb_link_create_new()) {
+                                FileVerb::FileLinkCreateNew
+                            } else {
+                                FileVerb::FileWriteOwnerOnly
+                            }
+                        }
                     }
                 }
             }
@@ -3183,7 +3178,7 @@ pub fn emit_unified_operation_method(
             bound.clone(),
             op_text.clone(),
             si.clone(),
-            (method_depth.clone() + 1),
+            v1_rt::int_add(method_depth.clone(), 1),
         );
         let sig = v1_rt::concat(
             v1_rt::concat(
@@ -3214,7 +3209,10 @@ pub fn emit_unified_operation_method(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(sig.clone(), spec.block_syntax.clone().block_open.clone()),
-                    crate::v1_compiler_emit_core_support::make_indent((method_depth.clone() + 1)),
+                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                        method_depth.clone(),
+                        1,
+                    )),
                 ),
                 body.clone(),
             )
@@ -3481,7 +3479,7 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
                 .clone()
                 .iter()
                 .cloned()
-                .take(((stmts.clone().len() as i64) - 1) as usize)
+                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
                 .collect::<Vec<_>>(),
         )
     }
@@ -3761,7 +3759,10 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> Str
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()),
-                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                        depth.clone(),
+                        1,
+                    )),
                 ),
                 inner.clone(),
             )
@@ -3771,7 +3772,10 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> Str
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()),
-                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                depth.clone(),
+                                1,
+                            )),
                         ),
                         inner.clone(),
                     ),
@@ -3844,8 +3848,11 @@ pub fn shared_tco_if(
                 let t = crate::v1_std_core::if_then_branch(frame.expr.clone());
                 let e = crate::v1_std_core::if_else_branch(frame.expr.clone());
                 let cond_str = recurse_expr(c.clone(), frame.scope.clone(), frame.depth.clone());
-                let then_str =
-                    recurse_tco(t.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+                let then_str = recurse_tco(
+                    t.clone(),
+                    frame.scope.clone(),
+                    v1_rt::int_add(frame.depth.clone(), 1),
+                );
                 let else_prefix = if syntax.significant_whitespace.clone() {
                     crate::v1_compiler_emit_core_support::make_indent(frame.depth.clone())
                 } else {
@@ -3853,12 +3860,15 @@ pub fn shared_tco_if(
                 };
                 match e.clone() {
                     Some(eb) => {
-                        let else_str =
-                            recurse_tco(eb.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+                        let else_str = recurse_tco(
+                            eb.clone(),
+                            frame.scope.clone(),
+                            v1_rt::int_add(frame.depth.clone(), 1),
+                        );
                         if syntax.significant_whitespace.clone() {
-                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), then_str.clone()), "\n".to_string()), else_prefix.clone()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), else_str.clone())
+                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), then_str.clone()), "\n".to_string()), else_prefix.clone()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), else_str.clone())
                         } else {
-                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), then_str.clone()), "\n".to_string()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), else_str.clone()), "\n".to_string()), syntax.block_close.clone())
+                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), then_str.clone()), "\n".to_string()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), else_str.clone()), "\n".to_string()), syntax.block_close.clone())
                         }
                     }
                     std::option::Option::None => {
@@ -3870,7 +3880,7 @@ pub fn shared_tco_if(
                                         syntax.block_open.clone(),
                                     ),
                                     crate::v1_compiler_emit_core_support::make_indent(
-                                        (frame.depth.clone() + 1),
+                                        v1_rt::int_add(frame.depth.clone(), 1),
                                     ),
                                 ),
                                 then_str.clone(),
@@ -3885,7 +3895,7 @@ pub fn shared_tco_if(
                                                 syntax.block_open.clone(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
-                                                (frame.depth.clone() + 1),
+                                                v1_rt::int_add(frame.depth.clone(), 1),
                                             ),
                                         ),
                                         then_str.clone(),
@@ -4174,7 +4184,7 @@ pub fn emit_unified_tco_body(
             Rc::new(TcoFrame {
                 expr: texpr.clone(),
                 scope: scope.clone(),
-                depth: (depth.clone() + 1),
+                depth: v1_rt::int_add(depth.clone(), 1),
             }),
             fn_name.clone(),
             params.clone(),
@@ -4245,8 +4255,8 @@ pub fn emit_tco_match_go(
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
             .block_syntax
             .clone();
-        let case_depth = (depth.clone() + 1);
-        let body_depth = (case_depth.clone() + 1);
+        let case_depth = v1_rt::int_add(depth.clone(), 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
@@ -4442,11 +4452,11 @@ pub fn emit_unified_tco_match_arm(
             .block_syntax
             .clone();
         let case_depth = if bs.significant_whitespace.clone() {
-            (depth.clone() + 1)
+            v1_rt::int_add(depth.clone(), 1)
         } else {
             depth.clone()
         };
-        let body_depth = (case_depth.clone() + 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
             emit_unified_typed_expr(
                 g.clone(),
@@ -4830,13 +4840,17 @@ pub fn suffix_escape_collides_with_reserved_chain(
         } else {
             if (v1_rt::substring(
                 &name,
-                (name_len.clone() - suffix_len.clone()),
+                v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
                 name_len.clone(),
             ) != suffix.clone())
             {
                 break false;
             } else {
-                let base = v1_rt::substring(&name, 0, (name_len.clone() - suffix_len.clone()));
+                let base = v1_rt::substring(
+                    &name,
+                    0,
+                    v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
+                );
                 if {
                     let mut __found = false;
                     for r in keywords.iter().cloned() {
@@ -4896,9 +4910,9 @@ pub fn emit_suffix_escape_ident(
 
 pub fn hex_digit_char(d: i64) -> String {
     if (d.clone() < 10) {
-        v1_rt::from_code_point((48 + d.clone()))
+        v1_rt::from_code_point(v1_rt::int_add(48, d.clone()))
     } else {
-        v1_rt::from_code_point((55 + d.clone()))
+        v1_rt::from_code_point(v1_rt::int_add(55, d.clone()))
     }
 }
 
@@ -4912,8 +4926,8 @@ pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String)
             break acc.clone();
         } else {
             {
-                let __tco_0 = (n.clone() / 16);
-                let __tco_1 = v1_rt::concat(hex_digit_char((n.clone() % 16)), acc);
+                let __tco_0 = v1_rt::int_div(n.clone(), 16);
+                let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
                 __tco_loop_n = __tco_0;
                 __tco_loop_acc = __tco_1;
                 continue;
@@ -4969,7 +4983,7 @@ pub fn escape_emoji_codepoints_inner(
             };
             {
                 let __tco_0 = s;
-                let __tco_1 = (pos + 1);
+                let __tco_1 = v1_rt::int_add(pos, 1);
                 let __tco_2 = n;
                 let __tco_3 = next_acc.clone();
                 let __tco_4 = prefix;
@@ -5232,7 +5246,7 @@ pub fn child_from_key(
         .clone()
         {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5270,6 +5284,8 @@ pub enum FileEmissionRefusal {
     FileVerbNotModeled { verb: String },
     FilePathNotStaticallyRenderable,
     FileWriteMissingContentInput { verb: String },
+    FileWriteMissingModeInput { verb: String },
+    FileLinkMissingSourceInput { verb: String },
     FileOutputKeyNotModeled { key: String },
     FileOutputShapeNotModeled,
 }
@@ -5277,9 +5293,11 @@ pub enum FileEmissionRefusal {
 pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
     match (*refusal.clone()).clone() {
     FileEmissionRefusal::FileTargetNotModeled { target_name: t, .. } => v1_rt::concat(v1_rt::concat("file transport emission is modeled for the rust target only; target '".to_string(), t.clone()), "' has no file realization handler, so no operation carrying `transport file` is emitted for it".to_string()),
-    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only and write_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
+    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only, write_create_new, write_create_new_with_mode and link_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
     FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
     FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
+    FileEmissionRefusal::FileWriteMissingModeInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' publishes with a declared mode, and the operation declares no `mode` input -- the mode is the caller's modeled fact, never a value the emitter may invent".to_string()),
+    FileEmissionRefusal::FileLinkMissingSourceInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' links an existing file under a new name, and the operation declares no `source` input -- the file being linked is an input to the operation, never a path the emitter may invent".to_string()),
     FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries".to_string()),
     FileEmissionRefusal::FileOutputShapeNotModeled => "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering".to_string(),
 }
@@ -5289,6 +5307,15 @@ pub fn file_transport_verb_delete() -> String {
     thread_local! {
         static CACHED: String = {
             "delete".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_verb_link_create_new() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "link_create_new".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -5321,6 +5348,15 @@ pub fn file_transport_verb_write_create_new() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn file_transport_verb_write_create_new_with_mode() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "write_create_new_with_mode".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_transport_declared_verb(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5328,7 +5364,7 @@ pub fn file_transport_declared_verb(
     match crate::v1_std_core::transport_verb(t.clone(), source_indices.clone()) {
         Some(v) => match (*v.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5341,15 +5377,16 @@ pub fn file_transport_declared_verb(
     }
 }
 
-pub fn file_operation_has_content_input(
+pub fn file_operation_has_input(
     op_node: Rc<Node>,
+    name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for p in op_node.params.clone().iter().cloned() {
             if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
-                == "content".to_string())
+                == name.clone())
             {
                 __found = true;
                 break;
@@ -5357,6 +5394,17 @@ pub fn file_operation_has_content_input(
         }
         __found
     }
+}
+
+pub fn file_operation_has_content_input(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    file_operation_has_input(
+        op_node.clone(),
+        "content".to_string(),
+        source_indices.clone(),
+    )
 }
 
 pub fn is_modeled_file_output_channel(key: String) -> bool {
@@ -5412,7 +5460,7 @@ pub fn file_transport_path_is_renderable(
     match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
         Some(p) => match (*p.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -5449,9 +5497,46 @@ pub fn file_emission_verb_refusal(
                         }))
                     }
                 } else {
-                    Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
-                        verb: v.clone(),
-                    }))
+                    if (v.clone() == file_transport_verb_link_create_new()) {
+                        if file_operation_has_input(
+                            op_node.clone(),
+                            "source".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            std::option::Option::None
+                        } else {
+                            Some(Rc::new(FileEmissionRefusal::FileLinkMissingSourceInput {
+                                verb: v.clone(),
+                            }))
+                        }
+                    } else {
+                        if (v.clone() == file_transport_verb_write_create_new_with_mode()) {
+                            if !file_operation_has_content_input(
+                                op_node.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(Rc::new(FileEmissionRefusal::FileWriteMissingContentInput {
+                                    verb: v.clone(),
+                                }))
+                            } else {
+                                if !file_operation_has_input(
+                                    op_node.clone(),
+                                    "mode".to_string(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(Rc::new(FileEmissionRefusal::FileWriteMissingModeInput {
+                                        verb: v.clone(),
+                                    }))
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                        } else {
+                            Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
+                                verb: v.clone(),
+                            }))
+                        }
+                    }
                 }
             }
         }
@@ -5767,6 +5852,169 @@ pub fn unmodeled_file_transport_diagnostics(
     }
 }
 
+pub fn target_realizes_rest_result(target: RenderTarget) -> bool {
+    match target.clone() {
+        RenderTarget::Rust => true,
+        RenderTarget::Python => false,
+        RenderTarget::Go => false,
+        RenderTarget::Dag => false,
+    }
+}
+
+pub fn rest_result_not_realized_fact(target: RenderTarget) -> String {
+    v1_rt::concat(v1_rt::concat("the ".to_string(), render_target_name(target.clone())), " target has no realization of extdeps.transports.rest RestResult: a rest operation's answered and refused arms are lowered only by the rust renderer".to_string())
+}
+
+pub fn rest_result_module_in_closure(typed: Rc<ResolvedGraph>) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed.modules.clone().iter().cloned() {
+            if (crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                == "extdeps.transports.rest".to_string())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rest_emission_refusal_fact(
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Option<String> {
+    if !target_realizes_rest_result(target.clone()) {
+        Some(rest_result_not_realized_fact(target.clone()))
+    } else {
+        if !result_module_in_closure.clone() {
+            Some("extdeps.transports.rest is not in the emitted closure, so the operation's RestResult has no emitted declaration: import RestResult from extdeps.transports.rest in the module that declares this service".to_string())
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn unmodeled_rest_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name =
+            crate::v1_compiler_infer_env::authored_name(env.clone(), tm.module.clone());
+        let service_name = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let t = effective_operation_transport(op_node.clone(), fallback.clone());
+                        match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
+                            Some(TransportKind::RestTransport) => match rest_emission_refusal_fact(
+                                target.clone(),
+                                result_module_in_closure.clone(),
+                            ) {
+                                Some(fact) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "rest".to_string(),
+                                        service: service_name.clone(),
+                                        operation: crate::v1_compiler_infer_env::authored_name(
+                                            env.clone(),
+                                            op_node.clone(),
+                                        ),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: fact.clone(),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                            _ => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_rest_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => {
+            let in_closure = rest_result_module_in_closure(typed.clone());
+            Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    __result.extend(
+                        (*Rc::new({
+                            let mut __result = Vec::new();
+                            for item in Rc::new({
+                                let mut __result = Vec::new();
+                                for item in tm.items.clone().iter().cloned() {
+                                    if (item.module_item_kind.clone()
+                                        == ParsedModuleItemKind::ModuleItemService)
+                                    {
+                                        __result.push(item);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.extend(
+                                    (*unmodeled_rest_transport_operation_diagnostics(
+                                        tm.clone(),
+                                        item.clone(),
+                                        target.clone(),
+                                        in_closure.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        }))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn emit_unrealized_rest_result_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "rest transport emission is not modeled for operation '".to_string(),
+                    op_name.clone(),
+                ),
+                "' -- ".to_string(),
+            ),
+            rest_result_not_realized_fact(target.clone()),
+        ),
+        target.clone(),
+    )
+}
+
 pub fn emit_unmodeled_file_transport_refusal_with_cause(
     op_name: String,
     target: RenderTarget,
@@ -5897,7 +6145,7 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                 {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()
@@ -5942,7 +6190,7 @@ pub fn transparent_representation_root(
                             let __tco_0 = base.clone();
                             let __tco_1 = env;
                             let __tco_2 = target;
-                            let __tco_3 = (fuel - 1);
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
                             __tco_loop_n = __tco_0;
                             __tco_loop_env = __tco_1;
                             __tco_loop_target = __tco_2;
@@ -5963,7 +6211,7 @@ pub fn transparent_representation_root(
                                 let __tco_0 = rt.clone();
                                 let __tco_1 = env;
                                 let __tco_2 = target;
-                                let __tco_3 = (fuel - 1);
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
                                 __tco_loop_n = __tco_0;
                                 __tco_loop_env = __tco_1;
                                 __tco_loop_target = __tco_2;
@@ -6017,7 +6265,7 @@ pub fn transparent_named_carrier_root(
                             decl.clone(),
                             env.clone(),
                             target.clone(),
-                            (fuel.clone() - 1),
+                            v1_rt::int_sub(fuel.clone(), 1),
                         )
                     }
                 }
@@ -6038,6 +6286,7 @@ pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<Oc
     match (*identity.clone()).clone() {
         NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
         NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => std::option::Option::None,
         NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
     }
 }
@@ -6213,12 +6462,17 @@ pub fn emit_typed_for_each_shared(
             elem_type.clone(),
             Rc::new(SubValueRelation::SubValueUnknown),
         );
-        let body_str = recurse(body.clone(), body_scope.clone(), (depth.clone() + 1));
+        let body_str = recurse(
+            body.clone(),
+            body_scope.clone(),
+            v1_rt::int_add(depth.clone(), 1),
+        );
         let var_str = emit_ident(variable.clone(), target.clone());
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         let fes = spec.for_each_syntax.clone();
         let bs = spec.block_syntax.clone();
-        let body_indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let body_indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         if bs.significant_whitespace.clone() {
             v1_rt::concat(
                 v1_rt::concat(
@@ -6710,9 +6964,9 @@ pub fn emit_typed_if_shared(
         match else_branch.clone() {
             Some(eb) => match es.if_value_form.clone() {
                 IfValueForm::IfExpression => {
-                    let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
-                    let else_str = recurse(eb.clone(), (depth.clone() + 1));
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone())
+                    let then_str = recurse(then_branch.clone(), v1_rt::int_add(depth.clone(), 1));
+                    let else_str = recurse(eb.clone(), v1_rt::int_add(depth.clone(), 1));
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone())
                 }
                 IfValueForm::ConditionalTernary => {
                     let then_str = recurse(then_branch.clone(), depth.clone());
@@ -6747,7 +7001,7 @@ pub fn emit_typed_if_shared(
                     };
                     let then_str = recurse(then_branch.clone(), depth.clone());
                     let else_str = recurse(eb.clone(), depth.clone());
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("func() ".to_string(), result_type.clone()), " { if ".to_string()), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("func() ".to_string(), result_type.clone()), " { if ".to_string()), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "return ".to_string()), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "return ".to_string()), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
                 }
             },
             std::option::Option::None => {
@@ -6760,16 +7014,18 @@ pub fn emit_typed_if_shared(
                                     v1_rt::concat("if ".to_string(), cond_str.clone()),
                                     bs.block_open.clone(),
                                 ),
-                                crate::v1_compiler_emit_core_support::make_indent(
-                                    (depth.clone() + 1),
-                                ),
+                                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                    depth.clone(),
+                                    1,
+                                )),
                             ),
                             then_str.clone(),
                         )
                     }
                 } else {
                     {
-                        let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
+                        let then_str =
+                            recurse(then_branch.clone(), v1_rt::int_add(depth.clone(), 1));
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -6780,7 +7036,7 @@ pub fn emit_typed_if_shared(
                                                 bs.block_open.clone(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
-                                                (depth.clone() + 1),
+                                                v1_rt::int_add(depth.clone(), 1),
                                             ),
                                         ),
                                         then_str.clone(),
@@ -7089,27 +7345,7 @@ pub fn emit_typed_record_lit_unified(
                         let field_strs = Rc::new({
                             let mut __result = Vec::new();
                             for f in fields.iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    rls.anon_field_indent.clone(),
-                                                    "\"".to_string(),
-                                                ),
-                                                crate::v1_std_core::field_init_node_name_at(
-                                                    f.clone(),
-                                                    source_indices.clone(),
-                                                ),
-                                            ),
-                                            "\": ".to_string(),
-                                        ),
-                                        recurse(crate::v1_std_core::field_init_node_value(
-                                            f.clone(),
-                                        )),
-                                    ),
-                                    ",".to_string(),
-                                ));
+                                __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rls.anon_field_indent.clone(), "\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone()))), "\": ".to_string()), recurse(crate::v1_std_core::field_init_node_value(f.clone()))), ",".to_string()));
                             }
                             __result
                         });
@@ -7234,13 +7470,17 @@ pub fn emit_typed_call_unified(
             };
         let extra_args = match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     {
                         let resource_args = Rc::new({
                             let mut __result = Vec::new();
-                            for rn in info.resource_names.clone().iter().cloned() {
+                            for rn in
+                                crate::v1_compiler_infer_items::item_resource_names(info.clone())
+                                    .iter()
+                                    .cloned()
+                            {
                                 __result.push(emit_ident(rn.clone(), target.clone()));
                             }
                             __result
@@ -7296,8 +7536,8 @@ pub fn emit_typed_call_unified(
         };
         match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     v1_rt::concat(spec.async_call_prefix.clone(), call_str.clone())
                 } else {
@@ -7775,8 +8015,8 @@ pub fn emit_typed_match_go(
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
             .block_syntax
             .clone();
-        let case_depth = (depth.clone() + 1);
-        let body_depth = (case_depth.clone() + 1);
+        let case_depth = v1_rt::int_add(depth.clone(), 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
@@ -7857,11 +8097,11 @@ pub fn emit_typed_match_unified(
                 .block_syntax
                 .clone();
             let case_depth = if bs.significant_whitespace.clone() {
-                (depth.clone() + 1)
+                v1_rt::int_add(depth.clone(), 1)
             } else {
                 depth.clone()
             };
-            let body_depth = (case_depth.clone() + 1);
+            let body_depth = v1_rt::int_add(case_depth.clone(), 1);
             let arm_strs = Rc::new({
                 let mut __result = Vec::new();
                 for arm in arms.iter().cloned() {
@@ -7975,7 +8215,7 @@ pub fn emit_unified_typed_expr(
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
-                    (fuel.clone() - 1),
+                    v1_rt::int_sub(fuel.clone(), 1),
                     render_pattern.clone(),
                 )
             },
@@ -8341,7 +8581,7 @@ pub fn emit_unified_typed_expr(
                             registry.clone(),
                             scope.clone(),
                             depth.clone(),
-                            (fuel.clone() - 1),
+                            v1_rt::int_sub(fuel.clone(), 1),
                             render_pattern.clone(),
                         )
                     },
@@ -8429,6 +8669,10 @@ pub struct FileWrite;
 pub struct FileWriteOwnerOnly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWriteCreateNew;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileWriteCreateNewWithMode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileLinkCreateNew;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileDelete;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

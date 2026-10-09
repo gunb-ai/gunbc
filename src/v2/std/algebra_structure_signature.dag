@@ -1,0 +1,558 @@
+module v2.std.algebra_structure_signature
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { algebra_empty_conj }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, binder_edge, conj_children_optional, binder_node_parts, named_child_lookup }
+import v2.std.logic { bool_node }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
+import std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import std.optional { Absent, Present }
+
+// THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
+// through boolean algebra, equivalence, the free monoid) projected to the TypeNode its instances
+// inhabit, and the inhabitance node joining a structure to its carrier. Homed ABOVE
+// v2.std.arrow_signature because an operation's signature is an Arrow, built by
+// anonymous_signature_arrow -- the one encoding -- and v2.std.algebra's list folds sit beneath it.
+
+fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Authored { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+      ],
+      occurrence_id: OccurrenceSynthetic
+},
+    inhabitant: inhabitant,
+  )
+}
+
+fn free_monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Authored { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
+      Edge {
+        label: Authored { name: ^free_monoid_variant_cons },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            binder_edge(name: ^free_monoid_field_head, type_node: inhabitant),
+            binder_edge(name: ^free_monoid_field_tail, type_node: free_monoid_tail_type_fixpoint(inhabitant: inhabitant)),
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+      },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
+  anonymous_signature_arrow(domain_types: [domain, domain], codomain: codomain, source: domain)
+}
+
+fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
+  anonymous_signature_arrow(domain_types: [domain], codomain: codomain, source: domain)
+}
+
+fn ordering_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Authored { name: ^ordering_variant_less }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn magma_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^magma_field_op, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn semigroup_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^semigroup_field_magma, type_node: magma_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^monoid_field_semigroup, type_node: semigroup_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^monoid_field_identity, type_node: inhabitant),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn commutative_monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^commutative_monoid_field_monoid, type_node: monoid_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn group_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^group_field_monoid, type_node: monoid_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^group_field_inverse, type_node: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn abelian_group_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^abelian_group_field_group, type_node: group_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn semiring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^semiring_field_add, type_node: commutative_monoid_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^semiring_field_mul, type_node: monoid_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn commutative_semiring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^commutative_semiring_field_semiring, type_node: semiring_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^ring_field_add, type_node: abelian_group_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^ring_field_mul, type_node: monoid_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn commutative_ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^commutative_ring_field_ring, type_node: ring_type_node(inhabitant: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn ordered_ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^ordered_ring_field_ring, type_node: ring_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^ordered_ring_field_compare, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn field_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^field_field_commutative_ring, type_node: commutative_ring_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^field_field_reciprocal, type_node: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn field_reciprocal_operation_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^field_reciprocal_operation } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn field_reciprocal_nonzero_precondition_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^field_reciprocal_nonzero_precondition } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn approximate_field_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^approximate_field_field_add, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^approximate_field_field_zero, type_node: inhabitant),
+      binder_edge(name: ^approximate_field_field_negate, type_node: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^approximate_field_field_mul, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^approximate_field_field_one, type_node: inhabitant),
+      binder_edge(name: ^approximate_field_field_compare, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn lattice_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^lattice_field_meet, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^lattice_field_join, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn bounded_lattice_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^bounded_lattice_field_lattice, type_node: lattice_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^bounded_lattice_field_top, type_node: inhabitant),
+      binder_edge(name: ^bounded_lattice_field_bottom, type_node: inhabitant),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn boolean_algebra_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^boolean_algebra_field_bounded_lattice, type_node: bounded_lattice_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^boolean_algebra_field_complement, type_node: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^algebra_edge }, target: algebra },
+      Edge { label: Authored { name: ^inhabitant_edge }, target: inhabitant },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+// THE BINDERS THROUGH WHICH ONE STRUCTURE COMPOSES ANOTHER, DERIVED from the constructors rather than restated:
+// each structure signature is built over an ATOM probe carrier -- which no structure can be mistaken for -- and a
+// binder whose type is itself a structure (a Conj) is a composing field (ordered_ring's ^ordered_ring_field_ring,
+// ring's ^ring_field_add). Every other binder is an operation (an Arrow) or the carrier. Deciding composition by a
+// field's NAME from this derived set, never by the shape of the node at hand, keeps a record-shaped carrier from
+// being taken for a sub-structure. The constructor roster below is the one place the structure set is listed.
+fn algebra_structure_signatures_over(carrier: Node) -> List<Node> {
+  [magma_type_node(inhabitant: carrier), semigroup_type_node(inhabitant: carrier), monoid_type_node(inhabitant: carrier),
+   commutative_monoid_type_node(inhabitant: carrier), group_type_node(inhabitant: carrier), abelian_group_type_node(inhabitant: carrier),
+   semiring_type_node(inhabitant: carrier), commutative_semiring_type_node(inhabitant: carrier), ring_type_node(inhabitant: carrier),
+   commutative_ring_type_node(inhabitant: carrier), ordered_ring_type_node(inhabitant: carrier), field_type_node(inhabitant: carrier),
+   approximate_field_type_node(inhabitant: carrier), lattice_type_node(inhabitant: carrier), bounded_lattice_type_node(inhabitant: carrier),
+   boolean_algebra_type_node(inhabitant: carrier), equivalence_type_node(inhabitant: carrier)]
+}
+
+data algebra_structure_composing_fields: List<Symbol> = algebra_structure_typed_binders(structures: algebra_structure_signatures_over(carrier: Node { kind: TypeNode { connective: Atom { identity: ^algebra_signature_probe_carrier } }, children: [], occurrence_id: OccurrenceSynthetic }))
+
+fn algebra_structure_typed_binders(structures: List<Node>) -> List<Symbol> {
+  fold(structures, init: [], f: fn(acc, structure) {
+    fold(structure.children, init: acc, f: fn(inner, e) {
+      match e.label {
+        Authored { name: name } =>
+          match binder_node_parts(n: e.target) {
+            Present { value: parts } =>
+              match conj_children_optional(n: parts.type_node) {
+                Present { value: _ } => list_snoc_item(xs: inner, item: name)
+                Absent => inner
+              }
+            Absent => inner
+          }
+        StructuralLabel { label: _ } => inner
+        Positional => inner
+      }
+    })
+  })
+}
+
+// WHETHER AN INHABITANCE'S STRUCTURE DECLARES AN OPERATION FIELD -- typed, so a malformed inhabitance node is
+// never mistaken for a structure that lacks the field (DESIGN section 5: no fabricated plausible answer). A
+// field is declared when the structure binds it, or when a sub-structure it composes (through a binder in
+// algebra_structure_composing_fields) declares it. An operation's signature and the carrier are never entered.
+type AlgebraFieldDeclaration
+  = FieldDeclared
+  | FieldNotDeclared
+  | InhabitanceMalformed { cause: Symbol }
+
+// THE INHABITANCE'S CARRIER AND ITS ANSWER FOR ONE FIELD, READ TOGETHER FROM THE ONE NODE THAT STATES BOTH: the
+// ^inhabitant_edge target IS the carrier the structure is over, so a consumer selecting an inhabitance by its
+// carrier reads it here, and never from a second copy stored beside the node (which could disagree with it and
+// would make the structure's fields answer for a type it is not over).
+type AlgebraInhabitanceFieldReading
+  = InhabitanceFieldRead { carrier: Node, declaration: AlgebraFieldDeclaration }
+  | InhabitanceFieldReadMalformed { cause: Symbol }
+
+fn algebra_inhabitance_field_reading(inhabitance: Node, field: Symbol) -> AlgebraInhabitanceFieldReading {
+  match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
+    NamedChildMissing => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_inhabitant_edge_missing }
+    NamedChildAmbiguous => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_inhabitant_edge_ambiguous }
+    NamedChildFound { target: carrier } =>
+      match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
+        NamedChildMissing => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
+        NamedChildAmbiguous => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
+        NamedChildFound { target: algebra } =>
+          InhabitanceFieldRead { carrier: carrier, declaration: algebra_structure_field_declaration(structure: algebra, field: field) }
+      }
+  }
+}
+
+fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> AlgebraFieldDeclaration {
+  match algebra_inhabitance_field_reading(inhabitance: inhabitance, field: field) {
+    InhabitanceFieldReadMalformed { cause: c } => InhabitanceMalformed { cause: c }
+    InhabitanceFieldRead { carrier: _, declaration: d } => d
+  }
+}
+
+// THE STRUCTURE IS READ AS WHAT IT MUST BE, AND ANY OTHER SHAPE IS MALFORMED -- never a plausible answer. A
+// structure is a Conj whose every child is an Authored BINDER; a field is declared only by a binder (a matching
+// name on a non-binder edge is malformed, not declared); a composing field must carry a structure (a composing
+// binder over an atom is malformed, not a structure lacking the field). EVERY member is classified, and every
+// composing sub-structure validated, before an answer is given: per-member results combine with precedence
+// InhabitanceMalformed > FieldDeclared > FieldNotDeclared, so a declared field never excuses a malformed member
+// beside it or beneath it.
+fn algebra_structure_field_declaration(structure: Node, field: Symbol) -> AlgebraFieldDeclaration {
+  match conj_children_optional(n: structure) {
+    Absent => InhabitanceMalformed { cause: ^algebra_structure_not_a_conj }
+    Present { value: members } =>
+      fold(members, init: FieldNotDeclared, f: fn(acc, e) {
+        algebra_field_declaration_join(a: acc, b: algebra_structure_edge_field_declaration(e: e, field: field))
+      })
+  }
+}
+
+// The precedence join: the first malformed cause wins, then a declaration, then absence.
+fn algebra_field_declaration_join(a: AlgebraFieldDeclaration, b: AlgebraFieldDeclaration) -> AlgebraFieldDeclaration {
+  match a {
+    InhabitanceMalformed { cause: _ } => a
+    FieldDeclared =>
+      match b {
+        InhabitanceMalformed { cause: _ } => b
+        FieldDeclared => a
+        FieldNotDeclared => a
+      }
+    FieldNotDeclared => b
+  }
+}
+
+fn algebra_structure_edge_field_declaration(e: Edge, field: Symbol) -> AlgebraFieldDeclaration {
+  match e.label {
+    Authored { name: name } =>
+      match binder_node_parts(n: e.target) {
+        Absent => InhabitanceMalformed { cause: ^algebra_structure_field_not_a_binder }
+        Present { value: parts } =>
+          algebra_field_declaration_join(
+            a: if name == field { FieldDeclared } else { FieldNotDeclared },
+            b: if algebra_field_composes_a_structure(name: name) {
+              match conj_children_optional(n: parts.type_node) {
+                Present { value: _ } => algebra_structure_field_declaration(structure: parts.type_node, field: field)
+                Absent => InhabitanceMalformed { cause: ^algebra_composing_field_not_a_structure }
+              }
+            } else {
+              FieldNotDeclared
+            }
+          )
+      }
+    StructuralLabel { label: _ } => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
+    Positional => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
+  }
+}
+
+fn algebra_field_composes_a_structure(name: Symbol) -> Bool {
+  fold(algebra_structure_composing_fields, init: false, f: fn(acc, f) { acc || f == name })
+}
+
+fn magma_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: magma_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn semigroup_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: semigroup_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn commutative_monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn group_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: group_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn abelian_group_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: abelian_group_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn semiring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: semiring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn commutative_semiring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_semiring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn commutative_ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn ordered_ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: ordered_ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn field_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn approximate_field_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn lattice_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: lattice_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn bounded_lattice_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: bounded_lattice_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn boolean_algebra_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn bool_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Authored { name: ^bool_variant_true }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^bool_variant_false }, target: algebra_empty_conj() },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn equivalence_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^equivalence_field_eq, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())),
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn equivalence_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: equivalence_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn free_monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: free_monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+// Bool inhabits BooleanAlgebra: the structure node over v2.std.logic bool_node. Homed here, not in
+// v2.std.logic, because v2.std.logic sits beneath v2.std.arrow_signature.
+fn bool_boolean_algebra_type_node() -> Node {
+  boolean_algebra_type_node(inhabitant: bool_node())
+}
+
+fn bool_boolean_algebra_node() -> Node {
+  boolean_algebra_node(inhabitant: bool_node())
+}

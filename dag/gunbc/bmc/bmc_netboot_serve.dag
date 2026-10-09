@@ -3,6 +3,7 @@ module gunbc.bmc_netboot_serve
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { NonEmptyStr, String, Int, List, Port }
+import std.algebra { list_append }
 import extdeps.uri { Uri, Http, Https, uri_wire }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
@@ -14,11 +15,6 @@ import extdeps.exec.command {
   CommandTransport,
   LocalExec,
   SshExec,
-  command_over_transport,
-  CommandOverTransportOutcome,
-  CommandOverTransportBuilt,
-  CommandOverTransportRefused,
-  shell_command_render,
   scp_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at }
@@ -26,11 +22,15 @@ import gunbc.remote_shell_command { openbmc_dropbear_interpretation, RemoteExecC
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_emit {
+  autoinstall_user_data
+  AutoinstallUserData
+  AutoinstallUserDataRendered
+  AutoinstallUserDataRefused
+}
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr
@@ -105,7 +105,14 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
   }
 }
 
-fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
+// The nocloud seed travels as the emitter's own verdict: the YAML emit either rendered the
+// document or refused with a reason, and there is no String here to widen that refusal into
+// (§5: a failure arm must refuse, never widen). The staged value carries only the rendered
+// content; a refused seed refuses the whole staging before any op is prepared. (This function
+// previously declared `-> String` while returning the emitter's sum — a declaration the
+// substrate let stand until a witness ran a strict string operation over the value, which is
+// why the floor caught it and this clause exists.)
+fn bmc_netboot_user_seed_verdict(plan: BmcNetbootServePlan) -> AutoinstallUserData {
   autoinstall_user_data(payload: plan.autoinstall)
 }
 
@@ -121,35 +128,349 @@ fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
   }
 }
 
-fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ArgvCommand {
-  busybox_httpd_command(
-    busybox_bin: bmc_netboot_staged_path(plan: plan, name: "busybox"),
-    document_root: plan.netboot_dir,
-    port: plan.serve_port,
-  )
+fn bmc_ssh_target(plan: BmcNetbootServePlan) -> NonEmptyStr {
+  join(["root@", plan.bmc_host as String], "") as NonEmptyStr
 }
 
-fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> CommandOverTransportOutcome {
-  command_over_transport(
-    command: bmc_netboot_serve_command_local(plan: plan),
-    transport: bmc_transport(plan: plan),
-  )
+data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc/artifacts/netboot"
+
+fn bmc_netboot_artifact(name: NonEmptyStr) -> NonEmptyStr {
+  join([bmc_netboot_bootstrap_artifact_dir as String, "/", name as String], "") as NonEmptyStr
 }
 
-type BmcNetbootServeCommandTextOutcome
-  = BmcNetbootServeCommandTextBuilt { text: String }
-  | BmcNetbootServeCommandTextRefused { cause: RemoteExecCommandRefusalCause }
+fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptyStr {
+  join([plan.netboot_dir as String, "/", name as String], "") as NonEmptyStr
+}
 
-fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> BmcNetbootServeCommandTextOutcome {
-  match bmc_netboot_serve_command(plan: plan) {
-    CommandOverTransportRefused { cause: c } => BmcNetbootServeCommandTextRefused { cause: c }
-    CommandOverTransportBuilt { command: cmd } =>
-      BmcNetbootServeCommandTextBuilt { text: shell_command_render(command: cmd) }
+// ---- THE SEMANTIC OPERATIONS (the shell-typed-invocation shape, applied to this lane) ----
+
+// The BMC netboot provision is described as WHAT IT DOES TO THE TARGET, not as the commands that
+// do it: make a directory under the serve root, put a file there (from a local artifact, from
+// text rendered from a typed payload, or -- not realizable here -- from a uri), launch the serve.
+// Each put carries a NAME relative to the plan's own netboot_dir -- never a hand-spelled absolute
+// path -- so where the file lands is DERIVED from the plan at staging, exactly as the configfs
+// staging derives both link endpoints from the gadget's own record. The serve launch carries NO
+// fields at all: everything it needs (document root, port, the busybox binary the put ops stage)
+// is the plan's own record, so an op that serves from somewhere else or on another port is not
+// authorable. The three put arms are the SOURCES, split at the op rather than carried in a
+// sub-sum: preparation narrows them, so a source this lane has not realized (PutFromUri) is not
+// representable in a prepared operation at all, and the realization match has no dead arm.
+type BmcNetbootOp
+  = BmcNetbootMakeDir { name: NonEmptyStr }
+  | BmcNetbootPutArtifact { name: NonEmptyStr, artifact: NonEmptyStr }
+  | BmcNetbootPutText { name: NonEmptyStr, text: String }
+  | BmcNetbootPutFromUri { name: NonEmptyStr, source: Uri }
+  | BmcNetbootLaunchServe
+
+// A staged name is a RELATIVE path under the plan's netboot_dir: no absolute spelling, no empty
+// segment (`//`, a leading or trailing `/`), no dot segment. Staging derives the remote path from
+// it, so a name that is not relative would aim the derived path outside the serve root exactly as
+// a hand-written absolute path would -- the same law configfs staging enforces on link names,
+// widened from "one segment" to "relative, well-formed", because THIS manifest legitimately
+// stages into a subdirectory (`nocloud/user-data`).
+type BmcNetbootStagedPathVerdict
+  = BmcNetbootStagedPathWellFormed { name: NonEmptyStr }
+  | BmcNetbootStagedPathNotRelative { name: NonEmptyStr }
+
+fn bmc_netboot_path_has_bad_segment(path: String) -> Bool {
+  any(split(s: path, delimiter: "/"), seg => seg == "" || seg == "." || seg == "..")
+}
+
+fn bmc_netboot_staged_path_verdict(name: NonEmptyStr) -> BmcNetbootStagedPathVerdict {
+  let n = name as String
+  if starts_with(s: n, prefix: "/") || bmc_netboot_path_has_bad_segment(path: n) {
+    BmcNetbootStagedPathNotRelative { name: name }
+  } else {
+    BmcNetbootStagedPathWellFormed { name: name }
   }
 }
 
-fn bmc_ssh_target(plan: BmcNetbootServePlan) -> NonEmptyStr {
-  join(["root@", plan.bmc_host as String], "") as NonEmptyStr
+// THE VALIDATED SEMANTIC OPERATIONS staging returns: the same operations with their remote paths
+// DERIVED from the plan's own record (proven under the serve root by construction), and with no
+// process form in them at all -- a prepared operation says what the provision will do, never
+// which program spells it. The variants are the PUBLIC descriptive sum; consumers match them
+// freely. The unrealizable source is GONE here, not refused beside the others: preparation
+// narrowed the authored sum to the two sources that can act, so a prepared put from a uri has no
+// constructor to reach.
+type BmcNetbootPreparedDisposition
+  = BmcNetbootPreparedMakeDir { remote_path: NonEmptyStr }
+  | BmcNetbootPreparedPutArtifact { remote_path: NonEmptyStr, local_path: NonEmptyStr }
+  | BmcNetbootPreparedPutText { remote_path: NonEmptyStr, text: String }
+  | BmcNetbootPreparedLaunchServe { serve_root: NonEmptyStr, serve_port: Port, busybox_path: NonEmptyStr }
+
+// THE SEALED STAGED VALUE. A bare public sum is constructible by anyone, so "staged" would be a
+// claim a caller could author rather than a fact staging minted: another module could write a
+// prepared put by hand with a remote path it chose, and the relative-path verdict would never
+// have run. The disposition stays public because it is descriptive; the wrapper is a
+// sole_constructor -- construction is confined to THIS file, so the only route to a
+// `BmcNetbootPreparedOp` is `bmc_netboot_op_prepared`, behind that verdict. The executor takes
+// the sealed value and nothing else; no open command sum is ever an authorization.
+type BmcNetbootPreparedOp sole_constructor { disposition: BmcNetbootPreparedDisposition }
+
+// THE STAGED RESULT: the validated semantic operations to hand the executor, or the WHOLE
+// staging refused. There is no state in which a refused op sits beside prepared ones, so a bad
+// argument cannot act while the ops around it are skipped past -- the refusal is a stop at the
+// grain a caller consumes. READY, not RAN: no operation has run yet; the name names what the
+// value IS. The old provision ran its mkdir first and discovered an unrealizable put (the
+// PutFromUri arm's typed refusal) MID-FOLD, after the mkdir and every earlier scp had already
+// executed against the BMC; as a staging verdict it refuses before anything runs at all.
+type BmcNetbootStaging
+  = BmcNetbootStagingReady { operations: List<BmcNetbootPreparedOp> }
+  | BmcNetbootStagingRefused { reason: NonEmptyStr }
+
+fn bmc_netboot_staging_refused_path(bad_name: String) -> BmcNetbootStaging {
+  BmcNetbootStagingRefused {
+    reason: join(
+      ["bmc-netboot staged name is not a relative path under the serve root: ", bad_name],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+fn bmc_netboot_staging_refused_transport(name: String) -> BmcNetbootStaging {
+  BmcNetbootStagingRefused {
+    reason: join(
+      ["bmc-netboot staged file has no realized transport: ", name],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+fn bmc_netboot_staging_refused_seed(cause: String) -> BmcNetbootStaging {
+  BmcNetbootStagingRefused {
+    reason: join(
+      ["bmc-netboot nocloud seed could not be rendered: ", cause],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+// One op prepared alone: the validated semantic operation, or the refusal of the staging it
+// would have joined. Path-carrying ops validate their names and derive the remote path from the
+// plan, which is what makes "lands under the plan's serve root" structural rather than checked.
+fn bmc_netboot_op_prepared(plan: BmcNetbootServePlan, op: BmcNetbootOp) -> BmcNetbootStaging {
+  match op {
+    BmcNetbootMakeDir { name: n } =>
+      match bmc_netboot_staged_path_verdict(name: n) {
+        BmcNetbootStagedPathNotRelative { name: bad } =>
+          bmc_netboot_staging_refused_path(bad_name: bad as String)
+        BmcNetbootStagedPathWellFormed { name: _ } =>
+          BmcNetbootStagingReady {
+            operations: [BmcNetbootPreparedOp {
+              disposition: BmcNetbootPreparedMakeDir { remote_path: bmc_netboot_staged_path(plan: plan, name: n) },
+            }],
+          }
+      }
+    BmcNetbootPutArtifact { name: n, artifact: a } =>
+      match bmc_netboot_staged_path_verdict(name: n) {
+        BmcNetbootStagedPathNotRelative { name: bad } =>
+          bmc_netboot_staging_refused_path(bad_name: bad as String)
+        BmcNetbootStagedPathWellFormed { name: _ } =>
+          BmcNetbootStagingReady {
+            operations: [BmcNetbootPreparedOp {
+              disposition: BmcNetbootPreparedPutArtifact {
+                remote_path: bmc_netboot_staged_path(plan: plan, name: n),
+                local_path: a,
+              },
+            }],
+          }
+      }
+    BmcNetbootPutText { name: n, text: t } =>
+      match bmc_netboot_staged_path_verdict(name: n) {
+        BmcNetbootStagedPathNotRelative { name: bad } =>
+          bmc_netboot_staging_refused_path(bad_name: bad as String)
+        BmcNetbootStagedPathWellFormed { name: _ } =>
+          BmcNetbootStagingReady {
+            operations: [BmcNetbootPreparedOp {
+              disposition: BmcNetbootPreparedPutText {
+                remote_path: bmc_netboot_staged_path(plan: plan, name: n),
+                text: t,
+              },
+            }],
+          }
+      }
+    BmcNetbootPutFromUri { name: n, source: _ } =>
+      bmc_netboot_staging_refused_transport(name: n as String)
+    BmcNetbootLaunchServe =>
+      BmcNetbootStagingReady {
+        operations: [BmcNetbootPreparedOp {
+          disposition: BmcNetbootPreparedLaunchServe {
+            serve_root: plan.netboot_dir,
+            serve_port: plan.serve_port,
+            busybox_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),
+          },
+        }],
+      }
+  }
+}
+
+// The staged provision: fold the ops, refusing the WHOLE staging at the first op that does not
+// prepare. Ops before a refusal never become observable -- a refused staging carries no
+// operation list at all, so a caller cannot act on the good prefix and skip the bad op past it.
+fn bmc_netboot_staging_of(plan: BmcNetbootServePlan, ops: List<BmcNetbootOp>) -> BmcNetbootStaging {
+  fold(
+    ops,
+    init: BmcNetbootStagingReady { operations: [] },
+    f: (acc, op) =>
+      match acc {
+        BmcNetbootStagingRefused { reason: r } => BmcNetbootStagingRefused { reason: r },
+        BmcNetbootStagingReady { operations: os } =>
+          match bmc_netboot_op_prepared(plan: plan, op: op) {
+            BmcNetbootStagingRefused { reason: r } => BmcNetbootStagingRefused { reason: r },
+            BmcNetbootStagingReady { operations: minted } =>
+              BmcNetbootStagingReady { operations: list_append(left: os, right: minted) },
+          },
+      },
+  )
+}
+
+// THE STAGED PROVISION, ONE AUTHORITY: the directory, the seven staged files (five from the
+// artifact dir, grub.cfg and the two nocloud seeds rendered from typed payloads), and the serve
+// launch, in the order they must act. This replaces the old hand-unrolled sequence -- a separate
+// mkdir run, then a per-file fold, then a serve launch gated on the fold's exit code -- whose
+// three argv call sites each reached the transport on their own.
+fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String) -> List<BmcNetbootOp> {
+  [
+    BmcNetbootMakeDir { name: "nocloud" },
+    BmcNetbootPutArtifact { name: "busybox", artifact: bmc_netboot_artifact(name: "busybox") },
+    BmcNetbootPutArtifact { name: "vmlinuz", artifact: bmc_netboot_artifact(name: "vmlinuz") },
+    BmcNetbootPutArtifact { name: "initrd", artifact: bmc_netboot_artifact(name: "initrd") },
+    BmcNetbootPutArtifact { name: "grubaa64.efi", artifact: bmc_netboot_artifact(name: "grubaa64.efi") },
+    BmcNetbootPutText { name: "grub.cfg", text: bmc_netboot_grub_cfg_text(plan: plan) },
+    BmcNetbootPutText { name: "nocloud/user-data", text: user_seed },
+    BmcNetbootPutText {
+      name: "nocloud/meta-data",
+      text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""),
+    },
+    BmcNetbootLaunchServe,
+  ]
+}
+
+fn bmc_netboot_provision_staging(plan: BmcNetbootServePlan) -> BmcNetbootStaging {
+  match bmc_netboot_user_seed_verdict(plan: plan) {
+    AutoinstallUserDataRendered { content: t } =>
+      bmc_netboot_staging_of(plan: plan, ops: bmc_netboot_staging_ops(plan: plan, user_seed: t))
+    AutoinstallUserDataRefused { reason: r } =>
+      bmc_netboot_staging_refused_seed(cause: r)
+  }
+}
+
+// ---- THE REALIZATION BOUNDARY ----
+
+// A prepared semantic operation lowers here to what acts: a command that runs ON THE BMC (over
+// this plan's ssh transport), a file transfer pushed from here, or a file staged locally and
+// then transferred. The boundary is ENFORCED one rung up, at the sealed staged value --
+// realization accepts only a `BmcNetbootPreparedOp`, and only staging constructs one -- so
+// "lowered" is a fact about a value staging minted, not a claim about a visibility keyword this
+// language does not have. The executing consumer is the executor below and the tool-realization
+// witness reads past this point at argv grain; the domain witness stops at the staged value.
+// The local path of a staged-text put is DERIVED from the prepared op's own remote path, so the
+// write-then-transfer pair cannot disagree about which file they mean.
+type BmcNetbootOpCommand
+  = BmcNetbootOpRunsOnBmc { command: ArgvCommand }
+  | BmcNetbootOpTransfersFile { local_path: NonEmptyStr, remote_path: NonEmptyStr }
+  | BmcNetbootOpStagesFile { local_path: NonEmptyStr, content: String, remote_path: NonEmptyStr }
+
+// The BMC's mkdir is a PATH-resolved BusyBox applet, deliberately not an absolute path: this
+// repository has never read that image's filesystem (extdeps.tools.mkdir
+// mkdir_parents_command_at, extdeps.exec.command program_spelling_is_an_observation_claim).
+data bmc_path_resolved_mkdir_applet: NonEmptyStr = "mkdir"
+
+// Text put locally first, at a name derived from the remote path it will land at: two staged
+// texts must not overwrite one another's local file, and the basename pairing is the derivation.
+data bmc_netboot_local_staging_prefix: NonEmptyStr = "/tmp/gunbc-bmc-"
+
+fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
+  fold(
+    split(s: remote_path as String, delimiter: "/"),
+    init: "",
+    f: (acc, segment) => segment,
+  )
+}
+
+fn bmc_netboot_local_staging_path(remote_path: NonEmptyStr) -> NonEmptyStr {
+  join([bmc_netboot_local_staging_prefix as String, bmc_staged_file_basename(remote_path: remote_path)], "") as NonEmptyStr
+}
+
+fn bmc_netboot_prepared_realization(op: BmcNetbootPreparedOp) -> BmcNetbootOpCommand {
+  match op.disposition {
+    BmcNetbootPreparedMakeDir { remote_path: p } =>
+      BmcNetbootOpRunsOnBmc {
+        command: mkdir_parents_command_at(mkdir_binary: bmc_path_resolved_mkdir_applet, path: p as String),
+      }
+    BmcNetbootPreparedPutArtifact { remote_path: p, local_path: l } =>
+      BmcNetbootOpTransfersFile { local_path: l, remote_path: p }
+    BmcNetbootPreparedPutText { remote_path: p, text: t } =>
+      BmcNetbootOpStagesFile {
+        local_path: bmc_netboot_local_staging_path(remote_path: p),
+        content: t,
+        remote_path: p,
+      }
+    BmcNetbootPreparedLaunchServe { serve_root: root, serve_port: port, busybox_path: bin } =>
+      BmcNetbootOpRunsOnBmc {
+        command: busybox_httpd_command(busybox_bin: bin, document_root: root, port: port),
+      }
+  }
+}
+
+// ---- THE EXECUTOR ----
+
+// THE ONE PLACE AN ARM BECOMES A RUN. The executor consumes the SEALED staged value: it matches
+// the realization out of the wrapper staging minted and runs it over the transport the arm
+// names -- on-Bmc commands over this plan's ssh transport, transfers from here over local exec.
+// The old provision had three call sites reaching the transport independently (run_bmc, put_path,
+// the serve launch); with one executor, "which transport acts" is a fact of the arm, read once.
+// This is the seam host_effect_apply's typed binding replaces (the dissolution trigger below):
+// when it lands, these arms fold onto typed staging effects and run_shell_command retires.
+fn bmc_netboot_transfer(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit {
+  let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
+  run_shell_command(command: scp_command(local_path: local, remote_target: remote_target), transport: LocalExec)
+}
+
+fn bmc_netboot_apply_prepared(plan: BmcNetbootServePlan, op: BmcNetbootPreparedOp) -> ProcessExit {
+  match bmc_netboot_prepared_realization(op: op) {
+    BmcNetbootOpRunsOnBmc { command: c } =>
+      run_shell_command(command: c, transport: bmc_transport(plan: plan))
+    BmcNetbootOpTransfersFile { local_path: l, remote_path: p } =>
+      bmc_netboot_transfer(plan: plan, local: l, remote_path: p)
+    BmcNetbootOpStagesFile { local_path: l, content: t, remote_path: p } => {
+      let w = Filesystem.Write(path: l as String, content: t)
+      if w.success == false {
+        return exit_failure(reason: concat("bmc-netboot: local write failed for ", p as String))
+      }
+      bmc_netboot_transfer(plan: plan, local: l, remote_path: p)
+    }
+  }
+}
+
+// A refused staging is a refusal with NOTHING RAN -- the reason says so, because the difference
+// between "refused before acting" and "failed part-way" is the fact a caller needs.
+fn bmc_netboot_staging_refused_exit(reason: String) -> ProcessExit {
+  exit_failure(reason: concat("bmc-netboot: staging refused, nothing ran: ", reason))
+}
+
+fn bmc_netboot_apply_staging(plan: BmcNetbootServePlan, staging: BmcNetbootStaging) -> ProcessExit {
+  match staging {
+    BmcNetbootStagingRefused { reason: r } => bmc_netboot_staging_refused_exit(reason: r as String)
+    BmcNetbootStagingReady { operations: os } =>
+      fold(
+        os,
+        init: ExitSuccess,
+        f: (acc, op) =>
+          match acc {
+            ExitFailure { code: _, reason: _ } => acc
+            ExitSuccess => bmc_netboot_apply_prepared(plan: plan, op: op)
+          },
+      )
+  }
+}
+
+fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit {
+  bmc_netboot_apply_staging(plan: plan, staging: bmc_netboot_provision_staging(plan: plan))
+}
+
+fn srv4_bmc_netboot_provision() -> ProcessExit {
+  bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)
 }
 
 data bmc_netboot_provision_scaffold: Disposition = Scaffold {
@@ -161,142 +482,4 @@ data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   }
 }
 
-data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. bmc_netboot_run_bmc and bmc_netboot_put_path no longer hand-roll their own retained_runtime/shell.Exec.Run heredoc glue (that was two bridge sites duplicating one pattern, §2/§3); both now call gunbc.command_runner.run_shell_command, the single authority for rendering an ArgvCommand+CommandTransport over the heredoc bridge — command_runner already carries its own dissolution obligation (command_runner_dissolution_trigger) for that bridge, so this module inherits rather than duplicates it. CORRECTED 2026-08-19 (this clause previously said the SshExec debt below was unchanged and out of scope; that is now false and is rewritten rather than left standing per DESIGN §3's stale-citation discipline): extdeps.exec.command command_over_transport's SshExec branch no longer composes ssh_exec_prefix ++ argv as a flat suffix. It folds the inner ArgvCommand through gunbc.remote_shell_command remote_exec_command_string into ONE RFC-4254-conformant, POSIX-single-quote-encoded command string (cited to IEEE 1003.1-2017 section 2.2.2), carried as ssh's single final argument — bmc_transport now names openbmc_dropbear_interpretation explicitly on SshExec so this fold runs, rather than refusing on Unknown. CORRECTED AGAIN (2026-08-20, this clause previously said the heredoc bridge -- command_runner's shell_exec_via_bash/retained_runtime hop -- was unchanged; that is now false too and is rewritten rather than left standing, same §3 discipline): command_runner's run site no longer matches on transport or hops through a bash heredoc for either arm -- it asks command_over_transport once for the outer ArgvCommand and hands it straight to shell.Exec.RunArgv. So this module's remaining debt is scoped to command_runner_dissolution_trigger's own first clause (host_effect_apply has not yet bound ArgvCommand execution), which command_runner still carries and this module inherits rather than duplicates. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc/bmc_netboot_serve.dag retires command_runner.run_shell_command in favor of host_effect_apply")
-
-// IT TAKES A COMMAND, NOT A WORD LIST. Taking List<String> made this function a second place an
-// argv could be hand-spelled -- and it was: its mkdir caller below built one inline. With
-// ArgvCommand as the parameter the words must already have come from a builder, so this function
-// forwards a constructed command instead of laundering a list into one.
-fn bmc_netboot_run_bmc(plan: BmcNetbootServePlan, command: ArgvCommand) -> ProcessExit
-  uses net: Network
-{
-  run_shell_command(command: command, transport: bmc_transport(plan: plan))
-}
-
-fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
-  fold(
-    split(s: remote_path as String, delimiter: "/"),
-    init: "",
-    f: (acc, segment) => segment,
-  )
-}
-
-fn bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
-  uses net: Network
-{
-  let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
-  let cmd = scp_command(local_path: local, remote_target: remote_target)
-  run_shell_command(command: cmd, transport: LocalExec)
-}
-
-fn bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
-  uses net: Network
-{
-  match file.content {
-    LocalArtifact { path: p } => bmc_netboot_put_path(plan: plan, local: p, remote_path: file.remote_path)
-    InlineText { text: t } => bmc_netboot_stage_inline(plan: plan, remote_path: file.remote_path, content: t)
-    FetchFromUri { source: _ } => exit_failure(
-      reason: concat("bmc-netboot: FetchFromUri staging has no realized transport — refusing for ", file.remote_path as String),
-    )
-  }
-}
-
-fn bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptyStr, content: String) -> ProcessExit
-  uses net: Network
-{
-  let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as NonEmptyStr
-  let w = Filesystem.Write(path: local as String, content: content)
-  if w.success == false {
-    return exit_failure(reason: concat("bmc-netboot: local write failed for ", remote_path as String))
-  }
-  return bmc_netboot_put_path(plan: plan, local: local, remote_path: remote_path)
-}
-
-data bmc_path_resolved_mkdir_applet: NonEmptyStr = "mkdir"
-
-// The BMC's mkdir is a PATH-resolved BusyBox applet, deliberately not an absolute path: this
-// repository has never read that image's filesystem (extdeps.tools.mkdir mkdir_parents_command_at,
-// extdeps.exec.command program_spelling_is_an_observation_claim).
-fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
-  uses net: Network
-{
-  let mk = bmc_netboot_run_bmc(
-    plan: plan,
-    command: mkdir_parents_command_at(
-      mkdir_binary: bmc_path_resolved_mkdir_applet,
-      path: join([plan.netboot_dir as String, "/nocloud"], ""),
-    ),
-  )
-  let staged = fold(
-    bmc_netboot_staging_manifest(plan: plan),
-    init: mk,
-    f: (acc, file) => match acc {
-      ExitFailure { code: _, reason: _ } => acc
-      ExitSuccess => bmc_netboot_stage_file(plan: plan, file: file)
-    }
-  )
-  let serve = match staged {
-    ExitFailure { code: _, reason: _ } => staged
-    ExitSuccess => bmc_netboot_run_bmc(plan: plan, command: bmc_netboot_serve_command_local(plan: plan))
-  }
-  serve
-}
-
-fn srv4_bmc_netboot_provision() -> ProcessExit
-  uses net: Network
-{
-  bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)
-}
-
-data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc/artifacts/netboot"
-
-type StagedContentSource
-  = InlineText { text: String }
-  | LocalArtifact { path: NonEmptyStr }
-  | FetchFromUri { source: Uri }
-
-type BmcStagedFile {
-  remote_path: NonEmptyStr
-  content: StagedContentSource
-}
-
-fn bmc_netboot_artifact(name: NonEmptyStr) -> NonEmptyStr {
-  join([bmc_netboot_bootstrap_artifact_dir as String, "/", name as String], "") as NonEmptyStr
-}
-
-fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptyStr {
-  join([plan.netboot_dir as String, "/", name as String], "") as NonEmptyStr
-}
-
-fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> List<BmcStagedFile> {
-  [
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),
-      content: LocalArtifact { path: bmc_netboot_artifact(name: "busybox") },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "vmlinuz"),
-      content: LocalArtifact { path: bmc_netboot_artifact(name: "vmlinuz") },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "initrd"),
-      content: LocalArtifact { path: bmc_netboot_artifact(name: "initrd") },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "grubaa64.efi"),
-      content: LocalArtifact { path: bmc_netboot_artifact(name: "grubaa64.efi") },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "grub.cfg"),
-      content: InlineText { text: bmc_netboot_grub_cfg_text(plan: plan) },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "nocloud/user-data"),
-      content: InlineText { text: bmc_netboot_nocloud_user_data(plan: plan) },
-    },
-    BmcStagedFile {
-      remote_path: bmc_netboot_staged_path(plan: plan, name: "nocloud/meta-data"),
-      content: InlineText { text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], "") },
-    },
-  ]
-}
+data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest IS the driver, and since 2026-09-30 it is ONE TYPED STAGING: provision folds its ops (BmcNetbootMakeDir / BmcNetbootPutArtifact / BmcNetbootPutText / BmcNetbootPutFromUri / BmcNetbootLaunchServe) through bmc_netboot_staging_of into one BmcNetbootStaging — the prepared operations, or the whole staging refused — and a refused staging runs nothing, so a bad argument cannot act while the ops around it are skipped past. Preparation also NARROWS the sources: the unrealizable uri source refuses as a staging verdict (the old provision ran its mkdir first and discovered the unrealizable put MID-FOLD, after the mkdir and every earlier scp had already executed against the BMC) and has no prepared constructor at all, so the realization match carries no dead arm. The three scattered run_shell_command call sites are gone (bmc_netboot_run_bmc, bmc_netboot_put_path, and the serve launch each reached the transport independently; that was three bridge sites duplicating one pattern): one executor, bmc_netboot_apply_staging, consumes the SEALED staged value (BmcNetbootPreparedOp is a sole_constructor minted only behind the relative-path verdict, so a hand-authored prepared op with a remote path its author chose is a compile-time refusal, proven by the domain witness's cross-module probe) and alone turns an arm into a run. The serve command's rendered-text surface (bmc_netboot_serve_command_text, BmcNetbootServeCommandTextBuilt/Refused) is deleted — the witness reads argv fields now, not scraped shell text. HISTORY, for the stale-citation discipline: this clause previously recorded the heredoc-bridge hop through command_runner's shell_exec_via_bash/retained_runtime, then its deletion when command_runner asked command_over_transport once and handed the result straight to shell.Exec.RunArgv, then the SshExec arm's RFC-4254 fold in extdeps.exec.command (cited IEEE 1003.1-2017 section 2.2.2) — each correction rewritten when it landed, not left standing. Remaining debt, scoped: command_runner_dissolution_trigger's own first clause — host_effect_apply has not yet bound ArgvCommand execution, so the executor's three arms (mkdir on the BMC, the scp transfers, the busybox-httpd launch) still lower through gunbc.command_runner.run_shell_command, which this module inherits rather than duplicates. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc/bmc_netboot_serve.dag retires command_runner.run_shell_command in its favor — the sealed staged value is already the shape that binding would consume")

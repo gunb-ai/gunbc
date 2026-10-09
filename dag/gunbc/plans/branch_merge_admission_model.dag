@@ -77,7 +77,7 @@ fn section_2() -> List<MarkdownBlock> {
         row(cells: [cell(text: "Mergeable / merge-state"), cell(text: "extdeps.github.mergeable_state.MergeableState, extdeps.github.merge_state.MergeStateStatus")]),
         row(cells: [cell(text: "Content hash / commit sha"), cell(text: "std.types.ContentHash, std.types.CommitSha")]),
         row(cells: [cell(text: "Provider / commit consumer"), cell(text: "gunbc.generated_artifact.RepoConsumer (GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler)")]),
-        row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_spec.DiffPolicy, gunbc.ci_spec.DiffMode")]),
+        row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_diff_policy.DiffPolicy, gunbc.ci_diff_policy.DiffMode")]),
         row(cells: [cell(text: "Process exit / pass-fail"), cell(text: "std.process.ProcessExit")]),
         row(cells: [cell(text: "Check conclusion"), cell(text: "extdeps.github.checks.CheckConclusion")]),
         row(cells: [cell(text: "Gate roster (the criteria)"), cell(text: "gunbc.commit_workflow.commit_gate_roster")]),

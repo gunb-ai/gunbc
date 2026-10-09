@@ -1,11 +1,11 @@
 module extdeps.git.publication_transport
 
 import std.types { Bool, CommitSha, GitRef, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_wire_hex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -137,6 +137,7 @@ fn git_remote_ref_cas_refspec(request: GitRemoteRefCasRequest) -> NonEmptyStr {
 // GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool.
 service git.PublicationTransport {
   operation PushRefUpdate {
+    requires opaque
     input {
       remote: NonEmptyStr
       refspec: NonEmptyStr
@@ -154,6 +155,7 @@ service git.PublicationTransport {
   }
 
   operation PushRefUpdateWithLease {
+    requires opaque
     input {
       remote: NonEmptyStr
       refspec: NonEmptyStr
@@ -172,6 +174,7 @@ service git.PublicationTransport {
   }
 
   operation RecordCommit {
+    requires opaque
     input {
       message: NonEmptyStr
     }
@@ -188,6 +191,7 @@ service git.PublicationTransport {
   }
 
   operation RecordEmptyCommit {
+    requires opaque
     input {
       message: NonEmptyStr
     }

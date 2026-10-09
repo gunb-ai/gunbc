@@ -29,7 +29,7 @@ import gunbc.diff_baseline {
   diff_baseline_is_exact_replay
 }
 import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import gunbc.ci_spec { DiffTwoDot, gunbc_ci_spec }
+import gunbc.ci_diff_policy { DiffTwoDot, gunbc_ci_diff_policy }
 import v2.workflow.floor_diff_observe {
   floor_diff_mode_for_baseline,
   floor_git_diff_range_of_mode,
@@ -77,7 +77,8 @@ fn resolve_with_diff_window(
       base_ref: base_ref,
       push_before: none,
       head_sha: none,
-      diff_window: diff_window
+      diff_window: diff_window,
+      merge_group_base: none
     },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name
@@ -224,7 +225,7 @@ test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
           diff_baseline_is_exact_replay(b: b)
             && floor_diff_mode_for_baseline(
               baseline: b,
-              policy: gunbc_ci_spec.diff_policy,
+              policy: gunbc_ci_diff_policy,
             ) == DiffTwoDot
             && floor_git_diff_range_of_mode(mode: DiffTwoDot) == TwoDot
             && diff_baseline_diff_base(b: b) == planted_base_hex

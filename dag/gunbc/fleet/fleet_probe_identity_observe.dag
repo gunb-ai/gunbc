@@ -1,13 +1,14 @@
 module gunbc.fleet_probe_identity_observe
 
-import std.types { String, Bool, List }
+import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
-import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.posix.getent { getent_passwd_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.tools.gcloud { gcloud_auth_list_accounts_command }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
@@ -52,35 +53,187 @@ fn observe_authorized_keys_line(home: String) -> String {
   }
 }
 
-// ph and jh are USED AS PATHS below, not merely printed, so they match the arms rather than
-// routing through the receipt-text projection: "(refused: ...)" is fine to print and wrong to
-// open. An unreadable home yields "" here and the guarded call below skips the probe entirely
-// rather than reading /.ssh/authorized_keys off a fabricated root.
+// ph and jh are USED AS PATHS below, not merely printed. Both now come from decisions that only
+// admit an observed value (passwd_home_of answers "" unless the database line carried a home;
+// the environment read answers "" when unset), so "(refused: ...)" is fine to print and can no
+// longer be opened: the guarded call below skips the probe entirely rather than reading
+// /.ssh/authorized_keys off a fabricated root.
 
-fn fleet_probe_identity_observe_wet() -> ProcessExit
-  uses net: Network
+// THE PASSWD-HOME DECISION, PURE OVER TWO SUPPLIED PROBES. The shell composed it as
+// `getent passwd "$(whoami)" | cut -d: -f6`: whoami names the account, getent answers the
+// account's database line (name:passwd:uid:gid:gecos:home:shell, getent(1)), field six is the
+// home. Each stage was invisible inside the substitution -- a refused whoami silently keyed the
+// database with an empty user, and a malformed line cut to "". Here every stage is an arm: the
+// caller probes the account database only when the user probe was admitted (so the passwd leg
+// arrives as an Optional outcome), and a line without a home field is refused, not truncated.
+// A witness supplies both values; nothing here runs a process.
+type PasswdHomeObservation
+  = PasswdHomeObserved { home: String }
+  | PasswdHomeAbsent
+  | PasswdHomeRefused { cause: String }
+
+fn passwd_home_observation(user: ProcessOutcome, passwd: ProcessOutcome?) -> PasswdHomeObservation {
+  match user {
+    ProcessOutputPresent { text: ut } =>
+      match passwd {
+        Absent => PasswdHomeRefused { cause: "observer user unavailable, account database not keyed" }
+        Present { value: passwd_outcome } =>
+          match passwd_outcome {
+            ProcessOutputPresent { text: line } => {
+              let fields = split(s: line, delimiter: ":")
+              match fields.skip(n: 5).first() {
+                Present { value: raw_home } =>
+                  if trim(s: raw_home) == "" {
+                    PasswdHomeAbsent
+                  } else {
+                    PasswdHomeObserved { home: trim(s: raw_home) }
+                  }
+                Absent => PasswdHomeRefused { cause: join(["passwd entry has no home field: ", trim(s: line)], "") }
+              }
+            }
+            ProcessOutputAbsent => PasswdHomeAbsent
+            ProcessRefused { exit_code: _, stderr: e } => PasswdHomeRefused { cause: trim(s: e) }
+          }
+      }
+    ProcessOutputAbsent => PasswdHomeRefused { cause: "observer user produced no output" }
+    ProcessRefused { exit_code: _, stderr: e } => PasswdHomeRefused { cause: trim(s: e) }
+  }
+}
+
+// The home as a PATH: only an observed home opens a file. "" keeps the receipt's old guard shape
+// -- an unreadable home skips the authorized_keys probe instead of reading /.ssh off a root the
+// decision never established.
+fn passwd_home_of(obs: PasswdHomeObservation) -> String {
+  match obs {
+    PasswdHomeObserved { home: h } => h
+    PasswdHomeAbsent => ""
+    PasswdHomeRefused { cause: _ } => ""
+  }
+}
+
+// The receipt fragment, in the receipt-text projection's own vocabulary (a value, "(no output)",
+// "(refused: ...)"), so a reader of the receipt sees the same three states for a composed probe
+// as for a single process.
+fn passwd_home_receipt_text(obs: PasswdHomeObservation) -> String {
+  match obs {
+    PasswdHomeObserved { home: h } => h
+    PasswdHomeAbsent => "(no output)"
+    PasswdHomeRefused { cause: c } => join(["(refused: ", c, ")"], "")
+  }
+}
+
+// THE JOB HOME IS THE PROCESS'S OWN ENVIRONMENT, NOT A PROCESS. `echo "$HOME"` ran a shell to
+// read what the caller already holds; shell.Env.Get names the fact and the interpreter realizes
+// it without a spawn. Unset answers "(no output)" -- exactly what the old capture said for a
+// shell that echoed nothing.
+fn env_var_receipt_text(v: String?) -> String {
+  match v {
+    Absent => "(no output)"
+    Present { value: raw } => trim(s: raw)
+  }
+}
+
+// ${VAR:-absent} (POSIX Shell Command Language 2.6.2): the default answers when the variable is
+// unset OR empty. The old echo folded both into one line of output; the decision is the same
+// fold, named.
+fn adc_env_value(v: String?) -> String {
+  match v {
+    Absent => "absent"
+    Present { value: raw } =>
+      if trim(s: raw) == "" { "absent" } else { trim(s: raw) }
+  }
+}
+
+// test -f ANSWERS IN ITS EXIT STATUS (test(1), EXIT STATUS: 0 if true, 1 if false). Exit zero
+// with no output is the answer "present"; exit 1 is the answer "absent" -- an answer, not a
+// refusal of the observation. Only a status the utility does not use for its question is a
+// refusal, and it is reported as one.
+fn adc_file_observation_text(outcome: ProcessOutcome) -> String {
+  match outcome {
+    ProcessOutputPresent { text: _ } => "present"
+    ProcessOutputAbsent => "present"
+    ProcessRefused { exit_code: code, stderr: e } =>
+      if code == 1 {
+        "absent"
+      } else {
+        join(["(refused: ", to_string(code), " ", trim(s: e), ")"], "")
+      }
+  }
+}
+
+fn observe_text_line(label: String, value: String) -> String {
+  join([label, " ", value, "\n"], "")
+}
+
+// THE PASSWD PROBE HAS ONE CONSTRUCTION SITE. The three inline copies it replaces (the probe
+// receipt's getent leg, the enrollment's decision probe, and the enrollment's post-apply
+// verification probe) were the same whoami-then-getent pair each, with the optional constructed
+// in if-branches where no expected type reaches it. Here the fn's declared return type
+// instantiates the variant, and each wet caller runs the probe ONCE and hands the outcome onward,
+// so one passwd decision serves every consumer. The pure decision over the outcome is
+// passwd_home_observation, witnessed separately.
+fn passwd_probe_for_user(user: ProcessOutcome) -> ProcessOutcome?
+{
+  match user {
+    ProcessOutputPresent { text: ut } =>
+      if trim(s: ut) == "" {
+        none
+      } else {
+        Present { value: run_shell_command_capture(
+          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
+          transport: LocalExec,
+        ) }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// THE GROCERY LIST'S SCHEMA NOTES, DECIDED AT THE CUTOVER. gcloud-binary: the old value was
+// command -v's resolved path, a shell-side bonus the typed presence check does not carry (its
+// declared path field straddles under wet and only EXISTENCE is consumed on purpose); the
+// decision the receipt always made -- is the binary reachable -- is the same, and the value now
+// says which side of it. gcloud-auth-list: the old `|| echo gcloud-absent` folded a FAILING auth
+// list into the same line as a MISSING binary; missing still answers gcloud-absent, and a binary
+// that ran and refused now reports refused with its cause, which is the report §5 asks for.
+// THE RECEIPT BODY, PARAMETERIZED BY THE AUTH-LIST INVOCATION (the side chat's pairing fix on
+// review 5409740742). Production (fleet_probe_identity_observe_wet) supplies
+// gcloud_auth_list_accounts_command() bare; the real-path receipt supplies the SAME command with
+// HOME bound to a mktemp scratch directory (env_prefixed_command), so the one leg that can write
+// under the observer's real ~/.config/gcloud (gcloud's own logs) writes under the scratch
+// instead. Both traverse the same presence decision, the same capture, the same assembly and the
+// same publication -- deleting or miswiring the production branch no longer stays green.
+fn fleet_probe_identity_observe_receipt_body(auth_list_command: ArgvCommand) -> String
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
-  let passwd_home = run_shell_command_capture(
-    command: posix_sh_program_command(script: "getent passwd \"$(whoami)\" | cut -d: -f6"),
-    transport: LocalExec,
-  )
-  let job_home = run_shell_command_capture(
-    command: posix_sh_program_command(script: "echo \"$HOME\""),
-    transport: LocalExec,
-  )
-  let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
-  let jh = match job_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
-  let body = join([
-    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", process_outcome_receipt_text(outcome: passwd_home), " job-home=", process_outcome_receipt_text(outcome: job_home), "\n"], ""),
+  let passwd_probe = passwd_probe_for_user(user: user)
+  let passwd_home = passwd_home_observation(user: user, passwd: passwd_probe)
+  let ph = passwd_home_of(obs: passwd_home)
+  let job_home = shell.Env.Get(name: "HOME" as NonEmptyStr).value
+  let jh = match job_home { Absent => ""  Present { value: v } => trim(s: v) }
+  let gcloud_present = shell.PosixCommandV.Check(command: "gcloud" as NonEmptyStr).exists
+  join([
+    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", passwd_home_receipt_text(obs: passwd_home), " job-home=", env_var_receipt_text(v: job_home), "\n"], ""),
     "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
     if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
     if jh != ph && jh != "" { observe_authorized_keys_line(home: jh) } else { "" },
-    observe_capture_line(label: "gcloud-binary", command: posix_sh_program_command(script: "command -v gcloud || echo absent")),
-    observe_capture_line(label: "gcloud-auth-list", command: posix_sh_program_command(script: "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent")),
-    observe_capture_line(label: "adc-env", command: posix_sh_program_command(script: "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\"")),
-    observe_capture_line(label: "adc-file-passwd-home", command: posix_sh_program_command(script: "test -f \"$(getent passwd \"$(whoami)\" | cut -d: -f6)/.config/gcloud/application_default_credentials.json\" && echo present || echo absent")),
+    observe_text_line(label: "gcloud-binary", value: if gcloud_present { "present" } else { "absent" }),
+    if gcloud_present {
+      observe_capture_line(label: "gcloud-auth-list", command: auth_list_command)
+    } else {
+      observe_text_line(label: "gcloud-auth-list", value: "gcloud-absent")
+    },
+    observe_text_line(label: "adc-env", value: adc_env_value(v: shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS" as NonEmptyStr).value)),
+    observe_text_line(label: "adc-file-passwd-home", value: adc_file_observation_text(outcome: run_shell_command_capture(
+      command: test_regular_file_command(path: concat(ph, "/.config/gcloud/application_default_credentials.json")),
+      transport: LocalExec,
+    ))),
   ], "")
+}
+
+fn fleet_probe_identity_observe_wet() -> ProcessExit
+{
+  let body = fleet_probe_identity_observe_receipt_body(auth_list_command: gcloud_auth_list_accounts_command())
   let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
   if w.success {
     ExitSuccess

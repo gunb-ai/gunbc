@@ -1,0 +1,33 @@
+module test.claim.emitted_manifest_runtime_features
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY EMITTED CRATE CARRIES v1_rt.rs, AND v1_rt.rs GATES ON CARGO FEATURES.
+// A manifest that omits the [features] section earns `unexpected_cfgs` once per
+// cfg site -- a warning under a plain `cargo check`, a hard error under the
+// `-D warnings` CI runs -- so the emitted crate compiled clean on a workstation
+// and refused under CI. The two facts are now one authority: v1.compiler.runtime_rust
+// rust_runtime_cargo_features supplies both the cfg spelling the runtime writes and
+// the rows every manifest writer renders. These two claims are the executing pair --
+// the cfg arm is present in the emitted runtime, and the feature is declared in the
+// emitted manifest -- so a fork between them reds here rather than in a CI job whose
+// subject is something else.
+test fn emitted_manifest_declares_the_runtime_gated_feature() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emittedmanifestfeaturefix\n\nfn one() -> Int {\n  1\n}\n",
+    "Cargo.toml",
+    ["[features]", "text_lookup_work_counter = []"],
+    []
+  )
+}
+
+test fn emitted_runtime_gates_on_the_declared_feature() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emittedruntimecfgfix\n\nfn one() -> Int {\n  1\n}\n",
+    "src/v1_rt.rs",
+    ["#[cfg(feature = \"text_lookup_work_counter\")]"],
+    []
+  )
+}

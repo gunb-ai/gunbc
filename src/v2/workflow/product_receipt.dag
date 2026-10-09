@@ -5,10 +5,9 @@ import std.content_hash {
   content_hash_atom,
   content_hash_eq_structural
 }
-import std.types { NonEmptyStr }
-import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { NonEmptyStr, List }
+import v2.std.algebra { Empty, fold_list, length }
+import std.algebra { list_snoc_item }
 
 // WHY THIS EXISTS.
 //
@@ -112,6 +111,7 @@ fn diagnostic_tally_render(tally: List<DiagnosticCauseTally>) -> String {
 
 type BoundaryRefusalCause
   = ManifestNotProduced
+  | ManifestUnobservable { cause: String }
   | ManifestOverlayNotResolved
   | ManifestPopulationEmpty
   | ManifestCoverageIncomplete
@@ -120,9 +120,12 @@ type BoundaryRefusalCause
   | ManifestSourceReadFailed
   | IngestRowShortfall
   | AdmissionReasonUnrecognized { reason: String }
-  | EmitterRejected { causes: List<DiagnosticCauseTally> }
+  | EmitterRejected { causes: List<DiagnosticCauseTally>, advisories: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
+  | EmittedCargoManifestAbsent { detail: String }
+  | EmittedCargoManifestNotUsable
+  | EmittedCargoManifestUnobservable { cause: String }
   | CargoManifestWriteFailed
   | CargoBuildFailed
 
@@ -134,6 +137,7 @@ type BoundaryStanding
 type ArtifactIdentityAbsentCause
   = BoundaryNotReached
   | ProducerReportedNoArtifact
+  | ProducerUnobservable { cause: String }
 
 // The identity carries a FILE COUNT beside the digest, and that is a field
 // rather than a caveat in a probe document. Two producers can hand the same
@@ -207,6 +211,8 @@ fn product_boundary_label(boundary: ProductBoundary) -> String {
 fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
   match cause {
     ManifestNotProduced => "manifest not produced"
+    ManifestUnobservable { cause: why } =>
+      concat("the manifest could not be observed, so neither produced nor absent is established: ", why)
     ManifestOverlayNotResolved => "the run resolved the committed stub, not the manifest this transaction produced"
     ManifestPopulationEmpty => "manifest population empty"
     ManifestCoverageIncomplete => "manifest coverage incomplete"
@@ -216,17 +222,28 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
     IngestRowShortfall => "ingest row shortfall"
     AdmissionReasonUnrecognized { reason: reason } =>
       concat("the admission authority refused for a reason this receipt does not model: ", reason)
-    EmitterRejected { causes: causes } =>
+    EmitterRejected { causes: causes, advisories: advisories } =>
       concat(
-        "emitter refused -- diagnostics below are ONE MODULE'S, not the closure's, count: ",
+        "emitter refused -- diagnostics below are ONE MODULE'S, not the closure's, fatal causes: ",
         concat(
           to_string(diagnostic_tally_total(tally: causes)),
-          diagnostic_tally_render(tally: causes)
+          concat(
+            diagnostic_tally_render(tally: causes),
+            concat(
+              "; advisories carried (not causes): ",
+              concat(to_string(diagnostic_tally_total(tally: advisories)), diagnostic_tally_render(tally: advisories))
+            )
+          )
         )
       )
     EmittedHardRefusalsPresent { count: count } =>
       concat("emitted hard refusals present: ", to_string(count))
     AssemblyRefused => "seed-linked assembly refused"
+    EmittedCargoManifestAbsent { detail: detail } =>
+      concat("the candidate carries no emitted Cargo manifest to derive from: ", detail)
+    EmittedCargoManifestNotUsable => "the candidate's emitted Cargo manifest was read and carried no usable content"
+    EmittedCargoManifestUnobservable { cause: cause } =>
+      concat("the candidate's emitted Cargo manifest could not be observed: ", cause)
     CargoManifestWriteFailed => "authority Cargo manifest write failed"
     CargoBuildFailed => "cargo did not complete with zero errors"
   }
@@ -255,6 +272,8 @@ fn artifact_identity_label(identity: ArtifactIdentity) -> String {
       match cause {
         BoundaryNotReached => "<boundary not reached>"
         ProducerReportedNoArtifact => "<producer reported no artifact>"
+        ProducerUnobservable { cause: why } =>
+          concat("<what the producer delivered could not be observed: ", concat(why, ">"))
       }
   }
 }

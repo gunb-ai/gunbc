@@ -44,16 +44,15 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // is not permission any more than detection failure is. gunbc#8818 is the worked
 // instance -- it routed a relocated witness OUT rather than admitting it in.
 //
-// WHY NOTHING REFUSED WHEN THE RULE WAS BROKEN. The refusal exists and is well
-// written: `v1_compiler.cli_run` `refuse_unexecuted_deferred_witnesses` produces
-// UnclassifiedPathDeferral and says in its own text that moving a file under a
-// long/ or offline path "executes it NOWHERE". It has ONE caller,
-// `run_discovery_corpus_with_options_inner` -- the discovery-corpus batch path.
-// `claim_executor --required-ci` runs three phases, parse / regen / floor, and the
-// floor does its own site projection via `v2.workflow.required_floor`
-// `long_home_prefixes` rather than entering that path. No workflow invokes a batch
-// or plan mode. So the host that would have refused is unreachable from every
-// required run, and the rule's breakage could not surface.
+// WHY NOTHING REFUSED WHEN THE RULE WAS BROKEN. A refusal existed
+// (`refuse_unexecuted_deferred_witnesses`, UnclassifiedPathDeferral) but its ONE caller was
+// the discovery-corpus batch path, which no required run entered: `claim_executor
+// --required-ci` runs parse / regen / floor, and the floor does its own site projection via
+// `v2.workflow.required_floor` `long_home_prefixes`. Both the path and that refusal were
+// deleted as unreachable (2026-10-04). The refusal the rule needs is the required floor's own,
+// named as the restoration trigger of `gunbc.rung_drop`
+// `witness_deferral_freeze_forward_rule_rung_drop`. The STALE-ROW half does run on the live
+// route: `run_required_floor` refuses stale freeze rows before its intersection wall.
 //
 // EVIDENCE GRADE, stated because two of the three claims above are about absences.
 // The cadence standing is read from the corpus's own recorded corrections, not
@@ -70,7 +69,36 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
-// SHRINK LOG. 2026-08-26 — 3 entries
+// SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
+// renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
+// Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
+// gunbc.offline_local_recipe RecipeFunctions; freeze must not report a passing ratchet. Do not raise the cap.
+// SHRINK LOG. 2026-09-18 — 4 entries
+// (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
+// src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [whole],
+// src/v2/test/claim/long/door_real_module_probe_test.dag [partial],
+// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 15 identities,
+// DELETED as duplicate coverage, not migrated and not exempted: each body was only a call to
+// another test fn (owner ruling 2026-09-16/17: no code may reference a test fn), so it asserted
+// nothing its target did not already assert. The targets keep the facts:
+// v2.test.manual.body_lowering_projection_call (3), v2.test.long.emit_host_classical_not_ingested_equals_eval
+// ingested_classical_not_arrow_has_match_holds (which implies the since-deleted resolves claim),
+// door_real_module_probe quad_namespace_only_resolve_accepts_holds /
+// quad_import_scoped_admission_reds_ambiguous_export_holds, and
+// v2.test.long.pick_ingested_structural_lowering (4). The file whose every row was a wrapper
+// deletes whole. Three more DELETED as duplicate claims (DESIGN §3, one assertion implies the
+// other): pick_probe_normalized_arrow_branch_holds was byte-identical to
+// pick_ingested_structural_lowering pick_ingested_normalized_arrow_has_branch_body_holds, and
+// pick_probe_normalized_branch_holds asserted the same Branch body over the same source through a
+// private arrow finder; wave1_gate1_ingested_add_normalize_resolves_holds is implied by its sibling
+// wave1_gate1_ingested_add_resolved_arrow_transform_holds, which is true only when resolve accepts.
+// The last two, wave1_gate1_ingested_add_{normalize_yields_arrow_transform,resolved_arrow_transform}_holds,
+// are DELETED WITHOUT REPLACEMENT (parent ruling on this change): they were red on main (the add
+// helpers still read normalize's result as a bare Node after it became NormalizedTree, and the file
+// did not resolve), so they executed nowhere and coverage is unchanged. Repaired, they measured
+// 100k and 164k eval steps against the 72.3k new-witness line. The helper repair stays. OWED: the
+// add-lowering fact (real ingest lowers add to Arrow+Transform) has no floor claim; a cheaper claim
+// at one interface is the gap's filler. The file deletes whole. 2026-08-26 — 3 entries
 // (src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag [partial],
 // src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/self_host_candidate_generation_test.dag [partial]), 5 identities,
@@ -393,23 +421,16 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/long/import_closure_live_test.dag", functions: ["dag_import_closure_live_witness_bundle_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/long/reference_closure_equivalence_test.dag", functions: ["reference_closure_b2_safety_wall_holds"] },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
     functions: [
       "roster_std_change_dag_zero_suspects_within_ratchet"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag", functions: ["roster_swift_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
-      "roster_compile_stage_zero_suspects_within_ratchet",
-      "roster_glob_discovery_zero_suspects_within_ratchet",
-      "roster_lens_traversal_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
       "roster_std_algebra_zero_suspects_within_ratchet"
     ]
@@ -436,9 +457,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "grammar_coverage_take_n_live_dag_subset10_work_units_by_execution",
       "grammar_coverage_take_n_fixed_roster_saturates_by_execution",
       "grammar_coverage_dag_tree_receipt_by_execution",
-      "grammar_coverage_v1_core_file_reject_locus_by_execution",
-      "grammar_coverage_v1_tokenize_file_reject_locus_by_execution",
-      "grammar_coverage_v1_rejected_rows_identity_by_execution",
       "grammar_coverage_v1_tree_receipt_by_execution",
       "grammar_coverage_v2_tree_receipt_by_execution",
       "grammar_coverage_parse_fraction_is_derived"
@@ -500,7 +518,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/bind_round_trip_test.dag",
     functions: [
-      "bind_emit_matches_serialize_holds", "bind_grammar_inverse_holds",
+      "bind_emit_matches_serialize_holds",
       "bind_ingest_via_coerce_matches_canonical"
     ]
   },
@@ -517,7 +535,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag",
     functions: [
       "branch_if_then_else_emit_matches_serialize_holds",
-      "branch_if_then_else_grammar_inverse_holds",
       "branch_if_then_else_ingest_via_coerce_matches_canonical"
     ]
   },
@@ -538,7 +555,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag",
     functions: [
-      "dag_add_emit_matches_serialize_holds", "dag_add_grammar_inverse_holds",
+      "dag_add_emit_matches_serialize_holds",
       "dag_add_ingest_via_coerce_matches_canonical",
       "dag_add_translate_accepts_holds"
     ]
@@ -632,7 +649,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "python_same_language_parse_bridge_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag", functions: ["emit_ingest_type_decl_round_trip_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag",
     functions: [
@@ -642,8 +658,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "ingest_then_emit_typescript_selector_identity_holds",
       "emit_ingest_typescript_perturbed_frontier_fails_closed",
       "ingest_typescript_forward_fails_closed_off_frontier_holds",
-      "emit_typescript_backward_fails_closed_on_foreign_emitted_holds",
-      "typescript_same_language_parse_bridge_holds"
+      "emit_typescript_backward_fails_closed_on_foreign_emitted_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects_test.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
@@ -672,14 +687,14 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/loop_round_trip_test.dag",
     functions: [
-      "loop_emit_matches_serialize_holds", "loop_grammar_inverse_holds",
+      "loop_emit_matches_serialize_holds",
       "loop_ingest_via_coerce_matches_canonical"
     ]
   },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/match_bool_round_trip_test.dag",
     functions: [
-      "match_bool_emit_matches_serialize_holds", "match_bool_grammar_inverse_holds",
+      "match_bool_emit_matches_serialize_holds",
       "match_bool_ingest_via_coerce_matches_canonical"
     ]
   },
@@ -720,9 +735,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/long/pick_ingested_probe_test.dag",
     functions: [
-      "pick_probe_pipeline_resolves_holds", "pick_probe_normalized_branch_holds",
-      "pick_probe_normalized_arrow_branch_holds", "pick_probe_swapped_arms_structural_red_holds",
-      "pick_probe_eval_equals_holds", "pick_probe_resolved_then_arm_has_magnitude_child_holds",
+      "pick_probe_resolved_then_arm_has_magnitude_child_holds",
       "pick_probe_normalized_then_arm_has_magnitude_child_holds",
       "pick_probe_parsed_then_arm_has_magnitude_child_holds"
     ]
@@ -939,9 +952,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/door_real_module_probe_test.dag",
     functions: [
       "quad_namespace_only_resolve_accepts_holds",
-      "quad_import_scoped_admission_reds_ambiguous_export_holds",
-      "quad_with_peer_import_scoped_reds_ambiguous_export_holds",
-      "quad_with_peer_greens_under_namespace_only_projection"
+      "quad_import_scoped_admission_reds_ambiguous_export_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },
@@ -962,7 +973,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds",
       "inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds",
       "inhabitant_neutralization_python_to_go_discriminates_on_real_tree",
-      "inhabitant_neutralization_python_to_go_holds",
       "inhabitant_neutralization_python_to_go_translate_rejects",
       "inhabitant_neutralization_python_to_go_emit_rejects"
     ]
@@ -1034,7 +1044,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "native_routing_green_control_bound_entry_reaches_subject"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/long/no_dual_representation_test_test.dag", functions: ["no_violations_in_examined_scope", "coverage_honesty_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
     functions: [
@@ -1157,14 +1166,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag",
-    functions: [
-      "wave1_gate1_a1_projection_call_lowers_witness_holds",
-      "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds",
-      "wave1_gate1_a1_projection_field_access_refuses_witness_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag",
     functions: [
       "wave1_gate1_a1_ingest_param_domain_parity_witness_holds",
@@ -1184,16 +1185,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag", functions: ["wave1_gate1_c1_derived_registry_execution_witness_holds"] },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag",
-    functions: [
-      "wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds",
-      "wave1_gate1_ingested_add_normalize_resolves_holds",
-      "wave1_gate1_ingested_add_resolved_arrow_transform_holds",
-      "wave1_gate1_ingested_match_normalize_yields_match_holds",
-      "wave1_gate1_ingested_match_resolves_holds"
-    ]
-  },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/manual/emit_source_store_test.dag",
     functions: [

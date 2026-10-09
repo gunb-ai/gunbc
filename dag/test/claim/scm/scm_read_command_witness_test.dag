@@ -108,11 +108,3 @@ test fn scm_rc_status_answers_on_a_loadable_repository() -> Bool {
     _ => false
   }
 }
-
-test fn scm_read_command_keystone_holds() -> Bool {
-  scm_rc_an_empty_repository_is_an_answer_not_a_failure() &&
-    scm_rc_an_absent_repository_is_unavailable_not_an_empty_answer() &&
-    scm_rc_a_schema_refusal_survives_composition_with_its_cause() &&
-    scm_rc_status_refuses_in_the_same_arm_on_the_same_path_as_log() &&
-    scm_rc_status_answers_on_a_loadable_repository()
-}

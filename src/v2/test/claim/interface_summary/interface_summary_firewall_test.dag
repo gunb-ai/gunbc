@@ -10,10 +10,21 @@ import v2.lens.interface_summary {
 }
 import v2.lens.module_graph { ImportResolutionFact }
 import std.algebra { Empty }
-import v2.std.collection { Present, Absent, optional_absent }
-import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
-import v2.std.logic { Bool }
+import v2.std.collection { Present, Absent, optional_absent, optional_present }
+import v2.std.decl_index {
+  DeclFact,
+  export_signature_declared_arrow,
+  export_signature_declared_facts,
+  export_signature_facts,
+  export_signature_facts_host_scaffold_dissolution_trigger
+}
+import v2.std.arrow_signature { ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.anonymous_binder { anonymous_param_label }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, arrow_signature_order_label, edge_label_of, symbol_intern_lexeme, Authored }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -24,7 +35,9 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
     module_path: module_path,
     pool_roots: firewall_fixture_roots
   ) {
-    Present { value: summary } =>
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: Absent, diagnostics: _ } => Absent
+    Accepted { value: Present { value: summary }, diagnostics: _ } =>
       fold(summary.exports, init: optional_absent(), f: fn(found, entry) {
         match found {
           Present { value: _ } => found
@@ -35,7 +48,6 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
             }
         }
       })
-    Absent => Absent
   }
 }
 
@@ -103,5 +115,128 @@ test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool 
   ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// PROGRAM P CONTROL: AN EXPORTED SIGNATURE ARRIVES IN THE ONE ARROW ENCODING. The fixture declares
+// `firewall_ordered(b, _, a)`: its lifted Arrow carries the declared order [b, <anonymous-parameter-2>, a]
+// -- authored order, not label order, with the `_` slot minted by v2.std.anonymous_binder -- read
+// through the one reader, v2.std.arrow_signature arrow_declared_parameter_order.
+data firewall_order_roots: List<String> = ["src/v2/test/fixture/export_signature_order"]
+
+fn firewall_ordered_fact(facts: List<DeclFact>) -> DeclFact? {
+  fold(facts, init: optional_absent(), f: fn(found, fact) {
+    match found {
+      Present { value: _ } => found
+      Absent => if fact.name == "firewall_ordered" { optional_present(value: fact) } else { found }
+    }
+  })
+}
+
+test fn exported_signature_carries_named_binders_and_declared_order() -> Bool {
+  match export_signature_declared_facts(pool_roots: firewall_order_roots) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: facts, diagnostics: _ } =>
+      match firewall_ordered_fact(facts: facts) {
+        Absent => false
+        Present { value: fact } =>
+          match arrow_declared_parameter_order(arrow: fact.node) {
+            ArrowParameterOrderDeclared { labels: labels } =>
+              labels == [symbol_intern_lexeme(lexeme: "b"), anonymous_param_label(slot: 2), symbol_intern_lexeme(lexeme: "a")]
+            _ => false
+          }
+      }
+  }
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: the host seam's own Arrow carries no order edge, so the order above
+// exists only because the lift passed it through declared_signature. Deleting the lift reddens the
+// claim above; this one pins that the host did not mint a second order constructor -- read
+// STRUCTURALLY, as no edge carrying the order label. Since A4 (gunbc#12770) a domain that binds names
+// and carries no order edge is ill formed, so the declared-order read answers Malformed for the raw
+// host Arrow (it answered Absent before): that is why the raw seam value is consumed ONLY through
+// export_signature_declared_facts, whose lift is the one constructor that makes it well formed.
+test fn export_signature_host_seam_mints_no_order_edge() -> Bool {
+  match firewall_ordered_fact(facts: export_signature_facts(pool_roots: firewall_order_roots)) {
+    Absent => false
+    Present { value: fact } =>
+      !fold(fact.node.children, init: false, f: fn(acc, e) { acc || (edge_label_of(e: e) == arrow_signature_order_label) })
+        && match arrow_declared_parameter_order(arrow: fact.node) {
+          ArrowParameterOrderMalformed => true
+          _ => false
+        }
+  }
+}
+
+// A HOST ARROW IN THE RETIRED POSITIONAL-TYPES SHAPE [Int, Int] REFUSES: its first positional child is
+// a type, not a Conj of named binders, so it never reaches a fingerprint.
+test fn export_signature_positional_types_arrow_refuses() -> Bool {
+  let int_atom = Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: "Int") } }, children: [], occurrence_id: OccurrenceSynthetic }
+  let positional = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: int_atom }, Edge { label: Positional, target: int_atom }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: positional) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// A WELL-SHAPED HOST DOMAIN [Conj of Named, return], so each refusal below is caused by the one
+// defect it names and not by the domain.
+fn export_signature_host_int_atom() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: "Int") } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn export_signature_host_named_domain() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [binder_edge(name: symbol_intern_lexeme(lexeme: "x"), type_node: export_signature_host_int_atom())],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// POSITIVE CONTROL: the same two outer edges on an Arrow are accepted, so the two refusals below
+// discriminate the connective and the extra edge rather than refusing everything.
+test fn export_signature_well_shaped_host_arrow_accepts() -> Bool {
+  let arrow = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: arrow) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A NODE OF ANOTHER CONNECTIVE carrying [named domain, return] is never relabelled an Arrow.
+test fn export_signature_wrong_connective_refuses() -> Bool {
+  let not_arrow = Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: not_arrow) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// AN EXTRA NAMED OUTER EDGE beside [named domain, return] refuses rather than being dropped.
+test fn export_signature_extra_named_outer_edge_refuses() -> Bool {
+  let arrow = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: export_signature_host_named_domain() },
+      Edge { label: Positional, target: export_signature_host_int_atom() },
+      Edge { label: Authored { name: symbol_intern_lexeme(lexeme: "extra") }, target: export_signature_host_int_atom() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: arrow) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

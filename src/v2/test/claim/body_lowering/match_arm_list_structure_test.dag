@@ -1,0 +1,219 @@
+module v2.test.claim.body_lowering.match_arm_list_structure
+
+import v2.compiler.body_lowering_fold { body_lower_match_arms_optional, body_lower_unwrap_captured }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.algebra { fold_list, length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, CoreEdgeLabel, MatchArmBodyEdge, MatchArmPatternEdge, edge_is_core }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ARM LIST IS LOWERED WHOLE, IN SOURCE ORDER, WITH EACH PATTERN ON ITS OWN BODY.
+//
+// THE SUBJECT IS ONE PRODUCER BOUNDARY: v2.compiler.body_lowering_fold body_lower_match_arms_optional
+// over a match's parse capture. Its input is supplied -- a four-arm source is tokenized and parsed
+// (no normalize runs), the match capture is found, and the producer is called on it directly.
+//
+// WHY THIS IS NOT THE CONSERVATION CONTROL AGAIN. v2.test.claim.namespace_xl0.reference_conservation
+// the_third_match_arm_is_conserved_holds and v2.test.claim.body_lowering.single_arm_match
+// three_arm_match_keeps_every_arm_holds assert that every authored atom reaches the tree. That stays
+// green under a producer that reorders arms or cross-wires a body onto the wrong pattern, because
+// every atom is still present. These claims read the lowered arm list itself: its exact length, the
+// pattern of each arm in source order, and the body each pattern is wired to. The four patterns and
+// four bodies are all distinct spellings, so a swap of two arms and a swap of two bodies each change
+// an observed pair.
+//
+// THE MALFORMED LATER ARM. The same parse is supplied again with its THIRD arm capture replaced by an
+// atom that is not an arm. A reader that stops at the first element it cannot read and returns the
+// arms before it would answer a two-arm list and Accept; the producer must refuse instead. The first
+// arm being well-formed is what makes this the LATER-element case.
+
+data mals_source: String = "module m\n\ntype MalsT = MalsA | MalsB | MalsC | MalsD\n\nfn mals_probe(t: MalsT, mals_wa: Int, mals_wb: Int, mals_wc: Int, mals_wd: Int) -> Int {\n  match t {\n    MalsA => mals_wa\n    MalsB => mals_wb\n    MalsC => mals_wc\n    MalsD => mals_wd\n  }\n}\n"
+
+fn mals_parsed(source: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^mals_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
+      }
+  }
+}
+
+// Every node emitted by `production`, in pre-order (source order for this grammar).
+fn mals_emitted(root: Node, production: Symbol) -> FreeMonoid<Node> {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { Cons { head: root, tail: Empty } } else { Empty }
+    Absent => Empty
+  }
+  fold(root.children, init: own, f: fn(acc, e) { list_append(left: acc, right: mals_emitted(root: e.target, production: production)) })
+}
+
+fn mals_first_emitted(root: Node, production: Symbol) -> Optional<Node> {
+  match mals_emitted(root: root, production: production) {
+    Cons { head: n, tail: _ } => optional_present(value: n)
+    Empty => optional_absent()
+  }
+}
+
+// The lowered arm list the producer answers for the first match in `tree`.
+type MalsArms
+  = MalsArmsRefused
+  | MalsArmsAbsent
+  | MalsArmsLowered { arms: List<Node> }
+
+fn mals_arms_of(tree: Node) -> MalsArms {
+  match mals_first_emitted(root: tree, production: ^dag_surface_match_expr) {
+    Absent => MalsArmsAbsent
+    Present { value: shell } =>
+      match body_lower_unwrap_captured(shell: shell) {
+        Absent => MalsArmsAbsent
+        Present { value: captured } =>
+          match body_lower_match_arms_optional(captured: captured) {
+            Rejected { diagnostics: _ } => MalsArmsRefused
+            Accepted { value: Absent, diagnostics: _ } => MalsArmsAbsent
+            Accepted { value: Present { value: arms }, diagnostics: _ } => MalsArmsLowered { arms: arms }
+          }
+      }
+  }
+}
+
+// The first atom spelling in a subtree, in pre-order: a lowered pattern or body is an atom or a
+// reference wrapper around one.
+fn mals_first_atom(n: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: n) {
+    Present { value: s } => optional_present(value: s)
+    Absent =>
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => mals_first_atom(n: e.target)
+        }
+      })
+  }
+}
+
+fn mals_core_child(n: Node, marker: CoreEdgeLabel) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
+    }
+  })
+}
+
+// One arm read as (pattern spelling, body spelling); Absent if either side has no atom.
+type MalsPair { pattern: Symbol, body: Symbol }
+
+fn mals_pair(arm: Node) -> Optional<MalsPair> {
+  match mals_core_child(n: arm, marker: MatchArmPatternEdge) {
+    Absent => optional_absent()
+    Present { value: p } =>
+      match mals_core_child(n: arm, marker: MatchArmBodyEdge) {
+        Absent => optional_absent()
+        Present { value: b } =>
+          match mals_first_atom(n: p) {
+            Absent => optional_absent()
+            Present { value: ps } =>
+              match mals_first_atom(n: b) {
+                Absent => optional_absent()
+                Present { value: bs } => optional_present(value: MalsPair { pattern: ps, body: bs })
+              }
+          }
+      }
+  }
+}
+
+fn mals_pair_is(arm: Node, pattern: Symbol, body: Symbol) -> Bool {
+  match mals_pair(arm: arm) {
+    Present { value: p } => (p.pattern == pattern) && (p.body == body)
+    Absent => false
+  }
+}
+
+// The well-formed specimen, lowered once and shared by the claims below.
+fn mals_lowered() -> MalsArms {
+  match mals_parsed(source: mals_source) {
+    Absent => MalsArmsAbsent
+    Present { value: tree } => mals_arms_of(tree: tree)
+  }
+}
+
+// THE SUPPLIED MALFORMED CAPTURE: the parse with its third arm capture replaced by a bare atom.
+fn mals_replace(n: Node, target: Node, replacement: Node) -> Node {
+  if n == target {
+    replacement
+  } else {
+    Node {
+      kind: n.kind,
+      children: fold(n.children, init: Empty, f: fn(acc, e) {
+        list_snoc_item(xs: acc, item: Edge { label: e.label, target: mals_replace(n: e.target, target: target, replacement: replacement) })
+      }),
+      occurrence_id: n.occurrence_id
+    }
+  }
+}
+
+fn mals_not_an_arm() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^mals_not_an_arm } }, children: [])
+}
+
+fn mals_third_arm_malformed() -> MalsArms {
+  match mals_parsed(source: mals_source) {
+    Absent => MalsArmsAbsent
+    Present { value: tree } =>
+      match mals_emitted(root: tree, production: ^dag_surface_match_arm) {
+        Cons { head: _, tail: Cons { head: _, tail: Cons { head: third, tail: _ } } } =>
+          mals_arms_of(tree: mals_replace(n: tree, target: third, replacement: mals_not_an_arm()))
+        _ => MalsArmsAbsent
+      }
+  }
+}
+
+fn mals_nth(arms: List<Node>, i: Int) -> Optional<Node> {
+  match arms.skip(n: i).first() {
+    Present { value: a } => optional_present(value: a)
+    Absent => optional_absent()
+  }
+}
+
+fn mals_nth_is(arms: List<Node>, i: Int, pattern: Symbol, body: Symbol) -> Bool {
+  match mals_nth(arms: arms, i: i) {
+    Present { value: a } => mals_pair_is(arm: a, pattern: pattern, body: body)
+    Absent => false
+  }
+}
+
+test fn a_four_arm_match_lowers_exactly_four_arms() -> Bool {
+  match mals_lowered() {
+    MalsArmsLowered { arms: arms } => length(xs: arms) == 4
+    _ => false
+  }
+}
+
+test fn the_arms_keep_source_order_and_each_pattern_keeps_its_own_body() -> Bool {
+  match mals_lowered() {
+    MalsArmsLowered { arms: arms } =>
+      mals_nth_is(arms: arms, i: 0, pattern: ^MalsA, body: ^mals_wa)
+        && mals_nth_is(arms: arms, i: 1, pattern: ^MalsB, body: ^mals_wb)
+        && mals_nth_is(arms: arms, i: 2, pattern: ^MalsC, body: ^mals_wc)
+        && mals_nth_is(arms: arms, i: 3, pattern: ^MalsD, body: ^mals_wd)
+    _ => false
+  }
+}
+
+test fn a_malformed_third_arm_refuses_rather_than_shortening_the_list() -> Bool {
+  match mals_third_arm_malformed() {
+    MalsArmsRefused => true
+    _ => false
+  }
+}

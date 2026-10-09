@@ -13,8 +13,9 @@ import std.orthogonal_topology {
   SpaceComplex, space_complex, complex_total_volume,
 }
 import product.placement_supply { RoomIdentity }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.spatial_frame { SpatialFrameRegistry }
+import std.algebra { Cons, Empty }
 
 // SPATIAL-4A: WORLD STATE, AND VARIANTS AS DELTAS.
 //

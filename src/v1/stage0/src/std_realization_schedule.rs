@@ -38,11 +38,12 @@ pub use crate::std_measure::{
 };
 pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 pub use crate::std_process_termination::ProcessTermination;
 use crate::std_process_termination::ProcessTermination::{
     ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
 };
-use crate::std_types::Bool::*;
+pub use crate::std_types::brand;
 pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
 pub use crate::std_witness_admission::WitnessConsumerCadence;
 use crate::std_witness_admission::WitnessConsumerCadence::*;
@@ -275,8 +276,16 @@ pub struct RunnableBatchClamp {
 }
 
 pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
-    ((crate::std_measure::second_count(clamp.overhead.clone()) * 1000)
-        + (units.clone() * crate::std_measure::millisecond_count(clamp.per_unit.clone())))
+    v1_rt::int_add(
+        v1_rt::int_mul(
+            crate::std_measure::second_count(clamp.overhead.clone()),
+            1000,
+        ),
+        v1_rt::int_mul(
+            units.clone(),
+            crate::std_measure::millisecond_count(clamp.per_unit.clone()),
+        ),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -463,7 +472,7 @@ pub type FloorWorkerObservationReceiptPath = String;
 pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
     thread_local! {
         static CACHED: FloorWorkerObservationReceiptPath = {
-            serde_json::from_value(serde_json::json!("target/floor-worker-observation-receipt.tsv"))
+            serde_json::from_str("\"target/floor-worker-observation-receipt.tsv\"")
                 .expect("valid data definition")
         };
     }
@@ -851,17 +860,33 @@ pub fn schedule_witness_entry_list_eq(
             if ((left.clone().len() as i64) == 0) {
                 break true;
             } else {
-                if !schedule_witness_entry_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_witness_entry_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of schedule_witness_entry_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-__tco_loop_left = __tco_0;
-__tco_loop_right = __tco_1;
-continue;
-}
-}
+                match left.clone().first().cloned() {
+                    Some(l) => match right.clone().first().cloned() {
+                        Some(r) => {
+                            if !schedule_witness_entry_eq(l.clone(), r.clone()) {
+                                break false;
+                            } else {
+                                {
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    __tco_loop_left = __tco_0;
+                                    __tco_loop_right = __tco_1;
+                                    continue;
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    },
+                    std::option::Option::None => {
+                        break false;
+                    }
+                }
             }
         }
     }
@@ -948,17 +973,33 @@ pub fn runnable_batch_eq(
             if ((left.clone().len() as i64) == 0) {
                 break true;
             } else {
-                if !runnable_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of runnable_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of runnable_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-__tco_loop_left = __tco_0;
-__tco_loop_right = __tco_1;
-continue;
-}
-}
+                match left.clone().first().cloned() {
+                    Some(l) => match right.clone().first().cloned() {
+                        Some(r) => {
+                            if !runnable_eq(l.clone(), r.clone()) {
+                                break false;
+                            } else {
+                                {
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    __tco_loop_left = __tco_0;
+                                    __tco_loop_right = __tco_1;
+                                    continue;
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    },
+                    std::option::Option::None => {
+                        break false;
+                    }
+                }
             }
         }
     }
@@ -976,17 +1017,33 @@ pub fn schedule_eq(mut __tco_loop_left: Schedule, mut __tco_loop_right: Schedule
             if ((left.clone().len() as i64) == 0) {
                 break true;
             } else {
-                if !runnable_batch_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of runnable_batch_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of runnable_batch_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-__tco_loop_left = __tco_0;
-__tco_loop_right = __tco_1;
-continue;
-}
-}
+                match left.clone().first().cloned() {
+                    Some(l) => match right.clone().first().cloned() {
+                        Some(r) => {
+                            if !runnable_batch_eq(l.clone(), r.clone()) {
+                                break false;
+                            } else {
+                                {
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    __tco_loop_left = __tco_0;
+                                    __tco_loop_right = __tco_1;
+                                    continue;
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    },
+                    std::option::Option::None => {
+                        break false;
+                    }
+                }
             }
         }
     }

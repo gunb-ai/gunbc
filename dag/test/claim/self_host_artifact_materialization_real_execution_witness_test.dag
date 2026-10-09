@@ -17,6 +17,7 @@ import v2.compiler.self_host.generation {
 }
 import v2.std.algebra { for_all, length }
 import v2.std.node { symbol_identity_digest }
+import std.algebra { trim }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,0 +1,52 @@
+module gunbc.rung_drop.systemctl_show_property_input_type_wall
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+
+// DECLARED IN gunbc#11803 (review 69405) AND ROSTERED HERE RATHER THAN IN AN ANNOTATION. The change
+// that lowered this rung carried the loss only in a `//` block, which DESIGN section 4c rules out as
+// evidence for a machine claim -- no Accepted program reads a comment, so a drop stated there is
+// indistinguishable from a drop nobody declared.
+//
+// WHICH ERROR CLASS FELL, stated exactly, because this subject moved in BOTH directions at once and a
+// reader who conflates them will think the change was a regression or think it was free. The class
+// that FELL is an arbitrary or misspelled property string reaching systemctl: the previous input type
+// was the closed coproduct SystemdUnitProperty, so that state had no constructor. It is now
+// NonEmptyStr and the state is writable. A DIFFERENT class CLIMBED in the same change -- the wrong
+// WIRE SPELLING reaching systemctl for a modeled property -- because the previous transport
+// interpolated the bare `property` name over the coproduct and rendered the VARIANT name, which measurably
+// differs from the wire word for the whole `*Property` family. Only the first is a drop and only the
+// first is rostered.
+
+data systemctl_show_property_input_type_wall: RungDrop = RungDrop {
+  identity: "systemctl_show_property_input_type_wall" as NonEmptyStr,
+
+  subject: "the property input of systemd.Systemctl ShowProperty and ShowUserProperty: an arbitrary or misspelled property word reaching systemctl",
+
+  declared: "2026-09-20",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyImpossible,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+    "extdeps.systemd.systemctl ShowProperty",
+    "extdeps.systemd.systemctl ShowUserProperty",
+    "gunbc.runner_microvm_lifecycle_realize observe_unit_attempt_invocation",
+    "gunbc.runner_microvm_lifecycle_realize observe_unit_exit_status",
+    "gunbc.live_deploy.unit_standing unit_standing_property",
+    "gunbc.live_deploy.member_observe member_needs_daemon_reload",
+    "gunbc.live_deploy.member_observe member_active_state",
+    "gunbc.roadmap.roadmap_dispatch_actuator dispatch_user_unit_property",
+    "gunbc.fabric.fabric_cell_acquire cell_unit_property",
+    "gunbc.fabric.fabric_cell_acquire cell_cpu_quota_per_sec_usec",
+    "gunbc.host.host_operation_exec host_show_property",
+    "gunbc.host.host_operation_exec host_show_user_property",
+    "test.manual.runner_microvm_lifecycle_wet_receipt show_property_reads_a_units_active_state",
+    ],
+    restoration_trigger: "argv element evaluation in the operation-argv materializer, sufficient for a closed carrier to reach the argv. The wall fell because a FIELD ACCESS is not bindable there: `bind_argv_expr` admits a string literal, an ExprVar and a string interpolation over those, and refuses every other form as ArgvExpressionUnsupported, so a sealed one-field carrier read as a `property.wire` field access removed both operations from the materializable set and reddened test.claim.operation_argv_binding_wall_witness (measured on srv1, 11/13 then 13/13). std.operation_argv operation_argv_expression_residue_note carries the same residue and names the same dissolution. NOT satisfied by every caller continuing to convert through systemd_unit_property_wire, by a review habit, by a lens over the call sites, or by an annotation saying the conversion is required -- none of those makes the invalid state unconstructible, which is what the previous rung was.",
+  }
+}

@@ -11,7 +11,6 @@ import v2.test.claim.self_host.production_qualification_origin_probe_structural_
   structural_red_control_mint_site_qualified_name
 }
 import v2.std.algebra { any }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // THE SUBJECT IS THE SELF-HOST ROOTS THIS PROBE ACTUALLY RANGES OVER. Every row in this file asks
@@ -93,7 +92,7 @@ test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_r
     xs: derived_production_qualification_mint_sites_live(
       pool_roots: origin_probe_subject_roots,
       pool_files: origin_probe_subject_files
-    ),
+    ).sites,
     predicate: fn(row) {
       string_contains(
         s: row.qualified_name,

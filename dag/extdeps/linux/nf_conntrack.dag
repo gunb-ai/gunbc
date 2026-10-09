@@ -1,0 +1,42 @@
+module extdeps.linux.nf_conntrack
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/Documentation/networking/nf_conntrack-sysctl.txt"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.nf_conntrack",
+      decl_name: "nf_conntrack_helper_proc_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// AUTOMATIC HELPER ASSIGNMENT, AS A SYSCTL THAT MAY NOT EXIST. nf_conntrack_helper attached a helper
+// to a flow by port with no rule saying so. Upstream removed it, so on a current kernel the path is
+// ABSENT -- which is a stronger reading than 0, because there is no setting left to turn back on. A
+// reader must therefore distinguish absent from 0 from 1, and never treat absence as unreadable.
+data nf_conntrack_sysctl_dir: NonEmptyStr = "/proc/sys/net/netfilter"
+
+data nf_conntrack_helper_sysctl_name: NonEmptyStr = "nf_conntrack_helper"
+
+// The full path, derived so the directory and the leaf cannot drift apart: a reader establishing the
+// sysctl's PRESENCE lists the directory and looks for the name, while a reader of its VALUE opens
+// the path, and both must name the same file.
+fn nf_conntrack_helper_proc_path_of() -> NonEmptyStr {
+  join([nf_conntrack_sysctl_dir as String, "/", nf_conntrack_helper_sysctl_name as String], "") as NonEmptyStr
+}
+
+data nf_conntrack_helper_proc_path: NonEmptyStr = nf_conntrack_helper_proc_path_of()

@@ -1,5 +1,6 @@
 module test.claim.git_ls_remote_witness_test
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, String, Int, List, CommitSha }
 import extdeps.git {
   AdvertisedRef,
@@ -8,6 +9,7 @@ import extdeps.git {
   scan_advertised_refs,
   advertised_ref_branch_name,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

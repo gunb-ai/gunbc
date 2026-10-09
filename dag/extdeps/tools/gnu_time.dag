@@ -1,5 +1,7 @@
 module extdeps.tools.gnu_time
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, String, List, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -17,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // which reports elapsed/user/sys and has NO maximum-resident-set format at all. The binary that
 // carries %M lives at /usr/bin/time, and naming it by path is what stops a caller from silently
 // measuring nothing.
-data gnu_time_binary_path: NonEmptyStr = "/usr/bin/time"
+fn gnu_time_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/time")
 
 // %M IS MAXIMUM RESIDENT SET SIZE IN KILOBYTES, and it is the process's own high-water mark rather
 // than a sample: the kernel maintains it, so it cannot be missed by observing at the wrong moment.
@@ -36,12 +38,12 @@ data gnu_time_max_rss_format: String = "%M"
 // else writes to.
 fn gnu_time_max_rss_command(output_path: String, command: ArgvCommand) -> ArgvCommand {
   argv_command(
-    program: gnu_time_binary_path,
+    program: gnu_time_program(),
     arguments: concat(
       [
         "-f", gnu_time_max_rss_format,
         "-o", output_path,
-        command.program as String,
+        command.program.invocation as String,
       ],
       command.arguments,
     ),

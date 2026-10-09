@@ -39,6 +39,7 @@ type CssPropertyName
   | BorderStyle
   | BoxShadow
   | BoxSizing
+  | ClipPath
   | Color
   | ColorScheme
   | Cursor
@@ -53,9 +54,11 @@ type CssPropertyName
   | FontVariantNumeric
   | FontWeight
   | Gap
+  | GridArea
   | GridColumn
   | GridTemplateColumns
   | Height
+  | Inset
   | JustifyContent
   | LetterSpacing
   | LineHeight
@@ -73,6 +76,7 @@ type CssPropertyName
   | Overflow
   | Padding
   | PaddingLeft
+  | Position
   | Stroke
   | TextAlign
   | TextDecoration
@@ -103,6 +107,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     BorderStyle => "border-style"
     BoxShadow => "box-shadow"
     BoxSizing => "box-sizing"
+    ClipPath => "clip-path"
     Color => "color"
     ColorScheme => "color-scheme"
     Cursor => "cursor"
@@ -117,9 +122,11 @@ fn css_property_wire(p: CssPropertyName) -> String {
     FontVariantNumeric => "font-variant-numeric"
     FontWeight => "font-weight"
     Gap => "gap"
+    GridArea => "grid-area"
     GridColumn => "grid-column"
     GridTemplateColumns => "grid-template-columns"
     Height => "height"
+    Inset => "inset"
     JustifyContent => "justify-content"
     LetterSpacing => "letter-spacing"
     LineHeight => "line-height"
@@ -137,6 +144,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Overflow => "overflow"
     Padding => "padding"
     PaddingLeft => "padding-left"
+    Position => "position"
     Stroke => "stroke"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"

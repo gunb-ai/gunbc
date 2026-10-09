@@ -1,0 +1,140 @@
+module test.claim.fabric.selected_offer_fixture
+
+import std.types { List, NonEmptyStr }
+import std.measure { MoneyRate, MoneyPerSecond, money_amount_micro, second }
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.provider_admission { ProviderUseAdmission }
+import product.fabric.supply {
+  SupplierOffer, StableRosterOrder, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
+}
+import product.fabric.selection {
+  CandidateOffer, SelectedOffer, DispatchInputs, bind_candidate, select_supply,
+  CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+}
+
+// THE ONLY WAY A WITNESS OBTAINS A SelectedOffer IS BY RUNNING SELECTION. SelectedOffer is
+// sole_constructor in product.fabric.selection and select_supply's winning arm is its one
+// constructor, so this fixture binds each offer into a CandidateOffer and ranks the population for
+// real. Every helper returns a LIST, empty when binding refuses or the ranking chooses nothing, so a
+// witness that expected a winner and got none goes red instead of inventing one.
+//
+// It lives apart from the grant-issuance witness because product.fabric.selection and
+// product.fabric.grant_issue both name refusal arms PermitNamesAnotherOffer and the rest; one
+// module importing both coproducts could not name either set.
+
+// Observations under which every bound offer prices on its quote alone: indefinitely available,
+// no commitment, no start or transition cost, operating cost borne by the supplier, and no
+// displaced alternative use. The ranking then orders a population by quote, which is what lets a
+// witness state in advance which offer must win.
+fn quote_only_inputs(offer: SupplierOffer<NonEmptyStr>) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: offer.id,
+    availability: AvailableIndefinitely {
+      delay: second(count: 0),
+      receipt: "gunbc.observation.availability-1",
+    },
+    commitment: PayAsYouGo,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" },
+  }
+}
+
+// The requirements an offer itself meets. Selection is run against THESE rather than against the
+// Work, so a witness can hand issuance a genuine winner of a ranking that was run for a different
+// requirement set - the case issuance's own fungibility check against the Work exists for.
+fn requirements_met_by(offer: SupplierOffer<NonEmptyStr>) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: offer.shape,
+    capabilities: offer.capabilities,
+    trust_domain: offer.trust_domain,
+    isolation: offer.isolation,
+  }
+}
+
+fn no_delay_valuation() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn ninety_seconds() -> GrantDuration {
+  ExactGrantDuration { seconds: second(count: 90) }
+}
+
+fn bound(
+  offer: SupplierOffer<NonEmptyStr>,
+  admission: ProviderUseAdmission<NonEmptyStr>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: quote_only_inputs(offer: offer),
+    admission: admission,
+    demand: demand,
+    work: work,
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn winner_of(s: SupplySelection<NonEmptyStr>) -> List<SelectedOffer<NonEmptyStr>> {
+  match s {
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [sel]
+    NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
+  }
+}
+
+fn ranked(
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<NonEmptyStr>>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  winner_of(s: select_supply(
+    requirements: requirements,
+    candidates: candidates,
+    duration: ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: no_delay_valuation(),
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
+  ))
+}
+
+// One offer, bound under the given admission for the given use, ranked as a population of one.
+fn selected_under(
+  offer: SupplierOffer<NonEmptyStr>,
+  admission: ProviderUseAdmission<NonEmptyStr>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  ranked(
+    requirements: requirements_met_by(offer: offer),
+    candidates: bound(offer: offer, admission: admission, demand: demand, work: work),
+  )
+}
+
+// A population of already-bound candidates, ranked against the given requirements.
+fn selected_from_population(
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<NonEmptyStr>>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  ranked(requirements: requirements, candidates: candidates)
+}

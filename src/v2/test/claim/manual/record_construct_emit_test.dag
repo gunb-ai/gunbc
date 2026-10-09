@@ -3,11 +3,8 @@ module v2.test.manual.record_construct_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  grammar_inverse_source_validated,
-  target_serialize_source_from_model
-}
+import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_fixture_emitted_rec_fn,
@@ -23,7 +20,7 @@ import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -45,7 +42,6 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
@@ -159,16 +155,6 @@ test fn record_construct_emit_holds() -> Bool {
   }
 }
 
-test fn record_construct_grammar_inverse_holds() -> Bool {
-  match grammar_inverse_source_validated(
-    target: record_construct_target_model,
-    emitted: record_construct_emitted_root
-  ) {
-    Accepted { value: _, diagnostics: d } => d == None
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn record_construct_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {
     Exact => true
@@ -189,17 +175,5 @@ test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
         && (d == None)
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn record_construct_emit_holds_keystone() -> Bool {
-  record_construct_emit_holds()
-}
-
-test fn record_construct_grammar_inverse_holds_keystone() -> Bool {
-  record_construct_grammar_inverse_holds()
-}
-
-test fn record_construct_ingest_via_coerce_holds_keystone() -> Bool {
-  record_construct_ingest_via_coerce_matches_canonical()
 }
 

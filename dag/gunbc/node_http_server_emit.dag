@@ -1,8 +1,8 @@
 module gunbc.node_http_server_emit
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import extdeps.uri_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.http.server {
+  http_method_label,
   HttpServerListenConfig,
   ServedStaticRoute,
   ServedStaticRouteTable,
@@ -39,6 +39,7 @@ import extdeps.languages.typescript.program {
   ts_prefix,
   ts_spread,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
 // DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc
 // serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the
@@ -57,18 +58,6 @@ type NodeHttpStaticServerSpec {
   service_name: String
   routes: ServedStaticRouteTable
   listen: HttpServerListenConfig
-}
-
-fn emit_http_method_label(method: HttpMethod) -> String {
-  match method {
-    GET => "GET"
-    POST => "POST"
-    PUT => "PUT"
-    PATCH => "PATCH"
-    DELETE => "DELETE"
-    HEAD => "HEAD"
-    OPTIONS => "OPTIONS"
-  }
 }
 
 fn js_regex_escape_literal(s: String) -> String {
@@ -104,7 +93,7 @@ fn emit_path_template_regex_source(template: PathTemplate) -> String {
 }
 
 fn emit_static_route_expr(route: ServedStaticRoute) -> TsExpr {
-  let method = emit_http_method_label(method: route.method)
+  let method = http_method_label(method: route.method)
   let re = emit_path_template_regex_source(template: route.path_pattern)
   let ct = media_type_wire_label(m: route.content_type)
   ts_object([
@@ -196,7 +185,7 @@ fn node_http_request_handler_block() -> TsStmt {
             args: [ts_ident(name: "path")]
           )
         ),
-        then: node_http_match_handler_body(),
+        then_stmt: node_http_match_handler_body(),
         else_stmt: none
       )
     ),
@@ -224,7 +213,7 @@ fn node_http_request_handler_block() -> TsStmt {
         op: ">",
         right: ts_lit_num(text: "0")
       ),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_const(
           name: "allow",
           value: ts_call(

@@ -1,0 +1,49 @@
+module test.claim.fleet.health_read_only_fixture_refusal_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DESIGNED REFUSAL OF test.fixture.health_read_only.mutation_probe, ASSERTED BY CLASS AND
+// SUBJECT. The fixture is the forbidden program the fleet health no-mutation witness derives its
+// findings from (test.claim.fleet_health_read_only_witness), and it is consumed PARSE-ONLY: its
+// callees are undeclared spellings by design, so it must never resolve. It is therefore excluded
+// from the required floor's Strict preparation (floor_prepared_subject_exclusions row
+// "test/fixture/health_read_only/"), the same disposition as dag/test/probe/, and this witness is
+// what keeps that exclusion honest. It is red if the fixture starts resolving, and red if it
+// refuses only for a reason other than its undeclared callees.
+//
+// FOUND BY the gunbc#12761 widened subject (every admitted module Strict-prepared), which refused
+// on this file at 0207c666 with the rest of the 14-file census: no exclusion row covered it, and it
+// stayed out of preparation only because nothing imported it.
+
+data fixture_path: String = "dag/test/fixture/health_read_only/mutation_probe.dag"
+
+fn fixture_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(filesystem_read(path: fixture_path).content)
+}
+
+fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// The undeclared Redfish account callee, the forbidden mutation's own spelling.
+test fn the_fixture_still_refuses_on_its_undeclared_account_callee() -> Bool {
+  blocking_count(c: fixture_census(), wanted: "InternalError", subject: "function:CreateAccount") >= 1
+}
+
+// The undeclared host-shell provider, the fixture's second forbidden leg.
+test fn the_fixture_still_refuses_on_its_undeclared_shell_provider() -> Bool {
+  blocking_count(c: fixture_census(), wanted: "UnresolvedType", subject: "SshShell") >= 1
+}

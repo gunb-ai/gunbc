@@ -1,0 +1,5 @@
+module nsroot.pkg.consumer
+
+fn read_target() -> Int { nsroot.pkg.target.target_value }
+
+fn read_row() -> Int { ns_row.tag }

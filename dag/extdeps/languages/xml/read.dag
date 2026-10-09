@@ -1,0 +1,153 @@
+module extdeps.languages.xml.read
+
+import std.types { String, Int, Bool, List }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "www.w3.org/TR/xml/" } }
+
+// A bounded XML subset reader, not a general XML processor. It rejects DTDs,
+// external entities, numeric references, comments, CDATA and processing
+// instructions other than the initial XML declaration. Unsupported input refuses;
+// it is never stripped into an apparently successful provider response.
+type XmlAttribute { name: String, value: String }
+type XmlElement { name: String, attributes: List<XmlAttribute>, children: List<XmlElement>, text: String }
+type XmlRead = XmlParsed { element: XmlElement, next: Int } | XmlRefused
+
+type XmlTextRead = XmlTextParsed { value: String, next: Int } | XmlTextRefused
+type XmlStartRead = XmlStartParsed { attributes: List<XmlAttribute>, next: Int, closed: Bool } | XmlStartRefused
+
+fn xml_at(s: String, i: Int) -> String {
+  if i < 0 || i >= string_length(s: s) { "" } else { substring(s: s, start: i, end: i + 1) }
+}
+fn xml_has(s: String, i: Int, prefix: String) -> Bool {
+  i >= 0 && i + string_length(s: prefix) <= string_length(s: s) && substring(s: s, start: i, end: i + string_length(s: prefix)) == prefix
+}
+fn xml_valid_character(c: String) -> Bool {
+  all(c |> chars, cp => cp == 9 || cp == 10 || cp == 13 || (cp >= 32 && cp <= 55295) || (cp >= 57344 && cp <= 65533) || (cp >= 65536 && cp <= 1114111))
+}
+fn xml_space(c: String) -> Bool { c == " " || c == "\t" || c == "\r" || c == "\n" }
+fn xml_skip(s: String, i: Int) -> Int {
+  if i < string_length(s: s) && xml_space(c: xml_at(s: s, i: i)) { xml_skip(s: s, i: i + 1) } else { i }
+}
+fn xml_name_first(c: String) -> Bool {
+  c != "" && string_contains(s: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", pattern: c)
+}
+fn xml_name_char(c: String) -> Bool {
+  xml_name_first(c: c) || (c != "" && string_contains(s: "0123456789-.:", pattern: c))
+}
+fn xml_name_end(s: String, i: Int) -> Int {
+  if xml_name_char(c: xml_at(s: s, i: i)) { xml_name_end(s: s, i: i + 1) } else { i }
+}
+fn xml_entity(s: String, i: Int) -> XmlTextRead {
+  if xml_has(s: s, i: i, prefix: "&amp;") { XmlTextParsed { value: "&", next: i + 5 } }
+  else if xml_has(s: s, i: i, prefix: "&lt;") { XmlTextParsed { value: "<", next: i + 4 } }
+  else if xml_has(s: s, i: i, prefix: "&gt;") { XmlTextParsed { value: ">", next: i + 4 } }
+  else if xml_has(s: s, i: i, prefix: "&quot;") { XmlTextParsed { value: "\"", next: i + 6 } }
+  else if xml_has(s: s, i: i, prefix: "&apos;") { XmlTextParsed { value: "'", next: i + 6 } }
+  else { XmlTextRefused }
+}
+fn xml_text_until(s: String, i: Int, stop: String, acc: String, remaining: Int) -> XmlTextRead {
+  if remaining <= 0 || i >= string_length(s: s) { XmlTextRefused }
+  else {
+    let c = xml_at(s: s, i: i)
+    if c == stop { XmlTextParsed { value: acc, next: i } }
+    else if c == "<" || !xml_valid_character(c: c) || (stop != "<" && (c == "\n" || c == "\r" || c == "\t")) || xml_has(s: s, i: i, prefix: "]]>") { XmlTextRefused }
+    else if c == "&" {
+      match xml_entity(s: s, i: i) {
+        XmlTextRefused => XmlTextRefused
+        XmlTextParsed { value, next } => xml_text_until(s: s, i: next, stop: stop, acc: concat(acc, value), remaining: remaining - 1)
+      }
+    } else { xml_text_until(s: s, i: i + 1, stop: stop, acc: concat(acc, c), remaining: remaining - 1) }
+  }
+}
+fn xml_attributes(s: String, i: Int, attrs: List<XmlAttribute>, remaining: Int) -> XmlStartRead {
+  let p = xml_skip(s: s, i: i)
+  if remaining <= 0 { XmlStartRefused }
+  else if xml_has(s: s, i: p, prefix: "/>") { XmlStartParsed { attributes: attrs, next: p + 2, closed: true } }
+  else if xml_at(s: s, i: p) == ">" { XmlStartParsed { attributes: attrs, next: p + 1, closed: false } }
+  else if p == i || !xml_name_first(c: xml_at(s: s, i: p)) { XmlStartRefused }
+  else {
+    let end = xml_name_end(s: s, i: p)
+    let name = substring(s: s, start: p, end: end)
+    let eq = xml_skip(s: s, i: end)
+    let q = xml_skip(s: s, i: eq + 1)
+    let quote = xml_at(s: s, i: q)
+    if attrs.any(a => a.name == name) || xml_at(s: s, i: eq) != "=" || (quote != "\"" && quote != "'") { XmlStartRefused }
+    else {
+      match xml_text_until(s: s, i: q + 1, stop: quote, acc: "", remaining: 16384) {
+        XmlTextRefused => XmlStartRefused
+        XmlTextParsed { value, next } => xml_attributes(s: s, i: next + 1, attrs: concat(attrs, [XmlAttribute { name: name, value: value }]), remaining: remaining - 1)
+      }
+    }
+  }
+}
+fn xml_body(s: String, i: Int, name: String, attrs: List<XmlAttribute>, children: List<XmlElement>, text: String, depth: Int, remaining: Int) -> XmlRead {
+  if remaining <= 0 || i >= string_length(s: s) { XmlRefused }
+  else if xml_has(s: s, i: i, prefix: "</") {
+    let end = xml_name_end(s: s, i: i + 2)
+    let close = xml_skip(s: s, i: end)
+    if substring(s: s, start: i + 2, end: end) != name || xml_at(s: s, i: close) != ">" { XmlRefused }
+    else { XmlParsed { element: XmlElement { name: name, attributes: attrs, children: children, text: text }, next: close + 1 } }
+  } else if xml_at(s: s, i: i) == "<" {
+    match xml_element(s: s, i: i, depth: depth - 1) {
+      XmlRefused => XmlRefused
+      XmlParsed { element, next } => xml_body(s: s, i: next, name: name, attrs: attrs, children: concat(children, [element]), text: text, depth: depth, remaining: remaining - 1)
+    }
+  } else {
+    match xml_text_until(s: s, i: i, stop: "<", acc: "", remaining: 16384) {
+      XmlTextRefused => XmlRefused
+      XmlTextParsed { value, next } => xml_body(s: s, i: next, name: name, attrs: attrs, children: children, text: concat(text, value), depth: depth, remaining: remaining - 1)
+    }
+  }
+}
+fn xml_element(s: String, i: Int, depth: Int) -> XmlRead {
+  if depth <= 0 || xml_at(s: s, i: i) != "<" || !xml_name_first(c: xml_at(s: s, i: i + 1)) { XmlRefused }
+  else {
+    let end = xml_name_end(s: s, i: i + 1)
+    let name = substring(s: s, start: i + 1, end: end)
+    match xml_attributes(s: s, i: end, attrs: [], remaining: 64) {
+      XmlStartRefused => XmlRefused
+      XmlStartParsed { attributes, next, closed } =>
+        if closed { XmlParsed { element: XmlElement { name: name, attributes: attributes, children: [], text: "" }, next: next } }
+        else { xml_body(s: s, i: next, name: name, attrs: attributes, children: [], text: "", depth: depth, remaining: 4096) }
+    }
+  }
+}
+fn xml_prolog_end(s: String, i: Int, remaining: Int) -> Int {
+  if remaining <= 0 || i >= string_length(s: s) { -1 }
+  else if xml_has(s: s, i: i, prefix: "?>") { i + 2 }
+  else if xml_at(s: s, i: i) == "<" { -1 }
+  else { xml_prolog_end(s: s, i: i + 1, remaining: remaining - 1) }
+}
+fn xml_declaration_valid(s: String, start: Int, end: Int) -> Bool {
+  if end < start + 8 { false }
+  else {
+    let declaration = join(["<xml ", substring(s: s, start: start + 6, end: end - 2), "/>"], "")
+    match xml_element(s: declaration, i: 0, depth: 1) {
+      XmlRefused => false
+      XmlParsed { element: e, next } => next == string_length(s: declaration) && xml_attribute(e: e, name: "version") == "1.0"
+        && all(e.attributes, a => a.name == "version" || (a.name == "encoding" && (a.value == "UTF-8" || a.value == "utf-8")) || (a.name == "standalone" && (a.value == "yes" || a.value == "no")))
+    }
+  }
+}
+fn read_xml_subset(s: String) -> XmlRead {
+  if string_length(s: s) > 262144 { XmlRefused }
+  else {
+    let first = xml_skip(s: s, i: 0)
+    let start = if xml_has(s: s, i: first, prefix: "<?xml ") { xml_prolog_end(s: s, i: first + 6, remaining: 256) } else { first }
+    if start < 0 || (xml_has(s: s, i: first, prefix: "<?xml ") && !xml_declaration_valid(s: s, start: first, end: start)) { XmlRefused }
+    else {
+      match xml_element(s: s, i: xml_skip(s: s, i: start), depth: 16) {
+        XmlRefused => XmlRefused
+        XmlParsed { element, next } => if xml_skip(s: s, i: next) == string_length(s: s) { XmlParsed { element: element, next: next } } else { XmlRefused }
+      }
+    }
+  }
+}
+fn xml_attribute(e: XmlElement, name: String) -> String {
+  match e.attributes.filter(a => a.name == name).first() { Present { value: a } => a.value Absent => "" }
+}
+fn xml_children(e: XmlElement, name: String) -> List<XmlElement> { e.children.filter(c => c.name == name) }
+fn xml_leaf(e: XmlElement) -> Bool { count(e.children) == 0 }

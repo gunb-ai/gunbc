@@ -1,0 +1,249 @@
+module gunbc.fleet.printer_operator_approval
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessRefused}
+import std.scoped_authorization {AuthorizationRefused}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
+
+import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
+import extdeps.tools.hostname
+import std.algebra {trim}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_hex_digest, as_content_hash_cryptographic }
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction, ScopedAuthorization, authorize, AuthorizationPermitted }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.emit { JsonString, JsonNumber }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+import extdeps.shell.exec { ProcessOutputPresent }
+import gunbc.fleet.printer_report { report_using_session }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
+import gunbc.fleet.printer_start_reconciliation {StartObservationPolicy,ConfirmBeforeReturn,ObserveOnFleetTicks,record_publication}
+import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
+import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current,with_execution_hold}
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_version,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
+import gunbc.fleet.printer_project_delivery {
+  PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
+  PayloadIdentificationRefusedResidueRemains, project_payload_digest, abandon_payload,
+  deliver_project_with_session, ProjectDelivered, ProjectDeliveryRefused,
+  ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired,
+  ProjectDeliveryRefusedResidueRemains, ProjectDeliveryUnattemptedResidueRemains,
+  ProjectDeliveryProvisionRequiredResidueRemains, receipt_remote_name,
+}
+import gunbc.fleet.printer_job_start {
+  start_print_with_session, PrintStartPublished, PrintStartRefused,
+  PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
+  PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
+}
+
+
+import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
+import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable, OperatorSuppliedToken, AccessTokenSource }
+import gunbc.auth.approval_request_client { stored_request_from_authorization }
+import gunbc.auth.approval_gate {
+  approval_instant_now, approval_expires_at, approval_file_stored_request,
+  ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
+  PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
+  GateAdmitted, GateRefused, approval_refusal_text,
+}
+
+// Common start boundary for WIF and explicit operator authentication. Authentication
+// alone grants no start. Approval binds device, bytes, version, feed and attempt; the
+// fixed host claim is keyed by that approval, and is retained on every outcome.
+// Canonical approval subject; identity hashing consumes these exact serialized bytes.
+fn print_subject(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "printer", value: json_string(s: printer as String)),
+    json_kv(key: "project_sha256", value: json_string(s: digest)),
+    json_kv(key: "credential_version", value: json_string(s: version)),
+    json_kv(key: "filament_feed", value: json_string(s: "ams-slot-1")),
+    json_kv(key: "bed_clear_attestation", value: json_string(s: "operator confirms bed clear at approval")),
+    json_kv(key: "attempt", value: json_string(s: attempt)),
+  ]))
+}
+
+fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> AuthorizationRequest<String>? {
+  let subject = print_subject(printer: printer, digest: digest, version: version, attempt: attempt)
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
+    Absent => none
+    Present { value: hash } => Present { value: AuthorizationRequest {
+      escalation_id: concat("printer-start-", hash.hex as String) as NonEmptyStr,
+      scopes: [AuthorizationScope {
+        verb: Execute,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "bambu-lan" }, path: [printer as String] },
+        action: "gunbc.printer.project-file.start" as AuthorizedAction,
+      }],
+      subject: subject,
+      purpose: join(["Print one prepared part on ", printer as String, ". Project SHA-256 ", digest,
+        "; credential version ", version, "; batch ", attempt,
+        ". AMS slot 1. Approve ONLY after checking the bed is clear NOW; approval confirms that check. No IAM or credential changes. One start only."], "") as NonEmptyStr,
+      attempt: attempt as AttemptIdentity,
+      intent_hash: as_content_hash_cryptographic(digest: hash),
+      destructive: false,
+    } }
+  }
+}
+
+fn approve_and_print(printer: String, path: String, digest: String, version: String, attempt: String, bed_clear: String, token_source: AccessTokenSource) -> ProcessExit {
+  let host=os.Hostname.ReadShort()
+  if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
+    return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
+  }
+  if path == "" || attempt == "" || !print_inputs_admitted(version: version, digest: digest, bed_clear: bed_clear) {
+    return exit_failure(reason: "Print requires a path, digest, numeric credential version, attempt and clear-bed confirmation")
+  }
+  if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
+  match select_printer(name: printer) {
+    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
+    PrinterSelected { printer: p } => match print_request(printer: p, digest: digest, version: version, attempt: attempt) {
+        Absent => exit_failure(reason: "Cannot identify print request")
+        Present { value: request } => match approval_instant_now() {
+          Absent => exit_failure(reason: "Cannot read clock")
+          Present { value: now } => {
+            let expires = approval_expires_at(issued: now, window: second(count: 900))
+            let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
+            match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
+              ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
+              ApprovalFiled => match approval_poll_ticks(remaining: 90, cadence: second(count: 10), escalation_id: request.escalation_id, expires_at: expires) {
+                PollClockUnreadable => exit_failure(reason: "Cannot read approval clock")
+                PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "Print approval did not arrive; nothing sent")
+                PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
+                  GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
+                  GateAdmitted { authorization: authorization } => {
+                    let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,token_source:token_source) {
+                      PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
+                      PrinterSessionReady {session:s}=>s
+                    }
+                    with_execution_hold(owner:request.escalation_id,use:h=>start_authorized(observation_policy:ConfirmBeforeReturn,hold:h,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// Called only behind current, job-bound approval of a physically cleared bed.
+// Neither IDLE nor FINISH establishes bed clearance; the approval owns that evidence.
+fn report_allows_start(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let idle = match json_object_unique_member(v: p, key: "gcode_state") {
+          JsonMemberFound { value: JsonString { value: state } } => bambu_completed_or_idle_state(state:state)
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonNumber {lexeme:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        let clear = match json_object_unique_member(v: p, key: "print_error") {
+          JsonMemberFound { value: JsonNumber { lexeme: code } } => bambu_start_error_nonblocking(code:code as String)
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonString {value:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        idle && clear
+      }
+      JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+    }
+    JsonDocumentUnreadable {gap:_}=>false
+  }
+}
+
+// Fixed host state: changing output folders cannot re-admit the same grant. Never delete
+// claims on failure; an unknown physical effect must be reconciled by observation.
+
+fn start_claim_path(escalation_id:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",escalation_id as String,".claimed"],"") }
+
+// A batch plate's identity survives new output directories, new slicing digests and
+// reassignment to another printer. An unresolved slot requires explicit recovery or
+// a separately recorded replacement intent, never an automatic fresh attempt name.
+fn batch_attempt_claim_path(attempt:String) -> String {
+ join([printer_start_claim_directory,"/batch-attempt-",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:attempt))),".claimed"],"")
+}
+
+type ClaimedPrinterStart sole_constructor {
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,observation_policy:StartObservationPolicy,
+}
+fn run(printer:String,path:String,digest:String,version:String,attempt:String,bed_clear:String) -> ProcessExit {
+ match read_supplied_access_token() {
+  SuppliedTokenUnavailable {cause:c}=>exit_failure(reason:c as String)
+  SuppliedTokenReady {token:t}=>approve_and_print(printer:printer,path:path,digest:digest,version:version,attempt:attempt,bed_clear:bed_clear,token_source:OperatorSuppliedToken {token:t})
+ }
+}
+// Only the gate/claim arm above can mint this input. Authentication is not start authority.
+fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
+  let printer=claim.printer
+  let path=claim.path
+  let digest=claim.digest
+  let version=claim.version
+  let token_source=claim.token_source
+  match identify_project_payload(payload: PrinterProjectPayload { local_path: path as NonEmptyStr }) {
+    PayloadIdentificationRefused { local_path: _, cause: c } => exit_failure(reason: c as String)
+    PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: residue, cause: c } => exit_failure(reason: join(["Payload residue remains at ", residue as String, ": ", c as String], ""))
+    PayloadIdentified { payload: payload } =>
+      if (project_payload_digest(payload: payload).hex as String) != digest {
+        let cleaned = abandon_payload(payload: payload)
+        exit_failure(reason: if cleaned { "Project digest differs from the requested print; nothing uploaded" } else { "Project digest differs; private payload cleanup also failed" })
+      } else {
+        match deliver_project_with_session(session:claim.session, payload:payload) {
+          ProjectDelivered { receipt: receipt } => {
+            let remote = receipt_remote_name(r: receipt)
+            let still_idle=match report_using_session(session:claim.session) { ProcessOutputPresent {text:t}=>report_allows_start(text:t) ProcessOutputAbsent=>false ProcessRefused {exit_code:_,stderr:_}=>false }
+            if !still_idle { return exit_failure(reason:"Printer no longer ready after upload; start withheld and claim retained") }
+            let fresh_authority=match approval_instant_now() {
+              Absent=>false
+              Present {value:now}=>match authorize(authorization:claim.authorization,request:claim.request,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
+            }
+            if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
+            match start_print_with_session(session:claim.session, remote_name:remote) {
+              PrintStartPublished { receipt: _ } => record_publication(policy:claim.observation_policy,session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-acknowledged",cleanup_issue:"")
+              PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
+              PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
+              PrintStartOutcomeUnknown { printer: _, cause: c } => record_publication(policy:claim.observation_policy,session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => record_publication(policy:claim.observation_policy,session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => record_publication(policy:claim.observation_policy,session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
+            }
+          }
+          ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
+          ProjectDeliveryUnattempted { printer: _, cause: c } => exit_failure(reason: c as String)
+          ProjectDeliveryProvisionRequired { printer: _, desired: _ } => exit_failure(reason: "Credential absent; routine printing does not provision it")
+          ProjectTransferredCleanupRefused { receipt: _, cause: c } => exit_failure(reason: concat("Transferred but cleanup failed; start withheld: ", c as String))
+          ProjectDeliveryRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery refused with residue: ", c as String))
+          ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery unattempted with residue: ", c as String))
+          ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: c } => exit_failure(reason: concat("Credential absent with residue: ", c as String))
+        }
+      }
+  }
+}
+
+// Shared final boundary for single-printer and fleet-batch consumers. A caller cannot
+// bypass the live readiness check, durable claim, payload binding or grant recheck.
+fn start_authorized(observation_policy:StartObservationPolicy,hold:PrinterExecutionHold,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
+
+ let host=os.Hostname.ReadShort()
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
+ let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
+ if request.subject!=expected.subject || request.escalation_id!=expected.escalation_id {return exit_failure(reason:"Approval request does not describe these printer bytes")}
+ let now=match approval_instant_now() {Present {value:t}=>t Absent=>return exit_failure(reason:"Approval clock unavailable")}
+ let permitted=match authorize(authorization:authorization,request:expected,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
+ if !permitted {return exit_failure(reason:"No current approval for this printer start")}
+                    let live = report_using_session(session:session)
+                    let idle = match live {
+                      ProcessOutputPresent { text: text } =>
+                        Filesystem.Write(path: concat(start_claim_path(escalation_id:request.escalation_id),".before-start.json"), content: text).success && report_allows_start(text: text)
+                      ProcessOutputAbsent=>false ProcessRefused {exit_code:_,stderr:_}=>false
+                    }
+                    if !idle { return exit_failure(reason: "Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started") }
+                    let slot=match observation_policy {
+                     ConfirmBeforeReturn=>true
+                     ObserveOnFleetTicks=>Filesystem.WriteCreateNew(path:batch_attempt_claim_path(attempt:request.attempt as String),content:request.subject).success
+                    }
+                    if !slot {return exit_failure(reason:"Batch plate attempt already reserved or its slot cannot be written; do not replay under a new digest or printer")}
+                    let claim = Filesystem.WriteCreateNew(path: start_claim_path(escalation_id:request.escalation_id), content: request.subject)
+                    if !claim.success { exit_failure(reason: "This printer's batch start is already claimed or its durable marker cannot be written; do not replay") }
+                    else { print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,observation_policy:observation_policy}) }
+}

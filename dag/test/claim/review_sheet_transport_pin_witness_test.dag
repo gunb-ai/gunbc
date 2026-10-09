@@ -1,0 +1,53 @@
+module test.claim.review_sheet_transport_pin_witness
+
+import std.types { Bool, String }
+import extdeps.google.sheets { sheets_token_env }
+import extdeps.google.drive { drive_token_env }
+import gunbc.review_sheet_drive_converge {
+  review_sheet_marker_property_key,
+  review_sheet_search_query,
+}
+
+// LITERALS THE CONFIG PARSE FORCES INTO TWO PLACES, AND WHAT THESE CLAIMS ACTUALLY REACH. A service
+// config reads its auth_source name and a request body reads its field names through
+// extract_string_value, which pulls a literal out of the node rather than evaluating a reference. So
+// a name consumers read from a declaration must ALSO be written as a literal where the transport
+// reads it, and NOTHING IN THE LANGUAGE TIES THE TWO. These claims are not that tie, and an earlier
+// revision of this header said they were.
+//
+// They divide into two kinds, and the difference is the whole content of this header.
+// sheets_token_env_matches_the_configured_literal joins a declaration to a third copy of the string
+// written inside this file: it goes red if the declaration moves and green if the transport literal
+// moves alone. drive_and_sheets_read_one_credential compares two DECLARATIONS with no third copy
+// between them, which is a real cross-module tie and the stronger claim of the two.
+// search_query_carries_the_declared_property_key reads the query BUILT from the declaration, so it
+// ties the declaration to the search for real.
+//
+// The failure none of them catches is quiet in a specific way: a drifted auth variable makes every
+// call refuse as a MISSING credential rather than a renamed one, and a drifted property name makes a
+// created file permanently unfindable by its own key. Both read as "the thing did not happen" rather
+// than "the name moved", which is the wrong half of the system to go looking in -- as this session
+// established twice, the expensive way. That is why the limit is stated instead of implied: the
+// class is rostered as gunbc.recurring_failure_mode
+// a_pin_claim_compares_two_copies_while_a_third_drifts, and its ceiling is construction -- a config
+// parse that evaluates a declaration reference -- not a better claim over this shape.
+
+test fn sheets_token_env_matches_the_configured_literal() -> Bool {
+  sheets_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
+}
+
+test fn drive_and_sheets_read_one_credential() -> Bool {
+  drive_token_env == sheets_token_env
+}
+
+// WHAT THIS PINS AND WHAT IT CANNOT. The query is built from the declaration, so reading the query
+// back ties the declaration to the SEARCH. CreateFile's body writes the same name as a literal the
+// body builder emits as syntax, and no claim here can read it: the write side is asserted by a
+// human reading two lines, not by execution. Saying so is the point -- a claim that implied it
+// covered both sides would be worse than this one, because it would be believed.
+test fn search_query_carries_the_declared_property_key() -> Bool {
+  string_contains(
+    s: review_sheet_search_query(marker_value: "ci-prospect-sheet"),
+    pattern: review_sheet_marker_property_key as String,
+  )
+}

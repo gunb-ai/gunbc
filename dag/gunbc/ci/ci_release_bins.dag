@@ -47,9 +47,18 @@ MEASURED CONSEQUENCE: every fleet-converge dispatch after the cutover failed at 
 
 The check that found it is the sweep this module already prescribes: every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept and these two were the entire stale set. Fix verified by execution — the build job that had been refusing packs and uploads green in run 32213195686."
 
+// THE COMPILER BINARY'S NAME IS A ROW BECAUSE A SECOND CONSUMER NOW SPELLS IT. The pack membership
+// list was the only reader while the name appeared once; gunbc.live_deploy.emit now copies that
+// same artifact out of the release directory into the approval broker's per-candidate release
+// locus, and a deploy that copies "gunbc" while the pack verifies a differently-spelled name would
+// install a file that does not exist -- a silent no-op at install time, a restart loop at start
+// time. One row, read by both, is what makes those two spellings the same fact rather than two
+// literals that happen to agree (DESIGN section 3).
+data gunbc_release_bin_name: String = "gunbc"
+
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
-  "gunbc",
+  gunbc_release_bin_name,
 ]
 
 data witness_declared_release_bins: List<String> = [

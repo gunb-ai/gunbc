@@ -5,7 +5,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -24,11 +24,11 @@ fn content_hash_order_conj_ab() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^content_hash_order_field_a },
+        label: Authored { name: ^content_hash_order_field_a },
         target: content_hash_order_leaf()
       },
       Edge {
-        label: Named { name: ^content_hash_order_field_b },
+        label: Authored { name: ^content_hash_order_field_b },
         target: content_hash_order_leaf()
       }
     ],
@@ -41,11 +41,11 @@ fn content_hash_order_conj_ba() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^content_hash_order_field_b },
+        label: Authored { name: ^content_hash_order_field_b },
         target: content_hash_order_leaf()
       },
       Edge {
-        label: Named { name: ^content_hash_order_field_a },
+        label: Authored { name: ^content_hash_order_field_a },
         target: content_hash_order_leaf()
       }
     ],
@@ -63,7 +63,7 @@ fn content_hash_nested_conj_ab() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^content_hash_order_field_a },
+        label: Authored { name: ^content_hash_order_field_a },
         target: content_hash_order_conj_ab()
       }
     ],
@@ -76,7 +76,7 @@ fn content_hash_nested_conj_ba() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^content_hash_order_field_a },
+        label: Authored { name: ^content_hash_order_field_a },
         target: content_hash_order_conj_ba()
       }
     ],

@@ -1,6 +1,6 @@
 module test.claim.deepseek.deepseek_v4_encoder_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, list_length }
 import extdeps.deepseek.deepseek_v4 {
   DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax,
   deepseek_v4_reasoning_mode_wire, deepseek_v4_effort_has_preamble, deepseek_v4_think_max_preamble,

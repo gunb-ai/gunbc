@@ -1,0 +1,479 @@
+module test.claim.machine_intake.ampere_smpro_observation_witness_test
+
+import v2.std.algebra { filter, any }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
+import std.optional { Present }
+import extdeps.bmc.ipmi_master_write_read {
+  MasterWriteReadBus, PrivateBus, PublicBus, CompletionNakOnWrite,
+  master_write_read_bus_byte, master_write_read_slave_byte,
+}
+import extdeps.ampere.smpro_register {
+  SmproStageDefined, SmproStageUndefined, SmproStatusDefined,
+  smpro_bootstage_of, smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg,
+}
+import extdeps.ampere.scp_diagnostic { DdrTraining, DdrInitialization, OperatingSystem, Completed, Failed }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation {
+  smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
+  SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, smpro_pass_dossier_text,
+  smpro_pass_probe_count, smpro_pass_read_order, smpro_pass_sequenced, smpro_pass_plan, SmproTarget, SmproPlan,
+  SmproSite, SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SiteFromOperatorBrief, smpro_site_admit, smpro_site_targets,
+  SiteHasNoTargets, SiteControlNotATarget, SiteControlAmbiguous, SiteSocketRepeated, SiteAddressRepeated,
+  SmproPassObservation, smpro_pass_observation_fixture, smpro_pass_subject,
+  SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
+}
+import extdeps.ampere.smpro_register { SmproRegister, SmproBootProgressRead, SmproBootProgressRefused }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence, SocketProgressAccount,
+  HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  ProgressRead, ProgressNotRead, SmproReportedFailure, SmproPairRefused,
+  mtcollins1_power_on_account,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED TRANSPORT RESULTS, NOT OBSERVED ONES. No SMpro exchange with this BMC exists in the
+// corpus yet: that is what this pass will produce. The stdout renderings follow ipmitool(1) raw
+// (space-separated hex bytes on completion code 00h), and the refusal stderr is ipmitool's
+// "Unable to send RAW command (... rsp=0xNN)" line.
+
+fn raw(socket: Int, register: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
+  SmproProbeRaw { sequence: 0, socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0x02 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+fn read_ok(socket: Int, register: NonEmptyStr, stdout: String) -> SmproProbeOutcome {
+  smpro_probe_outcome(raw: raw(socket: socket, register: register, exit_code: 0, stdout: stdout, stderr: ""))
+}
+
+// ── the sites: mtcollins1's real one, and a synthetic second board ─────────────────────────────
+
+fn mt_site() -> SmproSite? {
+  match mtcollins1_smpro_site() { SmproSiteAdmitted { site: s } => Present { value: s } SmproSiteRefused { cause: _ } => none }
+}
+
+// A SECOND ALTRA BOARD THAT DIFFERS IN EVERY SITE FACT: another controller, bus 5 on the public
+// side, three sockets at other addresses, and the control named as socket 1, which is not listed
+// first. Nothing below may answer for it from mtcollins1's numbers.
+fn jade_targets() -> List<SmproTarget> {
+  [SmproTarget { socket: 2, seven_bit_address: 18 }, SmproTarget { socket: 1, seven_bit_address: 17 }, SmproTarget { socket: 0, seven_bit_address: 16 }]
+}
+
+fn jade_site_standing() -> SmproSiteStanding {
+  smpro_site_admit(
+    endpoint: BmcControllerEndpoint { host: "fixture-jade-bmc" },
+    bus: MasterWriteReadBus { channel: 0, bus_id: 5, bus_type: PublicBus },
+    targets: jade_targets(),
+    control_socket: 1,
+    evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: false },
+  )
+}
+
+fn jade_site() -> SmproSite? {
+  match jade_site_standing() { SmproSiteAdmitted { site: s } => Present { value: s } SmproSiteRefused { cause: _ } => none }
+}
+
+fn admit_targets(targets: List<SmproTarget>, control: Int) -> SmproSiteStanding {
+  smpro_site_admit(endpoint: mtcollins1_endpoint, bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus }, targets: targets, control_socket: control,
+    evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true })
+}
+
+// SUPPLIED OUTCOMES, rendered against a real admitted site and a named host: the folds are claims
+// over transport results, and they still need the subject they are rendered against.
+fn observed_at(site: SmproSite, outcomes: List<SmproProbeOutcome>) -> SmproPassObservation {
+  smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: site, outcomes: outcomes)
+}
+
+// WHAT A PASS MEANS FOR THE MACHINE is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account):
+// these claims supply one pass to it and read each socket's progress and the stated errors. The
+// receipt is supplied with nothing recorded, so the claims say nothing about configuration.
+fn receipt() -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
+    requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+    cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+  }
+}
+
+fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
+  mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: receipt(), handoff: HandoffPoweredOn,
+    smpro: match mt_site() { Present { value: s } => [SmproPassEvidence { label: "pass", observation: observed_at(site: s, outcomes: outcomes) }] Absent => [] },
+    console: ConsoleNotRead, sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" },
+    bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+}
+
+fn progress_of(a: PowerOnAccount, socket: Int) -> SocketProgressAccount? {
+  filter(a.socket_progress, p => p.socket == socket).first()
+}
+
+fn current_code(a: PowerOnAccount, socket: Int) -> Int {
+  match progress_of(a: a, socket: socket) {
+    Present { value: p } => match p.reading { ProgressRead { cur_bootstage_word: c, bootstage_word: _, progress: _ } => c % 256 ProgressNotRead { reason: _ } => 0 - 1 }
+    Absent => 0 - 1
+  }
+}
+
+fn dossier(outcomes: List<SmproProbeOutcome>) -> String {
+  match mt_site() { Present { value: s } => smpro_pass_dossier_text(obs: observed_at(site: s, outcomes: outcomes)) Absent => "FIXTURE SITE REFUSED" }
+}
+
+fn mt_plan() -> SmproPlan {
+  match mt_site() { Present { value: s } => smpro_pass_plan(site: s) Absent => SmproPlan { control_socket: 0 - 1, probes: [] } }
+}
+
+fn mt_count() -> Int {
+  match mt_site() { Present { value: s } => smpro_pass_probe_count(site: s) Absent => 0 - 1 }
+}
+
+data nak_stderr: String = "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"
+
+// ── request framing (IPMI v2.0 §22.11) ──────────────────────────────────────────────────────────
+
+test fn bus_two_private_is_byte_05_and_public_04() -> Bool {
+  (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus }) { Present { value: b } => b == 5 Absent => false })
+    && (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PublicBus }) { Present { value: b } => b == 4 Absent => false })
+    && (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 8, bus_type: PrivateBus }) { Present { value: _ } => false Absent => true })
+}
+
+test fn the_seven_bit_address_is_shifted_and_an_eight_bit_one_refuses() -> Bool {
+  (match master_write_read_slave_byte(seven_bit_address: 79) { Present { value: b } => b == 158 Absent => false })
+    && (match master_write_read_slave_byte(seven_bit_address: 158) { Present { value: _ } => false Absent => true })
+}
+
+test fn the_bootstage_request_writes_the_register_and_the_size() -> Bool {
+  (smpro_request_text(bus: 5, slave: 158, reg: 176) as String) == "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02"
+}
+
+test fn the_plan_is_every_ordered_register_on_two_sockets() -> Bool {
+  mt_count() == 2 * count(smpro_pass_read_order) && count(smpro_pass_read_order) == 24
+}
+
+// ── one transport result -> one typed outcome ───────────────────────────────────────────────────
+
+test fn the_manufacturer_id_in_wire_order_passes_the_control() -> Bool {
+  let o = read_ok(socket: 0, register: smpro_manufacturer_id_reg.name, stdout: " cd 3a\n")
+  (match o { SmproWordRead { raw: _, word: w } => w == 52538 _ => false }) && (match smpro_control_refusal(o: o) { Absent => true Present { value: _ } => false })
+}
+
+test fn a_byte_swapped_id_refuses_the_control_and_says_what_it_read() -> Bool {
+  match smpro_control_refusal(o: read_ok(socket: 0, register: smpro_manufacturer_id_reg.name, stdout: " 3a cd\n")) {
+    Present { value: why } => contains(why, "read 0x3acd")
+    Absent => false
+  }
+}
+
+test fn a_nak_is_the_controllers_refusal_not_a_transport_failure() -> Bool {
+  match smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr)) {
+    SmproControllerRefused { raw: _, completion: CompletionNakOnWrite } => true
+    _ => false
+  }
+}
+
+test fn a_deadline_with_no_completion_code_is_a_transport_failure() -> Bool {
+  match smpro_probe_outcome(raw: raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 124, stdout: "", stderr: "")) {
+    SmproTransportFailed { raw: _, timed_out: t } => t
+    _ => false
+  }
+}
+
+test fn one_byte_on_success_is_malformed_not_a_zero_word() -> Bool {
+  match read_ok(socket: 0, register: smpro_bootstage_reg.name, stdout: " cd\n") {
+    SmproResponseMalformed { raw: _, detail: _ } => true
+    _ => false
+  }
+}
+
+// ── the BOOTSTAGE word ──────────────────────────────────────────────────────────────────────────
+
+test fn the_high_byte_is_the_stage_and_the_low_byte_the_status() -> Bool {
+  let b = smpro_bootstage_of(word: 1027)
+  (match b.stage { SmproStageDefined { stage: DdrTraining } => true _ => false })
+    && (match b.status { SmproStatusDefined { status: Failed } => true _ => false })
+}
+
+test fn a_stage_code_past_the_table_stays_a_number() -> Bool {
+  match smpro_bootstage_of(word: 2561).stage { SmproStageUndefined { code: c } => c == 10 _ => false }
+}
+
+// ── what a pass reports ─────────────────────────────────────────────────────────────────────────
+
+fn socket_reads(socket: Int, bootstage: String) -> List<SmproProbeOutcome> {
+  socket_reads_at(socket: socket, current: "00 09", bootstage: bootstage)
+}
+
+fn socket_reads_at(socket: Int, current: String, bootstage: String) -> List<SmproProbeOutcome> {
+  [
+    read_ok(socket: socket, register: smpro_manufacturer_id_reg.name, stdout: "cd 3a"),
+    read_ok(socket: socket, register: smpro_cur_bootstage_reg.name, stdout: current),
+    read_ok(socket: socket, register: smpro_bootstage_reg.name, stdout: bootstage),
+  ]
+}
+
+test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
+  any(a.errors, x => match x.error { SmproReportedFailure { socket: k, pass: _, cur_bootstage_word: _, bootstage_word: r } => k == 1 && r == 1027 _ => false })
+    && !any(a.errors, x => match x.error { SmproReportedFailure { socket: k, pass: _, cur_bootstage_word: _, bootstage_word: _ } => k == 0 _ => false })
+}
+
+test fn two_sockets_at_the_same_stage_add_nothing() -> Bool {
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))
+  count(a.errors) == 0 && !any(a.open, q => match q.question { SmproPairRefused { socket: _, pass: _ } => true _ => false })
+}
+
+test fn socket_one_unreadable_beside_a_read_socket_zero_is_named() -> Bool {
+  let s1 = [smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr))]
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
+  current_code(a: a, socket: 0) == 9
+    && (match progress_of(a: a, socket: 1) { Present { value: p } => (match p.reading { ProgressNotRead { reason: r } => contains(r as String, "CUR_BOOTSTAGE") _ => false }) Absent => false })
+}
+
+// THE DOSSIER EXISTS WHEN NOTHING WAS ANSWERED.
+test fn a_pass_where_nothing_was_sent_still_renders_every_socket() -> Bool {
+  let os = [SmproNotSent { socket: 0, register: smpro_bootstage_reg.name, reason: "socket 0 control: MANUFACTURER_ID TRANSPORT FAILED" }, SmproNotSent { socket: 1, register: smpro_bootstage_reg.name, reason: "control socket 0 did not establish the transport" }]
+  let t = dossier(outcomes: os)
+  contains(t, "SMpro socket 0: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "(no request sent)")
+    && count(account_of(outcomes: os).errors) == 0
+}
+
+// ── THE ORDER IS ENFORCED BY THE FOLD (the production fold, with a supplied read) ───────────────
+//
+// The read below answers from a script and records the sequence it was HANDED, which the fold
+// derives from the outcomes already folded. So each outcome's sequence is the number of probes
+// that had an outcome before it was issued.
+
+fn scripted_word(reg: SmproRegister) -> String {
+  if reg.offset == 2 { "cd 3a" } else if reg.offset == 176 { "09 02" } else { "00 09" }
+}
+
+fn scripted_read(t: SmproTarget, reg: SmproRegister, n: Int) -> SmproProbeOutcome {
+  smpro_probe_outcome(raw: SmproProbeRaw { sequence: n, socket: t.socket, register: reg.name, request: "r", at: "t", exit_code: 0, stdout: scripted_word(reg: reg), stderr: "" })
+}
+
+fn sequence_of(o: SmproProbeOutcome) -> Int {
+  match o { SmproWordRead { raw: r, word: _ } => r.sequence _ => 0 - 1 }
+}
+
+fn register_of(o: SmproProbeOutcome) -> String {
+  match o { SmproWordRead { raw: r, word: _ } => r.register as String SmproNotSent { socket: _, register: g, reason: _ } => g as String _ => "" }
+}
+
+type SequenceWalk {
+  next: Int
+  ok: Bool
+}
+
+// Each outcome's sequence equals its position: 0, 1, 2, ... with no gap or repeat.
+fn sequences_are_positions(os: List<SmproProbeOutcome>) -> Bool {
+  fold(os, init: SequenceWalk { next: 0, ok: true }, f: (acc, o) => SequenceWalk { next: acc.next + 1, ok: acc.ok && sequence_of(o: o) == acc.next }).ok
+}
+
+test fn every_read_is_issued_after_all_earlier_probes_have_outcomes() -> Bool {
+  let os = smpro_pass_sequenced(plan: mt_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  count(os) == mt_count() && sequences_are_positions(os: os)
+}
+
+test fn bootstage_is_last_on_each_socket_and_the_control_first() -> Bool {
+  let os = smpro_pass_sequenced(plan: mt_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  let per = count(smpro_pass_read_order)
+  let names = map(os, o => register_of(o: o))
+  count(names) == 2 * per
+    && (match names.first() { Present { value: x } => x == "MANUFACTURER_ID_REG" Absent => false })
+    && (match names.skip(n: per - 1).first() { Present { value: x } => x == "BOOTSTAGE" Absent => false })
+    && (match names.skip(n: per).first() { Present { value: x } => x == "MANUFACTURER_ID_REG" Absent => false })
+    && (match names.skip(n: 2 * per - 1).first() { Present { value: x } => x == "BOOTSTAGE" Absent => false })
+}
+
+// A plan listed out of order is refused by the gate rather than executed out of order: a
+// boot-progress register placed BEFORE its socket's control is NOT SENT.
+test fn a_register_ahead_of_its_control_is_not_sent() -> Bool {
+  let plan = mt_plan()
+  let reordered = SmproPlan { control_socket: plan.control_socket, probes: concat(plan.probes.skip(n: 4).take(n: 1), concat(plan.probes.take(n: 4), plan.probes.skip(n: 5))) }
+  let os = smpro_pass_sequenced(plan: reordered, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  match os.first() { Present { value: SmproNotSent { socket: 0, register: _, reason: _ } } => true _ => false }
+}
+
+// The socket-0 control gates socket 1 through the folded outcome, not through a separate call.
+test fn a_failed_socket_zero_control_sends_nothing_further() -> Bool {
+  let os = smpro_pass_sequenced(plan: mt_plan(), read: (t, reg, n) => smpro_probe_outcome(raw: SmproProbeRaw { sequence: n, socket: t.socket, register: reg.name, request: "r", at: "t", exit_code: 1, stdout: "", stderr: nak_stderr }))
+  count(os) == mt_count() && count(filter(os, o => match o { SmproNotSent { socket: _, register: _, reason: _ } => true _ => false })) == mt_count() - 1
+}
+
+// ── CUR_BOOTSTAGE AND BOOTSTAGE ARE INDEPENDENT READINGS ───────────────────────────────────────
+
+// Same reported BOOTSTAGE on both sockets, different CURRENT stage: that is a difference.
+test fn a_differing_current_stage_with_the_same_bootstage_is_named() -> Bool {
+  let a = account_of(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
+  current_code(a: a, socket: 0) == 9 && current_code(a: a, socket: 1) == 3
+}
+
+// A CUR_BOOTSTAGE that read survives a BOOTSTAGE that did not.
+test fn the_current_stage_stands_when_bootstage_fails() -> Bool {
+  let os = [
+    read_ok(socket: 1, register: smpro_manufacturer_id_reg.name, stdout: "cd 3a"),
+    read_ok(socket: 1, register: smpro_cur_bootstage_reg.name, stdout: "00 04"),
+    smpro_probe_outcome(raw: raw(socket: 1, register: smpro_bootstage_reg.name, exit_code: 124, stdout: "", stderr: "")),
+  ]
+  let st = smpro_socket_stage(outcomes: os, socket: 1)
+  (match st.current { CurrentStageEstablished { stage: SmproStageDefined { stage: DdrTraining } } => true _ => false })
+    && (match st.reported { ReportedStageUnavailable { reason: why } => contains(why, "TRANSPORT FAILED") _ => false })
+}
+
+// ── THE SITE IS ONE ADMITTED CARRIER, AND THE PASS DERIVES FROM IT ──────────────────────────────
+
+// A SECOND BOARD: its plan, request bytes, probe count and dossier come from its own site, with the
+// control it names first even though it is listed second. Three claims, each over one interface and
+// over supplied values: the plan is inspected as a value rather than executed (the fold's own order
+// is the claims above), and the dossier renders an empty outcome list, which still names every site
+// fact and every socket.
+test fn a_second_site_derives_its_plan_and_count() -> Bool {
+  match jade_site() {
+    Absent => false
+    Present { value: s } => {
+      let plan = smpro_pass_plan(site: s)
+      plan.control_socket == 1
+        && (match plan.probes.first() { Present { value: p } => p.target.socket == 1 && p.register.offset == smpro_manufacturer_id_reg.offset Absent => false })
+        && smpro_pass_probe_count(site: s) == 3 * count(smpro_pass_read_order)
+        && count(plan.probes) == 3 * count(smpro_pass_read_order)
+    }
+  }
+}
+
+test fn a_second_site_derives_its_request_bytes() -> Bool {
+  match jade_site() {
+    Absent => false
+    Present { value: s } => match master_write_read_bus_byte(bus: s.bus) {
+      Absent => false
+      Present { value: b } => match master_write_read_slave_byte(seven_bit_address: s.control.seven_bit_address) {
+        Absent => false
+        Present { value: sl } => (smpro_request_text(bus: b, slave: sl, reg: smpro_manufacturer_id_reg.offset) as String) == "raw 0x06 0x52 0x0a 0x22 0x02 0x02 0x02"
+      }
+    }
+  }
+}
+
+test fn a_second_site_derives_its_dossier() -> Bool {
+  match jade_site() {
+    Absent => false
+    Present { value: s } => {
+      let d = smpro_pass_dossier_text(obs: observed_at(site: s, outcomes: []))
+      contains(d, "via controller fixture-jade-bmc, bus 5 public, from the operator brief; control socket 1")
+        && contains(d, "socket 2 at 7-bit 0x12")
+        && contains(d, "SMpro socket 2: CUR_BOOTSTAGE")
+        && !contains(d, "0x4f")
+    }
+  }
+}
+
+// A HOST/SITE MISMATCH IS REFUSED AT THE SUBJECT MINT, before any read: smpro_pass_probes takes only a
+// subject, so a site naming another controller leaves nothing to read with. A refused site is
+// refused at the same mint with its cause.
+test fn a_site_behind_another_controller_refuses_before_any_read() -> Bool {
+  (match smpro_pass_subject(host: operator_host_mtcollins1, endpoint: mtcollins1_endpoint, site: jade_site_standing()) {
+    SmproPassEndpointMismatch { bound: b, site: t } => (t.host as String) == "fixture-jade-bmc" && (b.host as String) == (mtcollins1_endpoint.host as String)
+    SmproPassSubjectBound { subject: _ } => false
+    SmproPassSiteRefused { cause: _ } => false
+  })
+    && (match smpro_pass_subject(host: operator_host_mtcollins1, endpoint: mtcollins1_endpoint, site: admit_targets(targets: [], control: 0)) {
+      SmproPassSiteRefused { cause: SiteHasNoTargets } => true
+      _ => false
+    })
+    && (match smpro_pass_subject(host: operator_host_mtcollins1, endpoint: mtcollins1_endpoint, site: mtcollins1_smpro_site()) {
+      SmproPassSubjectBound { subject: x } => x.site.control.socket == 0
+      _ => false
+    })
+}
+
+test fn an_empty_site_is_refused() -> Bool {
+  match admit_targets(targets: [], control: 0) { SmproSiteRefused { cause: SiteHasNoTargets } => true _ => false }
+}
+
+test fn a_repeated_socket_or_address_is_refused() -> Bool {
+  (match admit_targets(targets: [SmproTarget { socket: 0, seven_bit_address: 79 }, SmproTarget { socket: 1, seven_bit_address: 78 }, SmproTarget { socket: 1, seven_bit_address: 77 }], control: 0) {
+    SmproSiteRefused { cause: SiteSocketRepeated { socket: 1 } } => true
+    _ => false
+  })
+    && (match admit_targets(targets: [SmproTarget { socket: 0, seven_bit_address: 79 }, SmproTarget { socket: 1, seven_bit_address: 79 }], control: 0) {
+      SmproSiteRefused { cause: SiteAddressRepeated { seven_bit_address: 79 } } => true
+      _ => false
+    })
+}
+
+test fn an_ambiguous_or_absent_control_is_refused() -> Bool {
+  (match admit_targets(targets: [SmproTarget { socket: 0, seven_bit_address: 79 }, SmproTarget { socket: 0, seven_bit_address: 78 }], control: 0) {
+    SmproSiteRefused { cause: SiteControlAmbiguous { socket: 0, matches: 2 } } => true
+    _ => false
+  })
+    && (match admit_targets(targets: [SmproTarget { socket: 0, seven_bit_address: 79 }], control: 3) {
+      SmproSiteRefused { cause: SiteControlNotATarget { socket: 3 } } => true
+      _ => false
+    })
+}
+
+// REORDERING DOES NOT MOVE THE CONTROL: the same population listed either way admits the same control,
+// and a plan whose probes are reordered still gates on the control it names.
+test fn reordering_the_targets_or_the_plan_does_not_move_the_control() -> Bool {
+  let a = SmproTarget { socket: 0, seven_bit_address: 79 }
+  let b = SmproTarget { socket: 1, seven_bit_address: 78 }
+  let same = match admit_targets(targets: [b, a], control: 0) {
+    SmproSiteAdmitted { site: s } => s.control.socket == 0 && (match smpro_site_targets(site: s).first() { Present { value: t } => t.socket == 0 Absent => false })
+    SmproSiteRefused { cause: _ } => false
+  }
+  let plan = mt_plan()
+  let per = count(smpro_pass_read_order)
+  let socket_one_first = SmproPlan { control_socket: plan.control_socket, probes: concat(plan.probes.skip(n: per), plan.probes.take(n: per)) }
+  let os = smpro_pass_sequenced(plan: socket_one_first, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  same && plan.control_socket == 0
+    && (match os.first() { Present { value: SmproNotSent { socket: 1, register: _, reason: why } } => contains(why as String, "control socket 0 was not probed") _ => false })
+}
+
+// ── THE CARRIERS CANNOT BE AUTHORED AROUND THEIR MINTS (executed reds, compiler path) ───────────
+//
+// The probe source authors a SmproSite, a SmproPassSubject and a SmproPassObservation outside this
+// module, and calls the subject mint and the observation fixture from unadmitted callers. It is
+// handed to the compiler through the diagnostic-census harness and each refusal is joined by CLASS
+// and SUBJECT, so a probe refused for another reason measures another wall. The control reads the
+// same module through its real producer and must emit neither class.
+
+data forged_smpro_probe_source: String = "module probe_ampere_smpro_forged\n\nimport std.types { List }\nimport extdeps.bmc.endpoint { BmcControllerEndpoint }\nimport extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }\nimport gunbc.fleet_host_identity { operator_host_mtcollins1 }\nimport gunbc.machine_intake_ampere_smpro_observation { SmproSite, SmproSiteStanding, SmproTarget, SiteFromOperatorBrief, SmproPassSubject, SmproPassSubjectStanding, SmproPassObservation, SmproProbeOutcome, smpro_pass_subject, smpro_pass_observation_fixture }\n\nfn forged_site() -> SmproSite {\n  SmproSite { endpoint: BmcControllerEndpoint { host: \"forger\" }, bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus }, control: SmproTarget { socket: 0, seven_bit_address: 79 }, further_targets: [], evidence: SiteFromOperatorBrief { relay: \"forger\", private_bus_is_a_bet: true } }\n}\n\nfn forged_subject(s: SmproSite) -> SmproPassSubject {\n  SmproPassSubject { host: operator_host_mtcollins1, endpoint: BmcControllerEndpoint { host: \"another-bmc\" }, site: s }\n}\n\nfn forged_observation(x: SmproPassSubject, os: List<SmproProbeOutcome>) -> SmproPassObservation {\n  SmproPassObservation { subject: x, outcomes: os }\n}\n\nfn subject_minted_outside(site: SmproSiteStanding) -> SmproPassSubjectStanding {\n  smpro_pass_subject(host: operator_host_mtcollins1, endpoint: BmcControllerEndpoint { host: \"another-bmc\" }, site: site)\n}\n\nfn observation_minted_outside(s: SmproSite, os: List<SmproProbeOutcome>) -> SmproPassObservation {\n  smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: os)\n}\n"
+
+data smpro_harness_control_source: String = "module probe_ampere_smpro_control\nimport gunbc.machine_intake_ampere_smpro_observation { SmproSiteStanding }\nimport gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }\nfn site() -> SmproSiteStanding { mtcollins1_smpro_site() }\n"
+
+fn class_subject_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } => fold(filter(rows, r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking), init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn class_count(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } => fold(filter(rows, r => (r.diagnostic_class as String) == wanted && r.blocking), init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_smpro_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(smpro_harness_control_source)
+  class_count(c: c, wanted: "SoleConstructorViolation") == 0 && class_count(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+test fn a_forged_site_subject_or_observation_is_refused_at_its_literal() -> Bool {
+  let c = compile_dag_diagnostic_census(forged_smpro_probe_source)
+  class_subject_count(c: c, wanted: "SoleConstructorViolation", subject: "SmproSite") >= 1
+    && class_subject_count(c: c, wanted: "SoleConstructorViolation", subject: "SmproPassSubject") >= 1
+    && class_subject_count(c: c, wanted: "SoleConstructorViolation", subject: "SmproPassObservation") >= 1
+}
+
+test fn the_subject_mint_and_the_observation_fixture_refuse_an_outside_caller() -> Bool {
+  let c = compile_dag_diagnostic_census(forged_smpro_probe_source)
+  class_subject_count(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "smpro_pass_subject") >= 1
+    && class_subject_count(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "smpro_pass_observation_fixture") >= 1
+}

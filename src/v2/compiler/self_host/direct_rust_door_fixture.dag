@@ -1,8 +1,10 @@
 module v2.compiler.self_host.direct_rust_door_fixture
+import std.optional { optional_absent }
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer }
+import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust {
@@ -24,6 +26,7 @@ import v2.extdeps.languages.rust {
   rust_target_model
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
@@ -43,7 +46,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   optional_absent,
   optional_present
@@ -104,10 +107,9 @@ fn direct_rust_door_admission() -> Admission {
 // stage whose value is closure-free and therefore portable (the InferredTree one stage up carries
 // the facts PartialFunction and is deliberately not the share point), so the resolved tree is the
 // cross-claim share point and infer stays per claim. `direct_rust_door_specimen_resolved` is
-// nullary and warm-enrolled in `v2.workflow.floor_pure_producer_share`
-// (floor_cross_claim_pure_producers_warm), which carries the measured recompute/sharing/serve
-// case; the required floor forces it during strict preparation, outside every per-claim budget.
-fn direct_rust_door_specimen_resolved() -> Outcome<Node> {
+// nullary, so the derived cross-claim share (`v2.workflow.floor_pure_producer_share`
+// derive_cross_claim_share) admits it when several planned claims reach it; the required floor forces it during strict preparation, outside every per-claim budget.
+fn direct_rust_door_specimen_resolved() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: direct_rust_door_ingest(),
     admission: direct_rust_door_admission(),
@@ -118,7 +120,7 @@ fn direct_rust_door_specimen_resolved() -> Outcome<Node> {
 fn direct_rust_door_specimen_inferred() -> Outcome<InferredTree> {
   match direct_rust_door_specimen_resolved() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+    Accepted { value: resolved, diagnostics: _ } => infer_and_discharge(tree: resolved)
   }
 }
 
@@ -286,7 +288,8 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
           optional_present(
             value: InferredFacts {
               grounding: DerivedGrounding { grounding: grounding },
-              descent: Holds { value: proof }
+              descent: Holds { value: proof },
+              denotation: optional_absent()
             }
           )
       }

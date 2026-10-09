@@ -1,0 +1,35 @@
+module gunbc.namecheap.federation
+
+import std.types { String, NonEmptyStr, List, Map }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+
+data namecheap_environment: NonEmptyStr = "namecheap-dns"
+data namecheap_wif_pool_id: NonEmptyStr = "github-namecheap-dns"
+data namecheap_wif_provider_id: NonEmptyStr = "github-namecheap-dns-oidc"
+data namecheap_service_account: ServiceAccountEmail = "namecheap-dns@gunbai-secrets.iam.gserviceaccount.com"
+data namecheap_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn namecheap_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: namecheap_environment)
+}
+fn namecheap_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: namecheap_claim_pins())
+}
+fn namecheap_principal_set() -> String {
+  join(["principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: namecheap_wif_pool_id as String), "/*"], "")
+}
+fn namecheap_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: WifProvider {
+    name: namecheap_wif_provider_id, pool: namecheap_wif_pool_id,
+    issuer_uri: github_wif_issuer_uri,
+    attribute_mapping: Present { value: namecheap_attribute_mapping },
+    attribute_condition: Present { value: namecheap_attribute_condition() },
+  })
+}

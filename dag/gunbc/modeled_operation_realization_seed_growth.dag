@@ -1,0 +1,61 @@
+module gunbc.modeled_operation_realization_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the entry-bound modeled operation realization (gunbc#12486), homed
+// beside the obligation it declares rather than inside gunbc.seed_growth_admission, which owns the
+// roster and the join.
+//
+// THE AUTHORIZER. The #12423 side-chat design decision, comment 5858742863, approved exactly this
+// scope: "A narrow realization-boundary repair serving the existing workflow and reusable v2
+// interface contract is the approved maintenance scope. Keep scenario state/transitions and binding
+// declarations in the model; host code implements the generic binding/dispatch plumbing. This is not
+// authorization for a new v1 testing language, a MegaRAC emulator baked into the interpreter, or an
+// open-ended interface/transport rewrite". Operator clarification 5859045446 and eager-owl-205's
+// conditions scope it further.
+//
+// THE FIVE REFUSED CLASSES OF gunbc.v1_maintenance_standing, one by one. NewLanguageBehavior: no --
+// no construct, typing rule or evaluation rule changes, and a program's meaning is unchanged unless
+// a witness frame carrying a ModeledRealization binding is installed. NewCompatibilityObligation: no.
+// NewEscapeHatchOrAdmissionRow: no, and the direction is the opposite -- the realization adds
+// refusals (Hermetic only, exclusive of the carve-out, fixture store and published mocks, nested
+// frames refused). SeedFeatureCompletion FIRES and is admitted on the ruling above: the evaluator
+// gains a dispatch mode, which exists to execute a v2-inherited .dag contract. PublicSurfaceGrowth
+// FIRES: InterpError is a pub enum and gains ModeledOperationRefused and ModeledWorkerKilled.
+// The counter-argument is preserved: 'the contract is v2-inherited' is an authored distinction
+// nothing mechanically holds, so a reviewer or the operator may reject it.
+//
+// UNCITABLE ITEMS, named because the roster cannot hold them as DeclarationRefs: `impl
+// ModeledHandlerScope` (its `enter`) and `impl Drop for ModeledHandlerScope`, and the two InterpError
+// variants with their Display arms, which modify existing items rather than add free declarations.
+// The cli_run.rs change adds no item: it extends an existing exhaustive match.
+// (MODELED_REALIZATION_SLOTS, MODELED_HANDLER_DEPTH were thread_local! stores: macro-declared,
+//  gunbc.rust_item_scan MacroScope cannot name them at item grain, so they carry no citation here; a changed line inside the block refuses unattributed instead.)
+data modeled_operation_realization_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "ModeledRealizationSlot", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "ModeledHandlerScope", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "apply_modeled_handler", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "modeled_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "record_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "variant_parts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "record_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "variant_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "admit_modeled_realization", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "op_declared_readonly", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "bound_operation_invocation_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "render_input", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "dispatch_modeled_operation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_of_observation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_result_of_observation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_transport_path", field: WholeDeclaration },
+  ],
+  reason: "The seed interpreter is the only evaluator that runs the boot orchestrator, and the acceptance matrix (#12423, operator ruling 2026-09-27) must execute that orchestrator against controlled device histories. These items are the seed realization of a .dag contract: selection is v2.std.operation_realization operation_handler_selection over std.effect_grant covering_grant, admission is modeled_realization_admitted_in and operation_realization_duplicate, the virtual clock is virtual_clock_origin and virtual_clock_after over std.measure Second, and every scenario transition is gunbc.bmc_model. The Rust holds a state value, a clock value and the dispatch log, and dispatches; shell_result_projection is the existing wet shell projection extracted so the modeled observation reaches the same decoder path. ModeledRealizationSlot.selections memoizes operation_handler_selection per frame (gunbc#12533): its key is the complete varying input of that selection (the operation's declaring file, service, operation and readonly flag), its scope and retention are the frame's extent, over which the envelope, the realization and its binding index are fixed, and it is written only from the selection's own answer, so a hit is the same decided value and never a substitute for it; it discharges recurrence the matrix pays once per dispatch across thousands of dispatches, and it dissolves with the frame stack under the same trigger.",
+  owning_dissolution_lane: "v1-materialization-kernel" as RoadmapNodeId,
+  trigger: "Witnesses emit to native code and the emitted runtime realizes the evaluation frame and its modeled operation realization; these items then delete with the WITNESS_EVALUATION_FRAMES stack while test.claim.operation_realization_witness_test stays green without them. That witness is the deletion's regression control.",
+  current_boundary: "Shell and file transport observations (the file arm added by gunbc#12533 feeds the existing map_file_outputs; bound_operation_invocation_value records a ProcessArgvExpansion input as the words push_process_argv_expansion expands for a real spawn): a REST operation under a modeled frame refuses as a harness fault. Admitted only under Hermetic execution. No device logic in Rust. Nested frames inside an active realization are refused.",
+}

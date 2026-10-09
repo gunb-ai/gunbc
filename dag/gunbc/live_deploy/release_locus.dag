@@ -1,0 +1,141 @@
+module gunbc.live_deploy.release_locus
+
+import std.types { String, List, NonEmptyStr, CommitSha }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  RunGunbcEntryAs,
+  executor_privileged_operation_elevated_argv,
+  executor_privileged_operation_elevated_command,
+}
+import gunbc.auth.approval_ntfy_runtime_observe {
+  approval_ntfy_runtime_observe_entry_rel,
+  approval_ntfy_runtime_observe_function,
+  approval_ntfy_runtime_observe_run_as,
+}
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
+import gunbc.ci_release_bins { gunbc_release_bin_name }
+
+// THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
+// gunbc.live_deploy.emit, so every reader of a release path -- the approval broker's own routes and
+// its ntfy readback among them -- imported the whole deploy emitter to name a sha-keyed directory,
+// and through it v2.compiler.emit_orchestration: the broker's serve closure typechecked the whole
+// deploy emitter at every boot (srv1, 2026-09-27: not listening 17 min after start). A release
+// revision and the paths it names are facts about a release, not about how a deploy script is
+// emitted; the emitter consumes them from here like every other reader. This removes the emitter
+// edge only -- the closure still reaches v2.compiler through gunbc.shell_command_text, a separate
+// layer inversion with its own work item.
+//
+// WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS
+// BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher
+// observed one candidate, the unit installed at the host bakes exactly that value, and readiness
+// compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists
+// so a retract cannot name a revision even accidentally — the arm that would render ExecStart under
+// it REFUSES with a poison marker, the same unreachable-arm discipline
+// emit_deploy_teardown_dependency_refusal uses.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
+// REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the
+// unit so a committed script could defer its revision to invocation. It could never have worked:
+// the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter
+// heredoc when this was found, and the property that mattered survived the change), so bash
+// performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd
+// does not run ExecStart through bash, implements no :? operator, and this unit sets no such
+// Environment. The chain script-invocation to unit to launch argument did not exist at any link.
+// Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and
+// it was inert.\n\nWhat it was protecting turned out not to need protecting. It existed to keep a
+// committed script as the byte oracle over this ExecStart line, on the belief that deleting the
+// artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact,
+// not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a
+// fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer
+// row that named a reader which does not exist).
+type ReleaseRevisionBinding
+  = RevisionBoundAtEmission { revision: CommitSha }
+  | RevisionNotInstalled
+
+data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
+
+fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
+  match binding {
+    RevisionBoundAtEmission { revision: r } => r as String
+    RevisionNotInstalled => release_revision_not_installed_poison
+  }
+}
+
+data approval_broker_release_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+
+// THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
+// today, and reading the row here would still be correct -- but it would make the broker's root a
+// fact this fold knows independently of the service it is emitting a unit for, so a deployment
+// whose config named a different root would install its tree under one path and start its unit from
+// another. The config is the parameter every other member of this unit comes from; the root is not
+// an exception to that.
+fn approval_broker_release_dir(root: String, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([root, "/releases/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_releases_dir(root: String) -> String {
+  join([root, "/releases"], "")
+}
+
+fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+}
+
+fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+}
+
+data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
+
+data approval_broker_helper_root_principal: NonEmptyStr = "root"
+
+data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-helpers"
+
+// WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
+// the locus (the install makes it so, and the snapshot readback checks it).
+type HelperLocus {
+  base: String
+  owner: NonEmptyStr
+}
+
+fn approval_broker_helper_snapshot_locus() -> HelperLocus {
+  HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
+}
+
+fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
+  RunGunbcEntryAs {
+    run_as: approval_ntfy_runtime_observe_run_as(),
+    workspace_root: dir as NonEmptyStr,
+    binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+    source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+    entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
+    function: approval_ntfy_runtime_observe_function,
+  }
+}
+
+fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  approval_broker_ntfy_runtime_observe_operation_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy /opt/gunbc/approval-broker-helpers/<sha>/gunbc run ...`.
+// It is pure and exported so the verb (#12077) builds its invocation from this value, and a claim can
+// pin it.
+fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
+  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
+}
+
+// The same invocation as the command the verb runs (gunbc.auth.approval_ntfy_access_readback
+// approval_ntfy_runtime_reading), from the same operation.
+fn approval_ntfy_runtime_observe_helper_command(revision: ReleaseRevisionBinding) -> ArgvCommand {
+  executor_privileged_operation_elevated_command(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
+}

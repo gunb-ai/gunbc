@@ -1,10 +1,40 @@
 module gunbc.spark.serving_arm
 
-import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.docker.cli { DockerEnvAssignment }
+
+import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
-import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
+import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, gibibyte_ceiling, BasisPoint, basis_point, basis_point_count }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_checkpoint_manifest_gibibytes }
+import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
+import gunbc.spark.vllm_image_identity { glm53_derived_tag, vllm_image_build_key }
+import extdeps.vllm.engine_args {
+  VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
+  VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
+  VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
+  VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
+  KvFp8E4m3, KvNvfp4, KvNvfp4DsMla, IndexerKvDtypeOmitted,
+  VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_key,
+}
+import extdeps.vllm.kv_dtype_capability {
+  KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild, RowOnBuild, kv_runtime,
+  KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
+  KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
+}
+import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class,
+  glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
+}
+import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
+import extdeps.zhipu.glm_5_3 { glm_5_3_architecture_class }
+import extdeps.radixark.glm_5_3_nvfp4 {
+  glm_5_3_nvfp4_hub_repo, glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization,
+}
+import extdeps.vllm.runtime_defaults {
+  ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804,
+  defaults_source_revision, defaults_gpu_utilization,
+}
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
 }
@@ -14,11 +44,20 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
+  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading, glm53_kvplan_v2_group_a_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
-  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
+  spark_local_checkpoint_directory,
 }
-
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision, deepseek_v4_1_flash_architecture_class,
+  deepseek_v4_1_flash_quant_method, deepseek_v4_1_flash_weight_manifest_backbone_rows, deepseek_v4_1_flash_published_rows_bytes,
+}
+import extdeps.vllm.recipe_deepseek_v4_1_flash {
+  vllm_recipe_deepseek_v4_1_flash_tool_call_parser, vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
+  vllm_recipe_deepseek_v4_1_flash_tokenizer_mode,
+}
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
 // WHY THIS AXIS IS BEING ADDED, AND WHAT IT COST TO DISCOVER. gunbc.harness.harness_reasoning_wire
@@ -40,22 +79,53 @@ type ServingCheckpoint
   | Glm53Exl3_205
   | Glm53Nvfp4CompressedTensors
   | DeepseekV4FlashIq3sSplit
+  | Glm53RadixArkNvfp4Modelopt
+  | DeepseekV41FlashDba1be0a
+  | Glm53FlashNvidiaNvfp4
 
+// A PRODUCED RUNTIME CARRIES ITS OWN BYTES, BECAUSE NO ROW CAN BE WRITTEN FOR IT AHEAD OF THE BUILD.
+// Every other variant here names an image somebody pulled or built once and pinned by hand, so its row
+// is data. The V4.1 Engram image is produced by the lane (gunbc.spark.vllm_runtime_image_build under
+// gunbc.spark.v41_runtime_image_converge) and admitted by gunbc.spark.v41_runtime_realized
+// v41_admit_produced_runtime, whose answer is a VALUE read back at run time -- a configuration digest
+// and the source tree the build observed. A static row would have to transcribe that digest, which is
+// the copy DESIGN section 6 forbids, and would go stale on the next build. So the variant carries the
+// identity the admission produced, and the row below is derived from it. It carries this module's own
+// RuntimeArtifactIdentity rather than the produced-image type because that type's module reaches this
+// one through the arm launcher, and the import graph must stay acyclic.
+//
+// THE REGISTRY READING TRAVELS WITH IT FOR THE SAME REASON, and Absent is the honest answer until a
+// probe has run inside that exact digest: serving_arm_admits then refuses with "no registry reading
+// exists", which is the refusal this arm should give today.
 type ServingRuntime
   = GunbcSparkrunVllmDs4Gb10
   | Gitcommit90Sm121Exl3
   | Tonyd2wildSm121Nvfp4
+  | VllmOpenaiGlm53Flash
+  | GunbcGlm53NopeDerivedGb10
+  | GunbcGlm53DerivedGb10
+  | GunbcGlm53DerivedKvplanV2Gb10
+  | GunbcGlm53KvplanV2GroupAProduced
+  | GunbcDeepseekV41EngramProduced { artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading? }
 
+// THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE, AND ONLY A RANK COUNT. It exists
+// because gunbc.spark.serving_fit_projection screens the RadixArk GLM-5.3 NVFP4 checkpoint against it
+// and finds it the smallest degree at which the ideal even split stays within the live budget --
+// with placement unread, which is not a fit. Nothing here claims eight Sparks have been
+// fabric-joined, hold the image and checkpoint, or that an engine has run across them; a deployment
+// verdict needs a qualified rank offer this variant does not carry.
 type ServingTopology
   = SingleSparkTp1
   | SparkPairTp2
   | FourSparkTp4
+  | EightSparkTp8
 
 fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   match t {
     SingleSparkTp1 => 1
     SparkPairTp2 => 2
     FourSparkTp4 => 4
+    EightSparkTp8 => 8
   }
 }
 
@@ -67,14 +137,12 @@ fn serving_topology_rank_count(t: ServingTopology) -> Nat {
 // computed FROM the forward function, and the only thing this declares is which topologies exist.
 //
 // AND IT IS OPTIONAL BECAUSE IT IS PARTIAL. A rank count no topology carries has no answer, and the
-// caller is the one that must say what to do about it. An earlier consumer of this relation spelled
-// it `if ranks == 2 { SparkPairTp2 } else { FourSparkTp4 }`, which turned every unmapped count --
-// 1, 8, or a typo -- into a confident TP=4, on the exact axis its module attributes to. That is
-// DESIGN section 5's fabricated-plausible-output with a `topology` field name over it.
+// caller is the one that must say what to do about it.
 data serving_topologies: List<ServingTopology> = [
   SingleSparkTp1,
   SparkPairTp2,
   FourSparkTp4,
+  EightSparkTp8,
 ]
 
 fn serving_topology_of_rank_count(ranks: Nat) -> ServingTopology? {
@@ -83,26 +151,37 @@ fn serving_topology_of_rank_count(ranks: Nat) -> ServingTopology? {
 
 // ── THE CANONICAL PROJECTION OF EACH AXIS, WHICH IS WHERE EQUALITY IS DECIDED ─────────────────
 //
-// One place knows the variants and the wire is that place -- the idiom gunbc.spark.serving_subject
-// states for ServingSubject and gunbc.spark.cell_role for its own coproduct. These exist because a
-// consumer that needs to ask whether two serving measurements describe one configuration must not
-// spell the comparison as a per-variant match of its own: a second match over these variants is a
-// second authority on what distinguishes them, and it goes stale silently the moment a checkpoint
-// or runtime is added here. gunbc.spark.serving_performance_subject is that consumer.
+// One place knows the variants and the wire is that place. A consumer asking whether two serving
+// measurements describe one configuration must not spell the comparison as a per-variant match of
+// its own: a second match over these variants is a second authority on what distinguishes them, and
+// it goes stale silently the moment a checkpoint or runtime is added here.
+// gunbc.spark.serving_performance_subject is that consumer.
 fn serving_checkpoint_wire(c: ServingCheckpoint) -> NonEmptyStr {
   match c {
     Glm53NativeFp8 => "glm-5.3-flash-native-fp8" as NonEmptyStr
     Glm53Exl3_205 => "glm-5.3-flash-exl3-2.05" as NonEmptyStr
     Glm53Nvfp4CompressedTensors => "glm-5.3-flash-nvfp4-compressed-tensors" as NonEmptyStr
     DeepseekV4FlashIq3sSplit => "deepseek-v4-flash-iq3s-split" as NonEmptyStr
+    Glm53RadixArkNvfp4Modelopt => "glm-5.3-radixark-nvfp4-modelopt" as NonEmptyStr
+    Glm53FlashNvidiaNvfp4 => "glm-5.3-flash-nvidia-nvfp4" as NonEmptyStr
+    DeepseekV41FlashDba1be0a => "deepseek-v4.1-flash-dba1be0a" as NonEmptyStr
   }
 }
 
+// THE TWO ROWS THIS BRANCH ADDS GET WIRES HERE RATHER THAN ANYWHERE ELSE, and the exhaustive match
+// is what forced the question: adding a ServingRuntime variant without a wire does not compile, so
+// a runtime cannot reach the subject authority unnamed.
 fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
   match r {
     GunbcSparkrunVllmDs4Gb10 => "gunbc-sparkrun-vllm-ds4-gb10" as NonEmptyStr
     Gitcommit90Sm121Exl3 => "gitcommit90-sm121-exl3" as NonEmptyStr
     Tonyd2wildSm121Nvfp4 => "tonyd2wild-sm121-nvfp4" as NonEmptyStr
+    VllmOpenaiGlm53Flash => "vllm-openai-glm53-flash" as NonEmptyStr
+    GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10" as NonEmptyStr
+    GunbcGlm53DerivedGb10 => "gunbc-glm53-derived-gb10" as NonEmptyStr
+    GunbcGlm53DerivedKvplanV2Gb10 => "gunbc-glm53-derived-kvplan-v2-gb10" as NonEmptyStr
+    GunbcGlm53KvplanV2GroupAProduced => "gunbc-glm53-kvplan-v2-group-a-produced" as NonEmptyStr
+    GunbcDeepseekV41EngramProduced { artifact: _, registry_reading: _ } => "gunbc-deepseek-v41-engram-produced" as NonEmptyStr
   }
 }
 
@@ -111,6 +190,7 @@ fn serving_topology_wire(t: ServingTopology) -> NonEmptyStr {
     SingleSparkTp1 => "tp1" as NonEmptyStr
     SparkPairTp2 => "tp2" as NonEmptyStr
     FourSparkTp4 => "tp4" as NonEmptyStr
+    EightSparkTp8 => "tp8" as NonEmptyStr
   }
 }
 
@@ -155,14 +235,81 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
 // is a second checkpoint row with its own identity and provenance, not a placement field that has
 // quietly stopped being a function of the thing it names.
+// ── WHO SPELLS THE QUANTISATION: THE LAUNCH, OR THE CHECKPOINT ────────────────────────────────
+//
+// THIS WAS A `NonEmptyStr` BESIDE A BOOL ABOUT SOMETHING ELSE, and the two got joined by accident. The
+// launch renderer decided whether to pass `--quantization` by reading
+// `requires_upstream_glm53_integration` -- a fact about what the RUNTIME must support -- because the native
+// checkpoint happened to be the only row where both answers coincided. Two independent facts sharing one
+// carrier means the first row where they disagree silently renders the wrong argv.
+//
+// SO THE SCHEME AND ITS DECLARER ARE ONE VALUE. `exl3` must be spelled, because nothing in that checkpoint's
+// config tells the engine to load an EXL3 kernel; `fp8` must NOT be, because the checkpoint's config already
+// carries the scheme together with the block size and exclusion list that a bare flag would discard. That is
+// not a preference about verbosity: it changes which weights the engine builds.
+//
+// AND IT IS WHAT THE CONVERGENCE ASSESSOR NEEDS. An observed line missing `--quantization` used to read as
+// an UNKNOWN, which made the native deployment permanently unrecognisable -- the arm could never converge
+// because its own correct argv looked incomplete. With the declarer modelled, "the line spells no scheme" is
+// a state the desired identity can also be in, and the two match.
+type CheckpointQuantization
+  = QuantizationSpelledOnArgv { wire: NonEmptyStr }
+  | QuantizationResolvedFromCheckpointConfig { wire: NonEmptyStr, because: NonEmptyStr }
+
+// PRESENT ONLY WHERE THE LAUNCH ITSELF SAYS IT. This is the one projection both the renderer and the
+// convergence identity read, so they cannot disagree about whether a flag is on the line.
+fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
+  match q {
+    QuantizationSpelledOnArgv { wire: w } => Present { value: w }
+    QuantizationResolvedFromCheckpointConfig { wire: _, because: _ } => none
+  }
+}
+
+// THE PARSERS ARE THE CHECKPOINT'S, NOT THE LAUNCHER'S. gunbc.spark.serving_arm_launch spelled GLM's
+// tool and reasoning parser names inside its argv renderer, so the one multi-host launcher could only
+// ever launch a GLM model: pointing it at another architecture would have rendered GLM's parsers for
+// it, silently. Which parser decodes a model's tool calls is a fact about the model's output format,
+// cited to the model's own vLLM authority, so it travels on the row that names the model. The
+// tokenizer mode is optional because only some models ask for one; absent renders no flag.
+type CheckpointVllmParsers {
+  tool_call_parser: NonEmptyStr
+  reasoning_parser: NonEmptyStr
+  tokenizer_mode: NonEmptyStr?
+}
+
+data glm_5_3_flash_vllm_parsers: CheckpointVllmParsers = CheckpointVllmParsers {
+  tool_call_parser: glm_5_3_flash_vllm_tool_call_parser,
+  reasoning_parser: glm_5_3_flash_vllm_reasoning_parser,
+  tokenizer_mode: none,
+}
+
+// WHAT A LAUNCH HOLDS IN THE POOL BEYOND ITS WEIGHTS, AS A DECLARED ALLOWANCE. On a GB10 the host and
+// the accelerator share one unified pool, so memory a checkpoint's realization keeps resident outside
+// the engine's own allocation -- a file-backed table's page cache -- is charged against the same pool
+// the weights are. Most rows hold nothing beyond their weights. The file-backed Engram tables do: they
+// are read from row stores on disk, and the pages the prefetch path touches stay resident. Charging
+// them as zero makes the fit wall claim room that is not there; charging the whole table would refuse
+// a launch whose working set is a fraction of it.
+//
+// SO THE ALLOWANCE IS THE LAUNCH'S NON-KV HEADROOM, taken from the profile rather than written here:
+// the share of each rank's pool the profile's --gpu-memory-utilization leaves outside the engine. That is
+// the axis the capacity measurement already decided to leave for exactly this (its launch shape's memory
+// fraction), so the wall and the measurement charge one figure. It is a DECLARED ALLOWANCE, a bet in the
+// sense of DESIGN section 4d, and the row names the reading that confirms or falsifies it.
+type PoolResidentAllowance
+  = NoResidentBeyondWeights
+  | PageCacheFromNonKvHeadroom { reason: NonEmptyStr, confirmed_by: NonEmptyStr }
+
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId
   revision: NonEmptyStr
   placement: SnapshotPlacement
   architecture: NonEmptyStr
-  weight_gib: Nat
-  quantization_wire: NonEmptyStr
+  weight_gib: Gibibyte
+  quantization: CheckpointQuantization
+  parsers: CheckpointVllmParsers
+  resident_beyond_weights: PoolResidentAllowance
   provenance: NonEmptyStr
 }
 
@@ -170,22 +317,101 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53Exl3_205,
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
-  placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
-  weight_gib: 80,
-  quantization_wire: "exl3" as NonEmptyStr,
+  placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
+  architecture: glm_5_3_flash_architecture_class,
+  weight_gib: gibibyte(count: 80),
+  quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
 data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53NativeFp8,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
-  weight_gib: 306,
-  quantization_wire: "fp8" as NonEmptyStr,
-  provenance: "revision resolved from the Hub model API on 2026-09-07; weight figure is the vLLM recipe's published size for this checkpoint and is NOT measured on this fleet -- nothing here has fetched it; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
+  weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
+  provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
+}
+
+// NVIDIA's NVFP4 GLM-5.3-FLASH IS THE SAME MODEL AS THE NATIVE ROW, QUANTIZED: same architecture class
+// and parsers (the base's), a different publisher, revision, byte population and quantization. Its
+// launch policy reads its KV request from the checkpoint's own extdeps row (glm_5_3_flash_nvfp4_kv_cache_dtype),
+// and whether a backend admits that request is the capability join's answer, not this row's -- so adding
+// this checkpoint is this row, its wire, its policy and its extdeps module, and nothing downstream.
+data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  repo: glm_5_3_flash_nvfp4_hub_repo,
+  revision: glm_5_3_flash_nvfp4_manifest.revision,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: glm_5_3_flash_architecture_class,
+  weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
+  provenance: "revision and byte population are extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_manifest, read from the Hub API at that exact revision on 2026-10-02; the GiB figure is derived from those bytes. The architecture is the sole entry of `architectures` in config.json at the pin. NOT fetched, NOT launched and NOT measured on this fleet" as NonEmptyStr,
+}
+
+// THE RadixArk NVFP4 ROW IS GLM-5.3, NOT GLM-5.3-FLASH -- a different base model with a different
+// architecture class, which is why its architecture is read from extdeps.zhipu.glm_5_3 and not from
+// the Flash rows above it. Its bytes are the redistribution's manifest; nothing on this fleet has
+// fetched it, and the row says so. It exists so the fit projection and the admission fold have one
+// checkpoint identity to ask about, exactly as the native Flash row does.
+data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53RadixArkNvfp4Modelopt,
+  repo: glm_5_3_nvfp4_hub_repo,
+  revision: glm_5_3_nvfp4_manifest.revision,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: glm_5_3_architecture_class,
+  weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_nvfp4_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
+  provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
+}
+
+// DEEPSEEK V4.1 FLASH AT ITS PINNED REVISION, PLACED WHERE gunbc.spark.v41_checkpoint_materialize
+// INSTALLS IT. The directory is spark_local_checkpoint_directory over the same repo and pin the
+// materializer reads, so the mount this row yields and the tree the materializer verified are one path.
+//
+// THE WEIGHT FIGURE IS THE BACKBONE, THE POPULATION THE POOL HOLDS, and that is a measured consequence
+// rather than a convenience. serving_arm_fits screens weights against the aggregate unified pool, and
+// this checkpoint is launched only through the file-backed Engram path -- the one V4.1 profile
+// (deepseek_v41_launch_policy) fixes cpu_offload true and dp_shared_memory false, which is what
+// the file-backed overlay requires -- so the two Engram shards are served from row stores on disk and
+// never loaded into the pool as weights. Counting the whole tables put this checkpoint at 476 GiB against
+// 484 GiB across four GB10s and refused a launch that fits. What the tables DO cost the pool is their
+// page cache, and that is charged separately and honestly as resident_beyond_weights below -- not zero,
+// and not the whole table. The backbone rows are extdeps.deepseek.deepseek_v4_1_flash's own,
+// rounded up; the finer per-rank budget, Engram relief included, is
+// gunbc.spark.serving_deployment_selection candidate_component_budget.
+//
+// THE PARSERS AND TOKENIZER MODE ARE vLLM's RECIPE FOR THIS MODEL (extdeps.vllm.recipe_deepseek_v4_1_flash),
+// whose frontier rows name "DSV41-1 launch argv binds" them; the arm launch rendering from this row is
+// that binding.
+data deepseek_v41_flash_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: DeepseekV41FlashDba1be0a,
+  repo: deepseek_v4_1_flash_hub_repo,
+  revision: deepseek_v4_1_flash_revision,
+  placement: LocalDirectoryPlacement { host_path: spark_local_checkpoint_directory(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision) },
+  architecture: deepseek_v4_1_flash_architecture_class,
+  weight_gib: gibibyte_ceiling(b: deepseek_v4_1_flash_published_rows_bytes(rows: deepseek_v4_1_flash_weight_manifest_backbone_rows)),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: deepseek_v4_1_flash_quant_method, because: "the checkpoint's own config.json carries quant_method fp8 with its ue8m0 scale format, weight block size and fp4 expert dtype (extdeps.deepseek.deepseek_v4_1_flash); a bare --quantization flag would replace that structure with a scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: CheckpointVllmParsers {
+    tool_call_parser: vllm_recipe_deepseek_v4_1_flash_tool_call_parser,
+    reasoning_parser: vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
+    tokenizer_mode: Present { value: vllm_recipe_deepseek_v4_1_flash_tokenizer_mode },
+  },
+  resident_beyond_weights: PageCacheFromNonKvHeadroom {
+    reason: "the file-backed Engram row stores are served through the page cache, which on a GB10 is the same unified pool as the weights; the side-chat stress model puts the resident working set at about 19 to 46 GiB per rank from x2 to x16 concurrency, and the launch deliberately leaves its non-KV headroom for it rather than charging it as zero or as the whole table" as NonEmptyStr,
+    confirmed_by: "gunbc.spark.v41_capacity_measurement v41_engram_resident_bets, judged against v41_after_requests_resident: each rank's mincore residency over its Engram files after requests at each staircase concurrency" as NonEmptyStr,
+  },
+  provenance: "repo, revision, architecture class, quantization and the weight byte population are extdeps.deepseek.deepseek_v4_1_flash, read from the Hub at that revision; the placement is the directory gunbc.spark.v41_checkpoint_materialize installs and verifies on srv5..srv8. NOT launched on this fleet: no engine has loaded this checkpoint here" as NonEmptyStr,
 }
 
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
@@ -194,6 +420,9 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
     Glm53NativeFp8 => Present { value: glm53_native_fp8_row }
     Glm53Nvfp4CompressedTensors => none
     DeepseekV4FlashIq3sSplit => none
+    Glm53RadixArkNvfp4Modelopt => Present { value: glm53_radixark_nvfp4_row }
+    DeepseekV41FlashDba1be0a => Present { value: deepseek_v41_flash_row }
+    Glm53FlashNvidiaNvfp4 => Present { value: glm53_flash_nvidia_nvfp4_row }
   }
 }
 
@@ -226,15 +455,198 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // evidence that the image contains that revision's bytes: nothing here has compared them, and
 // extdeps.vllm.runtime_defaults keeps that question in its own binding type rather than folding it
 // into the value.
+// -- WHETHER AN ENGINE CAN LOAD THIS CHECKPOINT'S TENSOR LAYOUT --------------------------------
+//
+// THE WALL THIS FLEET LEARNED BY LOSING A SERVICE, AND IT IS NOT A ROW FIELD. `registers_glm5_next` answers
+// whether the architecture is in the registry and the quantisation roster answers whether fp8 is
+// implemented; BOTH were true of the image that failed on 2026-09-10, which loaded the native FP8 checkpoint
+// far enough to form a four-rank NCCL group and then died with
+// KeyError 'layers.0.self_attn.k_proj.weight'. The loader expected a plain k_proj that this architecture does
+// not have -- it uses fused_qkvbfg_a_proj and conv1d projections, with 1509 modules held out of quantisation
+// -- so the missing fact was the WEIGHT MAPPING, which neither per-row wall asks about.
+//
+// AND IT CANNOT BE ASKED PER ROW, WHICH IS WHY THE ATTEMPT TO IS GONE. "Does this runtime carry the GLM-5.3
+// integration" has no answer independent of the checkpoint being loaded and the kernel path it takes: the
+// official image carries the loader and refuses the NoPE MLA kernel, the community image serves NoPE MLA and
+// cannot map the weights. A Bool on a checkpoint row joined to a standing on a runtime row could express
+// neither. gunbc.spark.serving_compatibility asks it at the grain that has an answer.
+// THE PER-IMAGE NATIVE STANDING WAS DELETED HERE, BECAUSE IT WAS THE SAME FACT TWICE.
+//
+// This row used to carry `native_runtime_standing: NativeRuntimeStanding` -- three arms saying whether an
+// IMAGE carried the GLM-5.3 loader integration -- and gunbc.spark.serving_compatibility was then added
+// carrying the same question as a RELATION over checkpoint x runtime x topology x accelerator x profile. Both
+// authorities survived the same commit, which is the fork DESIGN section 3 exists to prevent: an image is
+// refuted FOR A CHECKPOINT, and the standing stored on the row could not say which, so it answered for every
+// checkpoint at once. That is exactly why the EXL3 arm needed a sentence inside its own refusal cause
+// explaining that the refutation was "of this checkpoint on this image, not of the image".
+//
+// EVERY FACT THOSE ARMS CARRIED SURVIVES AS A MEASURED STANDING. The gitcommit90 weight-mapping failure is
+// glm_native_on_gitcommit90_standing; the official image's kernel refusal is
+// glm_native_official_sm121_tp4_standing; the EXL3 success is glm_exl3_on_gitcommit90_standing. Nothing was
+// dropped -- the same receipts now sit at the grain that can name their subject.
+//
+// AND THE INTENT SPLIT MOVED WITH THEM. StaticIntegrationObserved existed so that an inspected-but-unrun
+// image could carry a bounded experiment and not normal serving. That asymmetry now lives in the
+// LAUNCH PLANNER, which reads the measured roster's admission for the exact subject and refuses an
+// intent of normal serving when the roster admits only an experiment -- gunbc.spark.serving_arm_launch
+// intent_refusal, over gunbc.spark.serving_compatibility measured_admission_for.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A DIFFERENT HOME and was wrong in the way DESIGN 4c
+// warns about: it said the asymmetry was carried by a selection fold, while the admission vocabulary
+// sat imported-and-uncalled and no selection module read these standings at all. The wall was deleted
+// and its stated replacement did not exist, so the prose was the only thing still asserting it.
+// WHAT AN ARM IS BEING ASKED FOR, because the same tuple is admissible for one and not the other. An
+// experiment may run on a statically-inspected image precisely so that the feasibility receipt can
+// exist; ordinary serving may not, because a bounded trial and a service carry different consequences
+// for anyone depending on the endpoint.
+type ArmIntent
+  = ArmBoundedExperiment
+  | ArmNormalServing
+
+// ── A RUNTIME IS IDENTIFIED BY ITS BYTES AND ITS LINEAGE, NOT BY A STRING ──────────────────────
+//
+// `image_reference: NonEmptyStr` WAS DOING THREE JOBS AT ONCE. It was the thing docker pulls, the thing a
+// compatibility subject is keyed by, and the only record of where the image came from -- and one of the three
+// rows in this module does not even carry a digest: the DeepSeek image reads
+// "aidendle94/sparkrun-vllm-ds4-gb10 (digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10)", a
+// sentence about a pin rather than a pin. Comparing that as if it were bytes is the same defect a review just
+// found one level up, where a subject was keyed by an enum variant name.
+//
+// SO THE PIN IS ITS OWN QUESTION AND HAS TWO HONEST ANSWERS. A digest-pinned reference IS the bytes and can
+// be compared as an identity; a reference pinned somewhere else names its authority and must not be treated
+// as one, because a tag is mutable and two pulls of it are not the same artifact.
+type RuntimeArtifactPin
+  = PinnedByDigest { reference: NonEmptyStr }
+  | PinnedElsewhere { reference: NonEmptyStr, pin_authority: NonEmptyStr }
+
+fn runtime_pin_reference(p: RuntimeArtifactPin) -> NonEmptyStr {
+  match p {
+    PinnedByDigest { reference: r } => r
+    PinnedElsewhere { reference: r, pin_authority: _ } => r
+  }
+}
+
+// AND THE BYTES-AS-IDENTITY PROJECTION IS AN OPTIONAL, so a caller keying a subject on it cannot silently
+// accept a mutable tag. This is the fail-closed half: an unpinned runtime has no identity to compare, and
+// saying so is different from saying the tag is one.
+fn runtime_pin_as_identity(p: RuntimeArtifactPin) -> NonEmptyStr? {
+  match p {
+    PinnedByDigest { reference: r } => Present { value: r }
+    PinnedElsewhere { reference: _, pin_authority: _ } => none
+  }
+}
+
+// THE LINEAGE IS MODELLED BECAUSE THE NEXT RUNTIME THIS FLEET NEEDS IS A DERIVATIVE. The repair for the NoPE
+// MLA refusal is an image built from a named upstream vLLM revision with two commits backported and a
+// FlashInfer revision pinned -- and a derived image whose row recorded only a digest would be
+// indistinguishable from an official one, so nothing could say WHICH patch set a receipt was measured
+// against. `patch_set` is empty for an image taken as published, which is a fact rather than an absence.
+// THE SOURCE REVISION CARRIES ITS STANDING, because a package's self-report is not a build lineage.
+// The first derived row this fleet modelled (glm53_derived_row) came from an image whose own labels
+// say VLLM_BUILD_COMMIT=unknown, while its installed vLLM reports a version string ending in a commit
+// hash. Filling a bare `source_revision` field from that string would have promoted a self-report
+// into the established lineage every consumer of this type reads, and the key below would have
+// spelled it indistinguishably from a revision an image module declares. So the field is a standing:
+// what the row can say is exactly what was established, and the key spells which arm it is.
+type RuntimeSourceStanding
+  = SourceRevisionEstablished { revision: NonEmptyStr }
+  | PackageVersionClaimsRevision { revision: NonEmptyStr, package_version: NonEmptyStr, build_provenance: NonEmptyStr }
+  | SourceRevisionUnknown { because: NonEmptyStr }
+
+fn runtime_source_key(s: RuntimeSourceStanding) -> String {
+  match s {
+    SourceRevisionEstablished { revision: r } => r as String
+    PackageVersionClaimsRevision { revision: r, package_version: v, build_provenance: _ } => join(["claimed:", r as String, "(", v as String, ")"], "")
+    SourceRevisionUnknown { because: _ } => "unknown"
+  }
+}
+
+type RuntimeArtifactIdentity sole_constructor {
+  pin: RuntimeArtifactPin
+  source: RuntimeSourceStanding
+  patch_set: List<NonEmptyStr>
+  provenance: NonEmptyStr
+}
+
+fn runtime_artifact_identity(
+  pin: RuntimeArtifactPin,
+  source: RuntimeSourceStanding,
+  patch_set: List<NonEmptyStr>,
+  provenance: NonEmptyStr,
+) -> RuntimeArtifactIdentity {
+  RuntimeArtifactIdentity {
+    pin: pin, source: source, patch_set: patch_set, provenance: provenance,
+  }
+}
+
+// WHAT DOCKER IS GIVEN, which is a different question from what a subject is keyed by: a launch can pull an
+// unpinned tag, and a receipt must not claim that pull was an identity.
+fn runtime_artifact_wire(a: RuntimeArtifactIdentity) -> NonEmptyStr {
+  runtime_pin_reference(p: a.pin)
+}
+
+// WHAT A SUBJECT IS KEYED BY. The patch set is part of it: the same base revision with and without the NoPE
+// writer backport are different artifacts, and a key that dropped the patch set would let a measurement taken
+// on stock bytes refuse the patched image -- which is the entire repair.
+fn runtime_artifact_key(a: RuntimeArtifactIdentity) -> String {
+  match runtime_pin_as_identity(p: a.pin) {
+    Absent => join(["<unpinned:", runtime_pin_reference(p: a.pin) as String, ">"], "")
+    Present { value: digest } =>
+      join([
+        digest as String, " src=", runtime_source_key(s: a.source),
+        " patches=", if count(a.patch_set) == 0 { "none" } else { join(a.patch_set, ",") },
+      ], "")
+  }
+}
+
+// AN IMAGE NOBODY HAS PROBED HAS NO READING, AND THAT IS NOT AN EMPTY REGISTRY. `registry_reading`
+// arrived from the other side of a merge as a REQUIRED record, which is right for every row that side
+// carried -- each was probed inside its own digest. This branch adds a row for the STOCK upstream image,
+// whose registry has not been read by anyone here, and the three ways to make an unprobed image fit a
+// required shape are all lies: an empty architecture list asserts a measured negative, a copied list
+// asserts a reading taken somewhere else, and a reference that deliberately mismatches games the
+// currency check into refusing for the wrong reason. Absent is the fourth option and the only true one,
+// and it is fail-closed at both readers: an unprobed image registers nothing and its reading is never
+// current.
+// HOW REASONING COMES BACK IS OBSERVED FROM A LAUNCHED ENGINE, SO AN UNLAUNCHED RUNTIME HAS NO ANSWER.
+// This field was required, and a required field forces every new row to assert something: the model
+// authority's member name (which this file already records as WRONG for the community image -- it returns
+// `reasoning`, not `reasoning_content`), or a neighbour's observed value, or a guess dressed as a
+// default. Those are the same three lies the registry_reading annotation below enumerates, and the same
+// fourth option is the only true one.
+//
+// IT IS THEREFORE OPTIONAL, AND ABSENT IS FAIL-CLOSED AT ITS READERS. A runtime that has never served
+// cannot say how its reasoning comes back, and must not be made to. The ordering this admits is the one
+// the fleet actually has: a row exists so a launch can be PLANNED -- the launch argv reads only the
+// artifact and the defaults revision, never this field -- and the projection is filled in from the
+// completion that launch produces.
+// THE QUANTISATION FLAG IS PASSED ONLY WHERE IT IS THE REQUEST, AND FOR THE NATIVE CHECKPOINT IT IS NOT.
+// A previous revision passed `--quantization fp8` for every arm so the running line would describe its
+// own artifact to the convergence assessor, and defended it at length. That was wrong twice over: the
+// engine reads quant_method from the checkpoint's own config either way, so the flag adds nothing for
+// this arm, and overriding it is how a launch discards the checkpoint's weight_block_size and its
+// 1509-entry modules_to_not_convert list. The identity the assessor needs comes from the REVISION PATH,
+// which every line carries and which determines the weights uniquely.
+//
+// AND THE CONDITION IS NOW THE FACT ITSELF. It used to read `requires_upstream_glm53_integration` -- a fact
+// about what the RUNTIME must support -- which gave the right answer only because the native checkpoint was
+// the single row where the two questions coincided.
+fn checkpoint_quantization_argv(row: ServingCheckpointRow) -> List<String> {
+  match checkpoint_quantization_on_argv(q: row.quantization) {
+    Absent => []
+    Present { value: w } => ["--quantization", w as String]
+  }
+}
+
 type ServingRuntimeRow {
   runtime: ServingRuntime
-  image_reference: NonEmptyStr
-  hub_cli_path: NonEmptyStr
-  vllm_version: NonEmptyStr
-  registry_reading: ArchitectureRegistryReading
-  reasoning_projection: ReasoningResponseProjection
+  artifact: RuntimeArtifactIdentity
+  hub_cli_path: NonEmptyStr?
+  vllm_version: NonEmptyStr?
+  registry_reading: ArchitectureRegistryReading?
+  reasoning_projection: ReasoningResponseProjection?
   provenance: NonEmptyStr
-  claimed_defaults_revision: ModelledVllmDefaultsRevision
+  claimed_defaults_revision: ModelledVllmDefaultsRevision?
 }
 
 // HOW REASONING COMES BACK IS A RUNTIME PROPERTY WITH TWO SHAPES, AND THE MEMBER NAME IS PART OF IT.
@@ -250,24 +662,94 @@ type ReasoningResponseProjection
 
 data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
-  image_reference: gitcommit90_glm_53_one_spark_pinned_reference(),
-  hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
-  vllm_version: gitcommit90_glm_53_one_spark_vllm_version,
-  registry_reading: gitcommit90_glm_53_one_spark_registry_reading,
-  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: gitcommit90_glm_53_one_spark_pinned_reference() },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm487ecf187)).full_revision,
+      package_version: gitcommit90_glm_53_one_spark_vllm_version,
+      build_provenance: "a community image taken as published; nothing here has compared its bytes against that tree, so the revision is what the installed package reports and not an established lineage" as NonEmptyStr,
+    },
+    patch_set: [],
+    provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: gitcommit90_glm_53_one_spark_vllm_version },
+  registry_reading: Present { value: gitcommit90_glm_53_one_spark_registry_reading },
+  reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
-  claimed_defaults_revision: Vllm487ecf187,
+  claimed_defaults_revision: Present { value: Vllm487ecf187 },
 }
 
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
-  image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
-  hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
-  vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
-  registry_reading: sparkrun_vllm_ds4_gb10_registry_reading,
-  reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm1967a5627)).full_revision,
+      package_version: sparkrun_vllm_ds4_gb10_vllm_version,
+      build_provenance: "the revision is the trailing token of the vllm version the image reports; claimed_defaults_revision below carries the same claim for what an omitted flag resolves to, and neither is a comparison of the image's bytes against that tree" as NonEmptyStr,
+    },
+    patch_set: [],
+    provenance: "the digest is READ FROM its authority rather than restated: extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference builds repository@sha256:digest from the rows that module owns. Two earlier shapes were both wrong in opposite directions -- one carried the SENTENCE \"digest pinned in extdeps.docker.images...\" inside the reference string, which read as a pin and was prose about one; the correction for it answered PinnedElsewhere and dropped the digest out of the VALUE, which left runtime_artifact_wire handing docker a bare repository name that resolves to :latest. Naming an authority and calling it are different acts, and only the second puts the bytes in the launch" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/opt/env/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: sparkrun_vllm_ds4_gb10_vllm_version },
+  registry_reading: Present { value: sparkrun_vllm_ds4_gb10_registry_reading },
+  reasoning_projection: Present { value: InlineReasoning { end_token: "</think>" as NonEmptyStr } },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
-  claimed_defaults_revision: Vllm1967a5627,
+  claimed_defaults_revision: Present { value: Vllm1967a5627 },
+}
+
+// THE IMAGE UPSTREAM PRESCRIBES FOR THIS MODEL, PINNED TO WHAT THE FLEET ACTUALLY PULLED. It is its
+// own runtime rather than a relabelling of the EXL3 one, because it is a different artifact with a
+// different loader, and reusing that variant would have made the refuted row and the candidate row the
+// same row.
+//
+// ITS STANDING IS STATIC, NOT FEASIBLE, AND THAT IS THE WHOLE POINT OF THE SPLIT. What has been
+// established by inspection on this hardware: the digest resolves identically on the group's hosts, the
+// platform is linux/arm64, the entrypoint is ["vllm","serve"], all three Glm5Next architectures are
+// registered, the multi-node mp fields (nnodes, node_rank, master_addr, master_port) are present,
+// FlashInfer is 0.6.18 -- which clears the 0.6.18 sparse-MLA floor and not merely the 0.6.17
+// prerequisite -- and a bf16 matmul EXECUTES on the GB10 at compute capability 12.1 despite
+// TORCH_CUDA_ARCH_LIST stopping at 12.0, which is CUDA 13 family compatibility rather than an
+// assumption.
+//
+// WHAT IS NOT ESTABLISHED IS THAT IT LOADS THIS CHECKPOINT. The previous attempt proved how far an
+// image can get while being unable to: architecture registered, fp8 implemented, four ranks joined, and
+// then a KeyError in the weight loader. So this row may authorise a bounded experiment and may not
+// support serving until a run says otherwise.
+data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: VllmOpenaiGlm53Flash,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr },
+    source: SourceRevisionEstablished { revision: glm_5_3_flash_vllm_integration_commit },
+    patch_set: [],
+    provenance: "the image upstream prescribes for this model, pinned to the digest the group's hosts actually resolved on 2026-09-10. NO patches: this is the stock artifact, which is why its NoPE MLA refusal is a fact about upstream rather than about a local build" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: "0.28.1rc1.dev580+g385dce36b" as NonEmptyStr },
+  registry_reading: none,
+  reasoning_projection: none,
+  provenance: "pulled by tag vllm/vllm-openai:glm53-flash on the group B hosts 2026-09-10 and pinned here to the digest that tag resolved to; recipes.vllm.ai/zai-org/GLM-5.3-Flash directs NVIDIA deployments to this image for this checkpoint" as NonEmptyStr,
+  claimed_defaults_revision: none,
+}
+
+// THE ROW OF A PRODUCED RUNTIME, DERIVED FROM WHAT ITS VARIANT CARRIES AND NOTHING ELSE. What was not
+// read inside the image is Absent rather than borrowed from a sibling row: the Hub CLI path and the
+// self-reported vLLM version are per-image readings this image has not had, no completion has been read
+// from it, and it claims no modelled defaults revision -- so an omitted launch flag resolves to nothing
+// here, which is why the V4.1 profile spells every flag it depends on.
+fn produced_runtime_row(runtime: ServingRuntime, artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading?) -> ServingRuntimeRow {
+  ServingRuntimeRow {
+    runtime: runtime,
+    artifact: artifact,
+    hub_cli_path: none,
+    vllm_version: none,
+    registry_reading: registry_reading,
+    reasoning_projection: none,
+    provenance: "a lane-produced image admitted at run time by gunbc.spark.v41_runtime_realized v41_admit_produced_runtime; its identity is the configuration digest and source tree that admission read back, carried on the runtime variant" as NonEmptyStr,
+    claimed_defaults_revision: none,
+  }
 }
 
 fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
@@ -275,17 +757,31 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     Gitcommit90Sm121Exl3 => Present { value: gitcommit90_sm121_exl3_row }
     GunbcSparkrunVllmDs4Gb10 => Present { value: gunbc_sparkrun_ds4_row }
     Tonyd2wildSm121Nvfp4 => none
+    VllmOpenaiGlm53Flash => Present { value: vllm_openai_glm53_flash_row }
+    GunbcDeepseekV41EngramProduced { artifact: a, registry_reading: rr } => Present { value: produced_runtime_row(runtime: r, artifact: a, registry_reading: rr) }
+    GunbcGlm53NopeDerivedGb10 => Present { value: glm53_nope_derived_row }
+    GunbcGlm53DerivedGb10 => Present { value: glm53_derived_row }
+    GunbcGlm53DerivedKvplanV2Gb10 => Present { value: glm53_derived_kvplan_v2_row }
+    GunbcGlm53KvplanV2GroupAProduced => Present { value: glm53_kvplan_v2_group_a_row }
   }
 }
 
 // ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
 //
-// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. Two independent walls,
-// both measured rather than assumed, and either alone is disqualifying -- which is exactly the state
-// the branch was in when it pinned native FP8 against the DeepSeek image.
+// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. The walls here are
+// presence, currency and registry membership -- what the image provably CANNOT load -- plus the
+// aggregate screen below (resident bytes x5 against pool x4), which can only REFUSE: it takes no
+// utilization split beyond a declared page-cache allowance and no KV, so passing it establishes
+// nothing about fit. That is not hypothetical: the weights-only form of it admitted the native FP8
+// tp4 tuple that OOM-crash-looped from 2026-09-18. Fit is a proof obligation at the planner
+// (gunbc.spark.serving_arm_launch plan_arm_launch_under_memory_fit, through gunbc.spark.arm_memory_fit),
+// where it is compositional, per-rank and per-phase, for the arm whose terms that proof models;
+// this fold's admitted arm means "plausible", and the planner's memory wall means "proved".
 type ServingArmVerdict
   = ServingArmAdmitted
   | ServingArmRefused { cause: NonEmptyStr }
+
+
 
 // THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
 // requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
@@ -295,9 +791,27 @@ type ServingArmVerdict
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
-fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
+// WHAT THE ARM HOLDS IN THE POOL: its weights, plus its declared allowance. The page-cache allowance is
+// the non-KV share of every rank's pool under the profile's memory fraction, rounded up; with no profile
+// in hand it is unknown, and an unknown charge is Absent rather than zero -- the wall refuses on it.
+fn serving_arm_resident_gib(c: ServingCheckpointRow, t: ServingTopology, profile: ServingLaunchProfile?) -> Gibibyte? {
+  match c.resident_beyond_weights {
+    NoResidentBeyondWeights => Present { value: c.weight_gib }
+    PageCacheFromNonKvHeadroom { reason: _, confirmed_by: _ } =>
+      match profile {
+        Absent => none
+        Present { value: p } => {
+          let outside_bp = 10000 - basis_point_count(bp: p.decided_gpu_memory_basis_points)
+          let allowance = (serving_topology_aggregate_pool_gib(t: t) * outside_bp + 9999) / 10000
+          Present { value: gibibyte(count: gibibyte_count(c.weight_gib) + allowance) }
+        }
+      }
+  }
+}
+
+fn serving_arm_fits(resident: Gibibyte, t: ServingTopology) -> Bool {
   serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
-    >= c.weight_gib * serving_arm_headroom_numerator
+    >= gibibyte_count(resident) * serving_arm_headroom_numerator
 }
 
 // A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
@@ -313,25 +827,64 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
 // have to be restated in prose beside it. A miss is then a measured negative with a date on it
 // rather than an absence of modelling, and the membership test itself is the receipt's own fold.
 fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool {
-  registry_reading_contains(r: rrow.registry_reading, architecture: architecture)
+  match rrow.registry_reading {
+    Present { value: r } => registry_reading_contains(r: r, architecture: architecture)
+    Absent => false
+  }
 }
 
 // THE ROW'S DESIRED IMAGE AND ITS READING'S OBSERVED IMAGE ARE TWO FACTS, AND A REPIN SEPARATES THEM.
-// `image_reference` is what this arm intends to run and comes from the image module; the reading is
+// The artifact's PIN is what this arm intends to run; the reading is
 // what someone executed a registry call inside, frozen at the digest it was taken in. They agree
 // today. The moment extdeps repins the image, they stop agreeing, and the old architecture list
 // stops being evidence about the thing this arm would launch.
+//
+// AND THE PIN IS ONLY PART OF THE IDENTITY, which is what this branch added underneath the same check:
+// a wire reference answers "which bytes does docker pull", while the artifact also carries the source
+// revision and the patch set those bytes were built from. The currency question is still asked of the
+// reference, because that is what a registry probe was executed against.
 //
 // SO THE ARM REFUSES RATHER THAN INHERITING. The alternative -- carrying the reading forward onto a
 // digest nobody probed -- is the shape of every silent-wrongness failure this repository files: the
 // row still looks measured, the provenance string still reads convincingly, and the fact underneath
 // it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
 // and a receipt claiming it should.
+// THIS CHECK IS NOT EQUALLY STRONG FOR EVERY ROW, AND THE WEAK CASE IS NAMED RATHER THAN LEFT TO
+// BE DISCOVERED.
+//
+// It asks whether a row's registry reading was taken inside the image the row names, and it is a real
+// join wherever the two sides come from independent places: gitcommit90 and sparkrun take their
+// reference from an extdeps image module and their reading from a separate probe, so a drift between
+// them reddens here.
+//
+// FOR THE NoPE-DERIVED ROW IT IS TAUTOLOGICAL, because that image has no extdeps authority -- it is a
+// local build, not an upstream product -- so its digest has exactly one home, the registry reading
+// itself, and the pin now reads it. Two independently editable spellings of one content id were the
+// alternative, and a fork that a later equality check might catch is worse than a check that cannot
+// fail: the fork is wrong the moment it drifts, the tautology is merely uninformative.
+//
+// WHAT WOULD MAKE IT INFORMATIVE AGAIN is an independent authority for that image's bytes -- the
+// modelled build that produces it, which is not in this change. Until then this row's currency is
+// asserted by construction and establishes nothing about the image.
 fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
-  reading_applies_to(r: rrow.registry_reading, desired_reference: rrow.image_reference)
+  match rrow.registry_reading {
+    Present { value: r } => reading_applies_to(r: r, desired_reference: runtime_artifact_wire(a: rrow.artifact))
+    Absent => false
+  }
 }
 
+// TWO WAYS TO FAIL THE CURRENCY CHECK AND THEY OWE DIFFERENT WORK. A reading taken inside another digest
+// means someone probed and then the image moved; no reading at all means nobody has looked. Both refuse,
+// and a receipt that could not tell them apart would send a reader to re-probe an image that was never
+// probed, or to hunt a repin that never happened -- so this fold names which one it hit.
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
+  serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: none)
+}
+
+// THE SAME WALL WITH THE LAUNCH PROFILE IN HAND, which is what a row declaring a page-cache allowance
+// needs: its charge is a share of the pool the profile leaves outside the engine. The launch planner
+// always has the profile and asks this; a caller without one gets an honest refusal for such a row.
+fn serving_arm_admits_under(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, profile: ServingLaunchProfile?) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
     Present { value: crow } =>
@@ -339,29 +892,734 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
         Absent => ServingArmRefused { cause: "no runtime row: this image's architecture registry has not been probed, so whether it can load the checkpoint is unknown" as NonEmptyStr }
         Present { value: rrow } =>
           if !runtime_reading_is_current(rrow: rrow) {
-            ServingArmRefused { cause: join([
-              "the runtime's architecture reading was taken inside ",
-              rrow.registry_reading.image_reference as String,
-              " and this arm now names ", rrow.image_reference as String,
-              ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
-            ], "") as NonEmptyStr }
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: join([
+                "no registry reading exists for ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": nothing here has read this image's architecture registry inside its own digest, so whether it can load ",
+                crow.architecture as String, " is unknown rather than false. One probe inside that digest settles it",
+              ], "") as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime's architecture reading was taken inside ",
+                r.image_reference as String,
+                " and this arm now names ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
+              ], "") as NonEmptyStr }
+            }
           } else if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
-            ServingArmRefused { cause: join([
-              "the runtime does not register ", crow.architecture as String, " (vLLM ",
-              rrow.vllm_version as String, " answered for ", to_string(length(rrow.registry_reading.architectures)),
-              " architectures when its registry was read on ", rrow.registry_reading.observed_at as String,
-              " and this is not one of them); no amount of weight transfer makes this tuple start",
-            ], "") as NonEmptyStr }
-          } else if !serving_arm_fits(c: crow, t: topology) {
-            ServingArmRefused { cause: join([
-              "the checkpoint does not fit the topology: ", to_string(crow.weight_gib),
-              " GiB of weights against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
-              " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
-              " rank(s), before KV and activations",
-            ], "") as NonEmptyStr }
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: "unreachable: an absent reading is never current, so this arm is guarded above" as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime does not register ", crow.architecture as String, " (vLLM ",
+                match rrow.vllm_version { Present { value: v } => v as String  Absent => "(self-report unread)" }, " answered for ", to_string(length(r.architectures)),
+                " architectures when its registry was read on ", r.observed_at as String,
+                " and this is not one of them); no amount of weight transfer makes this tuple start",
+              ], "") as NonEmptyStr }
+            }
           } else {
-            ServingArmAdmitted
+            match serving_arm_resident_gib(c: crow, t: topology, profile: profile) {
+              Absent => ServingArmRefused { cause: "this checkpoint holds a page-cache allowance in the pool beyond its weights, taken from a launch profile's non-KV headroom, and no profile was supplied, so what it holds is unknown and the fit cannot be decided" as NonEmptyStr }
+              Present { value: resident } =>
+                if serving_arm_fits(resident: resident, t: topology) {
+                  ServingArmAdmitted
+                } else {
+                  ServingArmRefused { cause: join([
+                    "the checkpoint does not fit the topology: ", to_string(gibibyte_count(crow.weight_gib)),
+                    " GiB of weights",
+                    if gibibyte_count(resident) == gibibyte_count(crow.weight_gib) { "" } else {
+                      join([" plus a ", to_string(gibibyte_count(resident) - gibibyte_count(crow.weight_gib)), " GiB declared page-cache allowance"], "")
+                    },
+                    " against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
+                    " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
+                    " rank(s), before KV and activations",
+                  ], "") as NonEmptyStr }
+                }
+            }
           }
       }
   }
+}
+
+// ── THE LAUNCH PROFILE IS A VALUE, NOT A SCATTER OF ROWS IN THE RENDERER ───────────────────────
+//
+// THE ARGV WAS ASSEMBLED FROM MODULE-LEVEL CONSTANTS IN gunbc.spark.serving_arm_launch, so the deployment
+// being DECIDED and the deployment being LAUNCHED were two independently authored profiles that happened to
+// describe the same engine. The decision named a Ray executor, 0.82, thirty-two sequences and an fp8 KV
+// request; the renderer separately fixed mp, one sequence and an auto KV request. Nothing made a change to
+// either follow the other, which is the authority break a review found: changing the selected runtime had no
+// necessary effect on the image launched.
+//
+// SO THE PROFILE IS ONE VALUE THAT TRAVELS. A compatibility subject names it, a selection carries it, and the
+// renderer reads argv out of it -- which makes "same subject" and "same argv" the same question instead of
+// two that have to be kept in agreement by hand.
+//
+// IT CARRIES THE WIRE VALUES AND NOT THE POLICY THAT CHOSE THEM. The memory fraction here is the DECIDED one
+// for the initial normal deployment; a fraction resolved per attempt from observed supply is intended to
+// override it at plan time, and the admission reader that would own that resolution is a later change.
+// Storing a resolved value in a profile would make the profile's identity change every time a machine's
+// free memory did, which is why the override is a plan-time parameter rather than a row here.
+// PREFIX CACHING IS A REQUEST THIS PROFILE MAKES, NOT A DEFAULT IT INHERITS. At the revision this fleet
+// runs, an omitted flag is not answered by the engine's declared CacheConfig value: EngineArgs starts the
+// field at None and resolves it from the MODEL configuration, so "say nothing and get True" was never the
+// rule -- it was the rule for a checkpoint, and a different checkpoint would answer differently without
+// anything here changing. extdeps.vllm.runtime_defaults now refuses to resolve an omitted request at that
+// revision for exactly this reason.
+//
+// SO THE PROFILE NAMES A VALUE AND THE ARGV CARRIES IT. An explicit request needs no established upstream
+// default, and it makes the launch's cache behaviour a decision recorded in the subject rather than a
+// property of whatever the engine happened to infer.
+//
+// ADDING THIS FIELD CHANGES EVERY PROFILE IDENTITY, WHICH IS THE POINT. The identity is derived from the
+// fields, and a compatibility refusal recorded against a profile that said nothing about prefix caching
+// must not silently cover a launch that asks for it.
+// kv_cache_dtype IS THE TYPED REQUEST, NOT A WIRE STRING. It stood as `kv_cache_dtype_wire:
+// NonEmptyStr` until 2026-09-17, when the arm launched with `--kv-cache-dtype bf16` -- a spelling
+// no vLLM build accepts -- and crash-looped 88 times on argument parse. A bare string can spell
+// anything; the typed request can only spell what extdeps.vllm.engine_args admits, and the wire
+// map there is the single authority corrected against the engine's own choice list.
+type ServingLaunchProfile sole_constructor {
+  checkpoint: ServingCheckpoint
+  max_model_len: TokenCount
+  max_num_batched_tokens: TokenCount
+  max_num_seqs: Nat
+  guaranteed_cold_seqs: Nat
+  decided_gpu_memory_basis_points: BasisPoint
+  kv_cache_dtype: VllmKvCacheDtypeRequest
+  serve_port: Port
+  served_alias: NonEmptyStr
+  prefix_caching: VllmPrefixCachingRequest
+  engram: VllmEngramConfigRequest
+  modality: VllmModalityRequest
+  scheduler_admission: VllmSchedulerAdmissionRequest
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest
+}
+
+// THE MINT, EXPORTED SO A PROFILE CAN BE DERIVED, NOT ONLY AUTHORED. The seal's job is keeping a
+// record literal that omits or reorders a dimension from compiling; a named derivation --
+// gunbc.spark.serving_capacity_intent profile_for_envelope builds the executable profile FROM the
+// service obligation -- is a legitimate constructor, and without this mint the only profiles in
+// existence would be the authored rows, which would make "the engine config the proof prices" and
+// "the engine config the launch renders" two independently typed values that happen to agree.
+// Derived profiles still pass through the same type and the same key, so a derivation that
+// disagrees with the obligation is visible at the join (gunbc.spark.arm_memory_fit refuses it),
+// not silently launchable.
+fn serving_launch_profile(
+  policy: ModelLaunchPolicy,
+  max_model_len: TokenCount,
+  max_num_batched_tokens: TokenCount,
+  max_num_seqs: Nat,
+  guaranteed_cold_seqs: Nat,
+  decided_gpu_memory_basis_points: BasisPoint,
+  serve_port: Port,
+  served_alias: NonEmptyStr,
+  prefix_caching: VllmPrefixCachingRequest,
+  scheduler_admission: VllmSchedulerAdmissionRequest,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    checkpoint: policy.checkpoint,
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    guaranteed_cold_seqs: guaranteed_cold_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype: policy.kv_cache_dtype,
+    serve_port: serve_port,
+    served_alias: served_alias,
+    prefix_caching: prefix_caching,
+    engram: policy.engram,
+    modality: policy.modality,
+    scheduler_admission: scheduler_admission,
+    indexer_kv_dtype: policy.indexer_kv_dtype,
+  }
+}
+
+// THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
+// for prefix caching are two different launches, and a compatibility receipt recorded against one must not
+// cover the other -- which is precisely what a key omitting this field would let it do.
+// SPECULATION IS ABSENT FROM THIS KEY BECAUSE IT WAS ABSENT FROM THE LAUNCH.
+//
+// The profile carried `speculation_enabled: Bool` and this key spelled it `spec=on`/`spec=off`, so
+// two subjects differing only in that flag were different subjects -- while arm_engine_argv rendered
+// no speculative flag under either value. A profile set true planned an argv identical to false, so a
+// compatibility receipt attached to that subject would have claimed a speculative configuration for
+// an engine that never speculated: the borrowed-profile substitution this type exists to stop,
+// committed by the type itself.
+//
+// A Bool COULD NOT HAVE BEEN REALIZED ANYWAY. vLLM's --speculative-config needs a method and a
+// draft-token count; "true" names neither. When this arm wants speculation it arrives as the modelled
+// policy that already exists -- extdeps.vllm.engine_args VllmSpeculativePolicy, and the argv shape
+// gunbc.spark.glm_canary_converge renders from SpeculationPolicy -- carrying the basis a Bool drops.
+// THE MODALITY REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE, for the Engram request's reason below.
+// THE ENGRAM REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE. An explicit request changes what the engine
+// allocates, so two profiles differing in it are two subjects; an omitted one spells no flag, and
+// rendering it into the key would re-key every existing subject -- and every receipt recorded against
+// one -- for a field none of their launches carried.
+// THE DEPLOYMENT ENVIRONMENT IS PART OF WHAT LAUNCHED (side-chat ruling on #13319, finding 3). An
+// assignment like VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS changes the realized kernels -- with it, rank 0 runs
+// tuned tactics and ranks 1-3 run heuristics, so throughput is a lower bound -- yet it lives in the
+// launch's deployment env, outside the profile. This key is that env, canonical and unambiguous: every
+// assignment in its AUTHORED order, each length-prefixed. Two envs that differ in any assignment, or in
+// order, are two keys -- order-sensitivity can only split one configuration into two, never merge two
+// into one. It enters the successor key (gunbc.spark.group_arm_launch group_arm_row_successor) and the
+// performance subject (gunbc.spark.serving_performance_subject AxisDeploymentEnv), so a skip-ops launch and
+// a fully tuned one are different successors and different measured subjects.
+fn serving_deployment_env_key(env: List<DockerEnvAssignment>) -> String {
+  if count(env) == 0 { "env=none" }
+  else {
+    join(["env=", join(map(env, a => {
+      let pair = join([a.name as String, "=", a.value], "")
+      join([to_string(length(pair)), ":", pair], "")
+    }), ",")], "")
+  }
+}
+
+fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
+  join([
+    "len=", to_string(token_count_value(t: p.max_model_len)),
+    " batch=", to_string(token_count_value(t: p.max_num_batched_tokens)),
+    " seqs=", to_string(p.max_num_seqs),
+    " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
+    " kv=", vllm_kv_cache_dtype_wire(request: p.kv_cache_dtype) as String,
+    " port=", to_string(p.serve_port),
+    " alias=", p.served_alias as String,
+    " prefix=", match p.prefix_caching {
+      PrefixCachingOmitted => "omitted"
+      PrefixCachingExplicit { enabled: e } => if e { "on" } else { "off" }
+    },
+    match p.engram {
+      EngramConfigOmitted => ""
+      EngramConfigExplicit { cpu_offload: c, dp_shared_memory: d } =>
+        join([" engram=cpu_offload:", if c { "on" } else { "off" }, ",dp_shared_memory:", if d { "on" } else { "off" }], "")
+    },
+    match p.modality {
+      ModalityOmitted => ""
+      LanguageModelOnly { hf_overrides: os } =>
+        join([" modality=language-only", join(map(os, o => join([",", o.key as String, ":", o.json_value as String], "")), "")], "")
+    },
+    if p.guaranteed_cold_seqs == p.max_num_seqs { "" } else { join([" cold=", to_string(p.guaranteed_cold_seqs)], "") },
+    if vllm_scheduler_admission_argv(r: p.scheduler_admission) == [] { "" } else { join([" sched=", vllm_scheduler_admission_key(r: p.scheduler_admission)], "") },
+    if vllm_indexer_kv_dtype_argv(r: p.indexer_kv_dtype) == [] { "" } else { join([" ", vllm_indexer_kv_dtype_key(r: p.indexer_kv_dtype)], "") },
+  ], "")
+}
+
+// ── THE KV DTYPE IS ADMITTED PER ENGINE BUILD, NOT CHOSEN ─────────────────────────────────────
+//
+// THE LAW THAT GATEKEEPED THIS ROW IS PER-(KERNEL, BUILD), AND 2026-09-17 MEASURED BOTH BUILDS.
+// The stock digest's kernel asserts pe_dim == 64 for fp8_ds_mla (cache_kernels.cu:928) and finds
+// no attention backend at all under bfloat16, so THAT build serves this model on no spelling --
+// both crash classes observed on the srv9 head 2026-09-17. The lane-built derived image (vLLM
+// 8d09804 + flashinfer 0.7.0.dev20260910, gunbc.spark.vllm_runtime_image_build) inverts both
+// readings: its only backend for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY
+// the fp8 KV cache -- bfloat16 is refused by the selector with "kv_cache_dtype not supported"
+// (smoke on srv10, 2026-09-17) -- and under fp8 it selects that backend, announces the fp8_ds_mla
+// format, and proceeds (same smoke); its hand-built twin with the same recipe inputs served this
+// model from 2026-09-13 to 2026-09-16, which on this build is possible only under an fp8 spelling.
+// So the admission is a function of the BUILD first and the dtype second, and the build is a
+// declared row rather than a fact re-derived at each call site.
+//
+// THE BUILD NAMES ITS IMAGE, and native_serving_realization derives the arm's image reference
+// from the declared build -- one authority for "which engine the arm runs", so the admission and
+// the pin cannot drift apart. The derived build's tag is COMPUTED from the build key
+// (gunbc.spark.vllm_image_identity glm53_derived_tag over the base recipe's key), the same function
+// the build lane tags with, so a wheel or base-recipe change moves the pin with the build instead of
+// leaving a copied `derived-<hash>` naming an image the key no longer describes (review 67469).
+type GlmNativeEngineBuild
+  = GlmNativeEngineStockG385dce36b
+  | GlmNativeEngineDerived8d09804
+
+fn glm_native_engine_build_image(build: GlmNativeEngineBuild) -> NonEmptyStr {
+  match build {
+    GlmNativeEngineStockG385dce36b =>
+      "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
+    GlmNativeEngineDerived8d09804 =>
+      glm53_derived_tag(base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  }
+}
+
+// THE ARM'S DECLARED BUILD: the lane-built derived image, receipt target/v41-runtime-image-build
+// -receipt.txt 2026-09-17 (provenance=built-by-this-run, local_config_digest sha256:c7d63d15...).
+// The stock digest is retained in the enum because it is the observed counter-example, not because
+// it is a candidate: it serves this model on no admitted spelling.
+data glm_native_engine_build: GlmNativeEngineBuild = GlmNativeEngineDerived8d09804
+
+// RUNG HONESTY: this is mechanically preventable, not structural -- the profile is a data row and
+// cannot refuse its own field, so the gate is the witness in
+// dag/test/claim/spark/serving_arm_kv_dtype_witness_test.dag, which goes red if the profile
+// carries a dtype its declared build refuses. The next-rung trigger is a profile constructor that
+// takes the admission as an argument, making a refused dtype unconstructible.
+type GlmNativeKvCacheDtypeAdmission
+  = GlmNativeKvCacheDtypeAdmitted { dtype: VllmKvCacheDtypeRequest }
+  | GlmNativeKvCacheDtypeRefused { dtype: VllmKvCacheDtypeRequest, cause: NonEmptyStr }
+
+// THE STOCK BUILD'S FP8 FAMILY IS DECIDED BY THE KERNEL LAW, NOT BY PROSE REPEATING IT. Every one of
+// these spellings reaches fp8_ds_mla, whose pe_dim requirement extdeps.vllm.kv_cache models and whose
+// subject's pe_dim extdeps.zhipu.glm_5_3_flash derives; restating either number here would be a
+// second editable source for facts those rows already own.
+fn stock_fp8_ds_mla_admission(dtype: VllmKvCacheDtypeRequest, because: NonEmptyStr) -> GlmNativeKvCacheDtypeAdmission {
+  if vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: glm_5_3_flash_mla_pe_dim()) {
+    GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+  } else {
+    GlmNativeKvCacheDtypeRefused {
+      dtype: dtype,
+      cause: join([
+        because as String,
+        ", whose kernel admits pe_dim == ", to_string(vllm_fp8_ds_mla_required_pe_dim),
+        " while this checkpoint's pe_dim is ", to_string(glm_5_3_flash_mla_pe_dim()),
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE DERIVED BUILD'S ROW IS AN OBSERVATION, SO IT LIVES HERE AND NOT IN extdeps. The lane-built
+// image selects FLASHINFER_MLA_SPARSE_SM120 for this model, announces fp8_ds_mla and serves under
+// `--kv-cache-dtype fp8` (smoke on srv10, 2026-09-17), and the selector refuses bfloat16 with
+// "kv_cache_dtype not supported" on the same build. That is a receipt about a build this repository
+// runs, joined beside the upstream rows by extdeps.vllm.kv_dtype_capability kv_capability_verdict --
+// the same join the DeepSeek V4.1 arm is answered by, so neither model carries a private table.
+data glm_derived_flashinfer_sm120_row: KvMainDtypeRow = kv_main_dtype_row(
+  backend: FlashInferMlaSparseSm120,
+  runtime: RowOnBuild { image: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) },
+  device_major: 12,
+  admitted: [KvAuto, KvFp8, KvFp8DsMla],
+  basis: KvBasisObservedOnBuild {
+    build: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804),
+    observation: "the selector admits only the fp8 KV cache for this model on this build: fp8 and fp8_ds_mla served (srv10 2026-09-17; the hand-built twin 2026-09-13 to 2026-09-16), auto inherits the fp8 checkpoint dtype, bfloat16 refused with 'kv_cache_dtype not supported'; no other spelling was launched" as NonEmptyStr,
+  },
+)
+
+fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
+  match build {
+    GlmNativeEngineDerived8d09804 =>
+      match kv_capability_verdict(
+        subject: KvCapabilitySubject {
+          backend: FlashInferMlaSparseSm120,
+          runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_8d09804_sm121_recipe.source),
+          device_major: 12,
+          main: dtype,
+          indexer_kind: Present { value: DsaSparseIndexer },
+          indexer: IndexerKvDtypeOmitted,
+        },
+        rows: concat(upstream_kv_main_dtype_rows, [glm_derived_flashinfer_sm120_row]),
+      ) {
+        KvCombinationAdmitted { bases: _ } => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvCombinationRefused { cause: c, basis: _ } => GlmNativeKvCacheDtypeRefused { dtype: dtype, cause: c }
+        KvCombinationUnanswered { obligation: o } => GlmNativeKvCacheDtypeRefused { dtype: dtype, cause: o }
+      }
+    GlmNativeEngineStockG385dce36b =>
+      match dtype {
+        KvBf16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no valid attention backend for sparse MLA at pe_dim=0 with a non-fp8 KV cache on this build (srv9 head, 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
+        }
+        KvNvfp4 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits an nvfp4 KV cache for this model on this build" as NonEmptyStr,
+        }
+        KvNvfp4DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits nvfp4_ds_mla for this model on this build" as NonEmptyStr,
+        }
+        KvAuto => stock_fp8_ds_mla_admission(dtype: dtype, because: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla" as NonEmptyStr)
+        KvFp8 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
+        KvFp8E4m3 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8_e4m3 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
+        KvFp8DsMla => stock_fp8_ds_mla_admission(dtype: dtype, because: "this names the fp8_ds_mla kernel directly" as NonEmptyStr)
+      }
+  }
+}
+
+data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_native_kv_auto_launch_policy,
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
+  decided_gpu_memory_basis_points: basis_point(count: 8400),
+  serve_port: 30000,
+  served_alias: "glm-5.3-flash" as NonEmptyStr,
+  prefix_caching: PrefixCachingExplicit { enabled: true },
+  scheduler_admission: vllm_scheduler_admission_omitted,
+)
+
+// ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
+//
+// WHY THIS IS NOT AN EDIT TO THE ROW ABOVE. A ServingCompatibilitySubject is all five of its fields
+// INCLUDING the profile, so changing a profile in place does not update a configuration -- it silently
+// re-points every receipt attached to that subject at a configuration which never ran. This row exists
+// because I did exactly that: I raised max_num_seqs from 1 to 16 inside the initial profile, which left
+// gunbc.spark.serving_compatibility glm_native_on_derived_nope_standing asserting that a sixteen-sequence
+// subject served on 2026-09-13, when what ran that day carried --max-num-seqs 1 and
+// --gpu-memory-utilization 0.84. That is the borrowed-profile substitution the subject type exists to
+// forbid, committed against the type by editing underneath it.
+//
+// THE TWO DELTAS FROM THE INITIAL PROFILE, both operator decisions of 2026-09-16:
+// sixteen admitted sequences rather than one, on the operator's ruling that over-provisioning is the
+// cheaper error while neither the runtime sequence capacity nor the KV-resident capacity is measured;
+// and 8567 basis points rather than 8400, which is the engine's own advice -- it reports that 0.84 is
+// effectively 0.8233 once CUDA-graph profiling is charged, and names 0.8567 as the value restoring the
+// intended KV size.
+//
+// ITS STANDING IS NOT INHERITED FROM THE ROW ABOVE. This subject carries no execution receipt until an
+// engine running THIS profile is observed serving, which is what
+// gunbc.spark.serving_arm_launch intent_refusal will enforce: an unrun subject is admitted for a bounded
+// experiment and refused for normal serving.
+//
+// THIS ROW'S max_num_seqs IS A CHOSEN BOUND, NOT A MEASURED ONE, and the row says so rather than dressing the
+// number as a capacity reading. It stood at 1 under the launch policy "admit one until the runtime
+// sequence capacity and the KV-resident capacity are both measured". On 2026-09-16 the operator
+// replaced that posture ahead of any measurement: 16, on the stated basis that over-admission is
+// preferable to under-admission while the measurement is unfunded ("better to have too many than
+// too little"). The live evidence agrees the floor was far below the hardware: one sequence at a
+// 262k window occupied 7% of the KV cache. This number is THIS arm's -- it may not travel to
+// another model, quantisation or KV layout -- and the measurement that would replace a chosen
+// bound with a derived one (concurrent-request KV occupancy) remains the standing trigger.
+//
+// AND ITS KV REQUEST IS KvFp8, NOT THE auto THE INITIAL ROW RECORDS, BECAUSE OF THE BUILD-KEYED
+// ADMISSION ABOVE AND NOT A PREFERENCE. This is the profile the live arm launches from
+// (gunbc.spark.native_serving_realization), and after the 2026-09-17 bf16 crash-loop it spells fp8.
+// On the arm's declared build (the lane-built derived image) the only backend the selector admits
+// for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY the fp8 KV cache -- bfloat16
+// is refused by the engine itself (smoke, srv10 2026-09-17) -- and fp8 resolves to fp8_ds_mla,
+// the format this build serves (its hand-built twin served 2026-09-13 to 2026-09-16). The pe_dim
+// == 64 kernel law that forbids fp8 on the STOCK build is a per-(kernel, build) fact
+// (extdeps.vllm.kv_cache) and does not bind here. The witness
+// test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a dtype the declared
+// build refuses.
+data glm_native_concurrent_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_native_launch_policy,
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 16,
+  guaranteed_cold_seqs: 16,
+  decided_gpu_memory_basis_points: basis_point(count: 8567),
+  serve_port: glm_native_initial_profile.serve_port,
+  served_alias: glm_native_initial_profile.served_alias,
+  prefix_caching: PrefixCachingExplicit { enabled: true },
+  scheduler_admission: vllm_scheduler_admission_omitted,
+)
+
+// ── WHAT A MODEL DECIDES ABOUT ITS LAUNCH, ONE ROW PER CHECKPOINT ───────────────────────────────
+//
+// The scheduler envelope (gunbc.spark.serving_capacity_intent) owns window, sequences and batch; the
+// deployment owns memory fraction, port and alias. What remains is the model's: which main-KV and
+// indexer-KV dtypes it is launched with, whether Engram tables are configured, and which modality
+// is served. Each is an exact subject axis, so a different checkpoint is a different row, and adding a
+// checkpoint -- an FP4 one included -- is a row here plus its capability rows
+// (extdeps.vllm.kv_dtype_capability), with no edit to the envelope, the wall, the runner, the launch
+// transaction or promotion.
+//
+// THE ROW NAMES ITS CHECKPOINT, AND THE PAIRING IS SEALED BY CONSTRUCTION. A policy exists only as a
+// named row here (the type is sole-constructor and no public mint exists), the profile derived from it
+// carries that checkpoint (serving_launch_profile), and the subject mints read the checkpoint off the
+// profile rather than taking a second one. Where a caller still names a checkpoint -- the arm's fabric
+// assignment in gunbc.spark.serving_arm_launch plan_arm_launch_for, the experiment in
+// gunbc.spark.arm_memory_fit arm_memory_fit_experiment_plan -- a profile from another checkpoint's row
+// refuses there. A checkpoint with no row has no policy to derive a profile from, so it has no launch.
+type ModelLaunchPolicy sole_constructor {
+  checkpoint: ServingCheckpoint
+  kv_cache_dtype: VllmKvCacheDtypeRequest
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest
+  engram: VllmEngramConfigRequest
+  modality: VllmModalityRequest
+}
+
+// GLM-5.3-Flash native FP8: the fp8 KV request the derived build admits (glm_derived_flashinfer_sm120_row),
+// the indexer at its revision default, no Engram, text only by omission.
+data glm53_native_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53NativeFp8,
+  kv_cache_dtype: KvFp8,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+// GLM-5.3-Flash native FP8 AS FIRST LAUNCHED: the main KV cache requested as `auto`, which on this
+// fp8-quantized MLA checkpoint resolves to the same fp8_ds_mla kernel as the explicit request
+// (glm_native_kv_cache_dtype_admission). It is its own row, not a spelling of glm53_native_launch_policy,
+// because the request is part of the launch's identity: the compatibility receipts recorded against
+// glm_native_initial_profile name kv=auto in their profile key, and rewriting the request would re-key
+// every one of them for a launch that never asked for fp8 by name. New launches use glm53_native_launch_policy.
+data glm53_native_kv_auto_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53NativeFp8,
+  kv_cache_dtype: KvAuto,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+// ── THE V4.1 LAUNCH POLICY: WHAT THE MODEL DECIDES, OVER WHAT THE ENVELOPE DECIDES ─────────────
+//
+// THIS WAS A MINT THAT BUILT A WHOLE PROFILE (deepseek_v41_measurement_profile), deleted with the
+// deforking: its model half is this row, and its capacity half is the V4.1 cold intent and envelope
+// (gunbc.spark.v41_group_a_launch v41_group_a_profile) through the one profile derivation every model
+// uses. Half its fields belonged to another authority, which is why it could not stay a row of its own. The capacity
+// measurement (gunbc.spark.v41_capacity_measurement) owns the window, the admitted sequences, the
+// scheduler budget, the memory fraction and the prefix-caching request: they are the axes it measures
+// at, and a row here would be a second copy of each. What this mint fixes is what the V4.1 launch
+// itself decides, and nothing a caller may override:
+//   - the KV cache is requested as fp8_ds_mla, the layout the measurement's startup receipt requires
+//     to resolve (ResolvedFp8DsMla) before it admits a rank;
+//   - the Engram tables are served through the prefetch path -- cpu_offload true, dp_shared_memory
+//     false -- which is what the file-backed overlay requires and refuses at model init without;
+//   - THE LAUNCH SERVES TEXT ONLY, AND THE VISION CAPABILITY IS DROPPED ON PURPOSE. The checkpoint is
+//     the vision variant (vision_n_layers > 0), and at the pinned revision that widens every prefill
+//     sliding-window row from sliding_window (128) to sliding_window + vision_max_n_token (1152) for
+//     bidirectional image spans (vllm/v1/attention/backends/mla/sparse_swa.py prefill_index_width,
+//     vllm/models/deepseek_v4_1/attention.py max_image_tokens). FlashInfer's SM120 DSv4 kernel has no
+//     specialization at 1152, and every call with 64 or fewer query tokens must take one, so attempt
+//     13 died in CUDA-graph capture on all four ranks. --language-model-only stubs the tower and
+//     admits no image; overriding vision_n_layers to 0 is what returns the width to 128, because
+//     max_image_tokens is read off the config and not off the modality limit. A launch that wants
+//     images back needs an SM120 kernel at the widened width first; it is a different product, not
+//     this one with a flag flipped.
+// The route's port and served name are the caller's because they belong to the route this launch
+// answers, not to the model.
+data deepseek_v41_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: DeepseekV41FlashDba1be0a,
+  kv_cache_dtype: KvFp8DsMla,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
+  modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
+}
+
+// THE NVFP4 CHECKPOINT'S POLICY: its KV request is its own row's; the rest is the base model's (no
+// Engram, text by omission, indexer at its default).
+data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  kv_cache_dtype: glm_5_3_flash_nvfp4_kv_cache_dtype,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+// THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
+// assert something that was never measured. The canary is retired; this row exists so its EVIDENCE stays
+// accurate, which is the only reason a retired route's facts are worth keeping at all.
+// THE CANARY'S PROFILE IS READ OFF THE ENGINE THAT RAN, NOT ASSEMBLED FROM WHAT WAS DECIDED. A first
+// revision of this row carried tp=4, 32 sequences and 2048 batched tokens -- the shared production decision
+// parameters -- while the container on spark-0c75 was running tp=1, ONE sequence and 7168 batched tokens, as
+// `docker inspect` reported on 2026-09-10. That is the borrowed-profile
+// substitution this profile type exists to stop, committed inside the type itself.
+//
+// THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE -- verified against the
+// container: glm-canary on spark-0c75 carries no --gpu-memory-utilization in its argv. Recording a
+// decided 0.82 here would claim an argument the launch never sent.
+//
+// AND THE FIGURE IS NOW READ FROM THE DEFAULT RATHER THAN TRANSCRIBED. This row said 9000, which is
+// neither the decision parameters' 0.82 nor the engine's default: at Vllm487ecf187
+// defaults_gpu_utilization answers 9200. So the annotation was right about the PRINCIPLE and the
+// value beneath it was a third number nobody sent -- the row warned against claiming an unsent
+// argument and then claimed a different one. Deriving it means the profile cannot drift from the
+// revision whose default it is describing.
+// THE CANARY'S MODEL CHOICES ARE ITS CHECKPOINT'S OWN ROW, like every other launch's: fp8 KV, no Engram,
+// text by omission, the indexer at its default.
+data glm53_exl3_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53Exl3_205,
+  kv_cache_dtype: KvFp8,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+data glm_exl3_canary_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_exl3_launch_policy,
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 7168),
+  max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
+  decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
+  serve_port: 30001,
+  served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+  prefix_caching: PrefixCachingOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
+)
+
+
+// ── THE RUNTIME THIS FLEET BUILT FOR THE NATIVE CHECKPOINT ────────────────────────────────────
+//
+// IT IS ITS OWN RUNTIME BECAUSE IT IS DIFFERENT BYTES, and the two prior native attempts are exactly why
+// that matters: the official SM121 image refused at the kernel shape, and the community EXL3 image could
+// not map the native checkpoint's tensor names. Both refusals are recorded against THEIR subjects, and
+// the row that records them says a different backend, layout or patched image is a different subject and
+// must be MEASURED rather than inferred. This is that different image.
+//
+// PINNED BY ITS CONTENT AND NOT BY ITS TAG, which took a measurement to get right. The image was never
+// pushed, so `RepoDigests` is empty and a `repo@sha256:` reference does not resolve -- measured on srv9
+// 2026-09-13. The bare content id DOES resolve, both for inspect and for creating a container, so it is
+// what the pin names. Worth recording beside it: the same daemon refuses that id as a Dockerfile FROM,
+// which is a different resolver in the same engine.
+//
+// THE PATCH SET IS THE THREE WHEELS, which is what `patch_set` exists for -- an image taken as published
+// carries an empty list, and one that installed something must say what. Naming them here is what keeps
+// this row distinguishable from an official build at the same vLLM revision.
+data glm53_nope_derived_vllm_version: NonEmptyStr = "0.1.dev1+g8d09804c8" as NonEmptyStr
+
+data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53NopeDerivedGb10,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: glm53_nope_derived_registry_reading.image_reference },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "the derived layer's build is recorded (three FlashInfer wheels over the GLM NoPE base), but the base's own vLLM tree is known only from vllm.__version__ read inside the image on srv9 2026-09-13 -- extdeps.vllm.runtime_defaults says of this revision that it is the image saying which tree it was built from, not a comparison of its bytes against that tree" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    ],
+    provenance: "built by gunbc.spark.vllm_runtime_image_build on srv9 2026-09-13 as a derived layer over the GLM NoPE base sha256:8af305a7950f...5eec7, installing the three FlashInfer 0.7.0.dev20260910 wheels with --no-deps --force-reinstall. The base relationship is not asserted from the FROM line, which can only name a tag: the derived image's RootFS layers were read after the build and the base's layers are a prefix of them. The base itself remains AdoptedFromOutOfBandBuild -- this row does not launder that standing, it records a layer built on top of it" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_nope_derived_registry_reading },
+  reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
+  provenance: "read inside this exact image on srv9 2026-09-13: 378 registered architectures including all three Glm5Next entries and no DeepseekV41ForCausalLM; flashinfer 0.7.0.dev20260910 and vllm 0.1.dev1+g8d09804c8 reported by import; entrypoint [vllm, serve]; platform linux/arm64; hf at /usr/local/bin/hf; the reasoning parser name this fleet's argv requests (glm45) and the tool parser name (glm47) both RESOLVE here, to Glm47MoeParserReasoningAdapter and Glm47MoeModelToolParser -- established by lookup rather than by reading the registry dict, which is populated lazily and answers empty to a bare import. The NoPE kernel probes both pass: the writer accepts pe_dim 0 and zeroes the reserved tail, and the SM120 sparse reader accepts the 512+0 layout when asked with arbitrary_fp32 scales. THE REASONING PROJECTION IS NO LONGER ABSENT, and it was filled the only way it could be: this image served. A routed completion against the four-rank arm returned a response carrying a `reasoning` member DISTINCT from `content`, with 47 of its 73 completion tokens counted as reasoning_tokens -- so the parser that resolves here also SEPARATES, which resolution alone never showed. That a name resolves in a registry and that a served response comes back split are two different facts, and only the second can be read from a launch" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// ── THE RUNTIME GROUP B SERVES TODAY, WHICH IS NOT THE ROW ABOVE ─────────────────────────────
+//
+// THIS ROW MODELS THE SERVING IMAGE; IT DOES NOT CUT THE ARM'S CONSUMERS OVER TO IT. The launch
+// planner (gunbc.spark.serving_arm_launch), the compatibility standing
+// (gunbc.spark.serving_compatibility glm_native_on_derived_nope_standing) and the selection still
+// name GunbcGlm53NopeDerivedGb10, so a reader of those authorities is still told the NoPE image
+// serves. That is a declared frontier, not a repair claimed here: the cutover is the arm owner's
+// change (in flight as #11565, which re-derives the pin through gunbc.spark.vllm_runtime_image_build
+// glm53_derived_tag), and until it lands the old ExecutionCompatible receipt stays true only of
+// its exact old subject and must not be read as the current standing.
+//
+// THE NoPE-DERIVED ROW WAS THE SERVING IMAGE ON 2026-09-13 AND STOPPED BEING IT ON 2026-09-17, when
+// Group B was relaunched on a lane-built image from a different repository
+// (gunbc-vllm-glm53-gb10, tag derived-c99be081f219d123) and nothing in this module followed. That
+// is the adopted-out-of-band shape one layer up: a converge landed a new image, and the authority
+// that says which image serves kept describing the old one. It was found by an exact-match refusal
+// in gunbc.spark.serving_fit_projection, not by anything watching the arm.
+//
+// PINNED BY CONFIG ID, the image's only identity: RepoDigests is empty because it was never pushed.
+// The tag it is reached through is the derived tag gunbc.spark.vllm_runtime_image_build
+// glm53_derived_tag folds from the wheel set, and that fold is the right authority for the TAG; the
+// content id is what a launch and a reading are keyed by, and it is read from the daemon.
+//
+// WHAT THIS ROW DOES NOT KNOW, STATED RATHER THAN FILLED. (1) reasoning_projection is Absent:
+// nothing here has read a completion from this image, although the harness lanes serving through it
+// have. (2) The base image's own build commit is self-declared unknown (VLLM_BUILD_COMMIT=unknown,
+// VLLM_BUILD_PIPELINE=local in its labels), so source_revision below is the version string's commit
+// and not a label the base carries. (3) The FP4 W4A4 path on SM 121 is UNREAD -- the probe's own
+// discriminator is absent from this build (gunbc.spark.serving_runtime_capability_probe
+// glm53_derived_probe_rows) -- and registration of GlmMoeDsaForCausalLM says nothing about it.
+//
+// WHAT IT DOES KNOW WAS READ, NOT INHERITED: the registry dump (378 names, inside this config id),
+// hf at /usr/local/bin/hf (huggingface-cli beside it), and the wheel set from docker history. The
+// pin reads the reading's own image_reference, so the currency check runtime_reading_is_current
+// is a tautology for this row exactly as it is for the NoPE row and for the same reason -- a
+// never-pushed image has one identity and one home for it.
+data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53DerivedGb10,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: glm53_derived_registry_reading.image_reference },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "the base image's own labels say VLLM_BUILD_COMMIT=unknown and VLLM_BUILD_PIPELINE=local; the only link from this content id to a vLLM source revision is the installed package's version string, so the lineage is claimed by the package and not established by a build record" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    ],
+    provenance: "docker history on the Group B head (192.168.1.236), read by the GLM performance lane 2026-09-18, top layers first: RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/<the three flashinfer 0.7.0.dev20260910 wheels>; COPY of those wheels into /tmp/gunbc-wheels/; ENTRYPOINT [vllm, serve]; base labels org.opencontainers.image.version=local/vllm-openai:dev, VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local. So the derived layer is the wheel set force-reinstalled over a locally built vLLM base whose own build commit is recorded as unknown -- a gap in the chain, stated. Image Id sha256:c7d63d15..., Created 2026-09-17T14:55:06-04:00, RepoDigests empty; the four running Group B containers report this Id as .Image" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_derived_registry_reading },
+  reasoning_projection: none,
+  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in gunbc.spark.serving_runtime_capability_probe glm53_derived_probe_rows" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// ── THE IMAGE GROUP B RUNS SINCE 2026-09-26: THE DERIVED BUILD PLUS THE v2 ALLOCATION-PLAN LAYER ──
+//
+// A PURE FILE-COPY LAYER OVER glm53_derived_row's CONTENT ID (sha256:c7d63d15...), carrying the two
+// files of dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch (sha256
+// 8267d86b..., applied INSTEAD of v1, never both) so the engine prints its resolved KV allocation
+// plan at startup. The build and roll-out are docs/runbooks/glm-kv-allocation-plan-image-rebuild.md;
+// the patched core.py was verified in-image at pin 7ffe8efa... on all four Group B ranks, and the
+// bounded 262144x6 experiment converged under this image on 2026-09-26 (its captured plan line is
+// test.fixture.kv_allocation_plan_emission.real_262144x6_v2_line).
+//
+// PINNED ELSEWHERE, BY TAG, AND THAT IS THE HONEST PIN RATHER THAN A WEAKER ONE. The layer was
+// built PER HOST from the same patch, so the four hosts hold four content ids under one tag and
+// there is no single id to pin; the tag is what the units spell and what each daemon resolves
+// locally. A subject keyed on it is therefore <unpinned:...> (runtime_artifact_key), which is the
+// truth: nothing here has compared the four builds' bytes.
+//
+// THE REGISTRY READING IS ABSENT, AND serving_arm_admits REFUSES THIS RUNTIME UNTIL ONE EXISTS. The
+// base image's 378-architecture dump (glm53_derived_registry_reading) was taken inside c7d63d15,
+// not inside this layer; the layer only replaces vllm/v1/engine/core.py and vllm/envs.py, so the
+// registry is very likely unchanged -- but that is an inference, and reading_applies_to keys a
+// reading to the exact image it was taken in. Borrowing the base's reading would be exactly the
+// re-addressed receipt gunbc.spark.runtime_architecture_registry_reading exists to refuse. The
+// discharge is one registry dump inside this tag on a Group B host (the fleet converge
+// spark_runtime_image_probe mode), recorded as a reading and named here.
+data glm53_derived_kvplan_v2_tag: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-kvplan-v2-20260926" as NonEmptyStr
+
+data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53DerivedKvplanV2Gb10,
+  artifact: runtime_artifact_identity(
+    pin: PinnedElsewhere {
+      reference: glm53_derived_kvplan_v2_tag,
+      pin_authority: "docs/runbooks/glm-kv-allocation-plan-image-rebuild.md: a file-copy layer built per Group B host over the base content id sha256:c7d63d15... from the v2 patch (sha256 8267d86b...), so each host holds its own content id under this tag" as NonEmptyStr,
+    },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "the base's own labels say VLLM_BUILD_COMMIT=unknown (glm53_derived_row); this layer adds only the two patched files, and the engine running in it self-reported 0.1.dev1+g8d09804c8 at the 2026-09-26 launch, so the lineage is still claimed by the package and not established by a build record" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+      "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
+    ],
+    provenance: "built per host by the operator from docs/runbooks/glm-kv-allocation-plan-image-rebuild.md (2026-09-26 amendment: v2 instead of v1) as a pure file-copy layer over the recorded base content id sha256:c7d63d15...; post-patch pins core.py 7ffe8efa..., envs.py 239d5093..., verified in-image on all four Group B ranks" as NonEmptyStr,
+  ),
+  hub_cli_path: none,
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_derived_kvplan_v2_registry_reading },
+  reasoning_projection: none,
+  provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks; its architecture registry was read inside the tag on 2026-10-01 (glm53_derived_kvplan_v2_registry_reading). NOT read inside this tag: the hub CLI path and the reasoning projection" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// THE SAME KVPLAN-V2 BUILD, PRODUCED ONCE FOR GROUP A (deforking cut 8c, image option A). It is a distinct
+// runtime from the Group B row above because it is a distinct artifact: one content id built on srv7 by
+// fleet-converge run 37100656092 from the pinned recipe (gunbc.spark.vllm_runtime_image_build
+// converge_glm53_kvplan_image) and moved by digest, where Group B's is a per-host layer under a shared
+// tag. So a receipt taken on Group A is about THIS identity and does not promote Group B's.
+data glm53_kvplan_v2_group_a_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53KvplanV2GroupAProduced,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "sha256:6ef84cd49a68dbefd957bfca36f0ec458ed80f8194def41642e7b37b34ae76fb" as NonEmptyStr },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "built from source revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 by fleet-converge run 37100656092 (base and FlashInfer stage build key c99be081f219d123, kvplan layer build key 50ba9aad263fea47); the probe inside the produced digest read vllm 0.1.dev1+g8d09804c8 and the kvplan marker present" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+      "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
+    ],
+    provenance: "produced on srv7 by fleet-converge run 37100656092 under tag gunbc-vllm-glm53-gb10:kvplan-v2-50ba9aad263fea47, configuration digest read back inside the image by that run's probe" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_kvplan_v2_group_a_registry_reading },
+  reasoning_projection: none,
+  provenance: "every field of this row except the patch roster was read inside the produced digest by fleet-converge run 37100656092 (version, package dir, kvplan marker, hub CLI path, 378-name registry); the patch roster is the recipe's" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

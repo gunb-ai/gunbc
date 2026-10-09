@@ -1,6 +1,7 @@
 module v2.test.claim.c_compilation_unit_witness
 
 import std.algebra { Empty }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List, String }
 import v2.extdeps.languages.c {
   c_include_directive_for_dep,
@@ -33,12 +34,13 @@ import v2.std.compilers.compilation_unit {
 }
 import v2.std.collection { empty_map, map_insert }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -86,10 +88,10 @@ fn witness_struct_field_by_value(sym: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^member },
-        target: witness_type_atom(sym: sym),
-      }
+      binder_edge(
+        name: ^member,
+        type_node: witness_type_atom(sym: sym)
+      )
     ]
   )
 }
@@ -98,22 +100,14 @@ fn witness_struct_field_by_pointer(sym: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^next },
-        target: node_synthetic(
-          kind: TypeNode { connective: Arrow },
-          children: [
-            Edge {
-              label: Named { name: ^domain },
-              target: witness_type_atom(sym: sym),
-            },
-            Edge {
-              label: Named { name: ^codomain },
-              target: witness_type_atom(sym: witness_type_int),
-            }
-          ]
-        ),
-      }
+      binder_edge(
+        name: ^next,
+        type_node: anonymous_signature_arrow(
+          domain_types: [witness_type_atom(sym: sym)],
+          codomain: witness_type_atom(sym: witness_type_int),
+          source: witness_type_atom(sym: sym)
+        )
+      )
     ]
   )
 }
@@ -122,29 +116,19 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^x },
-        target: witness_type_atom(sym: witness_type_int),
-      }
+      binder_edge(
+        name: ^x,
+        type_node: witness_type_atom(sym: witness_type_int)
+      )
     ]
   )
 }
 
 fn witness_fn_taking_point_by_value() -> Node {
-  node_synthetic(
-    kind: TypeNode {
-      connective: Arrow,
-    },
-    children: [
-      Edge {
-        label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
-      },
-      Edge {
-        label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
-      }
-    ]
+  anonymous_signature_arrow(
+    domain_types: [witness_type_atom(sym: witness_type_point)],
+    codomain: witness_type_atom(sym: witness_type_int),
+    source: witness_type_atom(sym: witness_type_point)
   )
 }
 
@@ -454,7 +438,10 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   }
 }
 
-test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
+// The positive control beside the zero-fuel refusal above: the same inputs, the default fuel, and
+// both units built. It was named for the List-returning compat wrapper it used to stand against;
+// that wrapper is deleted, so the name now says what the claim actually asserts.
+test fn witness_partition_fold_outcome_yields_both_units() -> Bool {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()

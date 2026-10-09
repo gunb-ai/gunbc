@@ -1,0 +1,863 @@
+module gunbc.spark.serving_arm_launch
+
+import std.types { List, NonEmptyStr, String, Port }
+import std.nat { Nat }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import extdeps.huggingface.hub { hub_repo_cache_directory_name }
+import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
+import gunbc.spark.fabric_switch_observed {
+  FabricGroup,
+  FabricGroupA,
+  FabricGroupB,
+  fabric_group_hosts,
+  FabricLaneObserved,
+  fabric_lane_for_host,
+}
+import extdeps.docker.cli {
+  DockerCreateSpec,
+  DockerEnvAssignment,
+  DockerMount,
+  BindMount,
+  NamespaceHost,
+  RestartNo,
+  docker_create_command,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
+import gunbc.spark.collective_transport_plan {
+  CollectiveTransportPlan,
+  RoceOverInterface,
+  transport_plan_devices,
+  transport_plan_cap_add,
+  transport_plan_memlock_unlimited,
+  transport_plan_env,
+}
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint,
+  ServingRuntime,
+  ServingTopology,
+  ServingCheckpointRow,
+  serving_checkpoint_row,
+  checkpoint_quantization_argv,
+  ServingRuntimeRow,
+  serving_runtime_row,
+  runtime_artifact_wire,
+  serving_topology_rank_count,
+  ServingArmAdmitted,
+  ServingArmRefused,
+  ArmIntent,
+  ArmNormalServing,
+  ArmBoundedExperiment,
+  serving_arm_admits_under,
+  ServingLaunchProfile,
+}
+import gunbc.spark.serving_promotion {
+  ServingPromotionReceipts, serving_promotion_standing, promotion_evidence, serving_promotion_policy,
+  PromotionAdmitsNormalServing, PromotionRefused, PromotionMeasurementServeOnly, promotion_standing_text,
+}
+import gunbc.spark.serving_performance_subject { serving_subject_for_launch }
+import gunbc.spark.arm_memory_fit {
+  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmMemoryComponent,
+  arm_memory_fit_subject_for_launch,
+  arm_memory_fit_verdict,
+  arm_memory_fit_experiment_plan,
+  arm_memory_subject_open_components,
+  arm_memory_launch_gate,
+}
+import gunbc.spark.serving_capacity_intent { ServingCapacityIntent }
+import gunbc.spark.serving_compatibility {
+  CompatibilityAdmission,
+  AdmitsNormalServing,
+  AdmitsBoundedExperimentOnly,
+  AdmitsNothing,
+  measured_admission_for,
+  ServingCompatibilitySubject,
+  measured_subject_refuses,
+  measured_refusal_cause,
+  spark_gb10_accelerator,
+  serving_compatibility_subject,
+}
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  token_count_value,
+}
+import std.decl_ref { decl_ref }
+import extdeps.vllm.runtime_defaults { resolve_vllm_scheduler_admission, VllmDefaultsKnown, SchedulerAdmissionResolved, SchedulerAdmissionUnresolvable }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv, vllm_indexer_kv_dtype_argv }
+
+import gunbc.spark.model_snapshot_acquisition {
+  SnapshotPlacement,
+  HubCachePlacement,
+  LocalDirectoryPlacement,
+}
+
+// ── THIS MODULE IS THE ONE mp-BACKEND MULTI-HOST LAUNCHER, AND EACH DEPLOYMENT IS A CALL SITE ──
+//
+// TWO DEPLOYMENTS PLAN THROUGH IT: Group B's GLM arm (gunbc.spark.glm_group_b_launch) and the V4.1
+// four-rank arm on Group A (gunbc.spark.v41_group_a_launch). What differs between them is data the
+// caller supplies -- the checkpoint and runtime rows, the profile, the deployment environment and the
+// ArmContainerIdentity -- never a branch in here. The paragraphs below were written when Group B was
+// the only caller and still describe its two realization handlers accurately.
+//
+// TWO CONSUMERS EXECUTE THIS PLAN, and they are two REALIZATION HANDLERS rather than two launchers.
+// gunbc.spark.glm_group_b_relaunch_cli creates and starts the containers directly, through the
+// bounded transaction in gunbc.spark.serving_relaunch_transaction; gunbc.spark.native_serving_realization
+// renders the same spec as a systemd unit's Exec line. Both take the SAME DockerCreateSpec, through
+// the one Group-B call site in gunbc.spark.glm_group_b_launch, and the verb-level difference is
+// extdeps.docker.cli's two projections of one flag body.
+//
+// WHAT THIS REPLACED, AND WHY IT WAS A DEFECT RATHER THAN A DUPLICATION. Until 2026-09-18 the systemd
+// renderer hand-assembled its own `docker run` word list, so ONE Group-B launch had two authorities
+// and they had already drifted: the spec below carried a --shm-size the unit did not spell, the two
+// read VLLM_ENGINE_READY_TIMEOUT_S and VLLM_SPARSE_INDEXER_MAX_LOGITS_MB from different homes, and
+// only the unit declared the usage-stats reporter off. None of those differences could be reported,
+// because there was no shared value for a comparison to hold. An earlier revision of this annotation
+// called that consolidation "owed when the general renderer lands"; both were in the tree already.
+//
+// WHAT THIS STILL DOES NOT CLAIM: that a plan is a deployment. Nothing here performs an effect,
+// reaches a host, or observes one. A green witness over this module establishes what would be SENT,
+// and says nothing about what any engine is running.
+
+// ── WHY THIS IS A SECOND MULTI-HOST LAUNCHER AND NOT A FORK ────────────────────────────────────
+//
+// gunbc.spark.pair_serving_realization already brings up a four-rank engine across a fabric group, and
+// growing a second one beside it would be exactly the §3 fork this repository keeps paying for. It is
+// not a fork, because the thing that differs is the DISTRIBUTED-EXECUTION TRANSPORT, and §3 puts
+// transport in the realization layer: one operation shape with N bound handlers, never one operation
+// forked per transport. `distributed_executor_backend` is already a modelled field, so the backend is an
+// axis of the arm and this module is the handler for one of its values.
+//
+// THE PAIR ROUTE IS THE RAY HANDLER AND CANNOT SERVE THIS ARM. It runs `ray start` head and worker
+// systemd units inside the DeepSeek image, and that image is recorded at
+// gunbc.spark.serving_arm gunbc_sparkrun_ds4_row with `registers_glm5_next: false` -- it cannot load
+// this architecture at all. The GLM-capable image is the other one, and it HAS NO RAY: probed inside the
+// pinned digest on 2026-09-10, `import ray` raises ModuleNotFoundError and no `ray` executable exists;
+// the only match on the filesystem is vLLM's own `vllm/ray` integration subpackage. So neither image
+// carries both halves, and the Ray transport is unavailable for a native GLM arm without building a
+// third image.
+//
+// AND IT DOES NOT NEED TO BE BUILT, WHICH IS WHY THIS HANDLER EXISTS. The same probe read this
+// revision's own ParallelConfig: `nnodes`, `node_rank`, `master_addr` and `master_port` are real fields
+// whose docstrings say "for multi-node distributed inference when distributed_executor_backend is mp",
+// and the backend field's own documentation states that to use "mp" you must also set nnodes. So this
+// image performs multi-node tensor parallelism with no Ray, no new artifact, and no unpinned dependency
+// -- one container per host, each carrying its own rank.
+//
+// THE EARLIER DEFECT THIS AVOIDS IS RECORDED IN THE PAIR ROUTE'S OWN ANNOTATION: a revision once
+// pointed that route at GLM and thereby admitted a known-impossible tuple, because the image could not
+// load the architecture and nothing on the path refused. `serving_arm_admits` is that wall, and every
+// launch below passes through it.
+
+// ── THE NODE ROSTER ────────────────────────────────────────────────────────────────────────────
+//
+// A RANK IS A POSITION IN ONE ORDERED ROSTER, AND THE ORDER IS DERIVED RATHER THAN AUTHORED. Every node
+// must agree on which host holds rank zero, because that rank is also the rendezvous the other three
+// dial; two hosts believing they are rank zero is not a degraded group but a hung one, and two hosts
+// disagreeing about the master address is the same failure wearing a different mask. So the head comes
+// from the group's declared head and the remainder keep the roster's own order.
+// THE TRANSPORT IS A FIELD OF THE RANK, ON THE SAME FOOTING AS ITS RAIL ADDRESS, and that placement is
+// the whole repair. The launcher this module replaces spelled two socket env names inline and mapped no
+// device, added no capability and lifted no memlock -- so a launch produced faithfully FROM THE MODEL
+// reproduced the defect Group B was found in, every rank reporting `NET/IB : No device found.` then
+// `Using network Socket`. The model was not bypassed; it was silent, and a silent model cannot be
+// contradicted by an observation.
+//
+// A RANK WHOSE LANE IS NOT OBSERVED REFUSES THE ROSTER, exactly as a rank with no rail address already
+// does. Defaulting such a host to sockets is the arm this shape exists to remove: it is the reading of
+// 'I could not tell' as 'TCP is fine', which is the absorbing fallback of DESIGN section 5 wearing a
+// transport's name.
+type ArmNode sole_constructor {
+  host: HostIdentity
+  rail: Ipv4Address
+  node_rank: Nat
+  transport: CollectiveTransportPlan
+}
+
+// THE CONSTRUCTOR IS EXPORTED BECAUSE A FIXTURE MUST BE ABLE TO BUILD A RANK. A sole_constructor type is
+// sealed to its defining module, which is the right default and would otherwise make every property of the
+// launcher unfalsifiable from outside: a witness that cannot name a rank cannot supply a rank population to
+// refuse. It builds nothing this module does not already build.
+fn arm_node(host: HostIdentity, rail: Ipv4Address, node_rank: Nat, transport: CollectiveTransportPlan) -> ArmNode {
+  ArmNode { host: host, rail: rail, node_rank: node_rank, transport: transport }
+}
+
+// THE PLAN IS DERIVED FROM THE LANE THIS FLEET ALREADY OBSERVES, never authored beside it. The lane
+// carries the leg netdev and the leg's RDMA device; the GID is selected by what the rail IS (an IPv4
+// address on a RoCE v2 fabric) rather than by a slot number, which is what the image baked and what went
+// stale the first time a link flapped.
+data arm_rail_gid_selection: NcclRoceGidSelection = NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 }
+
+fn arm_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPlan {
+  RoceOverInterface {
+    interface: lane.leg_netdev,
+    rdma_device: lane.leg_rdma_device,
+    gid_selection: arm_rail_gid_selection,
+  }
+}
+
+type ArmNodeRoster
+  = ArmNodesResolved { nodes: List<ArmNode>, master: Ipv4Address }
+  | ArmNodeRosterRefused { cause: NonEmptyStr }
+
+type ArmNodeAccum sole_constructor {
+  nodes: List<ArmNode>
+  next_rank: Nat
+  unresolved: List<HostIdentity>
+}
+
+fn arm_node_step(acc: ArmNodeAccum, host: HostIdentity) -> ArmNodeAccum {
+  match fabric_rail_address(host: host) {
+    Absent => ArmNodeAccum { nodes: acc.nodes, next_rank: acc.next_rank, unresolved: concat(acc.unresolved, [host]) }
+    Present { value: rail } =>
+      match fabric_lane_for_host(host: host) {
+        Absent => ArmNodeAccum { nodes: acc.nodes, next_rank: acc.next_rank, unresolved: concat(acc.unresolved, [host]) }
+        Present { value: lane } => ArmNodeAccum {
+          nodes: concat(acc.nodes, [ArmNode { host: host, rail: rail, node_rank: acc.next_rank, transport: arm_transport_plan(lane: lane) }]),
+          next_rank: acc.next_rank + 1,
+          unresolved: acc.unresolved,
+        }
+      }
+  }
+}
+
+// THE HEAD IS PLACED FIRST BY CONSTRUCTION, so rank zero is not a property anyone has to maintain. An
+// earlier shape would have assigned ranks by roster order and then asserted that the head happened to be
+// first, which is a check standing where a construction was available.
+fn arm_ordered_hosts(group: FabricGroup) -> List<HostIdentity> {
+  let head = spark_pair_serving_head(group: group)
+  concat([head], filter(fabric_group_hosts(g: group), h => !host_identity_eq(a: h, b: head)))
+}
+
+// A HOST WITH NO RAIL ADDRESS REFUSES THE WHOLE ROSTER RATHER THAN BEING DROPPED. Silently launching
+// three ranks for a four-rank arm would produce an engine that waits forever for a peer nobody started,
+// and reporting that as a partial success is the absorbing arm §5 forbids: the tensor-parallel degree is
+// a property of the ARM, so a roster that cannot supply it has failed, not shrunk.
+fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
+  let acc = fold(arm_ordered_hosts(group: group),
+    init: ArmNodeAccum { nodes: [], next_rank: 0, unresolved: [] },
+    f: (a, h) => arm_node_step(acc: a, host: h))
+  match acc.unresolved.first() {
+    Present { value: h } => ArmNodeRosterRefused {
+      cause: join(["a member of this group has no observed fabric rail address or lane, so the group can neither rendezvous nor be given a collective transport: ", h as String], "") as NonEmptyStr,
+    }
+    Absent =>
+      match acc.nodes.first() {
+        Absent => ArmNodeRosterRefused { cause: "this group has no observed members" as NonEmptyStr }
+        Present { value: head } =>
+          if count(acc.nodes) == expected_ranks {
+            ArmNodesResolved { nodes: acc.nodes, master: head.rail }
+          } else {
+            ArmNodeRosterRefused {
+              cause: join([
+                "this group holds ", to_string(count(acc.nodes)),
+                " members against an arm of ", to_string(expected_ranks),
+                " ranks; a tensor-parallel degree is a property of the arm and cannot be reduced to fit the hosts that answered",
+              ], "") as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+// ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
+
+// ── WHAT A DEPLOYMENT NAMES, AS ONE VALUE ─────────────────────────────────────────────────────
+//
+// THE PLANNER USED TO SPELL GLM'S DEPLOYMENT HERE AS MODULE CONSTANTS, which made the one multi-host
+// launcher a GLM launcher: every arm it planned was named glm-native-tp4, rendezvoused on GLM's port and
+// sized its shared memory from GLM's inspect. None of those is a fact about the launcher. They are what
+// ONE DEPLOYMENT calls its container, where its ranks meet, and what else it mounts -- so they arrive as
+// a value the caller names, and a second deployment on another group is a second value rather than a
+// second launcher (DESIGN section 3: one realization, parameterized).
+//
+// DISTINCT NAMES ARE THE POINT, NOT A NICETY. A host's occupancy is read by unit and container name, so
+// two deployments sharing a name would make one read as the other: an old arm still running would look
+// like the new one already launched.
+type ArmContainerIdentity {
+  container_name: NonEmptyStr
+  master_port: Port
+  shm_size: ByteSize
+  extra_mounts: List<DockerMount>
+}
+
+data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
+
+data glm53_staircase_container_name: NonEmptyStr = "gunbc-glm53-stair-tp4" as NonEmptyStr
+
+data glm53_staircase_head_log_path: NonEmptyStr = "/var/log/gunbc/glm53-stair-head.log" as NonEmptyStr
+data glm_native_master_port: Port = 29501
+
+data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
+
+// A LOCAL CHECKOUT IS MOUNTED AS ITSELF, at the path the canary already uses, so a line rendered for
+// such a checkpoint matches the shape that has been serving rather than inventing a second convention.
+data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
+
+// THE MOUNT AND THE MODEL PATH BOTH COME FROM THE PLACEMENT, AND AN EARLIER REVISION READ ONLY ONE
+// ARM OF IT. This function built the Hub-cache path unconditionally -- correct for the native
+// checkpoint, and silently wrong for any checkpoint placed in a local directory, which is what the
+// EXL3 arm actually uses (`/home/briansrls/models/glm53-flash-exl3-2.05`). The tell was visible in the
+// import list: `SnapshotPlacement`, `HubCachePlacement` and `LocalDirectoryPlacement` were imported
+// and then never matched on, which is what importing a vocabulary and hardcoding one of its cases
+// looks like.
+//
+// IT WOULD NOT HAVE FAILED LOUDLY. The rendered line would have named a path that does not exist on
+// the host, and the engine would have refused with a file-not-found about a directory nobody chose --
+// a located error pointing at the wrong place, which costs more to chase than a refusal here.
+//
+// gunbc.spark.model_snapshot_acquisition states the governing rule for exactly this: one value decides
+// the install path, the download, the verification, the mount and the launch path, or they disagree.
+// The two arms differ in the container directory as well as the path, because a Hub cache is mounted
+// whole and a local checkout is mounted as itself.
+// THE HOST-SIDE PATH IS A FIELD BECAUSE A PREFLIGHT NEEDS IT. `model_path` is where the engine looks
+// INSIDE the container; an apply that wants to know the weights are present before it stops anything
+// has to test the path on the HOST, and re-deriving it from the mount at the call site would be the
+// second derivation of one path this type exists to prevent.
+type ArmMountPlan sole_constructor {
+  host_dir: NonEmptyStr
+  container_dir: NonEmptyStr
+  model_path: NonEmptyStr
+  host_model_path: NonEmptyStr
+}
+
+fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
+  match row.placement {
+    HubCachePlacement { cache_root: root } => ArmMountPlan {
+      host_dir: root,
+      container_dir: glm_native_weights_container_dir,
+      model_path: join([
+        glm_native_weights_container_dir as String, "/",
+        hub_repo_cache_directory_name(repo: row.repo) as String,
+        "/snapshots/", row.revision as String,
+      ], "") as NonEmptyStr,
+      host_model_path: join([
+        root as String, "/",
+        hub_repo_cache_directory_name(repo: row.repo) as String,
+        "/snapshots/", row.revision as String,
+      ], "") as NonEmptyStr,
+    }
+    LocalDirectoryPlacement { host_path: hp } => ArmMountPlan {
+      host_dir: hp,
+      container_dir: glm_local_checkout_container_dir,
+      model_path: glm_local_checkout_container_dir,
+      host_model_path: hp,
+    }
+  }
+}
+
+// ── THE CONTAINER LINE, ONE PER RANK ──────────────────────────────────────────────────────────
+//
+// THE IMAGE ENTRYPOINT ALREADY SUPPLIES `vllm serve`, so the first user word is the model path and NOT
+// the subcommand. Verified against the running canary on 2026-09-10: its container reports Path=vllm and
+// Args[0]=serve, with the model path at Args[1] -- so a line that also spelled "serve" would reach the
+// engine as `vllm serve serve <path>` and refuse.
+//
+// `--quantization` IS SPELLED ONLY WHERE THE CHECKPOINT SAYS IT SHOULD BE, and for the native FP8
+// checkpoint that means NOT AT ALL. Its row answers QuantizationResolvedFromCheckpointConfig: the
+// config.json carries quant_method fp8 with a weight_block_size and a 1509-entry
+// modules_to_not_convert list, and passing a bare `--quantization fp8` would override that structure
+// with a scheme name. The live arm agrees -- the container that served from 2026-09-13 carries no
+// --quantization in its argv.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH SAID THE OPPOSITE, asserting the flag "IS SPELLED EXPLICITLY
+// EVEN THOUGH THE ENGINE WOULD INFER IT". That was written when the launch spelled it
+// unconditionally, and it survived the move to checkpoint_quantization_argv, which emits the flag
+// only for a checkpoint whose quantization is spelled on argv. The EXL3 canary is such a checkpoint;
+// this arm's is not.
+//
+// `--master-addr` IS THE HEAD'S RAIL ADDRESS, WHICH IS THE WHOLE POINT OF THE FABRIC. Tensor-parallel
+// collectives cross this address on every forward pass; pointing it at a management address would route
+// them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
+// the group would simply be slow. The rail address is derived from the lane observation via
+// gunbc.spark.fabric_rail_desired rather than authored here.
+// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: THIS
+// MODULE's argv named no prefix-caching flag at all, so any launch it rendered took whatever the
+// engine inferred. That is a statement about this renderer and NOT about the arm now running: the
+// live container was created out of band and does carry --enable-prefix-caching, which is why the
+// profile records PrefixCachingExplicit and its receipt is not describing a different request. At the revision
+// this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
+// "nothing said" was not a stable request -- it was a different request per checkpoint.
+// THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they exist for a
+// reader that is not in this tree yet: the rank observer that lands with the baseline instrument. That
+// observer greps the engine log for the interface NCCL actually bound, deliberately refusing to read
+// NCCL_SOCKET_IFNAME back because a check that reads its own request only agrees with itself. But NCCL
+// prints that line ONLY under NCCL_DEBUG, and
+// no launch path in this repository set it -- so the line never existed, the reading was permanently Absent,
+// and the readback refused every rank of an otherwise healthy deployment. Measured 2026-09-13: a cutover
+// whose engine had already answered GET /v1/models with 200 OK rolled back with FabricInterfaceUnread on
+// all four ranks. THE ALL-RANK SYMMETRY IS THE TELL -- a real fabric fault lands on the ranks that have one.
+//
+// SUBSYS IS NARROWED TO INIT,NET BECAUSE VOLUME IS THE REASON TO HESITATE. Bare INFO makes NCCL narrate
+// every channel of every collective; INIT,NET keeps the topology and transport lines that carry the fact and
+// drops the per-collective traffic. Measured on a two-rank no-weights probe in this exact image on srv9 and
+// srv10: NCCL reported "NET/IB : No device found" and bound "NET/Socket : Using [0]enp1s0f1np1", so the
+// socket spelling the observer greps for is the one this fleet actually produces -- the RoCE devices are
+// present on these hosts but NCCL does not select them inside this container.
+// ── THE CONTAINER IS A TYPED SPEC, AND ITS TRANSPORT FIELDS ARE THE RANK'S PLAN PROJECTED ─────
+//
+// WHAT THIS REPLACES. The previous shape built a `docker run` word list by hand, and the two NCCL
+// variables it spelled -- NCCL_SOCKET_IFNAME and GLOO_SOCKET_IFNAME -- named the fabric leg correctly
+// while the line mapped NO /dev/infiniband, added NO IPC_LOCK and lifted NO memlock. That combination
+// is precisely what Group B was found running: the interface was right and the transport was TCP, which
+// is why the interface name is not evidence about the transport and cannot be read as any.
+//
+// The device, the capability, the memlock ulimit, the two socket names, the RoCE GID selection and the
+// two endpoint names are seven spellings of ONE decision, so they are derived from
+// gunbc.spark.collective_transport_plan rather than listed here. A rank cannot now carry four of the
+// seven.
+fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> DockerCreateSpec {
+  let mount = arm_mount_plan(row: crow)
+  DockerCreateSpec {
+    name: container.container_name,
+    image: runtime_artifact_wire(a: rrow.artifact),
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: byte_size_count(b: container.shm_size),
+    memlock_unlimited: transport_plan_memlock_unlimited(p: node.transport),
+    gpus_all: true,
+    devices: transport_plan_devices(p: node.transport),
+    cap_add: transport_plan_cap_add(p: node.transport),
+    restart: RestartNo,
+    mounts: concat([BindMount { host_path: mount.host_dir, container_path: mount.container_dir, readonly: true }], container.extra_mounts),
+    env: concat(concat([
+      DockerEnvAssignment { name: "NCCL_DEBUG" as NonEmptyStr, value: "INFO" },
+      DockerEnvAssignment { name: "NCCL_DEBUG_SUBSYS" as NonEmptyStr, value: "INIT,NET" },
+      DockerEnvAssignment {
+        name: vllm_usage_stats_no_usage_stats_term.variable,
+        value: vllm_usage_stats_no_usage_stats_term.disabling_value as String,
+      },
+      DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: render_ipv4_address(addr: node.rail) as String },
+    ], deployment_env), transport_plan_env(p: node.transport)),
+    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, master_port: container.master_port),
+  }
+}
+// THE SHARED-MEMORY SIZE IS THIS ARM'S OBSERVED VALUE, NOT THE PAIR ROUTE'S.
+//
+// A PREVIOUS REVISION SPELLED 10737418240 HERE AND HAD NO BASIS FOR IT. That is the pair route's
+// figure (gunbc.spark.pair_serving_realization), copied across because it was the nearest serving
+// container in the corpus -- which is the borrowed-value substitution this fleet already has a
+// recurring-failure-mode row for, committed a second time on a different field. Every rank of the
+// native arm runs 67108864, on both the socket and the RoCE incarnation, read from the captured
+// docker inspect of all four hosts (artifacts/spark/glm-group-b-2026-09-16).
+//
+// IT IS NEARLY INERT AND STILL MUST BE RIGHT. These containers run with IPC namespace host, so the
+// container's own /dev/shm sizing is not what the engine's shared memory comes from. That is a
+// reason the wrong value did no harm, NOT a reason a spec may state a number nobody chose: a
+// readback comparing plan against observation reports disagreement on exactly this field, which is
+// how it was found.
+data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
+
+// GROUP B'S GLM ARM, AS IT HAS ALWAYS BEEN NAMED; it mounts nothing beyond its weights.
+data glm_native_arm_container: ArmContainerIdentity = ArmContainerIdentity {
+  container_name: glm_native_container_name,
+  master_port: glm_native_master_port,
+  shm_size: glm_native_shm_size,
+  extra_mounts: [],
+}
+
+// ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
+//
+// THESE ARE TWO DIFFERENT LISTS AND A READBACK THAT CONFUSES THEM CANNOT EVER AGREE. The full launch line
+// begins "docker run -d --name ..." and ends with the engine's arguments; a running container remembers
+// only the second half, because the first half was consumed by the daemon that created it. A previous
+// revision compared the WHOLE line against what the container reports and refused every healthy rank with
+// "argv differs first at word 0 (planned 63 words, observed 36)" -- word zero being "docker" against the
+// model path. Splitting the list here gives the comparison a referent the observation can actually hold.
+// THE PARSERS ARE READ OFF THE CHECKPOINT ROW, which is the model's authority for them
+// (gunbc.spark.serving_arm CheckpointVllmParsers); the tokenizer mode renders only where the model
+// asks for one. The Engram request is the profile's and renders nothing when omitted, so an arm that
+// asked for neither emits exactly the words it did before either existed.
+fn arm_tokenizer_mode_argv(crow: ServingCheckpointRow) -> List<String> {
+  match crow.parsers.tokenizer_mode {
+    Absent => []
+    Present { value: m } => ["--tokenizer-mode", m as String]
+  }
+}
+
+fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, master_port: Port) -> List<String> {
+  concat([
+    arm_mount_plan(row: crow).model_path as String,
+    "--served-model-name", profile.served_alias as String,
+    "--tensor-parallel-size", to_string(ranks),
+    "--distributed-executor-backend", "mp",
+    "--nnodes", to_string(ranks),
+    "--node-rank", to_string(node.node_rank),
+    "--master-addr", render_ipv4_address(addr: master) as String,
+    "--master-port", to_string(master_port),
+    "--max-model-len", to_string(token_count_value(t: profile.max_model_len)),
+    "--max-num-batched-tokens", to_string(token_count_value(t: profile.max_num_batched_tokens)),
+    "--max-num-seqs", to_string(profile.max_num_seqs),
+    "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: profile.kv_cache_dtype) as String,
+    "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: profile.decided_gpu_memory_basis_points),
+    "--tool-call-parser", crow.parsers.tool_call_parser as String,
+    "--reasoning-parser", crow.parsers.reasoning_parser as String,
+    "--enable-auto-tool-choice",
+    "--host", "0.0.0.0",
+    "--port", to_string(profile.serve_port),
+  ], concat(
+    vllm_prefix_caching_argv(r: profile.prefix_caching),
+    concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
+      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), concat(vllm_scheduler_admission_argv(r: profile.scheduler_admission), vllm_indexer_kv_dtype_argv(r: profile.indexer_kv_dtype)))))))))
+}
+
+// ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
+//
+// FOUR IDENTICAL `vllm serve` PROCESSES IS THE WRONG SHAPE FOR THIS IMAGE, and attempt 6 is what
+// established it. Every parameter was right -- the memory envelope was admitted on all four ranks, all four
+// containers started, the weights loaded -- and a follower rank then died with
+// `AssertionError: collective_rpc should not be called on follower node`, cleanly, exit 0.
+//
+// READ FROM THE PINNED DIGEST, THE MECHANISM IS EXACT. In v1/executor/multiproc_executor.py the DP group
+// leader -- `node_rank_within_dp == 0` -- constructs `rpc_broadcast_mq`; a follower does not, so the handle
+// is None and the assertion at line 389 fires the moment anything calls collective_rpc on that node. Nothing
+// was wrong with the follower: the fault is that it was ALSO running an API server, and an API server drives
+// collective RPCs.
+//
+// SO THE LEADER SERVES AND THE FOLLOWERS RUN HEADLESS. `--headless` sets api_server_count to 0, and
+// entrypoints/cli/serve.py dispatches `api_server_count < 1` to `run_headless`, which brings the engine up as
+// a participant with no server in front of it. Its own guard requires data_parallel_size_local > 0, which
+// holds here because this arm is tensor-parallel with a data-parallel size of 1, so the local count defaults
+// to 1.
+//
+// THE FLAG'S HELP NAMES DATA PARALLELISM AND THAT IS NOT A CONTRADICTION, though it is why this was worth
+// reading rather than guessing: follower-ness is decided by `node_rank_within_dp`, which with a
+// data-parallel size of one is just the node rank. The leader/follower split is about which node owns the
+// broadcast queue, not about which parallelism the model is sharded by.
+fn arm_headless_argv(node: ArmNode) -> List<String> {
+  if node.node_rank == 0 { [] } else { ["--headless"] }
+}
+
+type ArmLaunchPlan
+  = ArmLaunchPlanned { lines: List<ArmNodeLaunch>, master: Ipv4Address }
+  | ArmLaunchRefused { cause: NonEmptyStr }
+
+// THE LINE CARRIES WHAT IT KNOWS RATHER THAN LETTING A READER RE-DERIVE IT FROM WORDS. The readback used
+// to recover the image and the engine arguments by SNIFFING this list -- filtering for a word containing
+// "@sha256:" and comparing the whole docker line against a container's own arguments. Both readings were
+// wrong for this arm: it pins a BARE content id with no "@", so the filter selected nothing and joined an
+// EMPTY string, which then printed as `is not the planned ` with the planned value simply missing. A
+// planner that already holds the image reference and the engine argument list should state them.
+type ArmNodeLaunch sole_constructor {
+  node: ArmNode
+  container: DockerCreateSpec
+  create: ArgvCommand
+  engine_argv: List<String>
+  image_reference: NonEmptyStr
+  host_model_path: NonEmptyStr
+}
+
+// THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
+// any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
+// known-impossible tuple, so it is consulted before anything renders.
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
+  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, deployment_env: deployment_env, container: container)
+}
+
+// ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
+//
+// THE INTENT WALL IS `intent_refusal` ABOVE, NOT THIS CHECK. A previous revision routed the intent
+// through `serving_arm_admits_for`, which took an ArmIntent and ignored it -- its body was
+// `serving_arm_admits` verbatim. An inert parameter that reads as a wall is worse than no wall,
+// because the next reader cites it as coverage; it is deleted and the call goes direct.
+// `serving_arm_admits` asks whether a tuple is
+// PLAUSIBLE -- does the image register the architecture, does the checkpoint fit the pool -- and nothing asked
+// whether this exact tuple had already been run and refused. So a subject stayed launchable after execution
+// had settled the question, and attempts 8 and 9 were the same subject.
+//
+// THE GATE LIVES HERE RATHER THAN IN THE ARM WALL BECAUSE OF ACYCLICITY. gunbc.spark.serving_compatibility
+// imports gunbc.spark.serving_arm for the checkpoint, runtime and topology vocabularies; making the arm wall
+// consult the roster would close a cycle, which is the one structural law the import graph has. A first
+// revision of this change did exactly that. The plan renderer already imports both, so it is the earliest
+// acyclic point at which the refusal can bind -- and binding it to the PLAN is the stronger placement anyway,
+// because this module is the only producer of a native launch plan.
+//
+// A SUBJECT ABSENT FROM THE ROSTER IS UNKNOWN AND STAYS LAUNCHABLE, which is how a new tuple is measured at
+// all. The topology is part of the match, so a different rank count is a different subject; a patched image
+// would be a different runtime and likewise uncovered by the old refusal. That is the point of the relational
+// grain rather than a per-image flag.
+// THE SUBJECT THE GATE COMPARES IS BUILT HERE, FROM EVERYTHING THE LAUNCH ACTUALLY BINDS. A previous
+// revision passed checkpoint, runtime and topology to a three-field lookup, so a refusal measured under one
+// launch profile refused every other profile of the same tuple -- the patched-image repair included -- and
+// the accelerator was never compared at all. The gate now takes the whole typed subject and
+// gunbc.spark.serving_compatibility owns the comparison.
+//
+// THE ACCELERATOR IS A PROPERTY OF THE GROUP, and every Spark in both cages is a GB10 at compute capability
+// 12.1. It is a total match rather than a constant so that the first non-uniform cage is a compile error
+// here instead of a receipt that quietly claims the wrong silicon.
+fn fabric_group_accelerator(g: FabricGroup) -> NonEmptyStr {
+  match g {
+    FabricGroupA => spark_gb10_accelerator
+    FabricGroupB => spark_gb10_accelerator
+  }
+}
+
+fn launch_compatibility_subject(
+  checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology,
+  group: FabricGroup, profile: ServingLaunchProfile,
+) -> ServingCompatibilitySubject {
+  serving_compatibility_subject(
+    checkpoint: checkpoint, runtime: runtime, topology: topology,
+    accelerator: fabric_group_accelerator(g: group), profile: profile)
+}
+
+// ── AN INSPECTED IMAGE AND A SERVED ONE ARE NOT THE SAME STANDING, AND THIS IS WHERE THAT BITES ──
+//
+// WHAT THIS RESTORES. An earlier shape carried the asymmetry on a per-image field, and when that field
+// was replaced by the compatibility relation the asymmetry was left with no executing consumer: the
+// admission vocabulary was imported by this module and called nowhere, so a subject nobody had ever
+// run could be planned for normal serving exactly as readily as one with an execution receipt. The
+// annotation describing the replacement is not the replacement (DESIGN section 4c: an annotation is
+// never evidence that a machine claim holds), so the wall is spelled here as a fold that runs.
+//
+// A BOUNDED EXPERIMENT IS STILL ADMITTED, which is what keeps this a wall rather than a ban: the way a
+// subject EARNS an execution receipt is by being run, so refusing every unmeasured tuple outright would
+// make the roster unable to grow. The intent is the caller's declaration of which of those two things
+// it is asking for, and the refusal names both sides.
+// IT ANSWERS WITH A CAUSE OR WITH NOTHING, rather than with a plan. A first spelling of this returned
+// an ArmLaunchPlan, which forced the admitting arms to invent a lines list and a master address they
+// had no business holding -- a fabricated value standing in for "no objection". Absent IS the
+// admission, and there is nothing to make up.
+fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEmptyStr? {
+  match admission {
+    AdmitsNothing { because: b } => Present { value: b }
+    AdmitsNormalServing => none
+    AdmitsBoundedExperimentOnly =>
+      match intent {
+        ArmBoundedExperiment => none
+        ArmNormalServing => Present { value: "this subject has no execution receipt, so the measured roster admits a bounded experiment and not normal serving; run it as a bounded experiment first, or record the receipt that makes it compatible" as NonEmptyStr }
+      }
+  }
+}
+
+// THE ADMISSION CONTROLS ARE CHECKED AGAINST THE RUNTIME THAT WILL RUN THEM (review on #12975): the
+// envelope already refused a malformed control (vllm_scheduler_admission_defect); here a control the
+// launch states, or any above-floor envelope, must also RESOLVE at the selected runtime's own vLLM
+// revision (extdeps.vllm.runtime_defaults resolve_vllm_scheduler_admission) -- a watermark on a revision
+// with no such field, or a runtime whose revision is not modelled, refuses here rather than at engine
+// init. A floor launch that states no control requests nothing and is priced fully cold, so it needs no
+// runtime resolution; that keeps the converged 8/8 launch unchanged.
+fn scheduler_admission_runtime_refusal(profile: ServingLaunchProfile, rrow: ServingRuntimeRow) -> NonEmptyStr? {
+  if vllm_scheduler_admission_argv(r: profile.scheduler_admission) == [] && profile.guaranteed_cold_seqs == profile.max_num_seqs {
+    none
+  } else {
+    match rrow.claimed_defaults_revision {
+      Absent => Present { value: "the launch states scheduler admission controls but its runtime claims no modelled vLLM revision, so whether the engine accepts them is unestablished" as NonEmptyStr }
+      Present { value: rev } =>
+        match resolve_vllm_scheduler_admission(request: profile.scheduler_admission, defaults: VllmDefaultsKnown { revision: rev }) {
+          SchedulerAdmissionUnresolvable { cause: c } => Present { value: c }
+          SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => none
+        }
+    }
+  }
+}
+
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
+  let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
+  if !(profile.checkpoint == checkpoint) {
+    ArmLaunchRefused { cause: "the launch profile was derived from another checkpoint's launch policy than the arm deploys: a profile carries the checkpoint its policy row names, and the arm's assignment must be that checkpoint" as NonEmptyStr }
+  } else if measured_subject_refuses(subject: subject) {
+    ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
+  } else {
+  match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
+    Present { value: c } => ArmLaunchRefused { cause: c }
+    Absent =>
+  match serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: Present { value: profile }) {
+    ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
+    ServingArmAdmitted =>
+      match serving_checkpoint_row(c: checkpoint) {
+        Absent => ArmLaunchRefused { cause: "no checkpoint row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
+        Present { value: crow } =>
+          match serving_runtime_row(r: runtime) {
+            Absent => ArmLaunchRefused { cause: "no runtime row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
+            Present { value: rrow } =>
+              match scheduler_admission_runtime_refusal(profile: profile, rrow: rrow) {
+               Present { value: c } => ArmLaunchRefused { cause: c }
+               Absent =>
+              match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
+                ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
+                ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
+                  lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, deployment_env: deployment_env, container: container)),
+                  master: m,
+                },
+              }
+              }
+          }
+      }
+  }
+  }
+}
+}
+
+// ── THE MEMORY WALL, APPLIED AFTER EVERY OTHER WALL AND BEFORE ANY RENDER IS USED ──────────────
+//
+// WHY IT SITS BELOW THE EXECUTION WALLS. The measured walls answer what EXECUTION has already
+// established -- this exact tuple, refused or served -- and an unrun subject's first repair is
+// the bounded experiment that mints BOTH the execution receipt and the component memory receipts.
+// The memory wall is where the proof obligation binds, and it refuses the subject that passes
+// every execution wall with its missing terms named: the Group B arm carries no memory receipt
+// for any term, so its normal-serving plan refuses with the fit obligations where the weights-only
+// heuristic rendered lines.
+//
+// THE WALL CONSUMES A SEALED SUBJECT. arm_memory_fit_subject_for_launch is a mint, not a record:
+// it enforces the intent/profile join (the executable config priced and the executable config
+// rendered are one value), derives the checkpoint aggregate, and builds exactly one open rank
+// record per topology rank. Construction defects arrive here as typed refusals, not verdicts.
+//
+// THE EXPERIMENT ARM IS VERDICT-AWARE. FitProved admits either intent. FitRefused refuses both --
+// a shape that cannot fit under its most favorable reading has nothing a measurement can rescue.
+// FitUnestablished refuses normal serving, and admits a bounded experiment ONLY through a typed
+// experiment plan built from the subject's own open components, naming the targeted obligations,
+// a conservative envelope, a finite runtime, the receipts the run must mint, and the stop/cleanup
+// and no-enrollment contract.
+//
+// WHO IT BINDS: EVERY ARM. Group B's launch (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan)
+// and the V4.1 arm on Group A (gunbc.spark.v41_group_a_launch v41_group_a_launch_plan) both plan through
+// this function, and no plan for either exists that did not pass it. The experiment runtime is derived
+// from each launch's own container environment (gunbc.spark.arm_memory_fit engine_ready_timeout_for)
+// and its own sequence ceiling, never a model constant. The component model's terms are not general:
+// the prefill-transient and cache-roster terms read extdeps.zhipu.glm_5_3_flash's hybrid shape, and a
+// checkpoint whose terms are not modeled -- V4.1 today -- enters with every per-rank term OPEN, so its
+// verdict is Unestablished: it is admitted only as a bounded experiment, and normal serving refuses until
+// its own terms are modeled and proved. Modeling V4.1's per-rank terms is the trigger that can take it
+// past Unestablished; it is not a trigger for passing this wall, which it already does.
+//
+// THE PLAN IS COMPUTED FIRST AND GATED SECOND. Planning is pure, so a plan the gate refuses is
+// discarded with nothing sent anywhere, and every execution-wall refusal keeps its own cause.
+// NORMAL SERVING ALSO PASSES THE ONE PROMOTION STEP (gunbc.spark.serving_promotion, deforking cut 5):
+// the subject derived from this exact launch must carry its own memory, resolved-layout, quality and
+// workload-calibration receipts beside execution compatibility. A bounded experiment does not ask --
+// it is how those receipts get produced.
+fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity, promotion_receipts: ServingPromotionReceipts) -> ArmLaunchPlan {
+  match plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: intent, profile: profile, deployment_env: deployment_env, container: container) {
+    ArmLaunchRefused { cause: c } => ArmLaunchRefused { cause: c }
+    ArmLaunchPlanned { lines: ls, master: m } =>
+      match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: profile) {
+        ArmMemorySubjectRefused { cause: c } => ArmLaunchRefused { cause: c }
+        ArmMemorySubjectReady { subject: mem_subject } => {
+          let verdict = arm_memory_fit_verdict(subject: mem_subject)
+          match arm_memory_experiment_for_wall(
+            intent: intent,
+            verdict: verdict,
+            checkpoint: checkpoint,
+            runtime: runtime,
+            topology: topology,
+            profile: profile,
+            workload: mem_subject.intent,
+            open: arm_memory_subject_open_components(subject: mem_subject),
+            deployment_env: deployment_env) {
+            ArmWallExperimentRefused { cause: c } => ArmLaunchRefused { cause: c }
+            ArmWallExperimentNotRequired =>
+              match arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none) {
+                Present { value: c } => ArmLaunchRefused { cause: c }
+                Absent =>
+                  arm_memory_gated_plan(
+                    gate: normal_serving_promotion_refusal(intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, deployment_env: deployment_env, verdict: verdict, receipts: promotion_receipts),
+                    lines: ls, master: m)
+              }
+            ArmWallExperimentPlanned { plan: p } =>
+              arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: Present { value: p }), lines: ls, master: m)
+          }
+        }
+      }
+  }
+}
+
+fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
+  match intent {
+    ArmBoundedExperiment => none
+    ArmNormalServing =>
+      match serving_checkpoint_row(c: checkpoint) {
+        Absent => Present { value: "no checkpoint row, so no promotion subject derives" as NonEmptyStr }
+        Present { value: crow } =>
+          match serving_runtime_row(r: runtime) {
+            Absent => Present { value: "no runtime row, so no promotion subject derives" as NonEmptyStr }
+            Present { value: rrow } => {
+              let subject = serving_subject_for_launch(
+                checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
+                runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
+                deployment_env: deployment_env, collective_transport: none)
+              let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
+              let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
+              match standing {
+                PromotionAdmitsNormalServing => none
+                PromotionRefused { cause: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
+                PromotionMeasurementServeOnly { missing: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE GATE'S ANSWER OVER THE ALREADY-PLANNED LINES. The gate answers with a cause or with nothing;
+// nothing passes the planned lines through unchanged, so the gated and ungated plans have exactly
+// one construction.
+fn arm_memory_gated_plan(gate: NonEmptyStr?, lines: List<ArmNodeLaunch>, master: Ipv4Address) -> ArmLaunchPlan {
+  match gate {
+    Present { value: c } => ArmLaunchRefused { cause: c }
+    Absent => ArmLaunchPlanned { lines: lines, master: master }
+  }
+}
+
+// THE EXPERIMENT PLAN, BUILT ONLY WHERE THE GATE NEEDS IT. A bounded experiment over an
+// Unestablished verdict goes through the plan mint with the subject's typed open components as
+// targets; a refused plan refuses the launch with the plan's own cause, carried as a typed arm
+// rather than smuggled through a fabricated plan. Every other intent/verdict pair needs no plan.
+// The gate remains the one authority on what a verdict admits.
+type ArmWallExperiment
+  = ArmWallExperimentNotRequired
+  | ArmWallExperimentPlanned { plan: ArmMemoryExperimentPlan }
+  | ArmWallExperimentRefused { cause: NonEmptyStr }
+
+fn arm_memory_experiment_for_wall(
+  intent: ArmIntent,
+  verdict: ArmMemoryFitVerdict,
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  profile: ServingLaunchProfile,
+  workload: ServingCapacityIntent,
+  open: List<ArmMemoryComponent>,
+  deployment_env: List<DockerEnvAssignment>,
+) -> ArmWallExperiment {
+  match intent {
+    ArmNormalServing => ArmWallExperimentNotRequired
+    ArmBoundedExperiment =>
+      match verdict {
+        ArmMemoryFitUnestablished { obligations: _ } =>
+          match arm_memory_fit_experiment_plan(
+            checkpoint: checkpoint, runtime: runtime, topology: topology,
+            workload: workload, policy_profile: profile, targets: open, deployment_env: deployment_env) {
+            ArmMemoryExperimentAdmitted { plan: p } => ArmWallExperimentPlanned { plan: p }
+            ArmMemoryExperimentRefused { cause: c } => ArmWallExperimentRefused { cause: c }
+          }
+        ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => ArmWallExperimentNotRequired
+        ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => ArmWallExperimentNotRequired
+      }
+  }
+}
+
+// ONE PLACE BUILDS THE LINE, so the spec a rank is created from and the command recorded beside it are
+// the same value rather than two renderings that can drift. The engine argv is carried separately
+// because a running container remembers only that half -- the create flags were consumed by the daemon
+// -- so a readback comparing the whole line against a container's own arguments compares nothing.
+fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmNodeLaunch {
+  let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile, deployment_env: deployment_env, container: container)
+  ArmNodeLaunch {
+    node: node,
+    container: spec,
+    create: docker_create_command(spec: spec),
+    engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, master_port: container.master_port),
+    image_reference: runtime_artifact_wire(a: rrow.artifact),
+    host_model_path: arm_mount_plan(row: crow).host_model_path,
+  }
+}
+

@@ -3,8 +3,7 @@ module gunbc.command_runner
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { List, String, NonEmptyStr, Bool }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.exec.command {
   ArgvCommand,
   CommandTransport,
@@ -19,13 +18,14 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import extdeps.tools.stat { stat_owner_user_name_command }
-import std.algebra { Empty }
+import std.algebra { Empty, trim }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
 import extdeps.shell.exec {
   ExitZeroSucceeds, process_exit_is_admitted,
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  ProcessObservation, process_observation, classify_process_observation,
+  ProcessObservation, process_observation, classify_process_observation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -127,8 +127,36 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // THE LocalExec ARM'S SHAPE BELOW IS THIS COLLAPSE'S OWN, not a preserved inheritance. Nothing
 // about #8593's earlier LocalExec-only cut constrained what this run site had to look like once
 // SshExec joined it through the same seam.
+// THE STDIN SIBLING OF run_shell_command, LOCAL LEG ONLY. Same admitted shape -- a caller-named
+// program and word list -- plus a payload that reaches the child as STDIN, never as an argv
+// element, so data carrying spaces, quotes or metacharacters cannot change the command's meaning
+// whatever it contains. Built for the typed append (tee -a) whose whole point is that the payload
+// is data. There is NO transport parameter to misread: the name says local, and the ssh leg would
+// forward the payload to a remote shell session -- admitting that is its own change with its own
+// analysis, and until it exists a caller wanting that gets a compile error, not a runtime refusal.
+fn run_shell_command_stdin_local(command: ArgvCommand, stdin_payload: String) -> ProcessExit
+{
+  match command_over_transport(command: command, transport: LocalExec) {
+    CommandOverTransportRefused { cause: c } =>
+      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+    CommandOverTransportBuilt { command: over } => {
+      let run = shell.Exec.RunArgvStdin(
+        program: over.program.invocation,
+        arguments: process_argv_expansion(
+          surface: cli_surface_of_literal_words(words: over.arguments)
+        ),
+        stdin_payload: stdin_payload,
+      )
+      if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("command failed: ", run.stderr))
+      }
+    }
+  }
+}
+
 fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
-  uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
@@ -136,7 +164,7 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgv(
-          program: over.program,
+          program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
@@ -230,7 +258,6 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // every consumer in the fleet. Two different questions, two functions; the classifier is untouched
 // and no existing caller changes.
 fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
-  uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
@@ -242,7 +269,7 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgv(
-          program: over.program,
+          program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
@@ -252,8 +279,36 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
   }
 }
 
-fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+// THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
+// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
+// transport that refuses to build the command spawned nothing either, so it is the same arm, never
+// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (§5).
+fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
   uses net: Network
+{
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ProcessNotSpawned {
+        program: command.program.invocation,
+        cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
+      }
+    CommandOverTransportBuilt { command: over } =>
+      {
+        let run = shell.Exec.RunArgvOutcome(
+          program: over.program.invocation,
+          arguments: process_argv_expansion(
+            surface: cli_surface_of_literal_words(words: over.arguments)
+          ),
+        )
+        match run.outcome {
+          ShellSpawnRefused { program: p, cause: why } => ProcessNotSpawned { program: p, cause: why }
+          ShellExited => ProcessRan { observation: process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) }
+        }
+      }
+  }
+}
+
+fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
 {
   classify_process_observation(
     policy: ExitZeroSucceeds,
@@ -296,7 +351,6 @@ fn stat_owner_name_capture(path: String) -> ProcessOutcome {
 }
 
 fn run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
-  uses net: Network
 {
   fold(
     commands,

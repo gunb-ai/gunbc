@@ -1,6 +1,7 @@
 module v2.std.decl_ref_resolution
 
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
 import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, logical_qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
@@ -64,6 +65,7 @@ fn decl_ref_named_field_present(ref: DeclarationRef, fact: DeclFact) -> Bool {
         xs: node_labeled_child_edges(node: fact.node),
         predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
+    TypeParameter { name: _ } => false
   }
 }
 

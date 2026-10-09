@@ -1,5 +1,6 @@
 module extdeps.github.workflows
 
+import extdeps.ietf.http_semantics { POST }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
@@ -9,6 +10,9 @@ import extdeps.uri { Uri, Https }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -60,6 +64,7 @@ service github.Workflows {
   }
 
   operation CreateDispatch {
+    requires Network
     input {
       owner: String
       repo: String

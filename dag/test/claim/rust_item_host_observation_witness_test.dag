@@ -71,7 +71,9 @@ data head_with_unjustified_addition: String = "use std::fmt;\n\npub fn existing_
 
 data head_with_modified_existing_item: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    7\n}\n"
 
-data head_with_macro_block_addition: String = "use std::cell::RefCell;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n"
+data head_with_macro_block_addition: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\nmacro_rules! counter {\n    () => { 0 };\n}\n"
+
+data head_with_thread_local_addition: String = "use std::cell::RefCell;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n"
 
 data head_with_unreadable_region: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\n{\n    1\n}\n"
 
@@ -222,21 +224,49 @@ test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool {
   }
 }
 
-// A CHANGE INSIDE A MACRO BLOCK REFUSES, AND THIS IS THE ARM MOST LIKELY TO HAVE BEEN A FAIL-OPEN.
-// The macro block scans cleanly -- the file is not refused, the following items are found -- so the
-// tempting answer for a line inside it is "no item changed", which is exactly the empty-observation
-// narrow: a `static` added inside `thread_local!` is hand-Rust growth that no roster row names. The
-// reader has no name for it, so the join stops the line rather than reporting nothing.
+// A CHANGE INSIDE AN UNMODELED MACRO BLOCK REFUSES, AND THIS IS THE ARM MOST LIKELY TO HAVE BEEN A
+// FAIL-OPEN. The macro block scans cleanly -- the file is not refused, the following items are found
+// -- so the tempting answer for a line inside it is "no item changed", which is exactly the
+// empty-observation narrow: an arm added inside `macro_rules!` is hand-Rust growth that no roster
+// row names. The reader has no name for it, so the join stops the line rather than reporting
+// nothing, and the refusal names the macro.
 test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() -> Bool {
   match change_of(head_content: head_with_macro_block_addition, new_ranges: [LineRange { start: 8, count: 1 }]) {
-    RustItemChangeUnattributed { repo_path: path, line: line, detail: _ } =>
-      path == cli_run_path && line == 8
+    RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
+      path == cli_run_path
+        && line == 8
+        && string_contains(s: detail, pattern: "inside a `macro_rules!` block")
     RustItemChangeObserved {
       added_hand_items: _,
       modified_hand_items: _,
       deleted_hand_items: _,
       generated_changes: _
     } => false
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+// A STATIC ADDED INSIDE thread_local! IS AN ADDED ITEM BY NAME. std documents the macro's body as a
+// sequence of static declarations (extdeps.rust.std_thread_local), so the declaration is nameable,
+// and the change is reported the way any added static is -- which is what lets the admission join
+// ask for its justification rather than stopping the line on a refusal (gunbc#12886's
+// JSON_ENCODE_NESTING).
+test fn a_static_added_inside_thread_local_is_reported_added_by_name() -> Bool {
+  match change_of(head_content: head_with_thread_local_addition, new_ranges: [LineRange { start: 7, count: 3 }]) {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: modified,
+      deleted_hand_items: _,
+      generated_changes: _
+    } =>
+      length(xs: modified) == 0
+        && length(xs: added) == 1
+        && any(
+          xs: list_map(xs: added, f: fn(i) { rust_item_identity_key(item: i) }),
+          predicate: fn(k) { k == "src/v1/stage0/src/cli_run.rs::static::COUNTER" }
+        )
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => false
     RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
     RustItemChangeHostRefused { detail: _ } => false
   }
@@ -640,7 +670,8 @@ fn reference_sources() -> List<RustFileChangeInput> {
   [
     reference_source(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", content: "#![allow(dead_code)]\npub use v1_compiler::v1_rt;\n"),
     reference_source(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs", content: "pub fn bridge() -> u32 {\n    v1_rt::answer()\n}\n"),
-    reference_source(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs", content: "use std::cell::RefCell;\n\nthread_local! {\n    static RT: RefCell<u32> = RefCell::new(v1_rt::seed());\n}\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs", content: "use std::fmt;\n\nmacro_rules! rt {\n    () => { v1_rt::seed() };\n}\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_thread_local_shims/lib.rs", content: "use std::cell::RefCell;\n\nthread_local! {\n    static RT: RefCell<u32> = RefCell::new(v1_rt::seed());\n}\n"),
     reference_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() -> u32 {\n    1\n}\n"),
     reference_source(path: "fixtures/planted_unclaimed/lib.rs", content: "pub use v1_compiler::v1_rt;\n"),
     reference_source(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs", content: "// once reached v1_rt; kept as a receipt\n/// doc: v1_rt is not linked here\npub fn documented() -> u32 {\n    1\n}\n"),
@@ -691,6 +722,11 @@ test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dro
         && (u |> all(x => x.repo_path == "dag/gunbc/instruments/planted_macro_shims/lib.rs" && x.line == 4 && x.token == "v1_rt"))
         && count(reference_row_for(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs")) == 0
   }
+}
+
+test fn a_reference_inside_a_thread_local_static_lands_on_that_static() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_thread_local_shims/lib.rs")) == 1
+    && reference_row_projects_to(path: "dag/gunbc/instruments/planted_thread_local_shims/lib.rs", module_path: "v1_compiled.planted_thread_local_shims.lib", decl_name: "RT")
 }
 
 test fn a_file_naming_no_token_yields_no_row() -> Bool {

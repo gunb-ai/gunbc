@@ -93,27 +93,30 @@ fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSeg
 }
 
 fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
-  if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
-  else if a_rest.length() == 0 {
-
-    if b_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
-    } else {
-      Less
+  match a_rest.first() {
+    Absent => match b_rest.first() {
+      Absent => Equal
+      Present { value: b_head } =>
+        if b_head == 0 {
+          pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
+        } else {
+          Less
+        }
     }
-  } else if b_rest.length() == 0 {
-    if a_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
-    } else {
-      Greater
-    }
-  } else {
-    match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {
-      Equal => pep440_compare_release_rest(
-        a_rest: a_rest.skip(n: 1),
-        b_rest: b_rest.skip(n: 1)
-      )
-      other => other
+    Present { value: a_head } => match b_rest.first() {
+      Absent =>
+        if a_head == 0 {
+          pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
+        } else {
+          Greater
+        }
+      Present { value: b_head } => match pep440_compare_non_negative_int(a: a_head, b: b_head) {
+        Equal => pep440_compare_release_rest(
+          a_rest: a_rest.skip(n: 1),
+          b_rest: b_rest.skip(n: 1)
+        )
+        other => other
+      }
     }
   }
 }

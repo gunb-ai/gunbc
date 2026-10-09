@@ -1,0 +1,801 @@
+module product.node_platform_selection
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.interval { degenerate_interval }
+import v2.std.algebra { any, filter }
+import std.decision {
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionRegion,
+  ObjectiveTermSensitivity,
+  VariesAlong,
+  RelationOtherwiseEstablished,
+  ParameterDisposition,
+  ParameterBound,
+  ParameterUnestablished,
+  DecisionAssessment,
+  PhysicalModelEstablished,
+  CausalModelPopulation,
+  CausalModelEstablished,
+  CausalModelUnestablished,
+  VendorDocumentedCoupling, FleetObservedCoupling,
+  CausalCoupling,
+  HardConstraint,
+  SelectionPolicy,
+  SelectionReceipt,
+  RealizationSelectionResult,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  NoFeasibleRealization,
+  CandidateFieldUnestablished,
+  RealizationSelectionRefused,
+  UniqueSurvivorRequired,
+  select_realization,
+  selection_evidence_need_cause,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority, ObservedByReceipt, observed_receipt_ref,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
+import extdeps.systems.types {
+  IntegratedComputeSystemCatalogRow,
+  CoherentSuperchipCatalogRow,
+  coherent_superchip_coherent_capacity,
+  SuperchipServerCatalogRow,
+  server_supply_ceiling_at,
+  SupplyOutputRating,
+  SuppliesOnePlusOne,
+  SuppliesNonRedundant,
+  StorageBay,
+  ExpansionSlot,
+  FrontPanelPort,
+  SystemNetworkPort,
+  TemperatureRange,
+  HumidityRange,
+}
+import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
+import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
+import std.measure { Watt, ByteSize, byte_size, byte_size_count, watt_count, millimeter_count, celsius_count }
+import std.nat { Nat }
+import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
+import product.superchip_assembly_qualification {
+  SuperchipAssembly,
+  AssemblyWorkloadQualified,
+  AssemblyBlockedAt,
+  AssemblyRefusedAt,
+  InventoryMeasured,
+  InventoryUnmeasured,
+  assembly_qualification,
+  qualification_stage_label,
+  first_assembly,
+}
+import product.build_selection {
+  BuildAxisReading,
+  MagnitudeBytes,
+  MagnitudeBandwidth,
+  MagnitudeWatts,
+  to_axis_reading,
+}
+
+// GH200-0 (2026-10-03), GH200-1 (same day). THE QUESTION: should the serving fleet's node platform move from DGX Spark
+// to GH200 superchips on NVIDIA's P4261 dev carrier. The operator's stated intent is to sell the
+// Sparks and move, "assuming I can actually get it working" -- and that clause is the whole shape of
+// this module: the platform comparison is computable from cited catalog rows today, while getting it
+// working is a set of open constraints that std.decision refuses to settle past.
+//
+// WHY THIS IS NOT product.build_selection, which is the existing buy-side Pareto projector. Its
+// candidates are NodeRecipes resolved through product.build_fulfillment, whose memory lines are
+// DIMM populations graded by gunbc.memory_change_evaluation. A GH200's memory is soldered on the
+// module, so there is no population to propose and no DIMM line to resolve; forcing it through would
+// fabricate an empty memory proposal that the qualification seam then grades. The divergence is
+// stated, and the one piece that does transfer is reused rather than restated: build_selection's
+// unit-carrying magnitude collapse (BuildAxisReading / to_axis_reading), so a byte count, a
+// bandwidth and a wattage still reach std.pareto through the one total function that names them.
+
+// The module and carrier units, and what it takes to qualify one assembly of them, live in
+// product.superchip_assembly_qualification. This decision consumes that verdict PER ROUTE, never as a
+// global gate (GH200-5, 2026-10-04, review): whether one candidate route works says nothing about
+// whether another does, so a refused P4261 assembly excludes the P4261 route and leaves retaining the
+// Sparks, or an OEM route, standing; and a qualified P4261 assembly qualifies the P4261 route and no
+// other. The operator's sale policy -- no Spark is sold until a replacement is demonstrated -- is a
+// separate predicate over this decision's result (replacement_gate), not a constraint inside it.
+
+// ── THE DECISION SUBJECT ─────────────────────────────────────────────────────────────────────
+
+data var_node_platform: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "var_node_platform"),
+}
+
+data param_platform_prices: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_platform_prices"),
+}
+
+data param_served_model: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_served_model"),
+}
+
+data gh200_datasheet_ground: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+data term_gpu_local_capacity: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_gpu_local_capacity"),
+  ground: gh200_datasheet_ground,
+}
+
+data term_gpu_local_bandwidth: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_gpu_local_bandwidth"),
+  ground: gh200_datasheet_ground,
+}
+
+data term_coherent_capacity: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_coherent_capacity"),
+  ground: gh200_datasheet_ground,
+}
+
+// THE POWER TERM IS PROVISIONED SUPPLY CAPACITY, chosen explicitly (GH200-5, review): the rated output
+// of the supply each route draws from at the site's mains voltage. Lower is better as a PROVISIONING
+// policy -- every watt of supply capacity is circuit capacity reserved at a site where a 15 A, 120 V
+// circuit is the binding resource -- and it is NOT measured consumption, wall power or efficiency,
+// which this field does not carry. Its ground is cited only when every route's reading is cited.
+fn term_node_power_ceiling(ground: CitedFigureStanding) -> ObjectiveTerm {
+  ObjectiveTerm {
+    identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_node_power_ceiling"),
+    ground: ground,
+  }
+}
+
+fn node_platform_objective(power_ground: CitedFigureStanding) -> ObjectiveMeasure {
+  ObjectiveMeasure {
+    identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_objective"),
+    goal: HigherIsBetter,
+    terms: [term_gpu_local_capacity, term_gpu_local_bandwidth, term_coherent_capacity, term_node_power_ceiling(ground: power_ground)],
+  }
+}
+
+data node_platform_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_choice_domain"),
+  variables: [var_node_platform],
+}
+
+data node_platform_subject_identity: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_subject")
+
+fn node_platform_subject(power_ground: CitedFigureStanding) -> DecisionSubject {
+  DecisionSubject {
+    identity: node_platform_subject_identity,
+    question: "which node platform route should the serving fleet run on: retain DGX Spark, or move to a GH200 route" as NonEmptyStr,
+    parameters: [param_platform_prices, param_served_model],
+    constraints: [],
+    objective: node_platform_objective(power_ground: power_ground),
+    choice_domain: node_platform_choice_domain,
+  }
+}
+
+data node_platform_region: DecisionRegion = DecisionRegion {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_region"),
+}
+
+// The variable is categorical: each route reads its own figures, so every term "varies" only in the
+// sense that the routes differ. That is stated as such rather than dressed as a monotone relation the
+// platform choice does not have.
+fn categorical_sensitivity(term: ObjectiveTerm) -> ObjectiveTermSensitivity {
+  VariesAlong {
+    term: term.identity,
+    variable: var_node_platform.identity,
+    region: node_platform_region,
+    relation: RelationOtherwiseEstablished {
+      note: "categorical variable: each platform route reads its own figures" as NonEmptyStr,
+    },
+    coupling: term.ground,
+  }
+}
+
+// ── THE AXES ─────────────────────────────────────────────────────────────────────────────────
+//
+// Per node. "GPU-local" is the memory the GPU reads at its full rated bandwidth: on a Spark that is the
+// whole unified pool, on a GH200 it is only the HBM tier. Coherent capacity is everything the GPU can
+// address coherently. Splitting them is what makes the real trade-off visible -- a GH200 has LESS
+// GPU-local memory than a Spark at fifteen times the bandwidth, and more coherent memory behind a
+// slower link.
+
+data gpu_local_capacity_axis: DeclarationRef = term_gpu_local_capacity.identity
+data gpu_local_bandwidth_axis: DeclarationRef = term_gpu_local_bandwidth.identity
+data coherent_capacity_axis: DeclarationRef = term_coherent_capacity.identity
+data node_power_ceiling_axis: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "term_node_power_ceiling")
+
+// THE ROUTE'S OWN QUALIFICATION, as a hard constraint per candidate: 1 when the route is qualified,
+// 0 when it is refused (excluded before Pareto, with its cause), and a declared gap while it is
+// unestablished. The same 0/1 axis-with-bound shape gunbc.spark.serving_deployment_selection uses for
+// constraint_no_redundancy, so this inhabits std.decision's HardConstraint rather than adding a gate.
+data route_qualified_axis: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "route_qualified_axis")
+data constraint_route_qualified: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_route_qualified")
+
+fn node_platform_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: gpu_local_capacity_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: gpu_local_bandwidth_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: coherent_capacity_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: node_power_ceiling_axis, goal: LowerIsBetter },
+    SelectionAxis { identity: route_qualified_axis, goal: HigherIsBetter },
+  ]
+}
+
+fn node_platform_constraints() -> List<HardConstraint> {
+  [HardConstraint { identity: constraint_route_qualified, axis: route_qualified_axis, bound_micro: 1 }]
+}
+
+// ── THE ROUTES ───────────────────────────────────────────────────────────────────────────────
+//
+// A candidate is a ROUTE: a realization with its own evidence. Retaining the Sparks is qualified by the
+// fleet that runs on them; the received DV5 on P4261 by that exact assembly's ladder; a factory OEM
+// server by acceptance of its delivered configuration. A customer-owned DV5 on a module-less OEM
+// platform is a fourth route whose qualification is that pairing's own -- an OEM catalog row
+// qualifies neither it nor the factory route -- and it enters this field as its own arm once such a
+// platform is quoted (strategy.gh200_qualification asrock-moduleless-platform-quote).
+type RouteStanding
+  = RouteQualified { evidence: NonEmptyStr }
+  | RouteUnestablished { obligation: NonEmptyStr }
+  | RouteRefused { reason: NonEmptyStr }
+
+// The supply a dev-carrier route draws from: its rated output at the site's mains, from its own
+// datasheet. Absent until one is chosen.
+type NodeSupply {
+  rated_output: Watt
+  authority: ExternalAuthority
+}
+
+type NodeRoute
+  = RetainIncumbentSpark { candidate: DeclarationRef, row: IntegratedComputeSystemCatalogRow, standing: RouteStanding }
+  | ModuleOnDevCarrier { candidate: DeclarationRef, assembly: SuperchipAssembly, supply: NodeSupply? }
+  | FactoryServer { candidate: DeclarationRef, server: SuperchipServerCatalogRow, configuration: CoherentSuperchipCatalogRow, standing: RouteStanding }
+
+type RoutePower
+  = PowerCited { ceiling: Watt, authority: ExternalAuthority }
+  | PowerUnread { cause: NonEmptyStr }
+
+// THE SITE'S MAINS VOLTAGE, which decides a server supply's ceiling: the operator is in New York City
+// and expects 120 V ("i'm in NYC so 120v i guess", 2026-10-04). An operator expectation, not a reading;
+// strategy.gh200_qualification check-site-circuit is the task that reads it, and a supply rating at
+// 120 V is not evidence that the site circuit was checked.
+data operator_site_mains_vac: Nat = 120
+
+fn route_candidate(r: NodeRoute) -> DeclarationRef {
+  match r {
+    RetainIncumbentSpark { candidate: c, row: _, standing: _ } => c
+    ModuleOnDevCarrier { candidate: c, assembly: _, supply: _ } => c
+    FactoryServer { candidate: c, server: _, configuration: _, standing: _ } => c
+  }
+}
+
+fn route_label(r: NodeRoute) -> NonEmptyStr {
+  match r {
+    RetainIncumbentSpark { candidate: _, row: _, standing: _ } => "retain DGX Spark" as NonEmptyStr
+    ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } =>
+      join([a.unit.asset as String, " on ", a.carrier.asset as String, " (", a.carrier.carrier_designation as String, " dev carrier, as built)"], "") as NonEmptyStr
+    FactoryServer { candidate: _, server: srv, configuration: cfg, standing: _ } =>
+      join([srv.model as String, " factory server (", cfg.gpu.model as String, ")"], "") as NonEmptyStr
+  }
+}
+
+fn assembly_route_standing(a: SuperchipAssembly) -> RouteStanding {
+  match assembly_qualification(a: a) {
+    AssemblyWorkloadQualified { evidence: e } => RouteQualified { evidence: join(map(e, x => x as String), "; ") as NonEmptyStr }
+    AssemblyRefusedAt { stage: sg, reasons: rs } =>
+      RouteRefused { reason: join(["refused at ", qualification_stage_label(stage: sg) as String, ": ", join(map(rs, x => x as String), "; ")], "") as NonEmptyStr }
+    AssemblyBlockedAt { stage: sg, open_here: here, open_later: _ } =>
+      RouteUnestablished { obligation: join(["blocked at ", qualification_stage_label(stage: sg) as String, ": ", join(map(here, x => x as String), " | ")], "") as NonEmptyStr }
+  }
+}
+
+// A FACTORY ROUTE NAMES ITS CONFIGURATION, and the configuration must be one the server row lists as
+// supported -- never the first entry picked silently.
+fn route_standing(r: NodeRoute) -> RouteStanding {
+  match r {
+    RetainIncumbentSpark { candidate: _, row: _, standing: st } => st
+    ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } => assembly_route_standing(a: a)
+    FactoryServer { candidate: _, server: srv, configuration: cfg, standing: st } =>
+      if any(srv.supported_superchips, c => c.model == cfg.model) { st } else {
+        RouteRefused { reason: join([cfg.model as String, " is not a configuration ", srv.model as String, " lists as supported"], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn route_power(r: NodeRoute) -> RoutePower {
+  match r {
+    RetainIncumbentSpark { candidate: _, row: row, standing: _ } =>
+      PowerCited { ceiling: row.external_power_supply, authority: dgx_spark_system_overview_authority }
+    ModuleOnDevCarrier { candidate: _, assembly: _, supply: sp } =>
+      match sp {
+        Present { value: s } => PowerCited { ceiling: s.rated_output, authority: s.authority }
+        Absent => PowerUnread { cause: "no supply is chosen for the dev-carrier route; the module's cited 450-1000 W range excludes the carrier, so the route's supply capacity is the rated output, at the site's mains, of the supply chosen for it, read from that supply's datasheet" as NonEmptyStr }
+      }
+    FactoryServer { candidate: _, server: srv, configuration: _, standing: _ } =>
+      match srv.figure_standing {
+        TranscribedUncited { read_obligation: o } => PowerUnread { cause: o }
+        ObservedByReceipt { observed: o } => PowerUnread { cause: join(["the server's figures are observed by ", observed_receipt_ref(observed: o).module_path as String, " ", observed_receipt_ref(observed: o).decl_name as String, ", and a power ceiling here is carried only with the external authority that states it"], "") as NonEmptyStr }
+        CitedToAuthority { authority: auth } =>
+          match server_supply_ceiling_at(row: srv, mains_vac: operator_site_mains_vac) {
+            Present { value: w } => PowerCited { ceiling: w, authority: auth }
+            Absent => PowerUnread { cause: join(["no supply output rating is stated for ", to_string(operator_site_mains_vac), " VAC input"], "") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn bytes_reading(axis: DeclarationRef, b: ByteSize) -> AxisReading {
+  to_axis_reading(r: BuildAxisReading { axis: axis, magnitude: MagnitudeBytes { bytes: b } })
+}
+
+// A ROW'S MEMORY READINGS carry its standing: an uncited row declares every memory axis missing,
+// naming the read obligation, rather than ranking on a typed bet (DESIGN §4d).
+fn gh200_memory_gaps(row: CoherentSuperchipCatalogRow) -> List<AxisGap> {
+  match cited_figure_read_obligation(standing: row.figure_standing) {
+    Absent => []
+    Present { value: o } => [
+      AxisGap { axis: gpu_local_capacity_axis, cause: o },
+      AxisGap { axis: gpu_local_bandwidth_axis, cause: o },
+      AxisGap { axis: coherent_capacity_axis, cause: o },
+    ]
+  }
+}
+
+fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReading> {
+  [
+    bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
+    to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.gpu.memory_bandwidth } }),
+    bytes_reading(axis: coherent_capacity_axis, b: coherent_superchip_coherent_capacity(row: row)),
+  ]
+}
+
+type MemoryReadings {
+  readings: List<AxisReading>
+  gaps: List<AxisGap>
+}
+
+// THE AS-BUILT CANDIDATE (GH200-5, review). A dev-carrier route is ranked on what its unit MEASURED,
+// not on the catalog row it was expected to be: capacities come from the measured inventory, and the
+// row contributes only the nominal HBM bandwidth, and only when the measured HBM size identifies the
+// row's GPU tier -- a catalog maximum is a nominal figure, never a measurement of the workload. An
+// unmeasured unit declares every memory axis missing; a smaller unit is a smaller candidate.
+fn assembly_memory(a: SuperchipAssembly) -> MemoryReadings {
+  match a.unit.measured_inventory {
+    InventoryUnmeasured => {
+      let cause = join(["the memory of ", a.unit.asset as String, " is unmeasured; the catalog row is a nominal expectation, not the unit"], "") as NonEmptyStr
+      MemoryReadings {
+        readings: [],
+        gaps: [
+          AxisGap { axis: gpu_local_capacity_axis, cause: cause },
+          AxisGap { axis: gpu_local_bandwidth_axis, cause: cause },
+          AxisGap { axis: coherent_capacity_axis, cause: cause },
+        ],
+      }
+    }
+    InventoryMeasured { gpu_memory: g, cpu_memory: c, evidence: _ } => {
+      let capacities = [
+        bytes_reading(axis: gpu_local_capacity_axis, b: g),
+        bytes_reading(axis: coherent_capacity_axis, b: byte_size(count: byte_size_count(b: g) + byte_size_count(b: c))),
+      ]
+      if byte_size_count(b: g) == byte_size_count(b: a.row.gpu.memory.capacity) {
+        MemoryReadings {
+          readings: concat(capacities, [to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: a.row.gpu.memory_bandwidth } })]),
+          gaps: [],
+        }
+      } else {
+        MemoryReadings {
+          readings: capacities,
+          gaps: [AxisGap { axis: gpu_local_bandwidth_axis, cause: join(["the measured HBM of ", a.unit.asset as String, " is not the nominal row's GPU tier, so the row's bandwidth does not describe it"], "") as NonEmptyStr }],
+        }
+      }
+    }
+  }
+}
+
+fn route_memory(r: NodeRoute) -> MemoryReadings {
+  match r {
+    RetainIncumbentSpark { candidate: _, row: row, standing: _ } => MemoryReadings {
+      readings: [
+        bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
+        to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.memory_bandwidth } }),
+        bytes_reading(axis: coherent_capacity_axis, b: row.memory.capacity),
+      ],
+      gaps: [],
+    }
+    ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } => assembly_memory(a: a)
+    FactoryServer { candidate: _, server: _, configuration: cfg, standing: _ } =>
+      MemoryReadings { readings: superchip_memory_readings(row: cfg), gaps: gh200_memory_gaps(row: cfg) }
+  }
+}
+
+fn flag_reading(axis: DeclarationRef, b: Bool) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: if b { 1 } else { 0 }) }
+}
+
+fn route_entry(r: NodeRoute) -> ParetoEntry {
+  let memory = route_memory(r: r)
+  let power_readings = match route_power(r: r) {
+    PowerCited { ceiling: w, authority: _ } => [to_axis_reading(r: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: w } })]
+    PowerUnread { cause: _ } => []
+  }
+  let power_gaps = match route_power(r: r) {
+    PowerCited { ceiling: _, authority: _ } => []
+    PowerUnread { cause: c } => [AxisGap { axis: node_power_ceiling_axis, cause: c }]
+  }
+  let qualified_readings = match route_standing(r: r) {
+    RouteQualified { evidence: _ } => [flag_reading(axis: route_qualified_axis, b: true)]
+    RouteRefused { reason: _ } => [flag_reading(axis: route_qualified_axis, b: false)]
+    RouteUnestablished { obligation: _ } => []
+  }
+  let qualified_gaps = match route_standing(r: r) {
+    RouteUnestablished { obligation: o } => [AxisGap { axis: route_qualified_axis, cause: join(["route ", route_label(r: r) as String, " is not yet qualified: ", o as String], "") as NonEmptyStr }]
+    RouteQualified { evidence: _ } => []
+    RouteRefused { reason: _ } => []
+  }
+  ParetoEntry {
+    identity: route_candidate(r: r),
+    display_label: route_label(r: r),
+    readings: concat(memory.readings, concat(power_readings, qualified_readings)),
+    missing_inputs: concat(memory.gaps, concat(power_gaps, qualified_gaps)),
+  }
+}
+
+// ── THE EVIDENCE THE DECISION CONSUMES ───────────────────────────────────────────────────────
+//
+// Everything that can move the decision is an input here, so a supplied scenario reaches the real root
+// (GH200-5, review): the routes with their own evidence, the price disposition (bound from the private
+// procurement tree, never copied into this public module), the served-model definition, and the policy
+// that chooses among non-dominated survivors. The live value is node_platform_live_evidence.
+type NodePlatformEvidence {
+  routes: List<NodeRoute>
+  prices: NonEmptyStr?
+  served_model: NonEmptyStr?
+  policy: SelectionPolicy
+}
+
+// THE POWER TERM'S GROUND, derived: cited only when every route's supply capacity is cited. The ground
+// names the first route's authority and each reading carries its own; one unread route keeps the term
+// a typed bet whose obligation names what is unread.
+fn power_ground(routes: List<NodeRoute>) -> CitedFigureStanding {
+  let unread = flat_map(routes, r => match route_power(r: r) {
+    PowerUnread { cause: c } => [join([route_label(r: r) as String, ": ", c as String], "")]
+    PowerCited { ceiling: _, authority: _ } => []
+  })
+  let cited = flat_map(routes, r => match route_power(r: r) {
+    PowerCited { ceiling: _, authority: a } => [a]
+    PowerUnread { cause: _ } => []
+  })
+  match unread.first() {
+    Present { value: _ } => TranscribedUncited { read_obligation: join(["read every route's supply capacity from a cited rating; unread: ", join(unread, "; ")], "") as NonEmptyStr }
+    Absent => match cited.first() {
+      Present { value: a } => CitedToAuthority { authority: a }
+      Absent => TranscribedUncited { read_obligation: "no route is in the field" as NonEmptyStr }
+    }
+  }
+}
+
+fn memory_coupling(term: ObjectiveTerm) -> CausalCoupling {
+  VendorDocumentedCoupling { authority: extdeps_external_authority_anchor, term: term.identity, variable: var_node_platform.identity, subject: node_platform_subject_identity }
+}
+
+fn node_platform_causal_model(routes: List<NodeRoute>) -> CausalModelPopulation {
+  match power_ground(routes: routes) {
+    TranscribedUncited { read_obligation: o } => CausalModelUnestablished { subject: node_platform_subject_identity, read_obligation: o }
+    ObservedByReceipt { observed: o } => CausalModelEstablished {
+      couplings: [
+        memory_coupling(term: term_gpu_local_capacity),
+        memory_coupling(term: term_gpu_local_bandwidth),
+        memory_coupling(term: term_coherent_capacity),
+        FleetObservedCoupling { receipt: observed_receipt_ref(observed: o), term: node_power_ceiling_axis, variable: var_node_platform.identity, subject: node_platform_subject_identity },
+      ],
+    }
+    CitedToAuthority { authority: a } => CausalModelEstablished {
+      couplings: [
+        memory_coupling(term: term_gpu_local_capacity),
+        memory_coupling(term: term_gpu_local_bandwidth),
+        memory_coupling(term: term_coherent_capacity),
+        VendorDocumentedCoupling { authority: a, term: node_power_ceiling_axis, variable: var_node_platform.identity, subject: node_platform_subject_identity },
+      ],
+    }
+  }
+}
+
+fn bound_or_open(parameter: ContextParameter, value: NonEmptyStr?, obligation: NonEmptyStr) -> ParameterDisposition {
+  match value {
+    Present { value: v } => ParameterBound { parameter: parameter.identity, evidence: v }
+    Absent => ParameterUnestablished { parameter: parameter.identity, obligation: obligation }
+  }
+}
+
+fn node_platform_assessment(evidence: NodePlatformEvidence) -> DecisionAssessment {
+  let ground = power_ground(routes: evidence.routes)
+  let objective = node_platform_objective(power_ground: ground)
+  DecisionAssessment {
+    subject: node_platform_subject(power_ground: ground),
+    sensitivities: map(objective.terms, t => categorical_sensitivity(term: t)),
+    constraints: [],
+    parameters: [
+      bound_or_open(parameter: param_platform_prices, value: evidence.prices, obligation: "Spark resale value against each route's cost; prices are held privately and bind from the private procurement tree" as NonEmptyStr),
+      bound_or_open(parameter: param_served_model, value: evidence.served_model, obligation: "the model the fleet will serve: whether its weights fit the 96 GB HBM tier or spill into the slower LPDDR5X tier decides which memory term dominates" as NonEmptyStr),
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished {
+      terms: [
+        term_gpu_local_capacity.identity,
+        term_gpu_local_bandwidth.identity,
+        term_coherent_capacity.identity,
+        node_power_ceiling_axis,
+      ],
+    },
+    causal_model: node_platform_causal_model(routes: evidence.routes),
+  }
+}
+
+data node_platform_field_identity: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_field",
+)
+data node_platform_constraint_authority: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_constraints",
+)
+data node_platform_policy: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_policy",
+)
+data node_platform_evidence_identity: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_live_evidence",
+)
+
+fn node_platform_field(evidence: NodePlatformEvidence) -> List<ParetoEntry> {
+  map(evidence.routes, r => route_entry(r: r))
+}
+
+// THE ROOT. Every consumer -- the live readiness, the replacement gate, the supplied scenarios in the
+// witness -- goes through this one call.
+fn node_platform_selection_given(evidence: NodePlatformEvidence) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: node_platform_assessment(evidence: evidence),
+    candidate_field_identity: node_platform_field_identity,
+    field: node_platform_field(evidence: evidence),
+    axes: node_platform_axes(),
+    constraints: node_platform_constraints(),
+    constraint_authority: node_platform_constraint_authority,
+    policy: evidence.policy,
+    evidence_snapshot: node_platform_evidence_identity,
+  )
+}
+
+// ── THE LIVE ROUTES ──────────────────────────────────────────────────────────────────────────
+
+data candidate_dgx_spark_node: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "candidate_dgx_spark_node")
+data candidate_gh200_p4261_node: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "candidate_gh200_p4261_node")
+data candidate_mecai_gh200_480gb: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "candidate_mecai_gh200_480gb")
+data candidate_xh23_gh200_624gb: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "candidate_xh23_gh200_624gb")
+
+data incumbent_spark_standing: RouteStanding = RouteQualified { evidence: "the serving fleet runs on DGX Spark today (operator, 2026-10-04)" }
+
+fn factory_route_obligation(server: SuperchipServerCatalogRow, configuration: CoherentSuperchipCatalogRow) -> RouteStanding {
+  RouteUnestablished {
+    obligation: join([
+      "no ", server.model as String, " in its factory ", configuration.gpu.model as String,
+      " configuration has been delivered: a catalog row establishes the configuration offered, not that a delivered unit serves the workload at this site; owed are the delivered unit's own bench receipts and workload acceptance",
+    ], "") as NonEmptyStr,
+  }
+}
+
+// The complete servers this decision ranks, each at an explicit configuration it supports.
+data candidate_servers: List<SuperchipServerCatalogRow> = [asrock_rack_mecai_gh200, gigabyte_xh23_vg0_aaj1]
+
+fn node_platform_live_routes() -> List<NodeRoute> {
+  [
+    RetainIncumbentSpark { candidate: candidate_dgx_spark_node, row: nvidia_dgx_spark_4tb_catalog, standing: incumbent_spark_standing },
+    ModuleOnDevCarrier { candidate: candidate_gh200_p4261_node, assembly: first_assembly, supply: Absent },
+    FactoryServer {
+      candidate: candidate_mecai_gh200_480gb, server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_480gb_catalog,
+      standing: factory_route_obligation(server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_480gb_catalog),
+    },
+    FactoryServer {
+      candidate: candidate_xh23_gh200_624gb, server: gigabyte_xh23_vg0_aaj1, configuration: nvidia_gh200_624gb_hbm3e_catalog,
+      standing: factory_route_obligation(server: gigabyte_xh23_vg0_aaj1, configuration: nvidia_gh200_624gb_hbm3e_catalog),
+    },
+  ]
+}
+
+fn node_platform_live_evidence() -> NodePlatformEvidence {
+  NodePlatformEvidence {
+    routes: node_platform_live_routes(),
+    prices: Absent,
+    served_model: Absent,
+    policy: UniqueSurvivorRequired { identity: node_platform_policy },
+  }
+}
+
+// THE LIVE STANDING. Today it is SelectionNeedsEvidence, and its needs are the shopping list: each
+// GH200 route's qualification, the dev-carrier route's measured memory and supply, prices and the
+// served model.
+fn node_platform_selection() -> RealizationSelectionResult<ParetoEntry> {
+  node_platform_selection_given(evidence: node_platform_live_evidence())
+}
+
+// ── THE REPLACEMENT GATE ─────────────────────────────────────────────────────────────────────
+//
+// THE OPERATOR'S SALE POLICY, as its own predicate: no Spark is sold until the decision has SELECTED a
+// route other than retaining them. Selection already admits only qualified routes, so an admitted
+// replacement is a qualified one; the gate adds the other half -- that the decision settled on it --
+// which a qualified route alone never establishes.
+type ReplacementGate
+  = ReplacementAdmitted { route: DeclarationRef, receipt: SelectionReceipt }
+  | ReplacementHeld { reason: NonEmptyStr }
+
+fn is_incumbent(routes: List<NodeRoute>, candidate: DeclarationRef) -> Bool {
+  any(routes, r => match r {
+    RetainIncumbentSpark { candidate: c, row: _, standing: _ } => declaration_ref_eq(a: c, b: candidate)
+    ModuleOnDevCarrier { candidate: _, assembly: _, supply: _ } => false
+    FactoryServer { candidate: _, server: _, configuration: _, standing: _ } => false
+  })
+}
+
+fn replacement_gate(evidence: NodePlatformEvidence) -> ReplacementGate {
+  match node_platform_selection_given(evidence: evidence) {
+    SelectedWithin { candidate: c, receipt: r } =>
+      if is_incumbent(routes: evidence.routes, candidate: c.identity) {
+        ReplacementHeld { reason: "the decision selected retaining the Sparks" as NonEmptyStr }
+      } else {
+        ReplacementAdmitted { route: c.identity, receipt: r }
+      }
+    SelectionNeedsEvidence { needs: ns } =>
+      ReplacementHeld { reason: join(concat(["the platform decision needs evidence:"], map(ns, n => selection_evidence_need_cause(n: n) as String)), " ") as NonEmptyStr }
+    SelectionNeedsPolicy { survivors: sv } =>
+      ReplacementHeld { reason: join(["the platform decision needs a policy over ", to_string(count(sv)), " survivors"], "") as NonEmptyStr }
+    NoFeasibleRealization { causes: cs, scope: _ } =>
+      ReplacementHeld { reason: join(concat(["no feasible route:"], map(cs, x => x as String)), " ") as NonEmptyStr }
+    CandidateFieldUnestablished { causes: cs } =>
+      ReplacementHeld { reason: join(concat(["candidate field unestablished:"], map(cs, x => x as String)), " ") as NonEmptyStr }
+    RealizationSelectionRefused { defects: ds } =>
+      ReplacementHeld { reason: join(concat(["the platform decision refused:"], map(ds, x => x as String)), " ") as NonEmptyStr }
+  }
+}
+
+// ONE LINE PER SERVER for an operator comparing routes: every field the row carries, rendered, with
+// absent fields named as unread rather than dropped.
+fn optional_text(value: NonEmptyStr?, prefix: String, suffix: String, fallback: String) -> String {
+  match value {
+    Present { value: v } => join([prefix, v as String, suffix], "")
+    Absent => fallback
+  }
+}
+
+fn bay_text(b: StorageBay) -> String {
+  let width = match b.link {
+    Present { value: l } => join([", x", to_string(l.lane_count)], "")
+    Absent => ", width unread"
+  }
+  join([to_string(b.count), "x ", b.form_factor as String, " (", b.placement as String, width, ")"], "")
+}
+
+fn slot_text(x: ExpansionSlot) -> String {
+  join([to_string(x.count), "x ", x.mechanical as String, " x", to_string(x.link.lane_count), optional_text(value: x.intended_for, prefix: " for ", suffix: "", fallback: "")], "")
+}
+
+fn front_text(f: FrontPanelPort) -> String {
+  join([to_string(f.count), "x ", f.connector as String, optional_text(value: f.function, prefix: " (", suffix: ")", fallback: "")], "")
+}
+
+fn port_text(n: SystemNetworkPort) -> String {
+  optional_text(value: n.product_name, prefix: "", suffix: "", fallback: "unnamed port")
+}
+
+fn temperature_text(label: String, range: TemperatureRange?) -> String {
+  match range {
+    Present { value: t } => join([label, " ", to_string(celsius_count(c: t.minimum)), " to ", to_string(celsius_count(c: t.maximum)), " C"], "")
+    Absent => join([label, " temperature unread"], "")
+  }
+}
+
+fn humidity_text(range: HumidityRange?) -> String {
+  match range {
+    Present { value: h } => join(["non-operating humidity ", to_string(h.minimum_percent), "-", to_string(h.maximum_percent), "% ", h.condition as String], "")
+    Absent => "humidity unread"
+  }
+}
+
+fn rating_text(r: SupplyOutputRating) -> String {
+  match r.input {
+    Present { value: i } => join([to_string(watt_count(w: r.output)), " W @ ", to_string(i.minimum_vac), "-", to_string(i.maximum_vac), " VAC"], "")
+    Absent => join([to_string(watt_count(w: r.output)), " W (input range unstated)"], "")
+  }
+}
+
+fn complete_server_line(row: SuperchipServerCatalogRow) -> String {
+  let dims = match row.dimensions {
+    Present { value: d } => join([to_string(millimeter_count(m: d.width)), " x ", to_string(millimeter_count(m: d.depth)), " x ", to_string(millimeter_count(m: d.height)), " mm"], "")
+    Absent => "dimensions unread"
+  }
+  let redundancy = match row.power_supplies.redundancy {
+    SuppliesOnePlusOne => " (1+1 redundant)"
+    SuppliesNonRedundant => " (non-redundant)"
+  }
+  let supplies = join([to_string(row.power_supplies.count), "x ", row.power_supplies.form as String, " (", join(map(row.power_supplies.output_ratings, r => rating_text(r: r)), " / "), ")", redundancy], "")
+  let carrier = match row.carrier {
+    Present { value: c } => join(["carrier ", c.model as String, optional_text(value: c.management_board, prefix: ", management on ", suffix: "", fallback: "")], "")
+    Absent => "carrier unread"
+  }
+  let mgmt = match row.management {
+    Present { value: m } => join(["BMC ", m.bmc as String, ", management LAN ", m.dedicated_management_lan as String], "")
+    Absent => "BMC unread"
+  }
+  let net = match row.host_network.first() {
+    Absent => "no onboard host LAN"
+    Present { value: _ } => join(["host LAN ", join(map(row.host_network, n => port_text(n: n)), ", ")], "")
+  }
+  let front = match row.front_panel.first() {
+    Absent => "front panel unread"
+    Present { value: _ } => join(map(row.front_panel, f => front_text(f: f)), ", ")
+  }
+  let temp = join([
+    temperature_text(label: "operating", range: row.operating_temperature), ", ",
+    temperature_text(label: "non-operating", range: row.non_operating_temperature), ", ",
+    humidity_text(range: row.non_operating_humidity),
+  ], "")
+  let announced = match row.announced_superchips.first() {
+    Present { value: _ } => join(["; announced ", join(map(row.announced_superchips, c => c.gpu.model as String), ", ")], "")
+    Absent => ""
+  }
+  let standing = match cited_figure_read_obligation(standing: row.figure_standing) {
+    Absent => "cited"
+    Present { value: o } => join(["UNCITED: ", o as String], "")
+  }
+  join([
+    row.model as String, " [", row.form_factor as String, "]: ", dims, "; ", supplies, "; module up to ", to_string(watt_count(w: row.module_power_ceiling)), " W; ", carrier, "; ",
+    mgmt, "; ", net, "; ", join(map(row.storage_bays, b => bay_text(b: b)), "; "), "; ", join(map(row.expansion_slots, x => slot_text(x: x)), "; "), "; ",
+    front, "; ", optional_text(value: row.fans, prefix: "fans ", suffix: "", fallback: "fans unread"), "; ", temp,
+    "; supported modules ", join(map(row.supported_superchips, c => c.gpu.model as String), ", "), announced,
+    " -- ", standing,
+  ], "")
+}
+
+
+fn route_standing_line(r: NodeRoute) -> String {
+  join([
+    "- ", route_label(r: r) as String, ": ",
+    match route_standing(r: r) {
+      RouteQualified { evidence: _ } => "qualified"
+      RouteRefused { reason: x } => join(["REFUSED -- ", x as String], "")
+      RouteUnestablished { obligation: _ } => "not yet qualified"
+    },
+  ], "")
+}
+
+// THE RUNNABLE FORM, for the operator:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/product/node_platform_selection.dag --function node_platform_readiness
+// The question it answers is "may the platform be chosen yet": exit 0 only when std.decision selected
+// within a settled closure, and otherwise exit 1 with each route's standing and every open need, one
+// per line. An unsettled decision is not a run that succeeded.
+fn node_platform_readiness() -> ProcessExit {
+  let routes = concat(["routes:"], map(node_platform_live_routes(), r => route_standing_line(r: r)))
+  match node_platform_selection() {
+    SelectedWithin { candidate: c, receipt: _ } => ExitSuccess
+    SelectionNeedsEvidence { needs: ns } =>
+      exit_failure(reason: join(concat(routes, concat(["node platform selection needs evidence:"], map(ns, n => join(["- ", selection_evidence_need_cause(n: n) as String], "")))), "\n"))
+    SelectionNeedsPolicy { survivors: sv } =>
+      exit_failure(reason: join(concat(routes, [join(["node platform selection needs a policy over ", to_string(count(sv)), " survivors"], "")]), "\n"))
+    NoFeasibleRealization { causes: cs, scope: _ } =>
+      exit_failure(reason: join(concat(routes, concat(["no feasible node platform:"], map(cs, c => c as String))), "\n"))
+    CandidateFieldUnestablished { causes: cs } =>
+      exit_failure(reason: join(concat(routes, concat(["candidate field unestablished:"], map(cs, c => c as String))), "\n"))
+    RealizationSelectionRefused { defects: ds } =>
+      exit_failure(reason: join(concat(routes, concat(["node platform selection refused:"], map(ds, d => d as String))), "\n"))
+  }
+}

@@ -1,0 +1,50 @@
+module v2.extdeps.languages.rust_native_driver
+
+import v2.std.text { String }
+import std.types { List }
+import v2.std.algebra { fold_list }
+
+// Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
+// witness family — the family main is DERIVED from member arm rows (member_id -> i32 result
+// expression), never a hand-written N+1th main. Member selection is a run-time argv parameter
+// (cargo's `--` separator is this transport's convention, owned here); the derived match is
+// fail-closed — an unknown member id exits 2, a refused run, never fabricated octets.
+
+type RustEmitHostFamilyMember {
+  member_id: String,
+  result_expression: String
+}
+
+data rust_family_main_open: String = "\n\nfn main() { let member: String = std::env::args().nth(1).unwrap_or_default(); let d: i32 = match member.as_str() {\n"
+
+data rust_family_main_close: String = "    _ => std::process::exit(2),\n  }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_family_dispatch_arm(member: RustEmitHostFamilyMember) -> String {
+  concat("    \"", member.member_id, "\" => ", member.result_expression, ",\n")
+}
+
+fn rust_family_dispatch_arms(members: List<RustEmitHostFamilyMember>) -> String {
+  fold_list(
+    xs: members,
+    empty: "",
+    cons: fn(acc, member) {
+      concat(acc, rust_family_dispatch_arm(member: member))
+    }
+  )
+}
+
+fn rust_family_main_suffix(
+  prelude: String,
+  members: List<RustEmitHostFamilyMember>
+) -> String {
+  concat(
+    prelude,
+    rust_family_main_open,
+    rust_family_dispatch_arms(members: members),
+    rust_family_main_close
+  )
+}
+
+fn rust_family_member_run_args(member_id: String) -> List<String> {
+  ["--", member_id]
+}

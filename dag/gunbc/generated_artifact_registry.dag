@@ -1,0 +1,59 @@
+module gunbc.generated_artifact_registry
+
+import std.types { String, List, Bool }
+import gunbc.os_install { fleet_autoinstall_specs }
+import gunbc.plan_registry { all_plans }
+import gunbc.fleet_intent { fleet_intent_known_hosts }
+import gunbc.generated_artifact {
+  GeneratedArtifact, GeneratedArtifactProducerRow,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
+  AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge,
+  concurrent_divergence_repair, artifact_path, artifact_is_committed, artifact_eq, artifact_producer_row
+}
+
+// THE POPULATION, APART FROM THE VOCABULARY (DESIGN section 3: a fact's home is its layer).
+// gunbc.generated_artifact says what an artifact IS -- its variant, location, commit policy and
+// producer. Which artifacts EXIST is this module's fact, and it enumerates every plan through
+// gunbc.plan_registry, whose plan bodies project censuses derived from the live tree. While the two
+// shared a module, a consumer that needed one artifact's PATH (gunbc.fleet_revision_acceptance, and
+// through it the approval broker) compiled every plan and the v2 resolver behind them.
+
+data generated_artifact_registry: List<GeneratedArtifact> = concat(
+  concat(
+    concat(
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact],
+      map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+    ),
+    map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
+  ),
+  map(all_plans, pl => PlanArtifact { plan: pl })
+)
+
+fn heal_regenerated_after_provisional_merge_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => match concurrent_divergence_repair(a: a) {
+    AuthorRegeneratesBeforeMerge => false
+    HealRegeneratesAfterProvisionalMerge => true
+  })
+}
+
+fn heal_regenerated_after_provisional_merge_paths() -> List<String> {
+  map(heal_regenerated_after_provisional_merge_artifacts(), a => artifact_path(a: a))
+}
+
+fn committed_generated_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
+}
+
+fn committed_generated_artifact_paths() -> List<String> {
+  map(committed_generated_artifacts(), a => artifact_path(a: a))
+}
+
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}
+
+fn generated_artifact_producer_rows() -> List<GeneratedArtifactProducerRow> {
+  map(generated_artifact_registry, a => artifact_producer_row(a: a))
+}
+

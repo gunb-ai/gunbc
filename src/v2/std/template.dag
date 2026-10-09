@@ -1,0 +1,32 @@
+module v2.std.template
+
+import std.types { List }
+import v2.std.algebra { list_flat_map }
+
+// ONE literal-or-hole sequence, parameterized by what a hole is. A string that interpolates is a
+// sequence of literal text and holes in authored order; what fills a hole is the consumer's fact,
+// not the template's. Before this module the corpus carried the same structure twice, each owned by
+// its upstream: extdeps.uri_path UrlPathToken (RFC 3986 path, LiteralToken | ParamToken) and
+// extdeps.github.expressions TemplateSegment (GitHub expressions, LiteralText | Interpolation).
+// Those stay as upstream-owned inhabitants of this structure; this is the home for the dag
+// language's own interpolation (DESIGN 3: a third ad hoc shape would be the fork).
+// Arms are Template-prefixed: v2.lens.coverage already declares a nullary TemplateHole.
+
+type TemplatePart<H>
+  = TemplateLiteralPart { text: String }
+  | TemplateHolePart { hole: H }
+
+type Template<H> {
+  parts: List<TemplatePart<H>>
+}
+
+fn template_part_holes<H>(part: TemplatePart<H>) -> List<H> {
+  match part {
+    TemplateLiteralPart { text: _ } => []
+    TemplateHolePart { hole: h } => [h]
+  }
+}
+
+fn template_holes<H>(t: Template<H>) -> List<H> {
+  list_flat_map(xs: t.parts, f: p => template_part_holes(part: p))
+}

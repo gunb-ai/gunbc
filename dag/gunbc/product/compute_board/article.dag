@@ -1,6 +1,6 @@
 module product.compute_board.article
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, brand }
 import extdeps.external_authority { ExternalAuthority }
 import std.decl_ref { DeclarationRef }
 import extdeps.firmware.openbmc.subject { openbmc_model_scope }

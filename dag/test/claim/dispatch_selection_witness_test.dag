@@ -1,13 +1,12 @@
 module test.claim.dispatch_selection_witness
 
+import gunbc.roadmap_sizing {
+  NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
+}
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.roadmap_model {
-  IntricacyHigh,
-  IntricacyLow,
-  VolumeMedium,
   PrsMerged,
-  Sized,
-  Unsized,
+  Dispatchable,
 }
 import extdeps.llm.cli { ReasoningMedium, ReasoningHigh, ProviderModelPinned }
 import extdeps.llm.cli_lifecycle {
@@ -111,8 +110,10 @@ import gunbc.dispatch_selection {
   fixture_codex_process_fingerprint_standing,
   CodexProcessFingerprintUnobserved,
   ClaudeStateRootRef,
+  claude_dispatch_credential,
   dispatch_claude_default_workflow_mode,
-  Unsized,
+  NoDerivedSizingExpectation,
+  DerivedSizingExpectation,
 }
 
 fn fixture_multibucket_codex_standing_inventory(
@@ -180,21 +181,15 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      repo: "gunbc",
-      acceptance: PrsMerged,
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
     },
   )
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
-      intricacy: IntricacyLow,
-      volume: VolumeMedium,
-      repo: "gunbc",
-      acceptance: PrsMerged,
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyLow, volume: VolumeSmall },
     },
   )
   match high {
@@ -204,10 +199,10 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
           high_receipt.applied_effort == ReasoningMedium
             && low_receipt.applied_effort == ReasoningMedium
             && high_receipt.applied_effort == low_receipt.applied_effort
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+        DispatchSelectionRefused { requested_selection: _, reason: _ } =>
           false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 
@@ -217,9 +212,9 @@ test fn witness_deep_profile_refuses_without_realization() -> Bool {
       instance: srv1_live_dashboard_instance(),
     ),
     request: SelectAutomatically { profile: ProfileDeep },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => true
     DispatchSelectionResolved { receipt: _ } => false
   }
 }
@@ -241,9 +236,9 @@ test fn witness_production_codex_selection_refuses_unobserved_fingerprint() -> B
   match resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { requested_selection: _, reason } =>
       production_offer_is_unobserved
         && (
           reason == dispatch_codex_process_fingerprint_unobserved_selection_refusal
@@ -302,8 +297,12 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
   )
 }
 
-test fn witness_production_inventory_excludes_claude() -> Bool {
-  !inventory_includes_provider_kind(
+// The WorkerTurn-PR deferral is discharged (gunbc.dispatch_selection PRODUCTION WIRING): srv1's
+// live inventory now offers Claude. It does so at declared-unobserved standing, so this asserts the
+// row's presence only; witness_production_claude_row_admits_no_automatic_draw keeps the automatic
+// path off it.
+test fn witness_production_inventory_includes_claude() -> Bool {
+  inventory_includes_provider_kind(
     inventory: provider_inventory_for_instance(
       instance: srv1_live_dashboard_instance(),
     ),
@@ -331,11 +330,11 @@ test fn witness_srv2_cursor_selection_resolves() -> Bool {
       model: cursor_model_auto,
       agent_mode: "default-edit",
     },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       receipt.provider_kind == CursorCliProvider
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 
@@ -346,7 +345,7 @@ test fn witness_receipt_records_requested_and_resolved() -> Bool {
       instance: srv1_live_dashboard_instance(),
     ),
     request: request,
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       match receipt.requested_selection {
@@ -375,7 +374,7 @@ test fn witness_receipt_records_requested_and_resolved() -> Bool {
           }
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 
@@ -403,9 +402,9 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
       model: cursor_model_auto,
       agent_mode: "default-edit",
     },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { requested_selection: _, reason } =>
       reason == dispatch_selection_shape_mismatch_reason
     DispatchSelectionResolved { receipt: _ } => false
   }
@@ -450,9 +449,9 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
           ],
         },
         request: default_provider_selection_request(),
-        node_sizing: Unsized,
+        sizing_expectation: NoDerivedSizingExpectation,
       ) {
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+        DispatchSelectionRefused { requested_selection: _, reason } =>
           reason == dispatch_selection_standing_ineligible_reason
         DispatchSelectionResolved { receipt: _ } => false
       }
@@ -488,7 +487,7 @@ test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
       ),
     ),
     request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       match receipt.resolved_selection {
@@ -497,7 +496,7 @@ test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
             && s.effort == ReasoningMedium
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 
@@ -507,9 +506,9 @@ test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
       instance: srv2_lab_dashboard_instance(),
     ),
     request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { requested_selection: _, reason } =>
       reason == dispatch_selection_shape_mismatch_reason
     DispatchSelectionResolved { receipt: _ } => false
   }
@@ -519,9 +518,9 @@ test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: SelectAutomatically { profile: ProfileExactOverride },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => true
     DispatchSelectionResolved { receipt: _ } => false
   }
 }
@@ -533,9 +532,9 @@ test fn witness_automatic_multibucket_native_exhaustion_refuses_join_undetermine
   match resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { requested_selection: _, reason } =>
       reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: codex_default_rate_limit_id)
     DispatchSelectionResolved { receipt: _ } => false
   }
@@ -556,7 +555,7 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
         value: codex_bengalfox_rate_limit_id,
       },
     },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       match receipt.resolved_selection {
@@ -565,11 +564,65 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
             && s.model == dispatch_codex_default_model
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let request_credential = claude_dispatch_credential()
+  let request_model = ProviderModelPinned { model: "claude-managed-model" as NonEmptyStr }
+  let claude_provider = ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+  }
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: instance,
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: claude_provider,
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    request: SelectClaude {
+      profile: ProfileAutomatic,
+      credential: request_credential,
+      model: request_model,
+      effort: ReasoningHigh,
+      workflow_mode: dispatch_claude_default_workflow_mode,
+    },
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          s.credential == request_credential
+            && s.model == request_model
+            && s.effort == ReasoningMedium
+        _ => false
+      }
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
+  }
+}
+
+// A REQUEST NAMING A CREDENTIAL THE OFFER DOES NOT BIND REFUSES (review 76871): the receipt's
+// credential_binding is the requested credential, so admitting it would name one credential while
+// the process runs under another.
+test fn witness_select_claude_refuses_a_credential_the_offer_does_not_bind() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let request_credential = ClaudeStateRootRef {
     root: "/managed/claude-enrollment" as FilePath,
@@ -608,40 +661,12 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
       effort: ReasoningHigh,
       workflow_mode: dispatch_claude_default_workflow_mode,
     },
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchSelectionResolved { receipt } =>
-      match receipt.resolved_selection {
-        ResolvedClaude { selection: s, instance: _ } =>
-          s.credential == request_credential
-            && s.model == request_model
-            && s.effort == ReasoningMedium
-        _ => false
-      }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionResolved { receipt: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason } =>
+      string_contains(s: reason as String, pattern: "is not the credential this offer binds")
   }
-}
-
-test fn dispatch_selection_keystone_holds() -> Bool {
-  witness_automatic_codex_preserves_medium_effort()
-    && witness_intricacy_does_not_change_automatic_effort()
-    && witness_deep_profile_refuses_without_realization()
-    && witness_production_codex_selection_refuses_unobserved_fingerprint()
-    && witness_srv1_inventory_includes_codex()
-    && witness_srv1_inventory_includes_claude()
-    && witness_production_inventory_excludes_claude()
-    && witness_srv2_inventory_includes_cursor()
-    && witness_srv2_cursor_selection_resolves()
-    && witness_srv1_claude_selection_resolves_with_fixture_standing()
-    && witness_select_claude_automatic_honors_request_credential_and_model()
-    && witness_receipt_records_requested_and_resolved()
-    && witness_carrier_notes_record_directive_addendum()
-    && witness_wrong_selection_shape_refuses()
-    && witness_probe_bridge_ineligible_standing_refuses_selection()
-    && witness_claude_request_refuses_on_codex_only_inventory()
-    && witness_exact_override_requires_explicit_provider_arm()
-    && witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined()
-    && witness_explicit_override_bengalfox_admitted_from_same_inventory()
 }
 
 

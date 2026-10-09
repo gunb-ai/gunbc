@@ -44,9 +44,7 @@ data floor_index_build_share_provider: CacheProvider = provider_row(
 data floor_index_build_share_providers: List<CacheProvider> = [floor_index_build_share_provider]
 
 // ReferenceTier declared DIRECTLY via provider_row, deliberately NOT provider_from_catalog: the
-// catalog door births STORE tiers from cited upstream facts (that is P2 =
-// extdeps.realization.resolved_graph.resolved_graph_cache, the cross-process content-keyed store
-// graph-major S2b adopts). ReferenceTier is keyless by shape (the dependency edge IS the address)
+// catalog door births STORE tiers from cited upstream facts. ReferenceTier is keyless by shape (the dependency edge IS the address)
 // and enters only via provider_row; forcing an in-process name-keyed share through the catalog
 // would project ExistenceKeyed and be refused/mislabeled (#6352). The share's legitimacy is the
 // value tier — the product of the rule-1 rewire S1 already did — not obligation discharge.
@@ -118,17 +116,12 @@ fn floor_index_build_materialization_without_provider(gates: List<Gate>, witness
   )
 }
 
-// P1 (this module's in-process ReferenceTier share = process_shared_index) and P2
-// (extdeps.realization.resolved_graph.resolved_graph_cache, PerHostFilesystem/ContentAddressed,
-// released never with an exact 10 GiB byte ceiling and provider-native replacement, projecting
-// through provider_from_catalog to a content-keyed ArtifactTier) are two providers of ONE
-// computation identity (the resolved graph), never two unrelated stores (the fnv1a64 dual-surface
-// discipline). P1 discharges same-process index-build plurality (rule-1 rewire, value tier); P2
-// discharges the cross-process/cross-run isolation-LCA obligation (compile subprocess vs
-// claim_executor frontier), which a reference cannot cross. DISSOLVE-ON: when graph-major S2b is
-// default-on, the cross-run (UnboundedSiblingsFrame) frame enrolls and P2's provider row goes live
-// beside this one; the per-shard W-x same-process residual (Rc<ResolvedGraph> !Send) collapses to
-// whole-run once under the Rc->Arc migration (graph-major S3).
+// P1 (this module's in-process ReferenceTier share = process_shared_index) is the one provider of
+// the resolved-graph computation identity. A cross-process P2 existed as
+// extdeps.realization.resolved_graph.resolved_graph_cache until 2026-10-03, when it was deleted: its
+// JSON representation could not serve, so it wrote nothing and served no hit. A cross-run
+// resolved-graph provider needs an occurrence-neutral per-module encoding first (the
+// context-assembly cut of docs/plans/demand-engine-program.md) and is not owed by this module.
 
 // LIVE — std.materialization_ladder landed on main (#6375). The enrolled witness
 // dag/test/claim/floor_materialization_witness_test.dag IS the authority (green-by-execution on the
@@ -149,60 +142,72 @@ fn floor_index_build_materialization_without_provider(gates: List<Gate>, witness
 // always pay (merry-moth-539's caution, confirmed by the fail-closed gate that redded the
 // mispredicted 4).
 
-// S2a increment C (cross-worker-typecheck-share-design.md §4.5) — process-scoped typecheck store
-// share, declared alongside P1 index-build share.
-
-data floor_typecheck_store_share_note: String = "C2 — the in-process TYPECHECK-STORE share, declared. Adaptive floor workers arm ONE process-scoped typed_module_cache via SharedTypecheckCaches when the memory governor's target_width > 1 (cli_run.rs cross_worker_store + shared_typecheck_store.rs serde byte transport); at width=1 workers stay on private per-index Rc (serde retention without cross-worker benefit breaks CI budget — design §7). The pump thread keeps process_shared_index (private Rc). Identity union-typecheck-store(dag,src/v2) is deliberately distinct from P1's union-index-build. 🟡 dissolve-on: serde byte transport retires when store-path Rc→Arc lands (design §4.2)."
-
-data floor_typecheck_store_share_provider_id: String = "process_shared_typecheck_store"
+// The typecheck-store identity, demanded across processes (C3 below). The in-process share of it
+// across adaptive floor workers (C2) was DELETED with the discovery-corpus width machinery, whose
+// worker shards were its only consumer sites and which no production route reached.
 
 data floor_typecheck_store_identity: String = "union-typecheck-store(dag,src/v2)"
 
-data floor_typecheck_store_share_provider: CacheProvider = provider_row(
-  id: floor_typecheck_store_share_provider_id,
-  scope: [floor_executor_process_frame()],
-  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
-  tier: ReferenceTier,
-  retention: scope_released_retention(capacity: CapacityUnbounded)
-)
-
-data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]
-
-// The two minimum co-readers of the adaptive worker pool at W>=2
-// (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory
-// governor; the ladder counts declared readonly sites, not live W. The pump thread uses private
-// process_shared_index (P1); only admitted worker shards clone Arc<RwLock<SharedTypecheckCaches>>
-// and read the shared typed store.
-
-data floor_typecheck_store_consumer_sites: List<String> = [
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard",
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard:co-reader"
-]
-
-fn floor_typecheck_store_value_usage() -> ValueUsage {
-  ValueUsage {
-    identity: floor_typecheck_store_identity,
-    consumers: floor_typecheck_store_consumer_sites
-      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
-  }
-}
-
-fn floor_typecheck_store_reader_count() -> Int {
-  floor_typecheck_store_consumer_sites |> count
-}
-
-fn floor_typecheck_store_materialization() -> ValueMaterialization {
-  value_materialization(
-    usage: floor_typecheck_store_value_usage(),
-    providers: floor_typecheck_store_share_providers
-  )
-}
-
 data floor_typecheck_store_no_providers: List<CacheProvider> = []
 
-fn floor_typecheck_store_materialization_without_provider() -> ValueMaterialization {
-  value_materialization(
-    usage: floor_typecheck_store_value_usage(),
-    providers: floor_typecheck_store_no_providers
+// C3 — the cross-process tier over the typecheck-store identity: the demand between executor
+// processes. The frame is
+// UnboundedSiblingsFrame, not SharedStateFrame: recurring invocations of the fold on a runner host
+// are successive siblings with no shared mutable state to rewire, so there is no LCA process in
+// which the repetition could have been carried, and only a STORE tier can discharge it. No provider
+// does today (see the note above the no-provider verdict below).
+
+fn floor_runner_host_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "runner-host", kind: UnboundedSiblingsFrame }
+}
+
+// The two sibling processes that each demand union-typecheck-store(dag,src/v2) over one corpus
+// under one built binary. They execute apart by construction, so the repetition between them is
+// not authored duplication a rewire could remove — their obligation LCA is the runner host, which
+// is not a shared-state frame, and only a STORE tier reaches across it. The demand nature is
+// PureComputation: same module text, same resolved dependency closure, same compiler binary ⇒ same
+// typed result, which is what makes ContentKeyed reuse sound here without declaring any staleness
+// envelope. Nothing is read from the world.
+
+fn floor_witness_fold_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "witness-fold-process", kind: SharedStateFrame }
+}
+
+fn floor_drift_gate_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "drift-gate-process", kind: SharedStateFrame }
+}
+
+fn floor_typecheck_store_cross_process_demands() -> List<FrameDemand> {
+  [
+    FrameDemand {
+      identity: floor_typecheck_store_identity,
+      site: [floor_runner_host_frame(), floor_witness_fold_process_frame()],
+      nature: PureComputation
+    },
+    FrameDemand {
+      identity: floor_typecheck_store_identity,
+      site: [floor_runner_host_frame(), floor_drift_gate_process_frame()],
+      nature: PureComputation
+    }
+  ]
+}
+
+data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
+
+// NO PROVIDER COVERS THESE DEMANDS (2026-10-03). The host-persisted provider that discharged them --
+// shared_typecheck_store PersistentTypedStore, armed by GUNBC_TYPED_STORE_PERSIST -- was DELETED
+// after measurement: armed, a 5-entry claim_batch run exceeded 720 s against ~150 s unarmed and
+// wrote ~7.3 GB in two entries, so its per-entry payload was a closure snapshot rather than one
+// module, and nothing bounded its root or cleaned it. The demands below are unchanged and the
+// ladder therefore REFUSES them; that refusal is the live state, not a fixture. The replacement is a
+// TypecheckModuleRequest store realized through extdeps.realization.materialization_store_local
+// with a per-module encoding, a byte ceiling with oldest-generation eviction and a scoped,
+// self-cleaning root; it re-adds the provider row here with its own green and red controls.
+
+fn floor_typecheck_store_persist_verdicts_without_provider() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: floor_typecheck_store_no_providers,
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
   )
 }

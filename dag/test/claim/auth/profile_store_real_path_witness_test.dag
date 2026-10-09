@@ -1,0 +1,114 @@
+module test.claim.auth.profile_store_real_path_witness_test
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.auth.profile_projection {
+  ProfileStoreLayout, PrincipalProfile,
+  ProfileStoreUpsert, ProfileStoreUpserted, ProfileStoreUpsertRefused,
+  ProfileStoreReadAll, ProfileStoreRead, ProfileStoreUnread,
+  profile_store_upsert_from_session, profile_store_read_all,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE CLAIMS FOR THE PROFILE STORE (DESIGN section 3, the pairing obligation). The
+// profile roster read shipped decoding Filesystem.List's newline-joined `entries` as if it were a
+// list of names -- its first "entry" was a code point and `ends_with` refused -- and nothing caught
+// it because no claim ran the real store path: every consumer supplied profiles as values. These
+// claims execute the REAL upsert (sha256 file name, owner-only write) and the REAL read-all
+// (Filesystem.List through filesystem_listing_observation, then Filesystem.Read and the decoder)
+// against a directory the claim creates with shell.Mktemp.Dir and removes afterwards. Each asserts
+// the ROUTE's result shape -- the one principal and name that was written comes back -- so a read
+// that answers an empty roster, or refuses, is red.
+
+fn ps_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn ps_layout(dir: FilePath) -> ProfileStoreLayout {
+  ProfileStoreLayout { root: dir }
+}
+
+fn ps_principal() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "profile-store-witness" }
+}
+
+fn ps_session(name: String, authenticated_at: String) -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "profile-store-witness" as NonEmptyStr,
+    principal: ps_principal(),
+    authenticated_at: authenticated_at,
+    expires_at: "2026-10-01T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "profile-store-witness-csrf" as NonEmptyStr },
+    profile: SessionProfile { picture: none, name: Present { value: name }, email: none },
+  }
+}
+
+fn ps_upserted(u: ProfileStoreUpsert) -> Bool {
+  match u {
+    ProfileStoreUpserted { principal: p } => principal_ref_eq(a: p, b: ps_principal())
+    ProfileStoreUpsertRefused { step: _, reason: _ } => false
+  }
+}
+
+fn ps_profile_is(p: PrincipalProfile, name: String) -> Bool {
+  principal_ref_eq(a: p.principal, b: ps_principal())
+    && (match p.name { Present { value: n } => n == name, Absent => false })
+}
+
+// Exactly one profile, the witness principal carrying `name`, and nothing skipped.
+fn ps_read_exactly_one(r: ProfileStoreReadAll, name: String) -> Bool {
+  match r {
+    ProfileStoreUnread { step: _, reason: _ } => false
+    ProfileStoreRead { profiles: ps, skipped: sk } =>
+      count(ps) == 1
+        && count(sk) == 0
+        && (match ps.first() { Present { value: p } => ps_profile_is(p: p, name: name), Absent => false })
+  }
+}
+
+// 1. THE CLAIM THAT WAS RED BEFORE THE FIX: one real upsert, then the real read-all over the same
+// directory returns that one profile.
+test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> Bool {
+  ps_with_temp_dir(scenario: fn(dir) {
+    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
+    ps_upserted(u: upsert)
+      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
+  })
+}
+
+// 2. A NON-.json ENTRY BESIDE THE PROFILE. The decoder's rule (profile_store_decode_entries) is
+// that an entry not ending in ".json" is IGNORED -- neither decoded nor recorded as skipped; only a
+// .json entry that fails to read or decode is carried in `skipped`. So the roster is still the one
+// profile with zero skipped.
+test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> Bool {
+  ps_with_temp_dir(scenario: fn(dir) {
+    let stray = Filesystem.Write(path: concat(dir as String, "/README.txt"), content: "not a profile")
+    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
+    stray.success
+      && ps_upserted(u: upsert)
+      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
+  })
+}
+
+// 3. A MISSING STORE DIRECTORY IS AN UNREAD STORE AT STEP "list" -- never an empty roster, which
+// would be indistinguishable from a store nobody has logged into.
+test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> Bool {
+  ps_with_temp_dir(scenario: fn(dir) {
+    match profile_store_read_all(layout: ps_layout(dir: concat(dir as String, "/absent-store") as FilePath)) {
+      ProfileStoreUnread { step: s, reason: _ } => s == "list"
+      ProfileStoreRead { profiles: _, skipped: _ } => false
+    }
+  })
+}

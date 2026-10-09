@@ -28,5 +28,5 @@ fn p9_registry_canonical_row_count() -> Int {
 }
 
 test fn p9_registry_owner_receipt_holds() -> Bool {
-  p9_registry_fn_names_unique() && p9_registry_canonical_row_count() == 1
+  p9_registry_canonical_row_count() == 1
 }

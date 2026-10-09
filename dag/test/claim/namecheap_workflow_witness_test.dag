@@ -1,0 +1,45 @@
+module test.claim.namecheap_workflow_witness_test
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlString }
+import gunbc.fleet_converge_workflow {
+  NamecheapObserve, FleetSshKeyNotConsumed,
+  fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
+  fleet_converge_namecheap_observe_job, fleet_converge_shared_job_if,
+  fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr,
+}
+import gunbc.ci_spec { gunbc_run_step_targets }
+import gunbc.namecheap.observe { namecheap_observe_ci_wet }
+import gunbc.namecheap.federation { namecheap_service_account, namecheap_provider_resource }
+
+fn auth_step_matches(st: Step) -> Bool {
+  match st {
+    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match id { Present { value: value } => value == "wif_auth" && match args {
+        Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => v == (namecheap_service_account as String) _ => false })
+          && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => v == namecheap_provider_resource() _ => false })
+        Absent => false
+      } Absent => false }
+    _ => false
+  }
+}
+test fn separate_job_uses_dedicated_identity() -> Bool {
+  let job = fleet_converge_namecheap_observe_job()
+  job.id == "namecheap-observe" && match job.environment { Present { value } => value == "namecheap-dns" Absent => false }
+    && count(filter(job.steps, s => auth_step_matches(st: s))) == 1
+    && any(job.needs, n => n == "build")
+}
+test fn observer_has_no_fleet_ssh_demand() -> Bool {
+  match fleet_converge_mode_fleet_ssh_key_demand(mode: NamecheapObserve) { FleetSshKeyNotConsumed => true _ => false }
+}
+test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
+  string_contains(s: fleet_converge_checkout_ref_expr, pattern: "github.event.inputs.mode == 'namecheap_observe'")
+    && fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
+    && string_contains(s: fleet_converge_shared_job_if, pattern: "github.event.inputs.mode != 'namecheap_observe'")
+}
+test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {
+  any(fleet_converge_mode_options, m => m == "namecheap_observe")
+    && count(filter(gunbc_run_step_targets(), t => t.entry == "dag/gunbc/namecheap/observe.dag" && t.function == "namecheap_observe_ci_wet")) == 1
+}

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.emitted_field_accessor_panics_on_a_variant_without_the_field
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data emitted_field_accessor_panics_on_a_variant_without_the_field: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitted_field_accessor_panics_on_a_variant_without_the_field" as NonEmptyStr,
+
+  receipts: [
+    "emitted field accessor panics on a variant without the field. INVALID STATE: a coproduct whose arms do not all carry a field name, for which the Rust emitter renders one shared accessor over every arm, giving the arms that lack the field a `panic!` body. HARM: the emitted crate COMPILES CLEAN and aborts at runtime when that arm is reached. That is a fail-open arm authored by the compiler into the program it emits -- the absorbing fallback DESIGN section 5 forbids -- and nothing at the .dag layer says it happened.",
+
+    "DISTINGUISHED FROM ITS NEAR NEIGHBOUR, and the distinction is the reason this is its own class rather than a receipt on accepted_source_emits_uncompilable_target. That class is source the TARGET COMPILER REFUSES: loud, at build, before anything runs. This one passes the target compiler and is silent until the arm is reached, so the two sit at different rungs and have different detection stories. A class that folded them together would report the louder one's rung for both.",
+
+    "RECEIPT, 2026-09-20, session gentle-seal-490, measured on the committed stage0 mirror rather than reasoned about. Occurrences of `panic!(\"no <field> on unit variant\")`: 137 across 43 files, 69 distinct accessor names; the sibling positional-payload arm renders the same way. Highest-count files: v1_compiler_parse.rs (23), std_realization_schedule.rs (11), v1_std_core.rs (10), std_workspace_artifact.rs (7), std_measure.rs (7). PRE-EXISTING rather than introduced by the lane that found it: v1_std_core.rs on HEAD carries 10. So the seed's own emitted realization contains 137 compiler-authored fail-open arms today.",
+
+    "HOW IT WAS FOUND, because the path matters for whoever meets it next: a lane declaring a mixed-arity coproduct (one arm carrying a field, one bare) read the emitted module and found the accessor's panic arm sitting beside an E0573 it was actually chasing. The panic was not what broke the build -- it would have shipped. A lane that writes such a coproduct and does not READ THE EMITTED BYTES has no signal at all.",
+
+    "RUNG FOUND AT: below the ladder -- silent wrongness, deferred to runtime, in generated code. ATTAINABLE CEILING: structurally guaranteed. The emitter has the fact it needs at the moment it renders the arm (it is iterating the arms and knows which lack the field), so it can refuse to render a shared accessor over a coproduct whose arms do not all carry that field, with a located diagnostic naming the coproduct, the field and the arms that lack it, instead of rendering a panic. NEXT-RUNG TRIGGER: v1.compiler.emit_rust refuses the shared-accessor render for a coproduct not every arm of which declares the accessed field -- SUFFICIENT FOR no Accepted program to emit a compiler-authored panic arm for a missing field, so the 137 become either declared per-arm accessors or located refusals. STRUCTURALLY IMPOSSIBLE would additionally require the language to make a field access over a coproduct arm that cannot carry it unwritable at the .dag layer, which is a separate modeling obligation and is NOT this row's trigger.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_enum_shared_accessors", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.machine_constraints", decl_name: "MachineWidth", field: WholeDeclaration },
+  ],
+}

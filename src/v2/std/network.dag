@@ -1,21 +1,10 @@
 module v2.std.network
 
-import v2.std.optional {
+import std.optional {
   Optional
 }
 import v2.std.text { String }
-import v2.std.nat { Nat }
-
-type HttpMethod
-  = GET
-  | POST
-  | PUT
-  | PATCH
-  | DELETE
-  | HEAD
-  | OPTIONS
-  | CONNECT
-  | TRACE
+import std.nat { Nat }
 
 type Rfc3986AbnfProduction {
   name: String,
@@ -73,7 +62,7 @@ type UriHost {
 }
 
 type UriPort {
-  value: v2.std.nat.Nat,
+  value: std.nat.Nat,
   grammar: Rfc3986AbnfProduction,
 }
 

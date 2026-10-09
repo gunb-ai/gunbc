@@ -1,5 +1,7 @@
 module v2.extdeps.languages.rust
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import extdeps.languages.rust.capabilities {
   RustCapability,
   RustDebug,
@@ -87,14 +89,13 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection {
-  List,
   Map,
   PointwisePower,
   empty_map,
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -143,11 +144,17 @@ import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
 import v2.std.compilers.target_model {
+  target_bind_let_separator_present,
+  IntLiteralDecimal,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
   ProducedDeclRenderRows,
+  FunctionTypeAtFnBoundReturn,
+  FunctionTypeAtItemReturn,
+  FunctionTypeRealizationRow,
+  FunctionTypeSugarRows,
   ProducedSignatureFixed,
   ProducedSignatureDeclName,
   ProducedSignatureParams,
@@ -163,6 +170,8 @@ import v2.std.compilers.target_model {
   target_model_emit_transforms_empty,
   CanonicalOperation,
   InfixToken,
+  OperandUnchanged,
+  canonical_operation_op_coerce,
   canonical_operation_op_add,
   canonical_operation_op_sub,
   canonical_operation_op_mul,
@@ -198,6 +207,8 @@ import v2.std.compilers.target_model {
   ValueProducing,
   derive_bodied_arrow_scaffold,
   TargetAtomRealization,
+  DeclarationReferenceForm,
+  ModuleScopedPath,
   TargetAtomTypeShape,
   TargetTypeExpression,
   target_atom_alias_type_expression,
@@ -297,35 +308,26 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored, StructuralLabel,
   Node,
   Positional,
   Symbol,
   TypeNode,
   Instantiation,
 }
-import v2.std.logic {
-  Bool,
-  bool_node
-}
+import v2.std.logic { bool_node }
 import std.algebra {
   Empty,
-  Cons
+  Cons,
+  list_append,
+  list_snoc_item
 }
 import v2.std.algebra {
-  algebra_binary_fn_node,
-  approximate_field_node,
-  approximate_field_type_node,
-  boolean_algebra_node,
-  boolean_algebra_type_node,
   fold_list,
   fold_list_node,
-  fold_list_right,
-  list_append,
-  list_snoc_item,
-  ordered_ring_node,
-  ordered_ring_type_node
+  fold_list_right
 }
+import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, ordered_ring_node, ordered_ring_type_node }
 import v2.std.cardinality {
   Never
 }
@@ -949,7 +951,7 @@ fn rust_inhabitant_i32_node() -> Node {
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn rust_declared_inhabitants_root() -> Node {
@@ -1002,15 +1004,7 @@ fn rust_selection_policy_node() -> Node {
 
 data rust_fixture_i32_inhabitant: Node = rust_inhabitant_i32_node()
 
-data rust_fixture_emitted_add_fn: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data rust_fixture_emitted_add_fn: Node = anonymous_signature_arrow(domain_types: [rust_fixture_i32_inhabitant, rust_fixture_i32_inhabitant], codomain: rust_fixture_i32_inhabitant, source: rust_fixture_i32_inhabitant)
 
 fn rust_i32_overflow_disposition_node() -> Node {
   rust_overflow_disposition_node(
@@ -1101,45 +1095,6 @@ fn rust_source_text_authority() -> String {
 fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn rust_add_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_add)
-    )
-  ]
-}
-
-fn rust_serialize_source_children() -> List<Edge> {
-
-  list_append(
-    left: rust_add_serialize_source_prefix_edges(),
-    right: [
-      rust_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: rust_concrete_tokens(),
-          token_to_node: rust_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn rust_add_serialize_source_node() -> Node {
-
-  let _authority = rust_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: rust_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1247,7 +1202,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
     let_form: TargetBindLetShape {
       let_token: ^rust_token_kw_let,
       assign_token: ^rust_token_equal,
-      in_token: ^rust_token_semicolon
+      in_token: target_bind_let_separator_present(token: ^rust_token_semicolon)
     },
     loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
     record_construct_form: TargetRecordConstructShape {
@@ -1271,6 +1226,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^rust_token_kw_true,
       false_token: ^rust_token_kw_false
     },
+    int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -1305,6 +1261,17 @@ fn rust_binop_operator_lex_rules() -> List<LexRule> {
   ]
 }
 
+// A CAST'S CROSSING IS SPELLED AS ITS OPERAND. v2.compiler.infer admits only an Identity or Exact
+// crossing (v2.std.coercion coercion_cast_crossing), so source and target share one representation
+// and Rust needs no conversion; its own `as` would claim a numeric conversion the model did not
+// make.
+fn rust_coerce_operator_realization_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_coerce(),
+    shape: OperandUnchanged
+  )
+}
+
 fn rust_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
     rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
@@ -1318,7 +1285,8 @@ fn rust_operator_realizations_catalog_node() -> Node {
     rust_add_operator_realization_row(),
     rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus),
     rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star),
-    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash)
+    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash),
+    rust_coerce_operator_realization_row()
   ])
 }
 
@@ -1372,8 +1340,59 @@ data rust_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRender
   param_separator: [^rust_token_comma],
   type_ref_token_class: ^rust_token_ident,
   block_close: [FixedToken { token_class: ^rust_token_rbrace }],
-  block_evaluation_mode: ValueProducing
+  block_evaluation_mode: ValueProducing,
+  function_type_realizations: rust_function_type_realization_rows
 }
+
+// THE PARENTHESIZED Fn BOUND, `Fn(A, B) -> R` -- The Rust Reference, "Trait and lifetime bounds"
+// (TypeBound / TraitBound) and core::ops::Fn: the parenthesized argument list is the sugar for
+// `Fn<(A, B), Output = R>`. Both realization rows spell their function type through it.
+data rust_fn_trait_sugar: FunctionTypeSugarRows = FunctionTypeSugarRows {
+  params_open: ^rust_token_lparen,
+  param_separator: ^rust_token_comma,
+  params_close: ^rust_token_rparen,
+  arrow: ^rust_token_arrow
+}
+
+// THE SPELLING OF EACH CANDIDATE REALIZATION OF A FUNCTION-TYPED VALUE. What Rust states about the
+// two forms -- `impl Fn` admitted at a function's return and refused at an Fn bound's return
+// (E0562), `Box<dyn Fn>` admitted everywhere at one allocation and a vtable call -- is
+// extdeps.languages.rust.function_type_forms, cited there; this row says only how each is written.
+// A boxed type demands a boxed value, so Box's value_open is `Box::new(`; and a returned closure
+// outlives the frame whose bindings it captures, so both rows `move` them ("Closure expressions",
+// expr.closure; without it rustc 1.93 refuses E0373 "closure may outlive the current function").
+//
+// WHICH ROW STANDS AT WHICH POSITION IS A SELECTION, NOT A PICK MADE HERE. It is executed by
+// gunbc.rust_function_type_selection over std.decision select_realization, each row's
+// `realization` names the candidate that selection returns, and
+// test.claim.rust_function_type_selection_witness executes the selection and pins these rows to its
+// SelectedWithin receipt. At an Fn bound's return E0562 is a hard constraint excluding impl before
+// Pareto, so Box is selected by construction; at a function item's return both are admitted, neither
+// dominates, and the stated policy prefers impl.
+// DIVERGENCE, STATED: the selection runs offline and this row carries its winner, instead of the
+// emitter selecting per signature. TRIGGER (the capability): the self-emitted target_model can
+// consume std.decision -- then the emitter calls select_realization itself and these rows reduce
+// to the candidate field.
+data rust_function_type_realization_rows: List<FunctionTypeRealizationRow> = [
+  FunctionTypeRealizationRow {
+    position: FunctionTypeAtItemReturn,
+    realization: ^rust_fn_type_impl_trait,
+    sugar: rust_fn_trait_sugar,
+    type_open: [^rust_token_kw_impl, ^rust_token_fn_trait],
+    type_close: [],
+    value_open: [^rust_token_kw_move],
+    value_close: []
+  },
+  FunctionTypeRealizationRow {
+    position: FunctionTypeAtFnBoundReturn,
+    realization: ^rust_fn_type_boxed_trait_object,
+    sugar: rust_fn_trait_sugar,
+    type_open: [^rust_token_box, ^rust_token_fn_type_lt, ^rust_token_kw_dyn, ^rust_token_fn_trait],
+    type_close: [^rust_token_fn_type_gt],
+    value_open: [^rust_token_box, ^rust_token_path_sep, ^rust_token_box_new, ^rust_token_lparen, ^rust_token_kw_move],
+    value_close: [^rust_token_rparen]
+  }
+]
 
 fn rust_produced_decl_support() -> ProducedDeclSupport {
   ProducedDeclWired {
@@ -1982,10 +2001,6 @@ fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> Lis
       target: rules
     ),
     rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_add_serialize_source_node()
-    ),
-    rust_named_edge(
       name: ^target_model_edge_collection_realization,
       target: rust_collection_realization_catalog_node()
     ),
@@ -2067,7 +2082,10 @@ fn rust_binding_spellings() -> Map<Symbol, String> {
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
   let mi = map_insert(my, ^dag_binding_type_int, "i32")
-  let m3 = map_insert(mi, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let mb = map_insert(mi, ^rust_surface_spelling_bool, "bool")
+  let mc = map_insert(mb, ^rust_surface_spelling_char, "char")
+  let ms = map_insert(mc, ^rust_target_atom_type_spelling_string, "String")
+  let m3 = map_insert(ms, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
@@ -2075,7 +2093,8 @@ fn rust_binding_spellings() -> Map<Symbol, String> {
 
 fn rust_production_lex_rules_with(extra: List<LexRule>) -> LexRuleSet {
   LexRuleSet {
-    rules: list_append(left: rust_production_lex_rules().rules, right: extra)
+    rules: list_append(left: rust_production_lex_rules().rules, right: extra),
+    modes: []
   }
 }
 
@@ -2231,18 +2250,53 @@ data rust_target_function_signature_realization_catalog: List<TargetFunctionSign
   rust_target_function_signature_realization_symbol_return
 ]
 
+// HOW RUST REALIZES A WHERE-REFINEMENT DECLARATION: a TRANSPARENT ALIAS, `type Pos = i32;`. A refinement
+// restricts its carrier and adds no representation -- the predicate is discharged where a value crosses
+// into it (v2.compiler.refinement_discharge), and a crossing back to the carrier is realized as the
+// operand unchanged -- so the target names the carrier's own representation under the refinement's
+// name, and neither adds nor drops behaviour. A newtype would add construction and projection the source
+// never selected; emitting nothing would leave the refinement's uses naming a type that does not exist.
+// The row names the four token classes; the carrier's spelling is not here -- it is the carrier type's
+// own realization (v2.compiler.emit_produced produced_type_binding).
+fn rust_refinement_token_class_node(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_refinement_declaration_realization_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: ^refinement_declaration_field_keyword, target: rust_refinement_token_class_node(id: ^rust_token_kw_type)),
+      rust_named_edge(name: ^refinement_declaration_field_name, target: rust_refinement_token_class_node(id: ^rust_token_ident)),
+      rust_named_edge(name: ^refinement_declaration_field_assign, target: rust_refinement_token_class_node(id: ^rust_token_equal)),
+      rust_named_edge(name: ^refinement_declaration_field_terminator, target: rust_refinement_token_class_node(id: ^rust_token_semicolon))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn rust_target_model_node() -> Node {
 
   Node {
     kind: TypeNode { connective: Conj },
     children: list_snoc_item(
-      xs: rust_target_model_core_edges(),
-      item: rust_named_edge(
-        name: ^target_model_edge_atom_realizations,
-        target: target_atom_realization_catalog_node(
-          rows: rust_target_atom_realization_catalog,
-          host_bundle: rust_target_model_bundle_core()
+      xs: list_snoc_item(
+        xs: rust_target_model_core_edges(),
+        item: rust_named_edge(
+          name: ^target_model_edge_atom_realizations,
+          target: target_atom_realization_catalog_node(
+            rows: rust_target_atom_realization_catalog,
+            host_bundle: rust_target_model_bundle_core()
+          )
         )
+      ),
+      item: rust_named_edge(
+        name: ^target_model_edge_refinement_declaration,
+        target: rust_refinement_declaration_realization_node()
       )
     ),
     occurrence_id: OccurrenceSynthetic
@@ -2261,10 +2315,15 @@ fn rust_target_model() -> TargetModel {
   }
 }
 
+// `LexPattern` declares `LiteralPattern { text: v2.std.text.String }` -- the QUALIFIED spelling, so
+// the field is the free-monoid char list on purpose, not the target's native string. The constructor
+// in `v2.std.compilers.lexing` converts with `chars` when it builds one from a fragment; this one
+// took an ordinary string and handed it over unconverted, which rustc answered as a carrier mismatch
+// at the field rather than at the missing conversion.
 fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
@@ -2296,7 +2355,8 @@ fn rust_staging_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_staging_match_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2316,10 +2376,20 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+    rust_lex_rule(token_class: ^rust_token_kw_type, text: "type "),
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
     rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
     rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
-    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false"),
+    rust_lex_rule(token_class: ^rust_token_kw_impl, text: "impl "),
+    rust_lex_rule(token_class: ^rust_token_kw_dyn, text: "dyn "),
+    rust_lex_rule(token_class: ^rust_token_kw_move, text: "move "),
+    rust_lex_rule(token_class: ^rust_token_fn_trait, text: "Fn"),
+    rust_lex_rule(token_class: ^rust_token_box, text: "Box"),
+    rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
+    rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
+    rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
   ]
 }
 
@@ -2342,7 +2412,8 @@ fn rust_fn_add_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
       ],
       right: rust_binop_operator_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2362,7 +2433,8 @@ fn rust_production_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2463,14 +2535,18 @@ fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Outcome<S
       } else {
         outcome_accepted(value: ^rust_decl_derive_enum_binding)
       }
-    _ =>
-      outcome_rejected(
-        d: rust_trait_derive_coproduct_diagnostic(
-          reason: ^rust_trait_derive_coproduct_connective_unsupported,
-          node: coproduct
-        )
-      )
+    TypeNode { connective: _ } => rust_trait_derive_surface_binding_for_coproduct_unsupported(coproduct: coproduct)
+    ComputationNode { behavior: _ } => rust_trait_derive_surface_binding_for_coproduct_unsupported(coproduct: coproduct)
   }
+}
+
+fn rust_trait_derive_surface_binding_for_coproduct_unsupported(coproduct: Node) -> Outcome<Symbol> {
+  outcome_rejected(
+    d: rust_trait_derive_coproduct_diagnostic(
+      reason: ^rust_trait_derive_coproduct_connective_unsupported,
+      node: coproduct
+    )
+  )
 }
 
 fn rust_trait_derive_surface_binding_for_record(heap_allocated: Bool) -> Symbol {
@@ -2698,7 +2774,8 @@ fn rust_decl_general_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
       rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -3694,7 +3771,8 @@ fn rust_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -4346,7 +4424,24 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       separator: ^rust_token_comma,
       field_label_separator: optional_absent(),
       close: ^rust_token_gt
-    }
+    },
+    declaration_reference_form: rust_declaration_reference_form()
+  }
+}
+
+// A CORPUS DECLARATION REFERENCE IS SPELLED AS A CRATE-ROOTED PATH: `crate::<module>::<name>`, with
+// the .dag module's dotted segments joined by `_` into one Rust module identifier. `crate` and `::`
+// are Rust's (The Rust Reference, Paths: `crate` names the crate root, `::` is the path separator);
+// the `_` joining is the layout the seed's emission realizes one Rust module per .dag module
+// under (v1.compiler.emit_core_support module_to_filename), stated here so that a reference this
+// projection spells lands on the same module the seed emits the declaration into. Always crate-rooted
+// rather than bare-when-same-module: a fully qualified path is valid at every use site, so the
+// spelling carries no dependence on where the reference sits.
+fn rust_declaration_reference_form() -> DeclarationReferenceForm {
+  ModuleScopedPath {
+    root_text: "crate",
+    scope_separator_text: "::",
+    module_segment_joiner: "_"
   }
 }
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
@@ -4557,7 +4652,8 @@ fn rust_sg2_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
       rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
       rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -4566,10 +4662,6 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
       target: rust_type_expression_projection_bundle_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_sg2_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -4637,25 +4729,13 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
         ),
         occurrence_id: OccurrenceSynthetic
 }
-    _ => rust_sg2_type_expr_target_model_bundle_core()
+    TypeNode { connective: _ } => rust_sg2_type_expr_target_model_bundle_core()
+    ComputationNode { behavior: _ } => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
 
 fn rust_type_expression_projection_bundle_node() -> Node {
   type_expr_projection_step_algebra(projection: rust_type_expression_projection())
-}
-
-fn rust_sg2_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
@@ -4829,14 +4909,11 @@ fn rust_sg2_arrow_xy_emitted() -> Node {
 }
 
 fn rust_sg2_arrow_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(
+    domain_types: [rust_sg2_atom_node(binding: ^rust_binding_sg2_x)],
+    codomain: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+    source: rust_sg2_atom_node(binding: ^rust_binding_sg2_x)
+  )
 }
 
 fn rust_sg2_binary_fn_source_type_node() -> Node {
@@ -4846,11 +4923,14 @@ fn rust_sg2_binary_fn_source_type_node() -> Node {
   )
 }
 
+// THE RETIRED POSITIONAL-TYPES ARROW [x, y], built by hand because it has no producer: no domain
+// binders and no order edge. Program P's control that such an Arrow refuses at projection.
 fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -4925,12 +5005,13 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
     kind: base.kind,
     children: fold(base.children, init: Empty, f: fn(acc, e) {
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == field {
             acc
           } else {
             list_snoc_item(xs: acc, item: e)
           }
+        StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: e)
         Positional => list_snoc_item(xs: acc, item: e)
       }
     }),
@@ -5026,7 +5107,8 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
     children: fold(base.children, init: Empty, f: fn(acc, e) {
       match e.label {
         Positional => acc
-        _ => list_snoc_item(xs: acc, item: e)
+        Authored { name: _ } => list_snoc_item(xs: acc, item: e)
+        StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: e)
       }
     }),
     occurrence_id: OccurrenceSynthetic

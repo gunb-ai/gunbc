@@ -1,0 +1,57 @@
+module extdeps.linux.module_decompress
+
+import std.types { Int, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+// IN-KERNEL MODULE DECOMPRESSION (CONFIG_MODULE_DECOMPRESS), Linux v6.8 kernel/module/decompress.c.
+// finit_module(2) with MODULE_INIT_COMPRESSED_FILE hands the kernel a compressed module file; a zstd
+// decoder error is printed by module_zstd_decompress as the line below and returned to the caller as
+// -EINVAL. THE LINE NAMES NO MODULE: the printk carries the decoder status and nothing else, so the
+// kernel log alone never identifies which file failed -- that identity is a userspace fact (the
+// loader that issued the finit_module call).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/v6.8/kernel/module/decompress.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.module_decompress",
+      decl_name: "linux_module_zstd_decompress_failed_prefix",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// pr_err("ZSTD-decompression failed with status %d\n", retval), retval = zstd_get_error_code(ret).
+data linux_module_zstd_decompress_failed_prefix: NonEmptyStr = "ZSTD-decompression failed with status "
+
+// The stem of that line without its status clause: a line carrying the stem but no parseable status
+// is still a record of this printk, truncated or garbled, never an unrelated line.
+data linux_module_zstd_decompress_failed_stem: NonEmptyStr = "ZSTD-decompression failed"
+
+// zstd_errors.h ZSTD_ErrorCode: the status values a decoder can return are the library's own enum.
+// Only the rows this corpus has observed are carried; any other status is kept as its integer.
+type ZstdErrorCode
+  = ZstdCorruptionDetected
+  | ZstdErrorCodeOther { code: Int }
+
+data zstd_error_corruption_detected_code: Int = 20
+
+fn zstd_error_code_of(code: Int) -> ZstdErrorCode {
+  if code == zstd_error_corruption_detected_code { ZstdCorruptionDetected } else { ZstdErrorCodeOther { code: code } }
+}
+
+fn zstd_error_code_name(code: ZstdErrorCode) -> String {
+  match code {
+    ZstdCorruptionDetected => "corruption_detected"
+    ZstdErrorCodeOther { code: c } => concat("zstd error ", to_string(c))
+  }
+}

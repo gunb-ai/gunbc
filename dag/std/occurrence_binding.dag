@@ -11,6 +11,18 @@ import std.types { String }
 // by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not
 // an interim consumer: it has no exact reference-occurrence Node or occurrence containment
 // identity, so binding it here would fabricate the relation this carrier preserves.
+//
+// WHAT THE V2 INSTANTIATION IS, READ FROM THE OTHER SIDE (fierce-wren-487, 2026-09-22, ruled a
+// declared divergence and not a fork). v2.std.symbol_index LexicalLookup and v2.compiler.resolve
+// SymbolIndexAtomLookup answer the SAME question this result type answers -- which declaration
+// binds one reference occurrence: none, one, or more than one -- at the same grain (v2's hit is
+// for one occurrence and carries its occurrence id), and v2's 0/1/many selection over its
+// candidates (symbol_index_lexical_lookup) duplicates occurrence_binding_from_candidates. The two
+// naming schemes agree: ContainmentPath<N> of nodes and v2's QualifiedName of Named edges are the
+// same containment path read as nodes vs as labels, which is why v2 resolution now carries a
+// declaration reference as that path. The candidate PRODUCERS are legitimately layered (a supplied
+// population here, the index chain walk there) and are not what the trigger collapses; the
+// trigger is v2's selection fold and result vocabulary retiring into OccurrenceBindingResult<Node>.
 
 type ContainmentPath<N> {
   ancestors: FreeMonoid<N>

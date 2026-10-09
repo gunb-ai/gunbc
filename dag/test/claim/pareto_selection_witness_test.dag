@@ -1,7 +1,6 @@
 module test.claim.pareto_selection_witness
 
 import std.types { Bool, List, NonEmptyStr, Int, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.interval { degenerate_interval, closed_interval, IntervalConstruction, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
@@ -462,8 +461,6 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
   }
 }
 
-fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
-
 // CONTROL 11 - A DECLARED GAP IS NOT ELIGIBLE TO DOMINATE, AND THE PAIR API SAYS SO. This is the
 // defect that closed here, found while migrating a private consumer: compare_pair computed the
 // dominance question from readings alone and never read missing_inputs, while entry_standing
@@ -715,54 +712,6 @@ test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool {
   typo_gap_refuses && funded_gap_is_not_named
 }
 
-fn pareto_witness_report() -> NonEmptyStr {
-  join([
-    "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
-    " tradeoff_both_survive=", flag(b: witness_tradeoff_pair_both_survive()),
-    " missing_neither_dominates_nor_dies=", flag(b: witness_missing_inputs_neither_dominate_nor_die()),
-    " absent_reading_refuses=", flag(b: witness_absent_reading_refuses_the_pair()),
-    " orientation_consulted=", flag(b: witness_axis_orientation_is_consulted()),
-    " shared_label_still_compares=", flag(b: witness_shared_label_still_compares()),
-    " field_order_irrelevant=", flag(b: witness_field_order_is_irrelevant()),
-    " duplicate_axis_refuses=", flag(b: witness_duplicate_axis_identity_refuses()),
-    " duplicate_candidate_refuses=", flag(b: witness_duplicate_candidate_identity_refuses()),
-    " duplicate_reading_refuses=", flag(b: witness_duplicate_reading_refuses_the_pair()),
-    " gap_ineligible_to_dominate=", flag(b: a_declared_gap_is_ineligible_to_dominate()),
-    " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
-    " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
-    " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
-    " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
-    " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
-    " no_self_dominance=", flag(b: a_subject_does_not_dominate_itself()),
-    " gap_scoped_to_its_axis=", flag(b: a_gap_on_one_axis_does_not_excuse_a_hole_on_another()),
-    " gap_names_a_funded_axis=", flag(b: a_gap_must_name_an_axis_this_selection_funds()),
-  ], "")
-}
-
-fn pareto_witness_main() -> ProcessExit {
-  let report = pareto_witness_report()
-  let all_pass = witness_dominated_entry_names_its_dominator()
-    && witness_tradeoff_pair_both_survive()
-    && witness_missing_inputs_neither_dominate_nor_die()
-    && witness_absent_reading_refuses_the_pair()
-    && witness_axis_orientation_is_consulted()
-    && witness_shared_label_still_compares()
-    && witness_field_order_is_irrelevant()
-    && a_declared_gap_is_ineligible_to_dominate()
-    && the_pair_api_and_the_standing_path_agree_about_a_gap()
-    && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
-    && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
-    && a_duplicated_axis_roster_refuses_the_pair_too()
-    && a_cause_population_is_sized_by_distinct_defects()
-    && a_subject_does_not_dominate_itself()
-    && witness_duplicate_axis_identity_refuses()
-    && witness_duplicate_candidate_identity_refuses()
-    && witness_duplicate_reading_refuses_the_pair()
-    && a_gap_on_one_axis_does_not_excuse_a_hole_on_another()
-    && a_gap_must_name_an_axis_this_selection_funds()
-  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
-}
-
 
 // ---------------------------------------------------------------------------
 // INTERVAL EVIDENCE. The controls below are the discriminating reds for the state this
@@ -798,8 +747,6 @@ data entry_same_id_other_readings: ParetoEntry = ParetoEntry {
 }
 
 data id_wide_twin: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_twin", field: WholeDeclaration }
-
-
 
 // A widening fixture. A refused construction would be a fixture defect, and it is surfaced as an
 // obviously-wrong degenerate rather than silently swapped into order -- the refusal arm belongs to

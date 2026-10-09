@@ -1,5 +1,6 @@
 module v2.test.round_trip.source_authority_contract
 
+import v2.extdeps.languages.dag { dag_target_model }
 
 data source_authority_contract_target_model: TargetModel = dag_target_model()
 

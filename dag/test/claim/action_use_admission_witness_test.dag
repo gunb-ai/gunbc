@@ -1,0 +1,544 @@
+module test.claim.action_use_admission_witness
+
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions { Workflow, Job, Step, UsesStep, WorkflowDispatch, RunnerSpec, HostedRunner, UbuntuLatest }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction, action_release_uses_text,
+}
+import extdeps.github.action.upload_artifact { upload_artifact_v4_6_2, upload_artifact_v6_0_0 }
+import extdeps.github.action.download_artifact { download_artifact_v6_0_0, download_artifact_v7_0_0 }
+import extdeps.github.action.checkout { checkout_v4_4_0 }
+import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_v1_16_0 }
+import extdeps.github.action.rust_cache { rust_cache_v2_9_1 }
+import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
+import gunbc.action_use_admission {
+  ActionUseAdmission, AdmittedExact, RefusedForcedSubstitution, RefusedByPlatform,
+  RefusedUnmodeledPlatformDisposition, RefusedUnobservedDeclaration, RefusedConflictingDeclarations,
+  RefusedNestedActionUse, RefusedUnmodeledUse, RefusedUnresolvedProducer, RefusedUnselectedRelease,
+  ActionUseSite, StepActionUse, JobReusableWorkflowUse,
+  RealizedActionUse, RealizedWorkflowReading, RealizedWorkflowUses, RealizedWorkflowUnreadable,
+  WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
+  realized_census_cost_standing,
+  action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
+  admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
+  upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
+  realized_use_is_a_repository_selection,
+}
+import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// NO PROVIDER-SUBSTITUTED ACTION RUNTIMES, BY EXECUTION. The policy half is driven over REAL
+// producer releases: the two refusals that matter most are releases this repository actually ran,
+// read from their own action.yml, not a fixture spelled to look like one. The census half reads
+// every workflow file GitHub would execute from this checkout (.github/workflows, which is committed
+// input to this build like any .dag source) through the modeled YAML reader, one claim per file,
+// and admits every `uses` at the two places GitHub reads one.
+
+fn is_forced_substitution(a: ActionUseAdmission) -> Bool {
+  match a {
+    RefusedForcedSubstitution { action_release: _, declared: d, realized: r, policy_authority: _ } =>
+      match d {
+        JavaScriptAction { node_major: dn } => match r { JavaScriptAction { node_major: rn } => dn == 20 && rn == 24  CompositeAction { nested: _ } => false  DockerAction { image: _ } => false }
+        CompositeAction { nested: _ } => false
+        DockerAction { image: _ } => false
+      }
+    AdmittedExact { action_release: _, declared: _ } => false
+    RefusedByPlatform { action_release: _, declared: _, reason: _ } => false
+    RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false
+    RefusedUnobservedDeclaration { action_release: _ } => false
+    RefusedConflictingDeclarations { action_release: _, readings: _ } => false
+    RefusedNestedActionUse { action_release: _, nested: _ } => false
+    RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false
+    RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false
+  }
+}
+
+fn is_unobserved(a: ActionUseAdmission) -> Bool {
+  match a { RefusedUnobservedDeclaration { action_release: _ } => true  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false  RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false }
+}
+
+fn is_unmodeled_platform(a: ActionUseAdmission) -> Bool {
+  match a { RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => true  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false  RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false }
+}
+
+fn is_conflicting(a: ActionUseAdmission) -> Bool {
+  match a { RefusedConflictingDeclarations { action_release: _, readings: n } => n == 2  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false  RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false }
+}
+
+// The nested refusal must carry the nested release's OWN forced substitution, so the route is
+// asserted and not only the verdict.
+fn is_nested_forced(a: ActionUseAdmission) -> Bool {
+  match a { RefusedNestedActionUse { action_release: _, nested: inner } => is_forced_substitution(a: inner)  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false  RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false }
+}
+
+fn is_unmodeled_use_at(a: ActionUseAdmission, want_job_site: Bool) -> Bool {
+  match a {
+    RefusedUnmodeledUse { uses_text: _, site: s, cause: _ } =>
+      match s { StepActionUse => !want_job_site  JobReusableWorkflowUse => want_job_site }
+    AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false
+  }
+}
+
+fn is_unresolved(a: ActionUseAdmission) -> Bool {
+  match a { RefusedUnselectedRelease { action_release: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => true  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE POLICY, over real producers
+// ---------------------------------------------------------------------------------------------
+
+// declared node20 + GitHub executes node24 => refused, although the job would pass.
+test fn red_upload_artifact_v4_declared_node20_is_a_forced_substitution() -> Bool {
+  is_forced_substitution(a: admit_action_release(action_release: upload_artifact_v4_6_2))
+}
+
+test fn red_checkout_v4_declared_node20_is_a_forced_substitution() -> Bool {
+  is_forced_substitution(a: admit_action_release(action_release: checkout_v4_4_0))
+}
+
+// THE RELEASE THAT PROVES THE PRODUCER MUST BE READ. download-artifact v6.0.0 is announced as the
+// Node 24 release; its own action.yml declares node20, so it is substituted like v4 was.
+test fn red_download_artifact_v6_announced_node24_but_declares_node20() -> Bool {
+  is_forced_substitution(a: admit_action_release(action_release: download_artifact_v6_0_0))
+}
+
+// declared node24 + GitHub executes node24 => admitted exactly.
+test fn green_upload_artifact_v6_declared_node24_is_exact() -> Bool {
+  action_use_admitted(a: admit_action_release(action_release: upload_artifact_v6_0_0))
+    && action_use_admitted(a: admit_action_release(action_release: download_artifact_v7_0_0))
+}
+
+// A composite is exact only through its nested uses: setup-rust-toolchain v1.16.0 runs
+// Swatinem/rust-cache v2.9.1, which declares node24.
+test fn green_composite_with_exact_nested_use_is_admitted() -> Bool {
+  action_use_admitted(a: admit_action_release(action_release: setup_rust_toolchain_v1_16_0))
+}
+
+// The same composite shape with a nested node20 release refuses, and says it was the NESTED use.
+test fn red_composite_with_substituted_nested_use_refuses_as_nested() -> Bool {
+  let composite = ActionRelease { owner: "example", repo: "composite", tag: "v1", commit: "1111111111111111111111111111111111111111" }
+  let readings = [
+    ActionManifestReading { action_release: composite, declared: CompositeAction { nested: [upload_artifact_v4_6_2] } },
+    ActionManifestReading { action_release: upload_artifact_v4_6_2, declared: JavaScriptAction { node_major: 20 } },
+  ]
+  is_nested_forced(a: admit_action_release_against(readings: readings, action_release: composite))
+}
+
+// A release whose action.yml was never read has no declaration to admit.
+test fn red_unobserved_producer_declaration_refuses() -> Bool {
+  is_unobserved(a: admit_action_release(action_release: ActionRelease { owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "0000000000000000000000000000000000000000" }))
+}
+
+// A declaration the platform policy does not answer refuses rather than being presumed exact.
+test fn red_unmodeled_platform_disposition_refuses() -> Bool {
+  let r = ActionRelease { owner: "example", repo: "node16", tag: "v1", commit: "2222222222222222222222222222222222222222" }
+  is_unmodeled_platform(a: admit_action_release_against(
+    readings: [ActionManifestReading { action_release: r, declared: JavaScriptAction { node_major: 16 } }],
+    action_release: r,
+  ))
+}
+
+test fn red_two_readings_of_one_commit_refuse() -> Bool {
+  let reading = ActionManifestReading { action_release: upload_artifact_v6_0_0, declared: JavaScriptAction { node_major: 24 } }
+  is_conflicting(a: admit_action_release_against(readings: [reading, reading], action_release: upload_artifact_v6_0_0))
+}
+
+// ---------------------------------------------------------------------------------------------
+// REALIZED `uses:` SPELLINGS
+// ---------------------------------------------------------------------------------------------
+
+fn step_use(text: String) -> RealizedActionUse {
+  RealizedActionUse { workflow_path: "fixture.yml", job_id: "j", site: StepActionUse, uses_text: text }
+}
+
+// A literal action use with no modeled release refuses.
+test fn red_literal_use_with_no_modeled_release_refuses() -> Bool {
+  is_unmodeled_use_at(a: admit_realized_action_use(u: step_use(text: "someone/something@3333333333333333333333333333333333333333")), want_job_site: false)
+}
+
+// A tag is not a producer identity.
+test fn red_mutable_tag_ref_is_an_unresolved_producer() -> Bool {
+  is_unresolved(a: admit_realized_action_use(u: step_use(text: "actions/upload-artifact@v6")))
+    && is_unresolved(a: admit_realized_action_use(u: step_use(text: "actions/upload-artifact")))
+}
+
+test fn red_local_docker_and_subdirectory_uses_refuse_as_unmodeled() -> Bool {
+  is_unmodeled_use_at(a: admit_realized_action_use(u: step_use(text: "./.github/actions/x")), want_job_site: false)
+    && is_unmodeled_use_at(a: admit_realized_action_use(u: step_use(text: "docker://alpine:3")), want_job_site: false)
+    && is_unmodeled_use_at(a: admit_realized_action_use(u: step_use(text: "actions/aws/ec2@4444444444444444444444444444444444444444")), want_job_site: false)
+}
+
+// The realized spelling of a SUBSTITUTED release pinned to its commit still refuses: pinning fixes
+// the producer's identity, not its declaration.
+test fn red_pinned_node20_release_realized_refuses_as_forced_substitution() -> Bool {
+  is_forced_substitution(a: admit_realized_action_use(u: step_use(text: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02")))
+}
+
+test fn green_pinned_selected_release_realized_is_admitted() -> Bool {
+  action_use_admitted(a: admit_realized_action_use(u: step_use(text: action_release_uses_text(action_release: upload_artifact_action))))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WORKFLOW READING finds uses at both places GitHub reads them, and refuses what it cannot read
+// ---------------------------------------------------------------------------------------------
+
+data parser_fixture: String = "name: f\non:\n  push:\njobs:\n  call:\n    uses: org/repo/.github/workflows/w.yml@5555555555555555555555555555555555555555\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: a\n        run: |\n          echo not-an-action\n      - uses: actions/upload-artifact@v4\n        with:\n          name: x\n"
+
+test fn parser_classifies_job_and_step_uses_and_refuses_both() -> Bool {
+  match realized_workflow_reading(path: "fixture.yml", source: parser_fixture) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
+    RealizedWorkflowUses { workflow_path: _, uses: us } =>
+      (us |> count) == 2
+        && fold(us, init: true, f: fn(acc, u) {
+          acc && match u.site {
+            JobReusableWorkflowUse => is_unmodeled_use_at(a: admit_realized_action_use(u: u), want_job_site: true)
+            StepActionUse => u.uses_text == "actions/upload-artifact@v4" && is_unresolved(a: admit_realized_action_use(u: u))
+          }
+        })
+  }
+}
+
+test fn red_unparseable_workflow_is_unreadable_not_empty() -> Bool {
+  match realized_workflow_reading(path: "fixture.yml", source: "name: f\non:\n  push:\n") {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => true
+    RealizedWorkflowUses { workflow_path: _, uses: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ROUTE 1: a modeled workflow is admitted before emission
+// ---------------------------------------------------------------------------------------------
+
+fn one_step_workflow(action_release: ActionRelease) -> Workflow {
+  Workflow {
+    name: "fixture", run_name: none, on: [WorkflowDispatch { inputs: [] }], concurrency: none,
+    jobs: [Job {
+      id: "j", name: none, runner: HostedRunner { label: UbuntuLatest }, environment: none,
+      steps: [UsesStep { name: none, id: none, uses: action_release, with: none, env: none, if_condition: none, continue_on_error: none, timeout_minutes: none }],
+      needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none, continue_on_error: none, concurrency: none, permissions: none,
+    }],
+    env: none, permissions: none,
+  }
+}
+
+test fn red_modeled_workflow_with_a_substituted_release_is_refused() -> Bool {
+  match admit_workflow_action_uses(workflow: one_step_workflow(action_release: upload_artifact_v4_6_2)) {
+    WorkflowActionUsesAdmitted => false
+    WorkflowActionUsesRefused { refusals: rs } => (rs |> count) == 1 && fold(rs, init: true, f: fn(acc, r) { acc && is_forced_substitution(a: r.admission) })
+  }
+}
+
+// The real generator input, run for real: fleet-desired is the smallest emitted workflow.
+test fn fleet_desired_workflow_action_uses_are_admitted() -> Bool {
+  match admit_workflow_action_uses(workflow: fleet_desired_admission_workflow) {
+    WorkflowActionUsesAdmitted => true
+    WorkflowActionUsesRefused { refusals: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ROUTE 2: EVERY WORKFLOW FILE GITHUB WOULD EXECUTE FROM THIS CHECKOUT
+// ---------------------------------------------------------------------------------------------
+
+data realized_workflow_directory: String = ".github/workflows"
+
+type RealizedCensus {
+  uses: Int
+  refused: List<String>
+  admitted_texts: List<String>
+}
+
+// ONE FILE, READ BY THE MODELED READER, EVERY DISTINCT USE ADMITTED. A file the reader refuses is a
+// refusal of the census, never an empty file.
+fn census_file(name: String) -> RealizedCensus {
+  let path = join([realized_workflow_directory, "/", name], "")
+  let read = filesystem_read(path: path)
+  match realized_workflow_reading(path: path, source: read.content) {
+    RealizedWorkflowUnreadable { workflow_path: p, reason: r } =>
+      RealizedCensus { uses: 0, refused: [join([p, ": unreadable: ", r], "")], admitted_texts: [] }
+    RealizedWorkflowUses { workflow_path: p, uses: us } =>
+      fold(realized_distinct_uses(uses: us), init: RealizedCensus { uses: us |> count, refused: [], admitted_texts: [] }, f: fn(c, u) {
+        if action_use_admitted(a: admit_realized_action_use(u: u)) {
+          RealizedCensus { uses: c.uses, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
+        } else {
+          RealizedCensus { uses: c.uses, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
+        }
+      })
+  }
+}
+
+fn census_holds(c: RealizedCensus) -> Bool {
+  ((c.refused |> count) == 0) && (c.uses > 0)
+}
+
+// THE POPULATION: every .yml and .yaml file directly inside .github/workflows is a workflow GitHub
+// executes; subdirectories and other files are not. Each has its own claim below, because the
+// census must read every executed file and one claim per file keeps each within the new-witness
+// eval-step budget. This join is what makes the per-file claims the census: a workflow added without
+// a claim, or a claim naming a file that is gone, refuses here, by name.
+data realized_workflow_files: List<String> = [
+  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
+]
+
+fn listed_workflow_files() -> List<String> {
+  let listed = Filesystem.List(path: realized_workflow_directory, expect: ExpectSuccess)
+  if !listed.success {
+    [concat("listing refused: ", listed.error)]
+  } else {
+    filter(split(s: listed.entries, delimiter: "\n"), name => name.ends_with(suffix: ".yml") || name.ends_with(suffix: ".yaml"))
+  }
+}
+
+// THE CLAIM NAME PROMISES A CENSUS CLAIM PER FILE, SO THE CLAIM LOOKS FOR ONE. Joining the roster
+// to the directory listing alone would leave a hole with exactly the shape this census exists to
+// close (review 69151): a lane adds a workflow, this claim reds, the author adds the NAME to the
+// roster, this claim greens -- and that file's `uses:` are admitted by nobody while a claim called
+// "has a census claim" reports success. That is a silent widen, so the third join below reads this
+// module's own test declarations through the floor's own scanner and requires the per-file claim to
+// exist, by the name the file derives. Adding a roster row without its claim now reds here.
+fn census_claim_name_for(file: String) -> String {
+  join(["census_", replace(replace(replace(file, ".yaml", ""), ".yml", ""), "-", "_"), "_uses_are_modeled_and_executed_exactly"], "")
+}
+
+data census_claim_module_path: String = "dag/test/claim/action_use_admission_witness_test.dag"
+
+test fn every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file() -> Bool {
+  let listed = listed_workflow_files()
+  let own_source = Filesystem.Read(path: census_claim_module_path, expect: ExpectSuccess)
+  let declared = floor_discovery_scan_test_decl_names(content: own_source.content)
+  ((listed |> count) == (realized_workflow_files |> count))
+    && all(listed, name => any(realized_workflow_files, f => f == name))
+    && all(realized_workflow_files, f => any(listed, name => name == f))
+    && all(realized_workflow_files, f => any(declared, n => n == census_claim_name_for(file: f)))
+}
+
+// THE COST STANDING NAMES THE FILE THIS CLAIM READS. gunbc.action_use_admission
+// realized_census_cost_standing records that the claim below sits close under the floor's
+// new-witness budget, that its subject grows outside this lane, and what the remedy is when it stops
+// fitting; this join keeps that row pointing at a file the census actually reads.
+test fn the_cost_standing_names_a_file_this_census_reads() -> Bool {
+  any(realized_workflow_files, f => f == (realized_census_cost_standing.subject as String))
+    && ((realized_census_cost_standing.refused_remedies |> count) > 0)
+}
+
+// Every use of the largest generated workflow is read through the modeled reader and admitted, in
+// one claim (the trigger the retired line projection waited for).
+test fn census_fleet_converge_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "fleet-converge.yml"))
+}
+
+test fn census_fleet_desired_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "fleet-desired.yml"))
+}
+
+test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "heal-publish.yml"))
+}
+
+// The heal workflow carries the upload-artifact step the floor's receipts are published through.
+test fn census_heal_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "heal.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
+}
+
+// The instrument-dispatch workflow: its checkout, setup-rust-toolchain and upload-artifact steps are
+// among the admitted uses (gunbc.instrument_dispatch_workflow).
+test fn census_instrument_dispatch_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "instrument-dispatch.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
+}
+
+// THE SHAKEDOWN WORKFLOW USES NO ACTION, AND ZERO IS THE READING, NOT AN EMPTY FILE. Its one job is a
+// run step by design (gunbc.runner_microvm_shakedown_workflow: no checkout and no action, so a proof
+// about whether the guest can run a step does not depend on the action-download path). census_file
+// turns an unreadable file into a refusal, so no refusals and zero uses is the modeled reader's
+// reading of a real file; and the claim is a wall, not a vacuous pass: a `uses:` added to that
+// workflow reds it, because the job's no-action shape is what the workflow's own proof relies on.
+test fn census_microvm_shakedown_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "microvm-shakedown.yml")
+  ((c.refused |> count) == 0) && (c.uses == 0)
+}
+
+// The hand-authored canary: its checkout and github-script steps are among the admitted uses, so
+// the join ran over real structure, not an empty file.
+test fn census_mtcollins_canary_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "mtcollins-canary.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: github_script_action))
+}
+
+// The generated floor workflow: its checkout and setup-rust-toolchain steps are among the admitted
+// uses.
+test fn census_witnesses_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "witnesses.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but
+// no selection row chooses it -- only setup-rust-toolchain's composite runs it -- so a workflow step
+// pinning it directly is refused by the census.
+test fn red_admitted_but_unselected_release_is_not_a_repository_selection() -> Bool {
+  realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: upload_artifact_action))
+    && !realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: rust_cache_v2_9_1))
+}
+
+// SELECTION IS ENFORCED ON THE MODELED ROUTE TOO, through the production admission a generator
+// calls: a workflow model using the exact-runtime but unselected rust-cache release is refused, and
+// the refusal is the selection arm, not a runtime one.
+test fn red_modeled_workflow_with_an_unselected_exact_release_is_refused() -> Bool {
+  match admit_workflow_action_uses(workflow: one_step_workflow(action_release: rust_cache_v2_9_1)) {
+    WorkflowActionUsesAdmitted => false
+    WorkflowActionUsesRefused { refusals: rs } => (rs |> count) == 1 && fold(rs, init: true, f: fn(acc, r) {
+      acc && match r.admission { RefusedUnselectedRelease { action_release: _ } => true  AdmittedExact { action_release: _, declared: _ } => false  RefusedForcedSubstitution { action_release: _, declared: _, realized: _, policy_authority: _ } => false  RefusedByPlatform { action_release: _, declared: _, reason: _ } => false  RefusedUnmodeledPlatformDisposition { action_release: _, declared: _ } => false  RefusedUnobservedDeclaration { action_release: _ } => false  RefusedConflictingDeclarations { action_release: _, readings: _ } => false  RefusedNestedActionUse { action_release: _, nested: _ } => false  RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false  RefusedUnresolvedProducer { uses_text: _, cause: _ } => false }
+    })
+  }
+}
+
+// THE READING REFUSES WHAT THE READER DOES NOT MODEL, AND READS WHAT IT DOES.
+fn unreadable_scan(source: String) -> Bool {
+  match realized_workflow_reading(path: "fixture.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => true
+    RealizedWorkflowUses { workflow_path: _, uses: _ } => false
+  }
+}
+
+fn step_uses_read(source: String) -> List<String> {
+  match realized_workflow_reading(path: "fixture.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => ["unreadable"]
+    RealizedWorkflowUses { workflow_path: _, uses: us } => map(us, u => u.uses_text)
+  }
+}
+
+test fn red_node20_runner_override_refuses_in_env_and_in_a_script() -> Bool {
+  unreadable_scan(source: "jobs:\n  b:\n    env:\n      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true\n    steps:\n      - run: x\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true >> $GITHUB_ENV\n")
+}
+
+// Outside the reader's subset, or not a string where GitHub needs one: unreadable, never "no uses".
+test fn red_unmodeled_or_malformed_uses_refuse() -> Bool {
+  unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \{ uses: actions/checkout@v4 }\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: *pinned\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps: [\{ uses: actions/checkout@v4 }]\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\tactions/checkout@v4\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - name: x\n        with: \{ uses: y }\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: 'actions/checkout@v4' # pinned\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: [a, b]\n")
+    && unreadable_scan(source: "jobs:\n  b: [x]\n")
+    && unreadable_scan(source: "name: no jobs here\n")
+}
+
+// The spellings a line projection could not decode are read for what they mean: a quoted key, an
+// escaped key and a space before the colon all name `uses`; a quoted value is its text; and a
+// script line spelled like a `uses:` key is script content, not a use.
+test fn quoted_escaped_and_spaced_uses_keys_are_read_and_script_text_is_not() -> Bool {
+  (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - \"uses\": actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - \"us\\u0065s\": actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - uses : actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - uses: 'actions/checkout@v4'\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo not-a-key\n          uses: script/line@v1\n") == [])
+}
+
+// THE ROUTE TEST OVER A REAL WORKFLOW: the first `uses:` line of a committed workflow is rewritten
+// into each spelling a line projection would have mis-read, and the census is run over the whole
+// rewritten file. Three spellings are outside the reader's subset or not a string where GitHub needs
+// one -- a flow sequence, an alias, an empty value -- and each must make the file UNREADABLE: never
+// an empty population, and never the unrewritten one. The other two -- a quoted key and a space
+// before the colon -- are YAML for the same key, so the correct reading is the ORIGINAL population,
+// exactly; refusing them would be the wrong-meaning reader this module replaced. Asserting the
+// original population also rules out the rewrite having been missed: every spelling is checked to
+// have changed the file.
+data route_rewrite_subject: String = "heal-publish.yml"
+
+fn route_rewrite_source() -> String {
+  filesystem_read(path: join([realized_workflow_directory, "/", route_rewrite_subject], "")).content
+}
+
+type RouteRewrite {
+  source: String
+  seen: Bool
+}
+
+// The first line holding `uses: `, respelled: `before` is everything ahead of `uses: ` on that line
+// (its indentation and any `- `), `value` everything after it.
+fn with_first_uses_line(source: String, spell: String) -> String {
+  let rewritten = fold(split(s: source, delimiter: "\n"), init: RouteRewrite { source: "", seen: false }, f: fn(acc, line) {
+    let next = if acc.seen {
+      line
+    } else if string_contains(s: line, pattern: "uses: ") {
+      let parts = split(s: line, delimiter: "uses: ")
+      respelled_uses_line(before: join(parts.take(n: 1), ""), value: join(parts.skip(n: 1), "uses: "), spell: spell)
+    } else {
+      line
+    }
+    RouteRewrite {
+      source: if acc.source == "" { next } else { join([acc.source, next], "\n") },
+      seen: acc.seen || string_contains(s: line, pattern: "uses: "),
+    }
+  })
+  rewritten.source
+}
+
+fn respelled_uses_line(before: String, value: String, spell: String) -> String {
+  if spell == "flow" {
+    join([before, "uses: [", value, ", ", value, "]"], "")
+  } else if spell == "alias" {
+    join([before, "uses: *pinned"], "")
+  } else if spell == "empty" {
+    join([before, "uses:"], "")
+  } else if spell == "quoted_key" {
+    join([before, "\"uses\": ", value], "")
+  } else {
+    join([before, "uses : ", value], "")
+  }
+}
+
+fn route_uses_texts(source: String) -> List<String> {
+  match realized_workflow_reading(path: "rewritten.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => ["unreadable"]
+    RealizedWorkflowUses { workflow_path: _, uses: us } => map(us, u => u.uses_text)
+  }
+}
+
+test fn a_real_uses_line_respelled_outside_the_subset_refuses_and_respelled_inside_it_reads_the_same() -> Bool {
+  let original = route_rewrite_source()
+  let expected = route_uses_texts(source: original)
+  let refusing = ["flow", "alias", "empty"]
+  let equivalent = ["quoted_key", "spaced_colon"]
+  ((expected |> count) > 0)
+    && !any(expected, t => t == "unreadable")
+    && all(concat(refusing, equivalent), sp => with_first_uses_line(source: original, spell: sp) != original)
+    && all(refusing, sp => unreadable_scan(source: with_first_uses_line(source: original, spell: sp)))
+    && all(equivalent, sp => route_uses_texts(source: with_first_uses_line(source: original, spell: sp)) == expected)
+}
+
+// The site comes from where the key sits, not from the value's shape: a job-level `uses` naming a
+// plain action is still job-level (and refused as an unmodeled reusable-workflow call).
+test fn the_site_is_where_the_key_sits() -> Bool {
+  match realized_workflow_reading(path: "fixture.yml", source: "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n  b:\n    uses: actions/checkout@v4\n") {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
+    RealizedWorkflowUses { workflow_path: _, uses: us } =>
+      ((us |> count) == 2)
+        && any(us, u => (u.job_id == "a") && match u.site { StepActionUse => true  JobReusableWorkflowUse => false })
+        && any(us, u => (u.job_id == "b") && match u.site { JobReusableWorkflowUse => true  StepActionUse => false })
+  }
+}
+
+// A REFUSAL CITES THE PRODUCER MANIFEST ITS DECLARATION WAS READ FROM, derived from the release
+// (extdeps.github.action_release action_manifest_of): the forced-substitution reason for
+// upload-artifact v4.6.2 names that exact commit's action.yml, so a reader can re-read the producer.
+test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -> Bool {
+  string_contains(
+    s: action_use_admission_reason(a: admit_action_release(action_release: upload_artifact_v4_6_2)),
+    pattern: "github.com/actions/upload-artifact/blob/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml",
+  )
+}

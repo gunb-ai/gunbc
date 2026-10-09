@@ -1,0 +1,97 @@
+module v2.test.claim.parse.transport_kind_closed_choice
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  bind_outcome,
+  diagnostics_fatal
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TRANSPORT KIND IS A CLOSED CHOICE OF FOUR LITERALS (v2.extdeps.languages.dag
+// dag_grammar_transport_kind_expr). Each kind parses; a kind outside the four refuses, located at the
+// kind's own token, never accepted as a name.
+fn transport_source(kind: String) -> String {
+  "module probe.transport_kind\n\nservice probe.Svc {\n  operation Op {\n    transport " + kind + " { argv: [] }\n  }\n}\n"
+}
+
+fn transport_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^transport_kind_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn transport_kind_parses(kind: String) -> Bool {
+  match transport_parse(text: transport_source(kind: kind)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// One claim per kind: the four parses are independent cases, so each pays one parse under its own
+// budget rather than four under one (DESIGN section 3, a witness discriminates at one interface).
+test fn the_rest_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "rest") }
+
+test fn the_shell_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "shell") }
+
+test fn the_file_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "file") }
+
+test fn the_local_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "local") }
+
+// The byte offset of the first token spelled `lexeme`, from the same lexer the parse reads.
+fn token_start(text: String, lexeme: String) -> Int {
+  match tokenize(text: text, file: ^transport_kind_probe, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: ts, diagnostics: _ } =>
+      fold(ts.all, init: -1, f: fn(acc, t) { if acc < 0 && t.lexeme == lexeme { t.start } else { acc } })
+  }
+}
+
+// The fatal refusal's start offset, or -1 when the parse accepted or the refusal has no byte extent.
+fn refusal_start(parsed: Outcome<Node>) -> Int {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => -1
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).at {
+        SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
+        SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
+        Textual { file: _, extent: _ } => -1
+        NodeLocus { anchor: _ } => -1
+        InvariantPortLocus { anchor: _, invariant: _ } => -1
+        DeclarationLocus { declaration: _ } => -1
+      }
+  }
+}
+
+test fn an_unknown_transport_kind_refuses_at_its_own_token_holds() -> Bool {
+  let text = transport_source(kind: "grpc")
+  let at = token_start(text: text, lexeme: "grpc")
+  at > 0 && refusal_start(parsed: transport_parse(text: text)) == at
+}

@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.effect_grant {
   NamespacePosition, filesystem_position, position_under,
   Grant, Envelope, Read, Write, verb_eq,
-  RealTransport, Replay,
+  RealTransport, Replay, ModeledRealization,
 }
 
 // P-C derived axes (docs/plans/effect-namespace-grants.md lines 27-30, 62, owned silent-ibex-417):
@@ -53,6 +53,7 @@ fn classify_region(root: NamespacePosition) -> EffectRegion {
 fn read_grant_replayable(g: Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => true
+    ModeledRealization { realization: r } => true
     RealTransport =>
       match classify_region(root: g.root) {
         SubstrateClosure => true
@@ -75,6 +76,7 @@ fn write_grant_isolated(g: Grant) -> Bool {
 fn read_grant_intersects_live_tree(g: Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => false
+    ModeledRealization { realization: r } => false
     RealTransport =>
       match classify_region(root: g.root) {
         RepoTree => true
@@ -86,45 +88,15 @@ fn read_grant_intersects_live_tree(g: Grant) -> Bool {
 }
 
 fn grants_all_read_replayable(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    true
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
-      read_grant_replayable(g: g) && grants_all_read_replayable(grants: rest)
-    } else {
-      grants_all_read_replayable(grants: rest)
-    }
-  }
+  all(grants, g => !verb_eq(a: g.verb, b: Read) || read_grant_replayable(g: g))
 }
 
 fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    true
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Write) {
-      write_grant_isolated(g: g) && grants_all_write_isolated(grants: rest)
-    } else {
-      grants_all_write_isolated(grants: rest)
-    }
-  }
+  all(grants, g => !verb_eq(a: g.verb, b: Write) || write_grant_isolated(g: g))
 }
 
 fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    false
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
-      read_grant_intersects_live_tree(g: g) || grants_any_read_intersects_live_tree(grants: rest)
-    } else {
-      grants_any_read_intersects_live_tree(grants: rest)
-    }
-  }
+  !all(grants, g => !(verb_eq(a: g.verb, b: Read) && read_grant_intersects_live_tree(g: g)))
 }
 
 fn envelope_replayable(env: Envelope) -> Bool {

@@ -1,12 +1,15 @@
 module gunbc.spark.pair_serving_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, EpochSecs }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.algebra { trim }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
+import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
+import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_leg_began_payload_line, remote_leg_lines, remote_leg_reported_began }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -14,6 +17,11 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { gunbc_spark_pair_runtime_dockerfile }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, pair_serving_apply_admits }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_authority_for, current_authority_wire,
+}
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
@@ -66,7 +74,7 @@ fn script_word(w: String) -> String {
 }
 
 fn argv_line(cmd: ArgvCommand) -> String {
-  join(map(concat([cmd.program as String], cmd.arguments), w => script_word(w: w)), " ")
+  join(map(concat([cmd.program.invocation as String], cmd.arguments), w => script_word(w: w)), " ")
 }
 
 fn unit_render_text(u: SparkPairUnitRender) -> String? {
@@ -145,11 +153,34 @@ fn spark_pair_worker_plan(w: SparkPairHostRealization) -> SparkPairHostApplyPlan
   }
 }
 
-fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
+// A MISSING AUTHORITY ROW REFUSES RATHER THAN DEFAULTING TO ACTIVE. Absent is not permission: a
+// claimed group whose authority nobody wrote is a missing fact, and converging it because the row was
+// forgotten is the fail-open direction this gate exists to close.
+fn pair_serving_authority_admits_apply(a: PairServingGroupAuthority?) -> Bool {
+  match a {
+    Absent => false
+    Present { value: auth } => pair_serving_apply_admits(a: auth)
+  }
+}
+
+// A SUSPENDED GROUP'S REALIZATION IS NOT APPLIED, AND THIS IS WHERE THAT IS ENFORCED. Without the
+// gate, a replacement transaction that had suspended Group A's authority would still find this fold
+// willing to plan a convergence of the incumbent -- reconverging the very realization the transaction
+// suspended, from the transaction's own tree.
+//
+// THE SEAM TAKES THE AUTHORITY IT IS JUDGING, and that is what makes the refusal real rather than
+// decorative. An earlier shape looked the authority up inside this fold, so the only way to reach the
+// refusing arm was to edit the live row -- no control could SUPPLY a suspended authority, and deleting
+// the gate entirely would have left every claim green. A check whose red is unauthorable is worse than
+// absent because it gets cited as coverage (DESIGN section 4b). spark_pair_apply_plans_current below is the thin
+// binding that supplies the live authority, exactly as fabric_capacity_standing binds its verdict.
+fn spark_pair_apply_plan_under(r: SparkPairRealization, authority: PairServingGroupAuthority?) -> SparkPairApplyPlan {
   match r {
     SparkPairRealizationRefused { group: _, cause: c } => SparkPairApplyRefused { cause: c as String }
-    SparkPairRealized { group: _, head: h, workers: ws } =>
-      match unit_render_text(u: h.unit) {
+    SparkPairRealized { group: g, head: h, workers: ws } =>
+      if pair_serving_authority_admits_apply(a: authority) == false {
+        SparkPairApplyRefused { cause: "the serving authority for this group does not admit an apply: it is suspended, fenced, released, or has no authority row at all, and none of those may be converged" }
+      } else { match unit_render_text(u: h.unit) {
         Absent => SparkPairApplyRefused { cause: "the head unit did not render" }
         Present { value: head_text } => {
           let worker_plans = flat_map(ws, w => match spark_pair_worker_plan(w: w) { Present { value: p } => [p]  Absent => [] as List<SparkPairHostApplyPlan> })
@@ -165,15 +196,46 @@ fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
             }
           }
         }
+      } }
+  }
+}
+
+data spark_pair_apply_unread_refusal_prefix: String = "the serving authority could not be read, so nothing is converged: "
+
+// THE LIVE AUTHORITY IS THE LOG'S, NOT THE SOURCE ROW'S. gunbc.spark.pair_serving_authority_log
+// folds the row through every recorded transition, so a group a transaction has suspended is
+// suspended HERE, from the transaction's own tree. A group whose authority could not be read is
+// refused with the read's cause -- never planned on the row it rests on -- and a group the roster
+// does not name at all is refused as having no authority (absence is not permission).
+fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentAuthority>) -> SparkPairApplyPlan {
+  match current_authority_for(current: current, group: spark_pair_realization_group(r: r)) {
+    Absent => spark_pair_apply_plan_under(r: r, authority: none)
+    Present { value: c } =>
+      match c {
+        CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+          SparkPairApplyRefused { cause: join([spark_pair_apply_unread_refusal_prefix, current_authority_wire(c: c)], "") }
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+          spark_pair_apply_plan_under(r: r, authority: Present { value: a })
       }
   }
 }
 
-// EVERY PROMOTED GROUP IS PLANNED, IN ROSTER ORDER. One refusal anywhere refuses the whole apply:
-// a converge that brought up group A while silently skipping group B would report success for a
-// desired state it did not reach.
-fn spark_pair_apply_plans() -> List<SparkPairApplyPlan> {
-  map(spark_pair_realizations(), r => spark_pair_apply_plan(r: r))
+fn spark_pair_realization_group(r: SparkPairRealization) -> FabricGroup {
+  match r {
+    SparkPairRealizationRefused { group: g, cause: _ } => g
+    SparkPairRealized { group: g, head: _, workers: _ } => g
+  }
+}
+
+// EVERY PROMOTED GROUP IS PLANNED, IN ROSTER ORDER, UNDER THE AUTHORITY THE EXECUTOR READS. One
+// refusal anywhere refuses the whole apply: a converge that brought up group A while silently
+// skipping group B would report success for a desired state it did not reach.
+fn spark_pair_apply_plans_current(current: List<CurrentAuthority>) -> List<SparkPairApplyPlan> {
+  map(spark_pair_realizations(), r => spark_pair_apply_plan_current(r: r, current: current))
+}
+
+fn spark_pair_apply_plans(executor: String, at: EpochSecs) -> List<SparkPairApplyPlan> {
+  spark_pair_apply_plans_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
 }
 
 fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<String> {
@@ -183,22 +245,108 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
   })
 }
 
+// ── "COULD NOT REACH" IS NOT "RAN AND FAILED" ─────────────────────────────────────────────────
+//
+// THE CONFLATION THIS ARM ENDS (fleet-converge run 36918167575, 2026-10-01). Every leg's non-zero
+// return became SparkPairHostApplyFailed, so `ssh: connect to host 192.168.1.232 port 22: Connection
+// timed out` -- a leg whose script never started -- was the same value as a preflight that ran and
+// refused. A caller could therefore not retry the one without retrying the other, and the native
+// arm aborted four hosts over one Wi-Fi blip.
+//
+// THE DISCRIMINATOR IS IN-BAND, NOT ssh's EXIT AND NOT ITS STDERR. extdeps.ssh.session
+// ssh_client_error_exit_status says why 255 alone does not establish that nothing ran, and
+// gunbc.command_runner ssh_exit_255_conflation_dissolution rejects stderr-sniffing and names the
+// richer source: the remote side reporting its own status on stdout. So every privileged script is
+// wrapped (spark_pair_leg_payload) to print the shared began-line (gunbc.spark.remote_leg_began) before its first effect and its own exit
+// after its last, and the reading is three-valued over that:
+//
+//   exit line present           -> the script RAN; its own exit decides Applied or Failed.
+//   began line, no exit line    -> it RAN and the reply was lost: Failed, and NEVER retried.
+//   neither, ssh exited 255     -> no remote shell reported beginning: Unreached, retry-eligible.
+//
+// THE RESIDUE IS STATED, NOT HIDDEN. A connection lost after the shell started but before its
+// began-line crossed the wire also reads Unreached. That is why a caller that retries Unreached owes
+// IDEMPOTENT legs (gunbc.spark.native_serving_apply reads before it writes in every stage), and why
+// this module does not retry anything itself.
+data spark_pair_leg_exit_prefix: String = "gunbc-privileged-leg-exit="
+
 type SparkPairHostApplyOutcome
-  = SparkPairHostApplied { host: HostIdentity, detail: String, standing: ServingStanding }
+  = SparkPairHostApplied { host: HostIdentity, wire: String, stdout: String, standing: ServingStanding }
   | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
+  | SparkPairHostUnreached { host: HostIdentity, cause: String }
 
 fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
   match o {
-    SparkPairHostApplied { host: h, detail: d, standing: s } =>
-      join(["  ", h as String, "  applied  ", d, "  ", serving_standing_wire(s: s)], "")
+    SparkPairHostApplied { host: h, wire: w, stdout: out, standing: s } =>
+      join(["  ", h as String, "  applied  ", w, " ", out, "  ", serving_standing_wire(s: s)], "")
     SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
+    SparkPairHostUnreached { host: h, cause: c } => join(["  ", h as String, "  UNREACHED (no remote shell reported beginning; the script did not report running)  ", c], "")
   }
 }
 
 fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
   match o {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => true
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => true
     SparkPairHostApplyFailed { host: _, cause: _ } => false
+    SparkPairHostUnreached { host: _, cause: _ } => false
+  }
+}
+
+fn spark_pair_host_unreached(o: SparkPairHostApplyOutcome) -> Bool {
+  match o {
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false
+    SparkPairHostApplyFailed { host: _, cause: _ } => false
+    SparkPairHostUnreached { host: _, cause: _ } => true
+  }
+}
+
+// THE WRAPPER. The script runs in a subshell so its own `exit` ends the subshell and the outer shell
+// still reports it; the outer exit then mirrors it so ssh's own status keeps its meaning too.
+fn spark_pair_leg_payload(script: String) -> String {
+  join([
+    remote_leg_began_payload_line(),
+    "(\n", script, "\n)\n",
+    "gunbc_leg_rc=$?\n",
+    "echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc\n",
+    "exit $gunbc_leg_rc\n",
+  ], "")
+}
+
+fn spark_pair_leg_reported_exit(stdout: String) -> Int? {
+  match first(filter(remote_leg_lines(stdout: stdout), l => starts_with(s: l, prefix: spark_pair_leg_exit_prefix))) {
+    Absent => none
+    Present { value: l } => parse_int(s: substring(s: l, start: length(spark_pair_leg_exit_prefix), end: length(l)))
+  }
+}
+
+// THE SCRIPT'S OWN OUTPUT, WITHOUT THE WRAPPER'S TWO LINES, so readers of `detail` see what they saw
+// before the wrapper existed.
+fn spark_pair_leg_script_stdout(stdout: String) -> String {
+  trim(s: join(filter(remote_leg_lines(stdout: stdout), l => l != remote_leg_began_word && !starts_with(s: l, prefix: spark_pair_leg_exit_prefix)), "\n"))
+}
+
+// THE READING, PURE OVER ONE SESSION RESULT so a witness supplies the result at this boundary.
+fn spark_pair_leg_outcome_of(host: HostIdentity, wire: String, r: SshSessionExecResult) -> SparkPairHostApplyOutcome {
+  match spark_pair_leg_reported_exit(stdout: r.stdout) {
+    Present { value: code } =>
+      if code == 0 {
+        SparkPairHostApplied {
+          host: host,
+          wire: wire,
+          stdout: spark_pair_leg_script_stdout(stdout: r.stdout),
+          standing: serving_standing(attempts: []),
+        }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " script-exit=", to_string(code), " stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      }
+    Absent =>
+      if remote_leg_reported_began(stdout: r.stdout) {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the script BEGAN and its exit never arrived (ssh exit=", to_string(r.exit_code), "), so it ran to an unknown point and is not retried: stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      } else if r.exit_code == ssh_client_error_exit_status {
+        SparkPairHostUnreached { host: host, cause: join([wire, " ssh exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the privileged shell never began (exit=", to_string(r.exit_code), ", not ssh's own 255, so the session was established and something before the script refused) stderr=", trim(s: r.stderr)], "") }
+      }
   }
 }
 
@@ -219,12 +367,21 @@ fn spark_pair_apply_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bo
 // grant installer is the proof that they eventually do. Raised in review 63709 against the first cut of
 // this repair, which left this twin standing while claiming consumers no longer choose a shaper; that
 // claim is only true once this one derives too.
-fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
-  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
-    Absent => SparkPairHostApplyFailed { host: plan.host, cause: "the privileged invocation is not expressible as portable remote words" }
+// ONE PRIVILEGED SESSION, under any invocation prefix the caller names (plain sudo, or sudo under a client
+// bound): the session's result, or the cause it never ran. The leg outcome and the bounded wait leg both
+// read it, so there is one route to a privileged shell on a host.
+type SparkPairPrivilegedSession
+  = PrivilegedSessionRan { result: SshSessionExecResult }
+  | PrivilegedSessionNotRun { cause: String }
+
+data spark_pair_privileged_invocation: List<String> = ["sudo", "-S", "sh", "-s"]
+
+fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, invocation: List<String>, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairPrivilegedSession {
+  match portable_remote_words(raws: invocation) {
+    Absent => PrivilegedSessionNotRun { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } =>
       match spark_reach_endpoint(host: plan.host, path: path) {
-        Absent => SparkPairHostApplyFailed { host: plan.host, cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
+        Absent => PrivilegedSessionNotRun { cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
         Present { value: endpoint } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: trust,
@@ -233,40 +390,39 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
               principal: fleet_bootstrap_principal_login(),
             },
             words: words,
-            stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
+            stdin_payload: join([admin_credential as String, "\n", spark_pair_leg_payload(script: plan.script), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: admin_credential_file },
           ) {
-            FleetPrincipalLegRefused { cause: why } =>
-              SparkPairHostApplyFailed { host: plan.host, cause: why as String }
-            FleetPrincipalLegRan { session: _, result: r } =>
-              if r.success {
-                SparkPairHostApplied {
-                  host: plan.host,
-                  detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], ""),
-                  standing: serving_standing(attempts: []),
-                }
-              } else {
-                SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
-              }
+            FleetPrincipalLegRefused { cause: why } => PrivilegedSessionNotRun { cause: why as String }
+            FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
           }
       }
   }
 }
 
+fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
+  match spark_pair_privileged_session(trust: trust, path: path, plan: plan, invocation: spark_pair_privileged_invocation, admin_credential: admin_credential, admin_credential_file: admin_credential_file) {
+    PrivilegedSessionNotRun { cause: c } => SparkPairHostApplyFailed { host: plan.host, cause: c }
+    PrivilegedSessionRan { result: r } => spark_pair_leg_outcome_of(host: plan.host, wire: spark_reach_path_wire(p: path), r: r)
+  }
+}
+
 fn spark_pair_serving_apply_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
-  let plans = spark_pair_apply_plans()
-  let refusals = spark_pair_apply_plan_refusals(plans: plans)
-  if length(plans) == 0 {
-    exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
-  } else if length(refusals) != 0 {
-    exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
-  } else {
-    match observe_executor_reach() {
-      ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
-      ExecutorReachKnown { short_hostname: executor, path: path } =>
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } => {
+      match now_epoch_seconds() {
+        Absent => exit_failure(reason: "spark_pair_serving_apply: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
+        Present { value: at } => {
+      let plans = spark_pair_apply_plans(executor: executor, at: at)
+      let refusals = spark_pair_apply_plan_refusals(plans: plans)
+      if length(plans) == 0 {
+        exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
+      } else if length(refusals) != 0 {
+        exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
+      } else {
           match read_bootstrap_credential() {
             BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
             BootstrapCredentialReady { secret: administrator } =>
@@ -314,4 +470,7 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
           }
     }
   }
+}
+}
+}
 }

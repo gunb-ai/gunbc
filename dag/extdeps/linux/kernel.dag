@@ -1,6 +1,6 @@
 module extdeps.linux.kernel
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
@@ -37,3 +37,8 @@ type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
 // /sys/module all key on. Branded rather than left a bare String so a module name cannot be
 // interchanged with the arbitrary text beside it in a driver-binding row.
 type LinuxKernelModuleName = NonEmptyStr where brand("LinuxKernelModuleName")
+
+// Documentation/admin-guide/kernel-parameters.txt, printk.devkmsg=: "ratelimit" (the default) limits
+// records userspace writes to /dev/kmsg; "on" admits them unlimited. A userspace logger that writes a
+// burst of records at boot loses all but the first few under the default.
+data linux_printk_devkmsg_on_cmdline_arg: NonEmptyStr = "printk.devkmsg=on"

@@ -12,11 +12,12 @@ import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
 }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner_slot_allocation { runner_host_label }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 type DeployTargetHostProof
@@ -146,7 +147,7 @@ fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> 
   (runner_name == host)
     || string_contains(s: runner_name, pattern: concat("@", host, "-"))
     || string_contains(s: runner_name, pattern: concat("@", host, "."))
-    || ends_with(s: runner_name, suffix: concat("@", host))
+    || runner_name.ends_with(suffix: concat("@", host))
 }
 
 fn deploy_target_runner_identity_proves_host(
@@ -200,7 +201,7 @@ fn deploy_local_apply_refused_for_observed_host(
 fn host_pinned_runner_spec(offer: ComputeOffer, host: HostIdentity) -> RunnerSpec {
   match runner_spec_from_offer(offer: offer) {
     SelfHosted { labels: labels } =>
-      SelfHosted { labels: concat(labels, [host]) }
+      SelfHosted { labels: concat(labels, [runner_host_label(host: host)]) }
     other => other
   }
 }

@@ -271,7 +271,7 @@ test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -
         proven: p
       ) {
         RepairObservationSubjectDiverged { field: f } =>
-          (repair_subject_field_label(f: f) as String) == (repair_subject_field_label(f: RepairSemanticSourceDigestField) as String)
+          f == RepairSemanticSourceDigestField
         RepairObservationAdmitted { admitted: _ } => false
         RepairObservationRefused { completeness: _ } => false
       }

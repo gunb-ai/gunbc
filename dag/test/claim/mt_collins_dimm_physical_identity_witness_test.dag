@@ -180,14 +180,3 @@ test fn w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts(
   && specification_citation_read_byte_standing(publisher: unread, mirror: mt_collins_2u_mirror_citation_read_receipt) == ReadBytesNotComparable
   && specification_citation_read_byte_standing(publisher: mt_collins_2u_publisher_citation_read_receipt, mirror: wrong_subject) == ReadBytesNotComparable
 }
-
-fn main() -> Bool {
-  w_missing_and_duplicate_identities_refuse()
-  && w_socket_disagreement_and_role_deficit_refuse()
-  && w_duplicate_within_a_row_refuses()
-  && w_every_figure_connector_resolves()
-  && w_sixteen_dimm_join_keeps_orientation_and_physical_gaps()
-  && w_bad_population_never_returns_partial_slots()
-  && w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
-  && w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts()
-}

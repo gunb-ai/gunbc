@@ -2,6 +2,7 @@ module gunbc.pr_base_freshness
 
 import std.types { String, Bool, Int, List, CommitSha, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
 // THE workflow_runs IMPORT BINDS NAMES THIS MODULE NEVER SPELLS, and it is load-bearing anyway:
 // importing the module registers `github.WorkflowRuns` as a callable service, and dropping it
 // fails at RUN time with `unknown service operation`, not at resolve time. It is selective rather
@@ -19,6 +20,7 @@ import extdeps.github.commits {
   Diverged,
   Identical,
 }
+import std.algebra { Cons, Empty }
 
 // WHAT THIS MEASURES, AND WHAT IT DELIBERATELY IS NOT. This module answers ONE question about an
 // open pull request: WHICH BASE COMMIT DID ITS CHECK RUN ACTUALLY TEST, and where does that commit
@@ -79,6 +81,16 @@ type BaseUnknownReason
   | MergeCommitHasNoParents
   | NoRunForHead
   | UnrecognizedComparisonStatus { raw: String }
+  | ForgeReadRefused { read: ForgeRead, refusal: RestRefusal }
+
+// WHICH FORGE READ WAS REFUSED. A refused read is not an absent fact: the pull request, its runs,
+// the merge commit and the comparison each answer through RestResult, and a refusal of any of them
+// leaves the tested base unplaced for a reason that is the forge's, carried with the read it was.
+type ForgeRead
+  = PullRequestRead
+  | PullRequestRunsRead
+  | MergeCommitRead
+  | BaseComparisonRead
 
 type BaseFreshness
   = BaseAtTarget
@@ -199,6 +211,7 @@ fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
     MergeCommitHasNoParents => "cannot determine what this run tested — the published test-merge has no parents, so it names no base"
     NoRunForHead => "cannot determine what this run tested — no run was found for this head"
     UnrecognizedComparisonStatus { raw: _ } => "cannot place the tested base — the forge reported a comparison status this version does not model"
+    ForgeReadRefused { read: _, refusal: _ } => "cannot determine what this run tested — the forge refused a read this measurement depends on; the read and the refusal are on the variant"
   }
 }
 
@@ -213,22 +226,34 @@ fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
 //
 // THE MOST RECENT RUN IS THE ONE THAT MATTERS. GitHub returns runs newest-first for a head, and
 // the newest run's green is what a reader relies on at merge time.
-fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> Timestamp? {
-  let runs = github.WorkflowRuns.ListForRef(
+//
+// A REFUSED LISTING IS ITS OWN ARM. It is not a head with no run: nothing was listed, so neither
+// an instant nor its absence was observed.
+type PullRequestRunStart
+  = PullRequestRunStarted { started_at: Timestamp }
+  | PullRequestRunAbsent
+  | PullRequestRunsReadRefused { refusal: RestRefusal }
+
+fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> PullRequestRunStart {
+  match github.WorkflowRuns.ListForRef(
     auth_token: "",
     owner: owner,
     repo: repo,
     head_sha: head_sha,
     event: github_event_name_pull_request,
-  )
-  match runs.runs.workflow_runs {
-    Cons { head, tail: _ } => Present { value: head.created_at }
-    Empty {} => Absent {}
+  ) {
+    RestRefused { refusal } => PullRequestRunsReadRefused { refusal: refusal }
+    RestAnswered { answer } =>
+      match answer.runs.workflow_runs {
+        Cons { head, tail: _ } => PullRequestRunStarted { started_at: head.created_at }
+        Empty {} => PullRequestRunAbsent
+      }
   }
 }
 
 // THE LIVE OBSERVATION FOR ONE PULL REQUEST. Four upstream facts, each with a way of not being
-// there -- which is why each `Absent` below becomes a typed reason rather than a default. The
+// there -- which is why each `Absent` below becomes a typed reason rather than a default, and each
+// refused read becomes `ForgeReadRefused` naming the read rather than a raise or an absence. The
 // forge computes the test-merge asynchronously, a commit can have no parents, and a head can carry
 // no run at all; filling any of those in would answer from ignorance in exactly the direction that
 // reads as fresh.
@@ -238,69 +263,77 @@ fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha)
 // IT, and both that function and `tested_base_provenance_from_timestamps` are pure over plain
 // arguments -- so a fixture reaches that reason directly, with no forge.
 //
-// THE FOUR REASONS PRODUCED HERE ARE DIFFERENT IN KIND. Each fires on an ABSENCE in a live forge
-// response, so authoring the input that triggers it means standing up a github mock rather than
+// THE REASONS PRODUCED HERE ARE DIFFERENT IN KIND. Four fire on an ABSENCE in a live forge
+// response and `ForgeReadRefused` fires on a refused one, so authoring the input that triggers it means standing up a github mock rather than
 // writing a value. The decisions beneath them are pure and independently reachable --
 // `first_parent` and `parse_comparison_status` both take plain arguments -- but the step from an
 // absent upstream fact to the reason naming it runs through the calls above and is not.
 //
-// SO A READER COUNTING FIVE LABELLED REASONS SHOULD NOT READ FIVE EQUALLY GUARDED PATHS. This is a
+// SO A READER COUNTING THE LABELLED REASONS SHOULD NOT READ THEM AS EQUALLY GUARDED PATHS. This is a
 // property of where each reason is produced, not a coverage tally: a tally recorded here would go
 // stale without this file changing, and the tree answers that question directly. Building the
-// mock is what moves the four; nothing in this module can.
+// mock is what moves the ones produced here; nothing in this module can.
 fn observe_pull_request_base_freshness(
   owner: String,
   repo: String,
   pull_number: Int,
   merge_target: CommitSha,
 ) -> BaseFreshness {
-  let pr = github.Pulls.Get(
+  match github.Pulls.Get(
     auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pull_number,
-  )
-  match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
-    Absent {} => BaseUnknown { reason: NoRunForHead }
-    Present { value: run_started_at } =>
-  match pr.pr.merge_commit_sha {
-    Absent {} => BaseUnknown { reason: MergeCommitNotComputed }
-    Present { value: merge_commit } => {
-      let detail = github.Commits.Get(
-        auth_token: "",
-        owner: owner,
-        repo: repo,
-        ref: merge_commit as String,
-      )
-      match first_parent(parents: detail.detail.parents) {
-        Absent {} => BaseUnknown { reason: MergeCommitHasNoParents }
-        Present { value: tested_base } => {
-          let comparison = github.Commits.Compare(
-            auth_token: "",
-            owner: owner,
-            repo: repo,
-            basehead: join([tested_base as String, "...", merge_target as String], ""),
-          )
-          match parse_comparison_status(raw: comparison.comparison.status) {
-            Absent {} =>
-              BaseUnknown {
-                reason: UnrecognizedComparisonStatus { raw: comparison.comparison.status }
+  ) {
+    RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: PullRequestRead, refusal: refusal } }
+    RestAnswered { answer: pr } =>
+      match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
+        PullRequestRunsReadRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: PullRequestRunsRead, refusal: refusal } }
+        PullRequestRunAbsent => BaseUnknown { reason: NoRunForHead }
+        PullRequestRunStarted { started_at: run_started_at } =>
+          match pr.pr.merge_commit_sha {
+            Absent {} => BaseUnknown { reason: MergeCommitNotComputed }
+            Present { value: merge_commit } =>
+              match github.Commits.Get(
+                auth_token: "",
+                owner: owner,
+                repo: repo,
+                ref: merge_commit as String,
+              ) {
+                RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: MergeCommitRead, refusal: refusal } }
+                RestAnswered { answer: detail } =>
+                  match first_parent(parents: detail.detail.parents) {
+                    Absent {} => BaseUnknown { reason: MergeCommitHasNoParents }
+                    Present { value: tested_base } =>
+                      match github.Commits.Compare(
+                        auth_token: "",
+                        owner: owner,
+                        repo: repo,
+                        basehead: join([tested_base as String, "...", merge_target as String], ""),
+                      ) {
+                        RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: BaseComparisonRead, refusal: refusal } }
+                        RestAnswered { answer: comparison } =>
+                          match parse_comparison_status(raw: comparison.comparison.status) {
+                            Absent {} =>
+                              BaseUnknown {
+                                reason: UnrecognizedComparisonStatus { raw: comparison.comparison.status }
+                              }
+                            Present { value: status } =>
+                              classify_base_freshness(
+                                provenance: tested_base_provenance_from_timestamps(
+                                  merge_ref_base: tested_base,
+                                  merge_ref_base_committed_at: detail.detail.commit.committer.date,
+                                  run_started_at: run_started_at,
+                                ),
+                                status: status,
+                                ahead_by: comparison.comparison.ahead_by,
+                              )
+                          }
+                      }
+                  }
               }
-            Present { value: status } =>
-              classify_base_freshness(
-                provenance: tested_base_provenance_from_timestamps(
-                  merge_ref_base: tested_base,
-                  merge_ref_base_committed_at: detail.detail.commit.committer.date,
-                  run_started_at: run_started_at,
-                ),
-                status: status,
-                ahead_by: comparison.comparison.ahead_by,
-              )
           }
-        }
       }
-    }
-  }
   }
 }
 

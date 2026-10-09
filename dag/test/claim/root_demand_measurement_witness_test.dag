@@ -12,6 +12,8 @@ import gunbc.whole_corpus_compile_admission {
   MeasuredForRoot,
   UnmeasuredRoot,
   whole_corpus_compile_public_root,
+  whole_corpus_compile_xl1_fixture_root,
+  whole_corpus_compile_xl1_fixture_root_demand,
 }
 import gunbc.root_demand_measurement {
   RootDemandMeasurementLimitReading,
@@ -168,4 +170,42 @@ test fn a_kill_a_refusal_or_a_missing_census_never_authors_a_row() -> Bool {
     MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
   }
   exceeded && nonzero && signalled && no_census
+}
+
+// THE XL-1 FIXTURE ROW IS THE CONSTRUCTOR'S OUTPUT OVER ITS RECEIPT, NOT A HAND-TYPED NUMBER.
+// gunbc.whole_corpus_compile_admission whole_corpus_compile_xl1_fixture_root_demand cannot call
+// measured_for_root_from_receipt (that module is upstream of this one), so this claim replays the
+// receipt the row cites - completed, exit 0, census 14 sources / 73093 bytes, peak 278921216 -
+// through the constructor and checks the authored row's identity, census and grain peak against
+// the result. Retype the peak by hand and this reds.
+test fn the_xl1_fixture_row_is_the_constructor_output_over_its_receipt() -> Bool {
+  let run = RootDemandMeasurementRun {
+    root: whole_corpus_compile_xl1_fixture_root,
+    limit: byte_size(33578549248),
+    limit_source: "cgroup memory.max (/sys/fs/cgroup/)" as NonEmptyStr,
+    measured_on_host: "60e1d18cada1" as NonEmptyStr,
+    instrument_run: "gunbc measure-root-demand" as NonEmptyStr,
+    census: CensusReported { census: WholeCorpusCompileSourceCensus { source_count: 14, source_bytes: SourceBytesRecorded { bytes: byte_size(73093) } } },
+  }
+  match measured_for_root_from_receipt(
+    root: whole_corpus_compile_xl1_fixture_root,
+    receipt: MeasurementCompleted { run: run, exit_status: 0, peak: byte_size(278921216) },
+    measured_on: "2026-09-17" as NonEmptyStr,
+    evidence: evidence(),
+  ) {
+    MeasuredRowAuthored { demand: d } => match d {
+      MeasuredForRoot { root: r, census: c, peak: p, receipt: _ } =>
+        match whole_corpus_compile_xl1_fixture_root_demand {
+          MeasuredForRoot { root: ar, census: ac, peak: ap, receipt: _ } =>
+            byte_size_count(b: p) == byte_size_count(b: ap)
+              && c.source_count == ac.source_count
+              && r.primary_root == ar.primary_root
+          UnmeasuredRoot { root: _ } => false
+        }
+      UnmeasuredRoot { root: _ } => false
+    }
+    MeasuredRowRefusedReceiptForAnotherRoot { root: _, receipt_root: _ } => false
+    MeasuredRowRefusedLowerBound { limit: _, why: _ } => false
+    MeasuredRowRefusedRunDidNotComplete { why: _ } => false
+  }
 }

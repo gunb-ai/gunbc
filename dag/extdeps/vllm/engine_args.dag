@@ -2,11 +2,11 @@ module extdeps.vllm.engine_args
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, ByteSize, byte_size_count }
+import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, basis_point, ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 // VLLM'S ENGINE ARGUMENTS AS THE UPSTREAM SHAPE, held apart from extdeps.vllm.server because that
 // module owns the SERVED ROUTES and this one owns what the engine is LAUNCHED with. Both cite the
@@ -155,21 +155,204 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
   }
 }
 
+// ── THE ENGRAM EMBEDDING STORAGE REQUEST ─────────────────────────────────────────────────────────
+//
+// vLLM's EngramConfig as upstream ships it, read at github.com/vllm-project/vllm revision
+// d2d649e674c75425d2d6975c87eb89fd4d55fff8 (vllm/config/engram.py): three booleans, cpu_offload
+// (pinned host memory read over UVA; its default is the VLLM_PLE_CPU_OFFLOAD environment variable,
+// and an explicit value takes precedence), embedding_across_dp and dp_shared_memory (which requires
+// cpu_offload). vllm/engine/arg_utils.py registers the group as --engram-config, a JSON value.
+//
+// THE WIRE IS THE DOTTED FORM, NOT JSON, AND THAT IS UPSTREAM'S OWN SYNTAX. vllm/utils/argparse_utils.py
+// at the same revision rewrites `--engram-config.cpu_offload true` into the nested dict before
+// argparse sees it, json-decoding each value. A JSON object would need quotes, which a systemd Exec
+// line cannot carry unmodelled; the dotted words are plain.
+//
+// ONLY THE TWO FIELDS A LAUNCH HAS ASKED FOR ARE MODELLED. The file-backed Engram overlay
+// (gunbc.spark.v41_runtime_candidate v41_engram_file_backed_overlay_path) requires cpu_offload true and
+// dp_shared_memory false and refuses at model init otherwise; embedding_across_dp has no consumer and is
+// left to upstream's default by saying nothing. Omitted renders no flag at all.
+type VllmEngramConfigRequest
+  = EngramConfigOmitted
+  | EngramConfigExplicit { cpu_offload: Bool, dp_shared_memory: Bool }
+
+fn vllm_engram_bool_wire(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn vllm_engram_config_argv(r: VllmEngramConfigRequest) -> List<String> {
+  match r {
+    EngramConfigOmitted => []
+    EngramConfigExplicit { cpu_offload: c, dp_shared_memory: d } => [
+      "--engram-config.cpu_offload", vllm_engram_bool_wire(b: c),
+      "--engram-config.dp_shared_memory", vllm_engram_bool_wire(b: d),
+    ]
+  }
+}
+
+// ── THE MODALITY REQUEST: WHICH TOWERS THE ENGINE BUILDS AND WHAT THE CONFIG SAYS ABOUT THEM ─────
+//
+// Two upstream arguments at revision d2d649e674c75425d2d6975c87eb89fd4d55fff8, each modelled as the
+// shape upstream gives it and nothing more:
+//   - --language-model-only (vllm/config/multimodal.py MultiModalConfig.language_model_only): every
+//     modality's per-prompt limit becomes 0, so the multimodal wrapper stubs its towers
+//     (interfaces.py _mark_tower_model: StageMissingLayer, weights skipped) and no image is admitted.
+//   - --hf-overrides.<key> <json> (ModelConfig.hf_overrides): a field of the checkpoint's own
+//     config.json replaced before any model code reads it. The dotted spelling is upstream's
+//     (vllm/utils/argparse_utils.py nests `--a.b v` into {"a": {"b": json(v)}}), and it carries no
+//     quotes, which a systemd Exec line cannot hold unmodelled -- the same reason the Engram request
+//     above is dotted.
+// WHICH CONFIG KEY A LAUNCH OVERRIDES, AND TO WHAT, IS THE LAUNCH'S POLICY, NOT A FACT ABOUT vLLM: the
+// key and its value arrive as data from the layer that decides them. Omitted renders no flag at all.
+type VllmHfOverride sole_constructor {
+  key: NonEmptyStr
+  json_value: NonEmptyStr
+}
+
+fn vllm_hf_override(key: NonEmptyStr, json_value: NonEmptyStr) -> VllmHfOverride {
+  VllmHfOverride { key: key, json_value: json_value }
+}
+
+type VllmModalityRequest
+  = ModalityOmitted
+  | LanguageModelOnly { hf_overrides: List<VllmHfOverride> }
+
+fn vllm_hf_override_argv(o: VllmHfOverride) -> List<String> {
+  [join(["--hf-overrides.", o.key as String], ""), o.json_value as String]
+}
+
+fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
+  match r {
+    ModalityOmitted => []
+    LanguageModelOnly { hf_overrides: os } => concat(["--language-model-only"], flat_map(os, o => vllm_hf_override_argv(o: o)))
+  }
+}
+
 // THE KV CACHE DTYPE AS REQUESTED, WHICH IS NOT THE DTYPE AS RESOLVED. Passing `fp8` for a
 // DeepSeek MLA checkpoint resolves to `fp8_ds_mla`, and the engine says so on its own startup line.
 // A realization that records the REQUESTED spelling and calls it the served format has recorded the
 // argument it sent, not the behaviour it got.
 // fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
-type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla
+// NVFP4 JOINED THE REQUEST VOCABULARY WHEN THE SELECTOR'S OWN KV VOCABULARY WAS DELETED
+// (gunbc.spark.serving_deployment_selection's KvLayoutPolicy carried a `KvFp4Layout` rendering "fp4",
+// which is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
+// revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
+// "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
+// its own refusals, never a property of the spelling.
+// fp8_e4m3 joined with the capability table: the DeepSeek V4.1 sparse MLA backend names it among
+// the dtypes each device major admits (extdeps.vllm.kv_dtype_capability), so the canonical request
+// must be able to say it.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp8E4m3 | KvFp16 | KvBf16 | KvFp8DsMla | KvNvfp4 | KvNvfp4DsMla
 
+// THE WIRE SPELLINGS, CORRECTED AGAINST THE ENGINE'S OWN CHOICE LIST. This map carried
+// KvFp16 => "fp16" and KvBf16 => "bf16", which no consumer had ever sent -- the pair requests fp8
+// spellings only -- so the error was invisible until 2026-09-17, when the GLM native arm launched
+// with `--kv-cache-dtype bf16` and vLLM v0.28.1rc1.dev580+g385dce36b refused at argument parse:
+// `invalid choice: 'bf16' (choose from 'auto', 'bfloat16', 'float16', 'fp8', 'fp8_ds_mla',
+// 'fp8_e4m3', 'fp8_e5m2', 'fp8_inc', 'fp8_per_token_head', 'int4_per_token_head',
+// 'int8_per_token_head', 'nvfp4', 'nvfp4_4over6', 'nvfp4_ds_mla', 'turboquant_3bit_nc',
+// 'turboquant_4bit_nc', 'turboquant_k3v4_nc', 'turboquant_k8v4')`. The engine's list is the
+// authority for the two spellings fixed here; the request type remains the five variants any
+// consumer has a reason to name, which is why most of that list has no variant.
 fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   match request {
     KvAuto => "auto" as NonEmptyStr
     KvFp8 => "fp8" as NonEmptyStr
-    KvFp16 => "fp16" as NonEmptyStr
-    KvBf16 => "bf16" as NonEmptyStr
+    KvFp8E4m3 => "fp8_e4m3" as NonEmptyStr
+    KvFp16 => "float16" as NonEmptyStr
+    KvBf16 => "bfloat16" as NonEmptyStr
     KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
+    KvNvfp4 => "nvfp4" as NonEmptyStr
+    KvNvfp4DsMla => "nvfp4_ds_mla" as NonEmptyStr
+  }
+}
+
+// THE CLOSED ROSTER, so a selector enumerates requests rather than re-listing them, and a wire read
+// back from a running engine maps to the request that renders it -- one grammar asked both ways.
+data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp8, KvFp8E4m3, KvFp16, KvBf16, KvFp8DsMla, KvNvfp4, KvNvfp4DsMla]
+
+// WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
+// any runtime accepts it.
+fn vllm_kv_cache_dtype_request_matching_wire(wire: NonEmptyStr) -> VllmKvCacheDtypeRequest? {
+  fold(vllm_kv_cache_dtype_requests, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String) { Present { value: k } } else { acc }
+  })
+}
+
+// ── THE SPARSE-ATTENTION INDEXER'S K CACHE DTYPE, AN AXIS INDEPENDENT OF THE MAIN KV DTYPE ─────
+//
+// vLLM's AttentionConfig.indexer_kv_dtype as upstream ships it, read at revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/attention.py): IndexerKVDType =
+// Literal["auto", "bf16", "fp8", "mxfp4", "nvfp4"], default "auto", which "picks the model's default
+// (bf16 for MiniMax M3, fp8 for the DeepSeek sparse indexer)". The DeepSeek sparse indexer admits only
+// ("fp8", "mxfp4") (vllm/v1/attention/backends/mla/indexer.py DSA_INDEXER_KV_DTYPES), and mxfp4 only on
+// sm_10x. It is set through the --attention-config group, whose dotted form
+// (vllm/utils/argparse_utils.py, the same rewrite --engram-config uses) needs no JSON quoting.
+//
+// IT IS A SEPARATE AXIS FROM --kv-cache-dtype ON PURPOSE: the main cache and the indexer cache are two
+// allocations with two dtypes, and a subject that carried one field for both could not tell an fp8
+// main cache with an mxfp4 indexer from the reverse. Per-revision support is
+// extdeps.vllm.runtime_defaults' job: older revisions declare a different default or no field at all.
+type VllmIndexerKvDtype = IndexerKvAuto | IndexerKvBf16 | IndexerKvFp8 | IndexerKvMxfp4 | IndexerKvNvfp4
+
+type VllmIndexerKvDtypeRequest
+  = IndexerKvDtypeOmitted
+  | IndexerKvDtypeExplicit { dtype: VllmIndexerKvDtype }
+
+data vllm_indexer_kv_dtype_flag: String = "--attention-config.indexer_kv_dtype"
+
+fn vllm_indexer_kv_dtype_wire(d: VllmIndexerKvDtype) -> NonEmptyStr {
+  match d {
+    IndexerKvAuto => "auto" as NonEmptyStr
+    IndexerKvBf16 => "bf16" as NonEmptyStr
+    IndexerKvFp8 => "fp8" as NonEmptyStr
+    IndexerKvMxfp4 => "mxfp4" as NonEmptyStr
+    IndexerKvNvfp4 => "nvfp4" as NonEmptyStr
+  }
+}
+
+data vllm_indexer_kv_dtypes: List<VllmIndexerKvDtype> = [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4]
+
+fn vllm_indexer_kv_dtype_matching_wire(wire: String) -> VllmIndexerKvDtype? {
+  fold(vllm_indexer_kv_dtypes, init: none, f: (acc, d) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_indexer_kv_dtype_wire(d: d) as String) == wire { Present { value: d } } else { acc }
+  })
+}
+
+fn vllm_indexer_kv_dtype_argv(r: VllmIndexerKvDtypeRequest) -> List<String> {
+  match r {
+    IndexerKvDtypeOmitted => []
+    IndexerKvDtypeExplicit { dtype: d } => [vllm_indexer_kv_dtype_flag, vllm_indexer_kv_dtype_wire(d: d) as String]
+  }
+}
+
+fn vllm_indexer_kv_dtype_key(r: VllmIndexerKvDtypeRequest) -> String {
+  match r {
+    IndexerKvDtypeOmitted => "indexer_kv:omitted"
+    IndexerKvDtypeExplicit { dtype: d } => join(["indexer_kv:", vllm_indexer_kv_dtype_wire(d: d) as String], "")
+  }
+}
+
+type VllmIndexerKvDtypeRead
+  = IndexerKvDtypeReadOmitted
+  | IndexerKvDtypeReadExplicit { dtype: VllmIndexerKvDtype }
+  | IndexerKvDtypeReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_indexer_kv_dtype(argv: List<String>) -> VllmIndexerKvDtypeRead {
+  let flag = vllm_indexer_kv_dtype_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => IndexerKvDtypeReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_indexer_kv_dtype_matching_wire(wire: v) {
+        Present { value: d } => IndexerKvDtypeReadExplicit { dtype: d }
+        Absent => IndexerKvDtypeReadUnread { cause: join([flag, " carries ", v, ", which is not an indexer KV dtype this module models"], "") as NonEmptyStr }
+      }
+    VllmArgvFlagWithoutValue => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
   }
 }
 
@@ -257,7 +440,7 @@ type VllmVerifiedNegative {
 data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--kv-cache-dtype nvfp4 on an MLA model" as NonEmptyStr,
   error_text: "nvfp4 is not among the accepted kv-cache-dtype values for MLA attention" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // Decode context parallelism is refused for a sliding-window backend, which is what this checkpoint
@@ -265,7 +448,7 @@ data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative
 data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--decode-context-parallel-size with a sliding-window attention backend" as NonEmptyStr,
   error_text: "DCP not support sliding window" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // ── THE DO-NOT-SET ROW FOR --max-num-batched-tokens IS WITHDRAWN, AND FOR A LAYER REASON ──────
@@ -297,3 +480,367 @@ data vllm_verified_negatives: List<VllmVerifiedNegative> = [
   vllm_negative_nvfp4_kv_for_mla,
   vllm_negative_dcp_with_sliding_window,
 ]
+
+// ── THE READBACK DIRECTION: WHAT A RUNNING ENGINE'S OWN ARGUMENTS SAY ─────────────────────────
+//
+// WHY THIS LIVES HERE. The projections above render this CLI's flags; reading a value back OUT of a
+// rendered argv is the same grammar asked in the other direction, so it is one authority rather than
+// two. A consumer that split on "--node-rank" itself would be a second, positional spelling of a
+// grammar this module already owns.
+//
+// AND THIS IS WHAT MAKES THE RANK READABLE AT ALL. Group B's rank order is NOT its address order --
+// 192.168.1.236 is rank 0, .237 rank 1, .239 rank 2, .238 rank 3 -- so a reader that derived the rank
+// from a host roster would mislabel two of the four ranks and then attribute their readings to each
+// other. The rank a container IS, is the one in the argv it was created with, and nothing else.
+type VllmArgvValueRead
+  = VllmArgvValue { value: String }
+  | VllmArgvFlagAbsent
+  | VllmArgvFlagWithoutValue
+  | VllmArgvFlagRepeated { values: List<String> }
+
+type VllmArgvScan {
+  values: List<String>
+  awaiting: Bool
+}
+
+// A FLAG AT THE END OF THE ARGV WITH NOTHING AFTER IT IS A DISTINCT FACT, not an absent flag. It
+// means the argv was truncated or mis-assembled, and reporting it as "not set" would let a readback
+// agree with a plan that does not set it either. The scan carries that as `awaiting` still true when
+// the list runs out.
+//
+// ONE LEFT-TO-RIGHT PASS, and the value position is consumed rather than re-searched: a word taken as
+// a value is never also read as a flag, so `--node-rank --node-rank` reads as ONE occurrence whose
+// value is the literal second word rather than as two occurrences. Indexing into the list per word
+// would have made this quadratic for no additional fact.
+fn vllm_argv_scan(argv: List<String>, flag: String) -> VllmArgvScan {
+  fold(argv, init: VllmArgvScan { values: [], awaiting: false }, f: (acc, word) =>
+    if acc.awaiting {
+      VllmArgvScan { values: concat(acc.values, [word]), awaiting: false }
+    } else if word == flag {
+      VllmArgvScan { values: acc.values, awaiting: true }
+    } else {
+      acc
+    })
+}
+
+// A FLAG GIVEN TWICE IS REFUSED RATHER THAN RESOLVED. argparse takes the last occurrence, so a
+// reader could answer -- but a launch carrying one flag twice is a launch nobody wrote on purpose,
+// and silently answering with one of the two values would hide the only evidence that the argv was
+// assembled wrong. The refusal carries BOTH values so the reader can see what happened.
+fn vllm_argv_value(argv: List<String>, flag: String) -> VllmArgvValueRead {
+  let scan = vllm_argv_scan(argv: argv, flag: flag)
+  if count(scan.values) > 1 {
+    VllmArgvFlagRepeated { values: scan.values }
+  } else {
+    match scan.values.first() {
+      Present { value: v } => VllmArgvValue { value: v }
+      Absent => if scan.awaiting { VllmArgvFlagWithoutValue } else { VllmArgvFlagAbsent }
+    }
+  }
+}
+
+fn vllm_argv_value_text(r: VllmArgvValueRead, flag: String) -> String {
+  match r {
+    VllmArgvValue { value: v } => v
+    VllmArgvFlagAbsent => join(["the argv carries no ", flag], "")
+    VllmArgvFlagWithoutValue => join(["the argv ends with ", flag, " and no value after it"], "")
+    VllmArgvFlagRepeated { values: vs } => join(["the argv carries ", flag, " ", to_string(count(vs)), " times: ", join(vs, ", ")], "")
+  }
+}
+
+// EVERY FLAG THIS MODULE RENDERS OR READS IS SPELLED HERE ONCE. A consumer that wants to reason about
+// one of these arguments -- which axis a changed word sits on, say -- takes the name from this module
+// rather than repeating the literal, because a second spelling of a flag is a second authority for
+// the grammar this module exists to own, and it drifts silently the first time upstream renames one.
+data vllm_node_rank_flag: String = "--node-rank"
+data vllm_gpu_memory_utilization_flag: String = "--gpu-memory-utilization"
+data vllm_max_num_seqs_flag: String = "--max-num-seqs"
+data vllm_kv_cache_dtype_flag: String = "--kv-cache-dtype"
+
+type VllmArgvNatRead
+  = VllmArgvNat { value: Nat }
+  | VllmArgvNatUnread { cause: NonEmptyStr }
+
+fn vllm_argv_nat(argv: List<String>, flag: String) -> VllmArgvNatRead {
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvValue { value: v } =>
+      match parse_int(s: v) {
+        Absent => VllmArgvNatUnread { cause: join([flag, " carries ", v, ", which is not an integer"], "") as NonEmptyStr }
+        Present { value: n } =>
+          if n < 0 {
+            VllmArgvNatUnread { cause: join([flag, " carries ", v, ", which is negative"], "") as NonEmptyStr }
+          } else {
+            VllmArgvNat { value: n }
+          }
+      }
+    VllmArgvFlagAbsent => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagWithoutValue => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+fn vllm_argv_node_rank(argv: List<String>) -> VllmArgvNatRead {
+  vllm_argv_nat(argv: argv, flag: vllm_node_rank_flag)
+}
+
+// ── THE UTILIZATION FRACTION, READ BACK INTO THE BASIS POINTS IT WAS RENDERED FROM ────────────
+//
+// `vllm_basis_point_fraction_wire` renders 8567 basis points as `0.8567`; this inverts exactly that
+// projection, so the two are one grammar and a round trip is a real question. IT REFUSES A FRACTION
+// IT CANNOT INVERT EXACTLY: `0.84` is 8400 basis points and `0.856789` is not representable, so the
+// second is a refusal rather than a rounding. A readback that rounded would report agreement between
+// a plan and a container that were given different numbers.
+fn vllm_argv_utilization_basis_points(argv: List<String>) -> VllmArgvNatRead {
+  let flag = vllm_gpu_memory_utilization_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvValue { value: v } => vllm_basis_points_of_fraction(text: v, flag: flag)
+    VllmArgvFlagAbsent => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagWithoutValue => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => VllmArgvNatUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+fn vllm_basis_points_of_fraction(text: String, flag: String) -> VllmArgvNatRead {
+  let parts = split(s: text, delimiter: ".")
+  if count(parts) != 2 {
+    VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which is not a decimal fraction of the form the renderer produces"], "") as NonEmptyStr }
+  } else {
+    match parts.first() {
+      Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which has no whole part"], "") as NonEmptyStr }
+      Present { value: whole } =>
+        match parts |> skip(1) |> first {
+          Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which has no fractional part"], "") as NonEmptyStr }
+          Present { value: fraction } =>
+            if string_length(s: fraction) > 4 {
+              VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose ", to_string(string_length(s: fraction)), " fractional digits cannot be held exactly in basis points; it is refused rather than rounded"], "") as NonEmptyStr }
+            } else {
+              match parse_int(s: whole) {
+                Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose whole part is not an integer"], "") as NonEmptyStr }
+                Present { value: w } =>
+                  match parse_int(s: vllm_pad_fraction_to_basis_points(fraction: fraction)) {
+                    Absent => VllmArgvNatUnread { cause: join([flag, " carries ", text, ", whose fractional part is not an integer"], "") as NonEmptyStr }
+                    Present { value: f } =>
+                      if w < 0 || f < 0 {
+                        VllmArgvNatUnread { cause: join([flag, " carries ", text, ", which is negative"], "") as NonEmptyStr }
+                      } else {
+                        VllmArgvNat { value: w * 10000 + f }
+                      }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+// `0.84` is 8400 basis points and NOT 84, so the fractional digits are right-padded to four before
+// they are read as a number. This is the inverse of vllm_pad_four above, which is why both live in
+// this module: a padding rule split across two modules is a fork that disagrees the first time one
+// of them is edited.
+fn vllm_pad_fraction_to_basis_points(fraction: String) -> String {
+  if string_length(s: fraction) >= 4 {
+    fraction
+  } else {
+    vllm_pad_fraction_to_basis_points(fraction: join([fraction, "0"], ""))
+  }
+}
+
+// ── THE SCHEDULER'S RUNTIME KV ADMISSION CONTROLS ────────────────────────────────────────────────
+//
+// vLLM's SchedulerConfig as upstream ships it, read at github.com/vllm-project/vllm revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/scheduler.py SchedulerConfig): two fields
+// govern whether a WAITING request may enter the running set once the sequence cap admits it.
+//   scheduler_reserve_full_isl: bool = True -- vllm/v1/core/kv_cache_manager.py allocate_slots,
+//     full_sequence_must_fit: the full current sequence (min(num_tokens, max_model_len)) must fit
+//     in the free blocks AFTER the engine's own prefix-cache lookup, or the request is not admitted.
+//     Without it only the first chunk is checked, and chunked prefill can over-admit.
+//   watermark: float = 0.0, range [0.0, 1.0) -- a fraction of total KV blocks held free when
+//     admitting WAITING or PREEMPTED requests while at least one request is already scheduled.
+// vllm/engine/arg_utils.py registers them as --scheduler-reserve-full-isl (argparse
+// BooleanOptionalAction, so --no-scheduler-reserve-full-isl is its negation) and --watermark.
+//
+// WHY THEY ARE MODELLED NOW. A launch that admits more sequences than its cold guarantee prices is
+// safe only through this gate: the sequence cap says how many request states may run, and THIS says
+// whether the next one's actual incremental KV demand fits. Left as inherited defaults, the safety
+// of every above-floor sequence would rest on a value nobody declared and nothing reads back.
+//
+// THE SAME SHAPE AS PREFIX CACHING: omitted is a real state (the revision's default resolves it, and
+// that resolution is extdeps.vllm.runtime_defaults' job), explicit renders exactly one flag.
+type VllmFullInputAdmissionRequest
+  = FullInputAdmissionOmitted
+  | FullInputAdmissionExplicit { enabled: Bool }
+
+type VllmKvWatermarkRequest
+  = KvWatermarkOmitted
+  | KvWatermarkExplicit { fraction: BasisPoint }
+
+type VllmSchedulerAdmissionRequest {
+  full_input_admission: VllmFullInputAdmissionRequest
+  kv_watermark: VllmKvWatermarkRequest
+}
+
+// THE LAUNCH THAT STATES NEITHER CONTROL, which is every launch before this change: the revision's
+// defaults decide both, and extdeps.vllm.runtime_defaults resolve_vllm_scheduler_admission names them.
+data vllm_scheduler_admission_omitted: VllmSchedulerAdmissionRequest = VllmSchedulerAdmissionRequest {
+  full_input_admission: FullInputAdmissionOmitted,
+  kv_watermark: KvWatermarkOmitted,
+}
+
+data vllm_scheduler_reserve_full_isl_flag: String = "--scheduler-reserve-full-isl"
+data vllm_no_scheduler_reserve_full_isl_flag: String = "--no-scheduler-reserve-full-isl"
+data vllm_watermark_flag: String = "--watermark"
+
+// A WATERMARK OF 10000 BASIS POINTS OR MORE IS OUTSIDE UPSTREAM'S DECLARED RANGE (lt=1.0), and the
+// engine refuses it at config validation. The request type cannot exclude it, so this names the
+// defect before anything renders it; a renderer that emitted it would ship a launch that dies at init.
+fn vllm_scheduler_admission_defect(r: VllmSchedulerAdmissionRequest) -> NonEmptyStr? {
+  match r.kv_watermark {
+    KvWatermarkOmitted => none
+    KvWatermarkExplicit { fraction: bp } =>
+      if basis_point_count(bp: bp) >= 10000 {
+        Present { value: join([
+          "a KV watermark of ", to_string(basis_point_count(bp: bp)),
+          " basis points is outside upstream's range [0.0, 1.0): SchedulerConfig.watermark refuses it at validation",
+        ], "") as NonEmptyStr }
+      } else {
+        none
+      }
+  }
+}
+
+fn vllm_scheduler_admission_argv(r: VllmSchedulerAdmissionRequest) -> List<String> {
+  concat(
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => []
+      FullInputAdmissionExplicit { enabled: e } =>
+        if e { [vllm_scheduler_reserve_full_isl_flag] } else { [vllm_no_scheduler_reserve_full_isl_flag] }
+    },
+    match r.kv_watermark {
+      KvWatermarkOmitted => []
+      KvWatermarkExplicit { fraction: bp } => [vllm_watermark_flag, vllm_basis_point_fraction_wire(bp: bp)]
+    })
+}
+
+fn vllm_scheduler_admission_key(r: VllmSchedulerAdmissionRequest) -> String {
+  join([
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => "fullisl:omitted"
+      FullInputAdmissionExplicit { enabled: e } => if e { "fullisl:on" } else { "fullisl:off" }
+    },
+    "/",
+    match r.kv_watermark {
+      KvWatermarkOmitted => "watermark:omitted"
+      KvWatermarkExplicit { fraction: bp } => join(["watermark:", vllm_basis_point_fraction_wire(bp: bp)], "")
+    },
+  ], "")
+}
+
+// ── READING THE CONTROLS BACK OFF A LAUNCHED ARGV ────────────────────────────────────────────────
+//
+// The inverse of the renderer above, so a plan and a container can be compared on these fields
+// rather than assumed equal. DECLARED FRONTIER: in this change only the scheduler-envelope witness calls
+// these readers; their production consumer is gunbc.spark.serving_relaunch_transaction's admission-controls
+// axis, which lands in deforking cut 7 (#12986), and that landing is the trigger. Both spellings of the boolean present at once, or either repeated, is a
+// mis-assembled argv and refuses rather than taking argparse's last-wins answer.
+type VllmFullInputAdmissionRead
+  = FullInputAdmissionReadOmitted
+  | FullInputAdmissionReadExplicit { enabled: Bool }
+  | FullInputAdmissionReadConflict { cause: NonEmptyStr }
+
+fn vllm_argv_full_input_admission(argv: List<String>) -> VllmFullInputAdmissionRead {
+  let on = fold(argv, init: 0, f: (acc, w) => if w == vllm_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  let off = fold(argv, init: 0, f: (acc, w) => if w == vllm_no_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  if on + off > 1 {
+    FullInputAdmissionReadConflict { cause: join([
+      "the argv carries ", vllm_scheduler_reserve_full_isl_flag, " ", to_string(on), " times and ",
+      vllm_no_scheduler_reserve_full_isl_flag, " ", to_string(off), " times; one launch states this once",
+    ], "") as NonEmptyStr }
+  } else if on == 1 {
+    FullInputAdmissionReadExplicit { enabled: true }
+  } else if off == 1 {
+    FullInputAdmissionReadExplicit { enabled: false }
+  } else {
+    FullInputAdmissionReadOmitted
+  }
+}
+
+type VllmKvWatermarkRead
+  = KvWatermarkReadOmitted
+  | KvWatermarkReadExplicit { fraction: BasisPoint }
+  | KvWatermarkReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_kv_watermark(argv: List<String>) -> VllmKvWatermarkRead {
+  let flag = vllm_watermark_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => KvWatermarkReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_basis_points_of_fraction(text: v, flag: flag) {
+        VllmArgvNat { value: n } => KvWatermarkReadExplicit { fraction: basis_point(count: n) }
+        VllmArgvNatUnread { cause: c } => KvWatermarkReadUnread { cause: c }
+      }
+    VllmArgvFlagWithoutValue => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+// ── THE ADMISSION FLAGS AS ONE UNIT OF AN ARGV ────────────────────────────────────────────────────
+//
+// The scheduler's admission controls and the indexer dtype are flags a launch may add or omit, so
+// they change an argv's LENGTH -- a word-wise comparison cannot attribute that to an axis. This
+// projection removes exactly those words (the boolean spellings, and each valued flag with the word
+// after it), so a reader compares the rest word for word and compares these through their typed
+// readers. A valued flag at the end with no value is left in place, so the word comparison still
+// sees the malformed argv.
+fn vllm_argv_without_admission_flags(argv: List<String>) -> List<String> {
+  let scan = fold(argv, init: AdmissionStrip { kept: [], skip_next: false }, f: (acc, word) =>
+    if acc.skip_next {
+      AdmissionStrip { kept: acc.kept, skip_next: false }
+    } else if word == vllm_scheduler_reserve_full_isl_flag || word == vllm_no_scheduler_reserve_full_isl_flag {
+      acc
+    } else if word == vllm_watermark_flag || word == vllm_indexer_kv_dtype_flag {
+      AdmissionStrip { kept: acc.kept, skip_next: true }
+    } else {
+      AdmissionStrip { kept: concat(acc.kept, [word]), skip_next: false }
+    })
+  if scan.skip_next { argv } else { scan.kept }
+}
+
+type AdmissionStrip {
+  kept: List<String>
+  skip_next: Bool
+}
+
+// THE ADMISSION CONTROLS AN ARGV CARRIES, read back into the TYPED requests the launch rendered them
+// from (review 74142), or none when either cannot be read (a repeated or conflicting flag). Comparison
+// goes through the renderers' own keys (vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key), so
+// there is one spelling of each control and a reader cannot drift from what a launch renders.
+fn vllm_argv_scheduler_admission(argv: List<String>) -> VllmSchedulerAdmissionRequest? {
+  let full = match vllm_argv_full_input_admission(argv: argv) {
+    FullInputAdmissionReadOmitted => Present { value: FullInputAdmissionOmitted }
+    FullInputAdmissionReadExplicit { enabled: e } => Present { value: FullInputAdmissionExplicit { enabled: e } }
+    FullInputAdmissionReadConflict { cause: _ } => none
+  }
+  let wm = match vllm_argv_kv_watermark(argv: argv) {
+    KvWatermarkReadOmitted => Present { value: KvWatermarkOmitted }
+    KvWatermarkReadExplicit { fraction: bp } => Present { value: KvWatermarkExplicit { fraction: bp } }
+    KvWatermarkReadUnread { cause: _ } => none
+  }
+  match full {
+    Absent => none
+    Present { value: f } => match wm {
+      Absent => none
+      Present { value: w } => Present { value: VllmSchedulerAdmissionRequest { full_input_admission: f, kv_watermark: w } }
+    }
+  }
+}
+
+fn vllm_argv_indexer_kv_dtype_request(argv: List<String>) -> VllmIndexerKvDtypeRequest? {
+  match vllm_argv_indexer_kv_dtype(argv: argv) {
+    IndexerKvDtypeReadOmitted => Present { value: IndexerKvDtypeOmitted }
+    IndexerKvDtypeReadExplicit { dtype: d } => Present { value: IndexerKvDtypeExplicit { dtype: d } }
+    IndexerKvDtypeReadUnread { cause: _ } => none
+  }
+}

@@ -3,11 +3,12 @@ module extdeps.github.rulesets
 import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
 import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import v2.std.collection { Absent, Present }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -405,15 +406,19 @@ fn required_status_check_standing(rules: List<RulesetRuleWire>) -> RequiredStatu
       MultipleRequiredStatusChecksRules { count: length(matched) }
     } else {
       fold(matched, init: NoRequiredStatusChecksRule, f: fn(_, rule) {
-        let missing = required_status_check_missing_fields(p: rule.parameters)
-        if length(missing) > 0 {
-          RequiredStatusChecksParametersIncomplete { missing: missing }
-        } else {
-          RequiredStatusChecks {
-            contexts: map(rsc_checks(v: rule.parameters.required_status_checks), c => c.context),
-            strict: rsc_bool(v: rule.parameters.strict_required_status_checks_policy),
-            do_not_enforce_on_create: rsc_bool(v: rule.parameters.do_not_enforce_on_create),
-          }
+        match rule.parameters {
+          Absent => RequiredStatusChecksParametersIncomplete { missing: ["parameters"] }
+          Present { value: params } =>
+            let missing = required_status_check_missing_fields(p: params)
+            if length(missing) > 0 {
+              RequiredStatusChecksParametersIncomplete { missing: missing }
+            } else {
+              RequiredStatusChecks {
+                contexts: map(rsc_checks(v: params.required_status_checks), c => c.context),
+                strict: rsc_bool(v: params.strict_required_status_checks_policy),
+                do_not_enforce_on_create: rsc_bool(v: params.do_not_enforce_on_create),
+              }
+            }
         }
       })
     }
@@ -588,26 +593,30 @@ fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
       MultipleMergeQueueRules { count: length(matched) }
     } else {
       fold(matched, init: NoMergeQueueRule, f: fn(_, rule) {
-        let missing = merge_queue_missing_fields(p: rule.parameters)
-        if length(missing) > 0 {
-          MergeQueueParametersIncomplete { missing: missing }
-        } else {
-          MergeQueueConfigured {
-            grouping_strategy: parse_merge_queue_grouping_strategy(
-              raw: merge_queue_str(v: rule.parameters.grouping_strategy)),
-            merge_method: parse_merge_queue_merge_method(
-              raw: merge_queue_str(v: rule.parameters.merge_method)),
-            check_response_timeout: minute(
-              count: merge_queue_int(v: rule.parameters.check_response_timeout_minutes)),
-            max_entries_to_build: merge_queue_entry_count(
-              count: merge_queue_int(v: rule.parameters.max_entries_to_build)),
-            max_entries_to_merge: merge_queue_entry_count(
-              count: merge_queue_int(v: rule.parameters.max_entries_to_merge)),
-            min_entries_to_merge: merge_queue_entry_count(
-              count: merge_queue_int(v: rule.parameters.min_entries_to_merge)),
-            min_entries_to_merge_wait: minute(
-              count: merge_queue_int(v: rule.parameters.min_entries_to_merge_wait_minutes)),
-          }
+        match rule.parameters {
+          Absent => MergeQueueParametersIncomplete { missing: ["parameters"] }
+          Present { value: params } =>
+            let missing = merge_queue_missing_fields(p: params)
+            if length(missing) > 0 {
+              MergeQueueParametersIncomplete { missing: missing }
+            } else {
+              MergeQueueConfigured {
+                grouping_strategy: parse_merge_queue_grouping_strategy(
+                  raw: merge_queue_str(v: params.grouping_strategy)),
+                merge_method: parse_merge_queue_merge_method(
+                  raw: merge_queue_str(v: params.merge_method)),
+                check_response_timeout: minute(
+                  count: merge_queue_int(v: params.check_response_timeout_minutes)),
+                max_entries_to_build: merge_queue_entry_count(
+                  count: merge_queue_int(v: params.max_entries_to_build)),
+                max_entries_to_merge: merge_queue_entry_count(
+                  count: merge_queue_int(v: params.max_entries_to_merge)),
+                min_entries_to_merge: merge_queue_entry_count(
+                  count: merge_queue_int(v: params.min_entries_to_merge)),
+                min_entries_to_merge_wait: minute(
+                  count: merge_queue_int(v: params.min_entries_to_merge_wait_minutes)),
+              }
+            }
         }
       })
     }
@@ -694,6 +703,7 @@ service github.Rulesets {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -702,7 +712,6 @@ service github.Rulesets {
     }
     output {
       rulesets: List<RulesetSummaryWire>
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -720,6 +729,7 @@ service github.Rulesets {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -735,7 +745,6 @@ service github.Rulesets {
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
       bypass_actors: List<RulesetBypassActor>?
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -752,6 +761,7 @@ service github.Rulesets {
   }
 
   operation Update {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -773,7 +783,6 @@ service github.Rulesets {
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
       bypass_actors: List<RulesetBypassActor>?
-      outcome: RestOutcome
     }
     transport rest {
       method: PUT,

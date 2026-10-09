@@ -120,6 +120,8 @@ type ExpressionSpellings {
   interp_close: String
   index_open: String
   index_close: String
+  group_open: String
+  group_close: String
 }
 
 data default_expression_spellings: ExpressionSpellings = {
@@ -136,6 +138,8 @@ data default_expression_spellings: ExpressionSpellings = {
   interp_close: " }}",
   index_open: "['",
   index_close: "']",
+  group_open: "(",
+  group_close: ")",
 }
 
 // THIS WRITER HAS A CANONICAL SPELLING FOR PATH SEGMENTS, AND THE CHOICE IS OURS RATHER THAN
@@ -223,11 +227,52 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
     LogicalOr { left: l, right: r } =>
       join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
     LogicalAnd { left: l, right: r } =>
-      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.and_op)
+      join([serialize_operand_with(operand: l, parent: AndPrecedence, sp: sp), serialize_operand_with(operand: r, parent: AndPrecedence, sp: sp)], sp.and_op)
     Equals { left: l, right: r } =>
-      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.eq_op)
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.eq_op)
     NotEquals { left: l, right: r } =>
-      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.neq_op)
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.neq_op)
+  }
+}
+
+// OPERATOR PRECEDENCE IS THE UPSTREAM GRAMMAR'S, AND THE TREE CARRIES GROUPING THAT TEXT MUST
+// RE-STATE. github_expression_operators_authority lists the operators in precedence order:
+// comparison (==, !=) binds tighter than &&, which binds tighter than ||. A tree whose LogicalAnd
+// holds a LogicalOr operand means (a || b) && c; rendering it bare as `a || b && c` reads back as
+// a || (b && c) -- a different expression under the same tree. So an operand whose own operator
+// binds LOOSER than its parent's is wrapped in a group; nothing else is, so every tree that never
+// nested a looser operator under a tighter one renders byte-for-byte as before. The tree needs no
+// Group node: grouping is determined by the tree's shape, and a second representation of it would
+// let the two disagree.
+type ExpressionPrecedence = OrPrecedence | AndPrecedence | ComparisonPrecedence | AtomPrecedence
+
+fn expression_precedence_rank(p: ExpressionPrecedence) -> Int {
+  match p {
+    OrPrecedence => 1
+    AndPrecedence => 2
+    ComparisonPrecedence => 3
+    AtomPrecedence => 4
+  }
+}
+
+fn expression_precedence(expression: Expression) -> ExpressionPrecedence {
+  match expression {
+    LogicalOr { left: _, right: _ } => OrPrecedence
+    LogicalAnd { left: _, right: _ } => AndPrecedence
+    Equals { left: _, right: _ } => ComparisonPrecedence
+    NotEquals { left: _, right: _ } => ComparisonPrecedence
+    ContextAccess { context: _, path: _ } => AtomPrecedence
+    FunctionCall { function: _, args: _ } => AtomPrecedence
+    StringLiteral { value: _ } => AtomPrecedence
+  }
+}
+
+fn serialize_operand_with(operand: Expression, parent: ExpressionPrecedence, sp: ExpressionSpellings) -> String {
+  let text = serialize_expression_with(expression: operand, sp: sp)
+  if expression_precedence_rank(p: expression_precedence(expression: operand)) < expression_precedence_rank(p: parent) {
+    join([sp.group_open, text, sp.group_close], "")
+  } else {
+    text
   }
 }
 
@@ -339,11 +384,14 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
     } else {
       after
     }
-    match function_from_name(name: segs.first()) {
+    match segs.first() {
       Absent => none
-      Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
+      Present { value: fn_name } => match function_from_name(name: fn_name) {
         Absent => none
-        Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+        Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
+          Absent => none
+          Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+        }
       }
     }
   }
@@ -362,9 +410,12 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
 fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
   let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
   let segs = split(s: dotted, delimiter: sp.path_sep)
-  match context_from_name(name: segs.first()) {
+  match segs.first() {
     Absent => none
-    Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+    Present { value: ctx_name } => match context_from_name(name: ctx_name) {
+      Absent => none
+      Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+    }
   }
 }
 
@@ -384,7 +435,11 @@ fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
   if parts.length() == 1 {
     parse_atom_with(s: s, sp: sp)
   } else {
-    fold(parts.skip(n: 1), init: parse_atom_with(s: parts.first(), sp: sp), f: (acc, part) => match acc {
+    let head_atom = match parts.first() {
+      Absent => none
+      Present { value: head } => parse_atom_with(s: head, sp: sp)
+    }
+    fold(parts.skip(n: 1), init: head_atom, f: (acc, part) => match acc {
       Absent => none
       Present { value: left } => match parse_atom_with(s: part, sp: sp) {
         Absent => none
@@ -404,7 +459,10 @@ fn ingest_expression(src: String) -> Expression? {
 
 fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
   let parts = split(s: src, delimiter: sp.interp_open)
-  let lead = parts.first()
+  let lead = match parts.first() {
+    Present { value: l } => l
+    Absent => ""
+  }
   let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
   let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
     Absent => none
@@ -414,7 +472,11 @@ fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTempl
         none
       } else {
         let trailing = join(halves.skip(n: 1), sp.interp_close)
-        match parse_expression_with(s: halves.first(), sp: sp) {
+        let head_expression = match halves.first() {
+          Absent => none
+          Present { value: head } => parse_expression_with(s: head, sp: sp)
+        }
+        match head_expression {
           Absent => none
           Present { value: e } => {
             let with_interp = concat(sofar, [ Interpolation { expression: e } ])
@@ -459,7 +521,17 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     ContextAccess { context: c, path: p } =>
       match c {
         Env => string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
-        _ => false
+        Github => false
+        Vars => false
+        Job => false
+        Jobs => false
+        Steps => false
+        Runner => false
+        Secrets => false
+        Strategy => false
+        Matrix => false
+        Needs => false
+        Inputs => false
       }
     FunctionCall { function: _, args: a } =>
       fold(a, init: false, f: (acc, arg) => acc || expression_accesses_runner_var_via_env(expression: arg))

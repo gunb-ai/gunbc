@@ -1,0 +1,1055 @@
+module gunbc.instruments.github_app_acquire
+
+import std.types { NonEmptyStr, String, Secret, List }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+  Noop,
+  Apply,
+  Refuse,
+}
+import std.human_intervention {
+  HumanIntervention,
+}
+import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
+import gunbc.github_app_acquisition {
+  GitHubAppAcquisitionRecord,
+  AppNeverAcquired,
+  AppAcquired,
+  census_app_declared_adoption,
+  census_app_identity,
+  AcquisitionRecordReading,
+  AcquisitionRecordRead,
+  AcquisitionRecordConflict,
+  AcquisitionRecordUnparseable,
+  acquisition_record_from_document,
+  reconcile_acquisition_record,
+  app_registration_capture_intervention,
+  CensusAppReadAddress,
+  ReadAddressedAt,
+  ReadNotAddressable,
+  census_app_read_address,
+  CensusAppObservation,
+  AppRecordObserved,
+  AppRecordAbsent,
+  AppRecordUnreadable,
+  AppNotYetAddressable,
+  observe_census_app_live,
+  classify_census_app,
+  CensusAppExchangeOutcome,
+  ExchangeIssued,
+  ExchangeCodeNotLive,
+  ExchangeRefused,
+  ExchangeOutcomeUnknown,
+  ExchangeReplyIncomplete,
+  classify_census_app_exchange,
+  CensusAppReadback,
+  ReadbackConverged,
+  ReadbackDisagrees,
+  ReadbackUnavailable,
+  census_app_readback,
+  RegistrationInstructionReady,
+  RegistrationInstructionUnavailable,
+  census_app_registration_instruction,
+  CustodyHandoffPaths,
+  CustodyAddressed,
+  CustodyNameNotPathSafe,
+  custody_handoff_addressing,
+  custody_identity_document,
+  census_app_custody_handoff_directory,
+  ManifestHandoffValue,
+  HandoffValueRead,
+  HandoffValueMissing,
+  HandoffValueEmpty,
+  handoff_value_refusal,
+  ManifestCodeAdmission,
+  ManifestCodeAdmitted,
+  ManifestCodeStateMismatch,
+  ManifestCodeUnavailable,
+  admit_manifest_code,
+  AppInstallationInstruction,
+  InstallationInstructionReady,
+  InstallationInstructionUnavailable,
+  census_app_installation_instruction,
+  InstallationsFirstPageOnly,
+  InstallationsUndecodable,
+  InstallationsUnreadable,
+  read_census_app_installations,
+  CensusAppAcquisitionStanding,
+  CensusAppAcquired,
+  AcquisitionIncomplete,
+  census_app_acquisition_standing,
+  acquisition_standing_line,
+  AcquisitionFactMissing,
+  RegistrationMissing,
+  InstallationConsentMissing,
+  InstallationConsentInsufficient,
+  InstallationReadingAmbiguous,
+  InstallationReadingUnavailable,
+  CustodyMissing,
+  app_key_supply_intervention,
+}
+import extdeps.github.app {
+  GitHubAppManifestCode,
+  GitHubAppManifestState,
+  GitHubAppId,
+  GitHubAppCredentialIssuance,
+  CredentialIssuedOnce,
+  GitHubAppInstallation,
+  repository_selection_wire_name,
+  GitHubInstallationTokenRequest,
+  RepositoryNarrowingOmitted,
+  PermissionNarrowingOmitted,
+  installation_token_request_url,
+  installation_token_request_body,
+}
+
+// THE ROUTE THAT ACTUALLY RUNS THE FLOW. Four entry points rather than one, because the flow has two
+// humans in the middle of it and a single entry would have to either block on them or pretend the
+// clicks do not exist. They are argv-free: every value that varies per run arrives through a declared
+// file path, so nothing a caller types on a command line reaches a URL or a credential.
+//
+// THE FIRST ENTRY POINT WRITES A FILE, WHICH IS THE CHANGE THAT MADE THIS FLOW RUNNABLE AT ALL. It
+// used to print the registration URL and the manifest document and tell the operator to paste the
+// second into a field on the first. There is no such field: a GET of the registration URL renders
+// GitHub's ordinary App-creation form, and the manifest protocol is a POST carrying a `manifest` form
+// parameter. So the instruction was unexecutable, an operator ran it and reported exactly that, and
+// the repair is that the converge now WRITES the form -- an HTML document whose action is the
+// registration endpoint, whose hidden field carries the manifest under the parameter name GitHub
+// reads, and whose action URL carries the state nonce this run issued. The human act left is pressing
+// its button under an owner session, which is the consent GitHub requires and exposes no API for.
+//
+// THE FOURTH ENTRY POINT IS THE RECEIPT, and it is fourth because it asks a question none of the
+// other three answer: are all four facts this lane is about actually established.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_registration_instruction_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_observe_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquire_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquisition_receipt
+//
+// THE FILES ARE THE HUMAN'S SIDE OF THE HANDOFF. GitHub returns the temporary code by redirecting the
+// operator's BROWSER, and this process has no receiver on that redirect - the declared redirect_url
+// has no server behind it, which is stated where it is declared rather than hidden here. So the
+// operator copies `code` and `state` out of the address bar into these two files, and the code's
+// one-hour expiry starts at the click, not at the paste.
+//
+// THEY LIVE UNDER .gunbc/ BECAUSE THAT DIRECTORY IS ALREADY GIT-IGNORED (.gitignore, /.gunbc/). A
+// manifest code creates an App under whatever manifest its flow declared, so it is a bearer
+// credential for one hour; putting it anywhere a `git add -A` reaches would publish it. This is not a
+// new ignore rule added to make a chosen path safe - the path was chosen because the rule was already
+// there, which is the direction that cannot be quietly reversed by someone tidying .gitignore.
+fn manifest_handoff_path(suffix: String) -> String {
+  join([census_app_custody_handoff_directory, "/github-app-manifest-", suffix], "")
+}
+
+data census_app_state_path: String = manifest_handoff_path(suffix: "state")
+
+data census_app_code_path: String = manifest_handoff_path(suffix: "code")
+
+data census_app_observed_state_path: String = manifest_handoff_path(suffix: "observed-state")
+
+fn read_handoff_value(path: String) -> ManifestHandoffValue uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    let trimmed = trim(read.content)
+    if trimmed == "" {
+      HandoffValueEmpty { path: path }
+    } else {
+      HandoffValueRead { value: trimmed as NonEmptyStr }
+    }
+  } else {
+    HandoffValueMissing { path: path, cause: read.error }
+  }
+}
+
+fn intervention_text(intervention: HumanIntervention) -> String {
+  join(["HUMAN STEP ", intervention.identity as String, ": ", intervention.instruction as String], "")
+}
+
+// THE ACQUISITION RECORD IS OBSERVED HERE, WHICH IS WHY NO HUMAN TRANSCRIBES IT. The handoff the
+// actuation wrote is read back and parsed; a declared adoption row is the other source, for an App
+// created before this converge existed. Two answers naming different Apps is a Conflict rather than
+// a precedence rule (DESIGN 3), and an unparseable handoff refuses rather than reading as "never
+// acquired" -- which would authorize a registration duplicating the App the file is about.
+fn observed_acquisition_reading() -> AcquisitionRecordReading uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: s } =>
+      AcquisitionRecordUnparseable {
+        path: s as String,
+        cause: "the declared App name is not safe to address a handoff file with" as NonEmptyStr,
+      }
+    CustodyAddressed { paths: paths } => {
+      let read = Filesystem.Read(path: paths.identity)
+      reconcile_acquisition_record(
+        declared: census_app_declared_adoption,
+        from_handoff: if read.success {
+          Present { value: acquisition_record_from_document(path: paths.identity, content_document: read.content) }
+        } else {
+          none
+        },
+      )
+    }
+  }
+}
+
+fn acquisition_reading_exit(reading: AcquisitionRecordReading) -> ProcessExit {
+  match reading {
+    AcquisitionRecordRead { record: _, source: _ } =>
+      exit_failure(reason: "acquisition_reading_exit reached with a successful reading")
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      exit_failure(reason: join([
+        "census_app_declared_adoption names App id ", to_string(da.value), " slug ", d as String,
+        " and the custody handoff names App id ", to_string(ha.value), " slug ", h as String,
+        "; two answers to which App this converge is about, and neither is preferred silently. Reconcile them before any converge is authorized.",
+      ], ""))
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      exit_failure(reason: join([
+        "the custody handoff at ", p, " could not be read as an acquisition record: ", c as String,
+        ". Refusing rather than reading it as never-acquired, which would authorize a registration duplicating the App that file is about.",
+      ], ""))
+  }
+}
+
+// ENTRY ONE: WHAT THE HUMAN MUST DO, DERIVED RATHER THAN REMEMBERED. It exits non-zero because the
+// App is not converged when this is the answer, and a zero here would report an acquisition that has
+// not happened. When the App IS already acquired it exits zero and produces no registration URL at
+// all - which is the adoption path seen from the human's side.
+fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      match record {
+        AppAcquired { app_id: _, slug: _ } => ExitSuccess
+        AppNeverAcquired =>
+          match read_handoff_value(path: census_app_state_path) {
+            HandoffValueMissing { path: p, cause: c } =>
+              exit_failure(reason: join([
+                "no registration state nonce at ", p, " (", c,
+                "); write an unguessable random string there first, then re-run. It binds the code GitHub returns to this request.",
+              ], ""))
+            HandoffValueEmpty { path: p } =>
+              exit_failure(reason: join(["registration state nonce at ", p, " is empty"], ""))
+            HandoffValueRead { value: state } =>
+              match census_app_registration_instruction(state: state as GitHubAppManifestState) {
+                RegistrationInstructionUnavailable { reason: r } => exit_failure(reason: r as String)
+                RegistrationInstructionReady { intervention: i, artifact_path: path, artifact_html: html } => {
+                  let wrote = Filesystem.Write(path: path, content: html)
+                  if wrote.success {
+                    exit_failure(reason: join([
+                      intervention_text(intervention: i),
+                      " || ",
+                      intervention_text(intervention: app_registration_capture_intervention(identity: census_app_identity)),
+                    ], ""))
+                  } else {
+                    exit_failure(reason: join([
+                      "the registration submission document could not be written to ", path, ": ", wrote.error,
+                      ". REFUSING TO PRINT THE INSTRUCTION: it names that file, and an instruction naming an artifact nobody wrote is the defect this step replaced.",
+                    ], ""))
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE OBSERVATION IS PERFORMED BY gunbc.github_app_acquisition observe_census_app_live, imported
+// above: it moved there with the receipt's mint, which must perform that read itself.
+
+fn verdict_text(verdict: ObservationVerdict) -> String {
+  match verdict {
+    Converged => "converged"
+    Absent => "absent"
+    Drifted => "drifted"
+    Conflict => "conflict"
+    Inaccessible => "inaccessible"
+    UnknownRefused => "unknown-refused"
+  }
+}
+
+// ENTRY TWO: OBSERVE AND DECIDE, WITHOUT ACTUATING. EnsureObserveOnly is passed as a literal here
+// because that is what this entry point IS - the policy is the instrument's identity, not a knob.
+// The acquiring entry below passes EnsureMayApply for the same reason.
+fn census_app_observe_receipt() -> ProcessExit {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      census_app_observe_classified(record: record)
+  }
+}
+
+fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
+{
+  let observation = observe_census_app_live(
+    address: census_app_read_address(record: record),
+  )
+  let classified = classify_census_app(
+    policy: EnsureObserveOnly,
+    record: record,
+    observation: observation,
+    code: none,
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Apply { plan: _ } =>
+      exit_failure(reason: "observe-only classification produced an Apply, which is unreachable for EnsureObserveOnly")
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
+  }
+}
+
+// THE EXCHANGE, PERFORMED. github.AppManifests.ConvertManifestCode carries no credential: the code
+// authenticates it, which is why this half of the flow runs in-process at all.
+fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome {
+  let result = github.AppManifests.ConvertManifestCode(code: code as String)
+  classify_census_app_exchange(outcome: match result {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
+}
+
+fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
+  match issuance {
+    CredentialIssuedOnce { app_id: _, slug: s, pem: _, webhook_secret: _, client_id: _, client_secret: _ } => s
+  }
+}
+
+fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback {
+  census_app_readback(
+    issuance: issuance,
+    observation: observe_census_app_live(
+      address: ReadAddressedAt { slug: issued_slug(issuance: issuance) },
+    ),
+  )
+}
+
+// THE PRIVATE KEY IS WRITTEN BEFORE ANYTHING ELSE HAPPENS TO IT, AND THAT ORDERING IS THE POINT.
+// An earlier cut ran the readback first and handed the issuance to a diagnostic that told the
+// operator to store the pem -- while the Secret values themselves were never written anywhere and
+// could not appear in that diagnostic. So a successful exchange followed by ANY later refusal, a
+// disagreeing readback included, destroyed the only copy of a key no endpoint reissues (review
+// 67436). Persisting first makes every downstream outcome survivable: the worst case becomes an App
+// whose credentials are on disk and whose record needs reconciling, not an App nobody can ever
+// authenticate as.
+//
+// WriteOwnerOnly RATHER THAN Write, because the file is a private key and a default-mode file in a
+// shared checkout is a plaintext credential every process on the host can read.
+type IssuedCredentialCustody
+  = CredentialsHandedOff { paths: CustodyHandoffPaths }
+  | CredentialPersistRefused { path: String, cause: String }
+  | CredentialNameUnsafe { name: NonEmptyStr }
+
+// THE WRITE'S OWN success FACT IS THE AUTHORITY AND IS CARRIED, NOT RE-DERIVED FROM ITS TEXT. An
+// earlier cut returned "" for success and wrote.error otherwise, then read success back as
+// error != "" -- so a failed write that reported an EMPTY error string was read as a successful
+// handoff, returning CredentialsHandedOff and printing "the credentials are on disk" while the pem
+// no endpoint reissues was gone. That is a heuristic standing where an observation existed, at the
+// one call in this flow whose failure destroys the subject (review 67588, DESIGN 5: prefer the single
+// authority the realization derives from over a check that flags the bad state afterwards). The
+// filesystem module refuses the same move one screen earlier in its own annotation.
+type SecretFileWrite
+  = SecretFileWritten
+  | SecretFileWriteRefused { path: String, cause: String }
+
+fn write_secret_file(path: String, value: Secret) -> SecretFileWrite {
+  let wrote = Filesystem.WriteOwnerOnly(path: path, content: value as String)
+  if wrote.success {
+    SecretFileWritten
+  } else {
+    SecretFileWriteRefused { path: path, cause: wrote.error }
+  }
+}
+
+fn write_optional_secret_file(path: String, value: Secret?) -> SecretFileWrite {
+  match value {
+    Absent => SecretFileWritten
+    Present { value: v } => write_secret_file(path: path, value: v)
+  }
+}
+
+fn then_write_secret(prior: SecretFileWrite, path: String, value: Secret) -> SecretFileWrite {
+  match prior {
+    SecretFileWriteRefused { path: p, cause: c } => SecretFileWriteRefused { path: p, cause: c }
+    SecretFileWritten => write_secret_file(path: path, value: value)
+  }
+}
+
+fn then_write_optional_secret(prior: SecretFileWrite, path: String, value: Secret?) -> SecretFileWrite {
+  match prior {
+    SecretFileWriteRefused { path: p, cause: c } => SecretFileWriteRefused { path: p, cause: c }
+    SecretFileWritten => write_optional_secret_file(path: path, value: value)
+  }
+}
+
+fn persist_issued_credentials(
+  custody_name: NonEmptyStr,
+  issuance: GitHubAppCredentialIssuance,
+) -> IssuedCredentialCustody
+{
+  match issuance {
+    CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
+      match custody_handoff_addressing(name: custody_name) {
+        CustodyNameNotPathSafe { name: s } => CredentialNameUnsafe { name: s }
+        CustodyAddressed { paths: paths } =>
+          match then_write_optional_secret(
+            prior: then_write_secret(
+              prior: write_secret_file(path: paths.pem, value: pem),
+              path: paths.client_secret,
+              value: client,
+            ),
+            path: paths.webhook_secret,
+            value: hook,
+          ) {
+            SecretFileWriteRefused { path: p, cause: c } =>
+              CredentialPersistRefused { path: p, cause: c }
+            SecretFileWritten => {
+              let identity = Filesystem.Write(
+                path: paths.identity,
+                content: custody_identity_document(issuance: issuance),
+              )
+              if identity.success {
+                CredentialsHandedOff { paths: paths }
+              } else {
+                CredentialPersistRefused { path: paths.identity, cause: identity.error }
+              }
+            }
+          }
+      }
+  }
+}
+
+// WriteOwnerOnly IS CREATE-ONLY, SO THE PATHS ARE CHECKED WHILE THE CODE IS STILL UNSPENT. Setting a
+// mode at creation is meaningless on an existing path, so the operation refuses rather than
+// clobbering - which is right, because the alternative is overwriting a private key that may be the
+// only copy of a DIFFERENT App's. But discovering that AFTER the exchange would spend a one-shot code
+// and then fail the write, producing an unrecoverable loss for a cause that was visible beforehand.
+// So this runs in census_app_acquire_with_code BEFORE exchange_census_app_code: a stale handoff file
+// is an ordinary refusal with the code still live and the remedy obvious, instead of a lost App.
+//
+// IT CAN RUN THAT EARLY BECAUSE THE HANDOFF IS ADDRESSED BY THE DECLARED NAME, which is known before
+// the POST, rather than by the slug the exchange returns. That is the same fact
+// gunbc.github_app_acquisition custody_handoff_addressing is built on, and it is restated here
+// because the ordering DEPENDS on it: if the addressing ever moves back to the returned slug, this
+// check cannot precede the exchange and the loss arm comes back.
+type CustodyPreflight
+  = CustodyPathsClear { paths: CustodyHandoffPaths }
+  | CustodyPathOccupied { path: String }
+  | CustodyPreflightNameUnsafe { name: NonEmptyStr }
+
+fn custody_path_occupied(path: String) -> Bool {
+  Filesystem.Read(path: path).success
+}
+
+fn custody_preflight(name: NonEmptyStr) -> CustodyPreflight uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: name) {
+    CustodyNameNotPathSafe { name: s } => CustodyPreflightNameUnsafe { name: s }
+    CustodyAddressed { paths: paths } =>
+      if custody_path_occupied(path: paths.pem) {
+        CustodyPathOccupied { path: paths.pem }
+      } else if custody_path_occupied(path: paths.client_secret) {
+        CustodyPathOccupied { path: paths.client_secret }
+      } else if custody_path_occupied(path: paths.webhook_secret) {
+        CustodyPathOccupied { path: paths.webhook_secret }
+      } else {
+        CustodyPathsClear { paths: paths }
+      }
+  }
+}
+
+// A FAILED PERSIST IS THE WORST OUTCOME THIS FLOW HAS AND IT SAYS SO IN THOSE WORDS. The App exists,
+// its key was in a reply this process is about to discard, and the process cannot print the key to
+// rescue it - Secret is opaque to diagnostics by construction, which is correct and is exactly why
+// the write had to succeed. The remedy named is the only one that exists: delete the App and start
+// over, because an App whose key was never stored can never be authenticated as.
+fn custody_failure_exit(custody: IssuedCredentialCustody) -> ProcessExit {
+  match custody {
+    CredentialsHandedOff { paths: _ } =>
+      exit_failure(reason: "custody_failure_exit reached with a successful handoff")
+    CredentialNameUnsafe { name: s } =>
+      exit_failure(reason: join([
+        "THE APP WAS CREATED AND ITS CREDENTIALS COULD NOT BE STORED. GitHub returned slug ",
+        s as String,
+        ", which is not safe to interpolate into a handoff path, so nothing was written. The private key existed only in that reply and is now gone. Delete the App in its settings and re-run the flow; it cannot be authenticated as.",
+      ], ""))
+    CredentialPersistRefused { path: p, cause: c } =>
+      exit_failure(reason: join([
+        "THE APP WAS CREATED AND ITS CREDENTIALS COULD NOT BE STORED. Writing ",
+        p, " failed: ", c,
+        ". The private key was returned once and no endpoint returns it again, and it cannot be printed here. Delete the App in its settings and re-run the flow after fixing the write; it cannot be authenticated as.",
+      ], ""))
+  }
+}
+
+fn readback_exit(readback: CensusAppReadback, paths: CustodyHandoffPaths) -> ProcessExit {
+  match readback {
+    ReadbackConverged { record: r } =>
+      match r {
+        AppNeverAcquired =>
+          exit_failure(reason: "readback converged onto a record that says the App was never acquired")
+        AppAcquired { app_id: id, slug: s } =>
+          exit_failure(reason: join(
+            [
+              "ACQUIRED AND READ BACK. The credentials are on disk at ",
+              paths.pem, ", ", paths.client_secret, ", ", paths.webhook_secret,
+              " and the App's identity at ", paths.identity,
+              ". MOVE THEM TO THEIR DECLARED SECRET MANAGER SITES AND DELETE THE LOCAL COPIES: they are plaintext in the checkout, and the private key was returned once and no endpoint returns it again. The acquisition record needs NO source edit -- the identity document beside them carries app id ",
+              to_string(id.value),
+              " and slug ",
+              s as String,
+              ", and the next run reads it. This run exits non-zero because the credentials are still sitting in the checkout, which is not the converged state.",
+            ],
+            "",
+          ))
+      }
+    ReadbackDisagrees { agreement: _ } =>
+      exit_failure(reason: join([
+        "the exchange reported success and the independent public read disagrees with the declared manifest. The credentials ARE stored at ",
+        paths.pem, " and beside it, so nothing is lost; reconcile the App against the manifest before recording it.",
+      ], ""))
+    ReadbackUnavailable { reason: r } =>
+      exit_failure(reason: join([
+        r as String,
+        " -- the credentials ARE stored at ", paths.pem, " and beside it, so the App is recoverable whatever the read says.",
+      ], ""))
+  }
+}
+
+// ENTRY THREE: THE WHOLE CONVERGE. observe -> decide -> actuate -> INDEPENDENT READBACK, with the
+// readback addressed at the slug the exchange returned and performed through the same public-record
+// read the observation used, not through the exchange's own reply.
+fn census_app_acquire_receipt() -> ProcessExit {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } => census_app_acquire_for(record: record)
+  }
+}
+
+fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+{
+  let observation = observe_census_app_live(
+    address: census_app_read_address(record: record),
+  )
+  let issued = read_handoff_value(path: census_app_state_path)
+  let observed = read_handoff_value(path: census_app_observed_state_path)
+  let code = read_handoff_value(path: census_app_code_path)
+  let admission = admit_manifest_code(
+    issued: issued,
+    observed: observed,
+    code: code,
+  )
+  match admission {
+    ManifestCodeStateMismatch { issued: i, observed: o } =>
+      exit_failure(reason: join([
+        "the state returned with the code is not the state this flow issued (issued ", i as String,
+        ", observed ", o as String,
+        "); the code came back from a different registration flow and is refused rather than spent",
+      ], ""))
+    ManifestCodeUnavailable { reason: r } =>
+      census_app_acquire_without_code(record: record, observation: observation, reason: r)
+    ManifestCodeAdmitted { code: code } =>
+      census_app_acquire_with_code(record: record, observation: observation, code: code)
+  }
+}
+
+fn census_app_acquire_without_code(
+  record: GitHubAppAcquisitionRecord,
+  observation: CensusAppObservation,
+  reason: String,
+) -> ProcessExit {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: record,
+    observation: observation,
+    code: none,
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Apply { plan: _ } =>
+      exit_failure(reason: "classification produced an Apply with no code in hand")
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String, " [", reason, "]"], ""))
+  }
+}
+
+fn census_app_acquire_with_code(
+  record: GitHubAppAcquisitionRecord,
+  observation: CensusAppObservation,
+  code: GitHubAppManifestCode,
+) -> ProcessExit {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: record,
+    observation: observation,
+    code: Present { value: code },
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
+    Apply { plan: plan } =>
+      match custody_preflight(name: plan.custody_name) {
+        CustodyPreflightNameUnsafe { name: n } =>
+          exit_failure(reason: join([
+            "the custody name ", n as String,
+            " is not safe to interpolate into a handoff path, so the credentials could not be stored. NOTHING WAS EXCHANGED and the code is still live: fix the name and re-run.",
+          ], ""))
+        CustodyPathOccupied { path: p } =>
+          exit_failure(reason: join([
+            "a file already exists at ", p,
+            " and WriteOwnerOnly is create-only, so an exchange now would create the App and then fail to store its private key. NOTHING WAS EXCHANGED and the code is still live: move the existing handoff files aside and re-run within the code's hour.",
+          ], ""))
+        CustodyPathsClear { paths: _ } =>
+          match exchange_census_app_code(code: plan.code) {
+            ExchangeCodeNotLive { body: b } =>
+              exit_failure(reason: join([
+                "the manifest code is not live: GitHub answered 404 for it. A code is spendable once and expires one hour after the click, so re-run census_app_registration_instruction_receipt and submit the form again. Body: ", b,
+              ], ""))
+            ExchangeRefused { reason: r } => exit_failure(reason: r as String)
+            ExchangeOutcomeUnknown { detail: d } => exit_failure(reason: d as String)
+            ExchangeReplyIncomplete { issuance: _ } =>
+              exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
+            ExchangeIssued { issuance: issuance } =>
+              persist_then_read_back(custody_name: plan.custody_name, issuance: issuance)
+          }
+      }
+  }
+}
+
+// THE INHABITANCE RECEIPT FOR THE PUBLIC-RECORD READ, and it is here because without it every claim
+// about GitHubAppPublicRecord would rest on values this repository authored. The census App does not
+// exist yet, so there is no slug of ours to address; a real, stable, public App belonging to someone
+// else establishes exactly the fact the witnesses need and nothing more - that GET /apps/{app_slug}
+// answers 200 with a body this operation decodes, that its permissions object folds through
+// observed_permissions_from_wire_map, and that a 404 from that same route reaches AppRecordAbsent
+// rather than an exception. It asserts NOTHING about the census App, which is why the drift
+// comparison below is against the record's own slug and not against census_app_permissions.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function public_app_record_wire_receipt
+data inhabitance_probe_app_slug: NonEmptyStr = "dependabot"
+
+data inhabitance_probe_absent_app_slug: NonEmptyStr = "gunbc-slug-that-no-app-holds"
+
+fn public_app_record_wire_receipt() -> ProcessExit {
+  match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_app_slug }) {
+    AppNotYetAddressable =>
+      exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
+    AppRecordUnreadable { reason: r } => exit_failure(reason: r as String)
+    AppRecordAbsent =>
+      exit_failure(reason: join(["public app ", inhabitance_probe_app_slug as String, " answered 404"], ""))
+    AppRecordObserved { record: record } =>
+      if record.slug != (inhabitance_probe_app_slug as String) {
+        exit_failure(reason: join(["public app record answered for slug ", record.slug], ""))
+      } else {
+        public_app_absence_receipt()
+      }
+  }
+}
+
+// THE ABSENT ARM IS READ FOR REAL TOO. A 404 reaching AppRecordAbsent rather than an exception is the
+// arm the duplicate-mint guard is built on, so it is established by a live read of a slug no App
+// holds, not by supplying a RestStatusRefused value to the fold.
+fn public_app_absence_receipt() -> ProcessExit {
+  match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_absent_app_slug }) {
+    AppRecordAbsent => ExitSuccess
+    AppRecordObserved { record: r } =>
+      exit_failure(reason: join(["expected no App at ", inhabitance_probe_absent_app_slug as String, ", found ", r.slug], ""))
+    AppNotYetAddressable =>
+      exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
+    AppRecordUnreadable { reason: r } =>
+      exit_failure(reason: join(["absent-slug read was unreadable rather than a 404: ", r as String], ""))
+  }
+}
+
+// THE TOKEN REQUEST IS PROJECTED, NOT SENT. Its endpoint and body are what the external minting step
+// must issue for each installation, derived from the installation this read observed rather than
+// hand-typed beside it. Narrowing is omitted because the App's own permission set is already the
+// declared minimum; a narrowing would be a second policy fact and belongs to whatever consumer needs
+// less than the App holds.
+fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
+  let request = GitHubInstallationTokenRequest {
+    installation_id: installation.installation_id,
+    repositories: RepositoryNarrowingOmitted,
+    permissions: PermissionNarrowingOmitted,
+  }
+  join([
+    "POST ", installation_token_request_url(request: request),
+    " body ", installation_token_request_body(request: request),
+    " account ", installation.account.login,
+    " selection ", repository_selection_wire_name(mode: installation.repository_selection) as String,
+  ], "")
+}
+
+// THE BUDGET PATH, ROUTED. GET /app/installations is the only endpoint that answers "how much API
+// budget does this App actually hold", and it is the one call in this flow that needs an RS256-signed
+// App JWT. Nothing in this corpus can sign one, so the credential is read at the transport from
+// GITHUB_APP_JWT and an external step mints it: this entry point does not take a token, cannot be
+// handed one, and refuses through the ordinary 401 classification when the environment has none.
+//
+// IT IS DECLARED AS A ROUTE RATHER THAN LEFT FOR LATER because an operation with no call site is the
+// dangling modeling DESIGN 3c refuses. What it cannot yet do is EXECUTE GREEN - the census App does
+// not exist, so it has no installations and there is no key to sign with - and that gap is the
+// frontier row below rather than a claim in this note.
+//
+// TWO REFUSALS, BOTH MEASURED LIVE, AND NEITHER FABRICATES A BUDGET. With no GITHUB_APP_JWT the
+// TRANSPORT refuses before the request - AuthDeclaredButUnwired, "auth declared but no token
+// resolved" - rather than sending an unauthenticated GET; with a JWT that is not a valid App JWT,
+// GitHub answers 401 and that status reaches the refusal below. The second is the arm this entry
+// point's own code produces; the first belongs to the REST realization and is named here because a
+// reader would otherwise expect the 401 path to be the only wall.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_installations_receipt
+fn census_app_installations_receipt() -> ProcessExit {
+  match read_census_app_installations() {
+    InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
+    InstallationsUndecodable { decode: _ } =>
+      exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
+    InstallationsFirstPageOnly { installations: installations } =>
+      installations_read_exit(installations: installations)
+  }
+}
+
+// A READ THAT SUCCEEDED EXITS ZERO, AND THE LISTING GOES TO A FILE RATHER THAN THROUGH THE REFUSAL
+// REASON. An earlier cut returned exit_failure on the fully-successful decode path purely because the
+// failure reason is the channel that prints, which reported a successful budget read as a failed run
+// and -- worse -- made this entry point's own frontier row unsatisfiable: the row says it dissolves
+// when this function returns ExitSuccess against a live GET, and no ExitSuccess arm existed, so the
+// trigger could only be discharged by editing the function rather than by acquiring the App (DESIGN
+// 4b(3): a drop is retired by its trigger and by nothing else). Caught by review 67504.
+//
+// THE REPORT PATH IS DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. An installation
+// listing is not a credential, but it names every account this App can read and the exact token
+// requests that would mint against them, so it is an inventory of the fleet's API budget and does not
+// belong in a tracked path either.
+fn installations_report_path() -> String {
+  join([census_app_custody_handoff_directory, "/github-app-installations"], "")
+}
+
+fn installations_report(installations: List<GitHubAppInstallation>) -> String {
+  join([
+    "installations_on_first_page=", to_string(count(installations)),
+    " (the listing's continuation is not observable through this transport, so this is not the population)\n",
+    join(map(installations, i => installation_token_plan_line(installation: i)), "\n"),
+    "\n",
+  ], "")
+}
+
+fn installations_read_exit(installations: List<GitHubAppInstallation>) -> ProcessExit
+{
+  let path = installations_report_path()
+  let wrote = Filesystem.Write(path: path, content: installations_report(installations: installations))
+  if wrote.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join([
+      "the installation listing was read and its report could not be written to ", path, ": ", wrote.error,
+    ], ""))
+  }
+}
+
+// ── ENTRY FOUR: THE ACQUISITION RECEIPT, WHICH IS THE ONE THING THE LANE IS CLOSED AGAINST ─────
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquisition_receipt
+//
+// THREE INDEPENDENT READINGS, JOINED BY A FOLD THAT REFUSES AT THE FIRST MISSING FACT. The public
+// app record answers REGISTRATION, GET /app/installations answers INSTALLATION, and the handoff file
+// answers KEY CUSTODY -- three different endpoints, two different credentials, one filesystem. None
+// of them is derived from another, which is what makes the join worth anything: if installation were
+// inferred from a converged registration, or custody from a successful exchange, the receipt would
+// report a state nobody observed. It exits zero only when all three hold.
+// THE THREE READS ARE PERFORMED INSIDE gunbc.github_app_acquisition census_app_acquisition_standing,
+// not here: this entry point reads the record that ADDRESSES them and renders what the mint answers.
+// An earlier cut performed the registration and custody reads here and handed the standings across
+// the module boundary, which left the exported mint accepting authorable evidence beside the one
+// sealed input (side-chat review, 2026-09-21); the reads moved rather than being copied.
+fn census_app_acquisition_receipt() -> ProcessExit {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      census_app_acquisition_receipt_for(record: record)
+  }
+}
+
+fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+{
+  let standing = census_app_acquisition_standing(record: record)
+  match standing {
+    CensusAppAcquired { receipt: r } => {
+      let wrote = Filesystem.Write(
+        path: acquisition_receipt_path(),
+        content: acquisition_standing_line(standing: CensusAppAcquired { receipt: r }),
+      )
+      if wrote.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join([
+          "the census App is acquired and the receipt could not be written to ",
+          acquisition_receipt_path(), ": ", wrote.error,
+        ], ""))
+      }
+    }
+    AcquisitionIncomplete { missing: m } =>
+      exit_failure(reason: join([
+        acquisition_standing_line(standing: AcquisitionIncomplete { missing: m }),
+        " || ",
+        next_acquisition_step(record: record, missing: m),
+      ], ""))
+  }
+}
+
+fn acquisition_receipt_path() -> String {
+  join([census_app_custody_handoff_directory, "/github-app-acquisition-receipt"], "")
+}
+
+// THE REFUSAL NAMES THE NEXT ACT, AND THE ACT IT NAMES IS THE ONE FOR THE FACT THAT IS MISSING. A
+// refusal that told the operator to register when the installation was the gap is how four facts
+// became one word in the first place.
+//
+// AND THE TWO INSTALLATION ARMS PRESCRIBE OPPOSITE ACTS, WHICH IS THE WHOLE REASON THEY ARE TWO ARMS
+// (review 69499). An earlier cut matched one collapsed InstallationMissing arm and discarded its
+// reason, so a stale-JWT 401 -- a state in which the App may ALREADY be installed -- told the
+// operator to go grant a consent. That is this lane's own rule broken one layer along: the reading
+// kept unreadable and empty apart, and the PRESCRIPTION derived from them did not. The discrimination
+// is taken from the arm rather than re-read out of the reason string, because recovering it in the
+// consumer after the type discarded it is the same shape as a wall standing one call away from what
+// it guards.
+fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: AcquisitionFactMissing) -> String {
+  match missing {
+    RegistrationMissing { reason: _ } =>
+      "NEXT: run census_app_registration_instruction_receipt, which writes the submission document and names it."
+    InstallationConsentMissing { reason: _ } =>
+      match census_app_installation_instruction(record: record) {
+        InstallationInstructionUnavailable { reason: r } =>
+          join(["NEXT: no installation step can be addressed: ", r as String], "")
+        InstallationInstructionReady { intervention: i, install_url: _ } =>
+          join(["NEXT: ", intervention_text(intervention: i)], "")
+      }
+    InstallationConsentInsufficient { reason: r } =>
+      join(["NEXT: the installation exists and grants less than the census consent (", r as String, "). The account holder must open that installation's settings, select the repositories the census may read and approve every permission the App requests, then re-run this receipt. Do not install again: an App is installed once per account."], "")
+    InstallationReadingAmbiguous { reason: r } =>
+      join(["NEXT: re-run this receipt; the installation reading contradicted itself (", r as String, ") and nothing was admitted. Do not install or re-consent on the strength of it."], "")
+    InstallationReadingUnavailable { reason: _ } =>
+      "NEXT: if the read was refused, mint a fresh App JWT and export it as GITHUB_APP_JWT, then re-run this receipt; if the listing was not walked to exhaustion, no operator act repairs it until the transport carries the Link header (census_app_installation_population_frontier_rows). DO NOT go and install the App on the strength of this: the installation fact was NOT READ, so it may already be granted, and a consent flow is not what repairs an unreadable reading."
+    CustodyMissing { reason: _ } =>
+      join(["NEXT: ", intervention_text(intervention: app_key_supply_intervention(identity: census_app_identity))], "")
+  }
+}
+
+data census_app_installation_route_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "census_app_installations_receipt"),
+    reason: "the route exists and cannot execute green yet: the census App has not been registered, so it has no installations, and the App JWT this endpoint requires is RS256-signed with the census App's private key, which is not custodied as a key file where this instrument runs -- the corpus signer (the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize) needs exactly that file. Measured live today it refuses twice and fabricates nothing -- the transport refuses with AuthDeclaredButUnwired when GITHUB_APP_JWT is absent, and GitHub answers 401 when it holds a value that is not a valid App JWT",
+    dissolution: unbound_dissolution(
+      description: "dissolves when this entry point returns ExitSuccess against a live GET /app/installations -- which needs BOTH the census App acquired through census_app_acquire_receipt AND a valid App JWT for it in GITHUB_APP_JWT -- signed either by an external step from the stored pem or by the corpus signer (the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize) once the census App's key is custodied as a file where this instrument runs. The ExitSuccess arm is REACHABLE WITHOUT EDITING THIS FUNCTION: a 200 whose records decode writes the report and returns it, so acquiring the App and exporting a valid JWT is sufficient and nothing else is required. That is stated because it was briefly false -- the successful path returned exit_failure to get its listing printed, which made this trigger dischargeable only by changing the code it describes (review 67504), and DESIGN 4b(3) rules a drop is retired by its trigger and by nothing else. A witness over supplied GitHubAppInstallationRecord values does not fire this; only a live green does"
+    )
+  )
+]
+
+data census_app_custody_handoff_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "persist_issued_credentials"),
+    reason: "the credentials are written to git-ignored files under .gunbc rather than to the SecretRef sites gunbc.github_app_acquisition declares, because gunbc.secret_provision_actuator reaches Secret Manager AddVersion through a WIF-authorized identity a local acquire run does not hold. The write EXECUTES and the key is durable before the readback runs; what is unfinished is the second hop, and the operator performs it by hand today",
+    dissolution: unbound_dissolution(
+      description: "dissolves when this function writes the issued pem, webhook secret and client secret through gunbc.secret_provision_actuator to census_app_private_key_custody, census_app_webhook_secret_custody and census_app_client_secret_custody, reading back the exact minted version and verifying payload identity, so no plaintext copy is written to the checkout at all. A run that writes the files and separately calls AddVersion does not fire this -- the row retires when the local hop is GONE, not when a second one is added beside it"
+    )
+  )
+]
+
+// THE EXECUTING RECEIPT FOR THE CUSTODY WRITE, and it exists because every other claim about
+// persist_issued_credentials would otherwise be a claim about values this repository authored. The
+// acquire path's write runs exactly once in the life of the App and cannot be rehearsed against
+// GitHub, so the pairing obligation (DESIGN 3, a supplied input is a hypothesis about a boundary;
+// the inhabitance claim is what makes it a reading) is discharged here instead: a probe issuance
+// goes through THE SAME function the acquire path calls, the bytes are read back from disk, and the
+// files are removed. Deleting the Filesystem.WriteOwnerOnly call makes this fail.
+//
+// THE PROBE SLUG IS DELIBERATELY NOT THE CENSUS APP'S, so this receipt can never overwrite a real
+// credential; the readback compares against the probe bytes and the removal is asserted, because a
+// receipt that leaves a file named like a private key behind is worse than no receipt.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function custody_write_receipt
+data custody_probe_slug: NonEmptyStr = "probe-custody-receipt-not-a-real-app"
+
+data custody_probe_pem_bytes: String = "-----BEGIN RSA PRIVATE KEY-----probe-not-a-key-----END RSA PRIVATE KEY-----"
+
+data custody_probe_issuance: GitHubAppCredentialIssuance = CredentialIssuedOnce {
+  app_id: GitHubAppId { value: 0 },
+  slug: custody_probe_slug,
+  pem: custody_probe_pem_bytes as Secret,
+  webhook_secret: Present { value: "probe-webhook-secret" as Secret },
+  client_id: "Iv1.probe" as NonEmptyStr,
+  client_secret: "probe-client-secret" as Secret,
+}
+
+// EACH REMOVAL IS BOUND BEFORE ANY OF THEM IS CONJOINED, and that is the whole point of the shape.
+// The intent here is that ALL FOUR files go, and the returned Bool only reports whether they did --
+// so the removals may not sit under a boolean operand, where whether they run at all depends on an
+// evaluation-order fact the substrate does not declare (gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses: the interpreter demands both operands,
+// the emitted host token does not). Under the emitted reading a failed pem removal would skip the
+// other three and leave a file named like a private key behind, which the note above this data
+// block says is worse than no receipt at all. A `let` is demanded by both realizations, so the four
+// removals are unconditional by construction and the conjunction is over four values.
+fn custody_probe_cleanup(paths: CustodyHandoffPaths) -> Bool {
+  let pem_removed = shell.Remove.RecursiveForce(path: paths.pem).success
+  let client_secret_removed = shell.Remove.RecursiveForce(path: paths.client_secret).success
+  let webhook_secret_removed = shell.Remove.RecursiveForce(path: paths.webhook_secret).success
+  let identity_removed = shell.Remove.RecursiveForce(path: paths.identity).success
+  pem_removed && client_secret_removed && webhook_secret_removed && identity_removed
+}
+
+fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match persist_issued_credentials(custody_name: custody_probe_slug, issuance: custody_probe_issuance) {
+    CredentialNameUnsafe { name: s } =>
+      exit_failure(reason: join(["the probe slug was refused as unsafe: ", s as String], ""))
+    CredentialPersistRefused { path: p, cause: c } =>
+      exit_failure(reason: join(["the custody write refused at ", p, ": ", c], ""))
+    CredentialsHandedOff { paths: paths } => {
+      let pem_read = Filesystem.Read(path: paths.pem)
+      let identity_read = Filesystem.Read(path: paths.identity)
+      let removed = custody_probe_cleanup(paths: paths)
+      if !pem_read.success {
+        exit_failure(reason: join(["the pem was reported written and could not be read back at ", paths.pem], ""))
+      } else if pem_read.content != custody_probe_pem_bytes {
+        exit_failure(reason: join(["the bytes read back from ", paths.pem, " are not the bytes handed to the write"], ""))
+      } else if !identity_read.success {
+        exit_failure(reason: join(["the identity document was not written at ", paths.identity], ""))
+      } else if !string_contains(s: identity_read.content, pattern: "record=AppAcquired") {
+        exit_failure(reason: "the identity document does not carry the acquisition-record edit the operator must make")
+      } else if !removed {
+        exit_failure(reason: join(["the probe credentials were written and could not be removed; plaintext remains under ", census_app_custody_handoff_directory], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}
+
+// EVERYTHING REACHING HERE HAS A CREATED APP AND ITS ONLY COPY OF A PRIVATE KEY IN MEMORY, so every
+// arm below is an unrecoverable-loss arm and says so. The preflight that could have PREVENTED the
+// loss does not live here: it runs before the exchange, where the code is still live and a refusal
+// costs nothing. This function still handles a failed write, because a path clear a moment ago can
+// fail for reasons a preflight cannot see -- a full disk, a permission change, a racing process --
+// and those are genuinely only discoverable at the write.
+//
+// AN EARLIER CUT PUT THE PREFLIGHT HERE AND JUSTIFIED IT WITH A COMMENT SAYING THE ISSUED SLUG IS
+// ONLY KNOWN AFTER THE EXCHANGE. That was true when the handoff was addressed by the returned slug
+// and stopped being true when this PR moved the addressing to the declared NAME -- which is known
+// before the POST -- and the comment was not moved with it. So a stale annotation stood as a second,
+// false authority for the sequencing, and it justified exactly the loss the preflight exists to
+// prevent: a stale handoff file meant creating the App and then refusing its key (review 67573,
+// DESIGN 4c -- an annotation may not assert what the construction does not do).
+fn persist_then_read_back(
+  custody_name: NonEmptyStr,
+  issuance: GitHubAppCredentialIssuance,
+) -> ProcessExit
+{
+  match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
+    CredentialNameUnsafe { name: s } =>
+      custody_failure_exit(custody: CredentialNameUnsafe { name: s })
+    CredentialPersistRefused { path: p, cause: c } =>
+      custody_failure_exit(custody: CredentialPersistRefused { path: p, cause: c })
+    CredentialsHandedOff { paths: paths } =>
+      readback_exit(
+        readback: acquisition_readback_live(issuance: issuance),
+        paths: paths,
+      )
+  }
+}
+
+// THE PREFLIGHT'S DISCRIMINATION, EXECUTED. The property that matters -- an occupied handoff refuses
+// BEFORE exchange_census_app_code is reached -- is a control-flow fact visible in
+// census_app_acquire_with_code, and it was wrong once with a stale comment justifying it (review
+// 67573). What is checkable here without spending a real code is that the preflight actually
+// DISCRIMINATES: occupied reads occupied, clear reads clear, against real files on real disk. A
+// preflight that answered CustodyPathsClear unconditionally would sit in the right place and prevent
+// nothing, which is the failure a correctly-ordered call cannot rule out on its own.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function custody_preflight_receipt
+fn custody_preflight_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: custody_probe_slug) {
+    CustodyNameNotPathSafe { name: n } =>
+      exit_failure(reason: join(["the probe name was refused as unsafe: ", n as String], ""))
+    CustodyAddressed { paths: paths } => {
+      let clear_before = match custody_preflight(name: custody_probe_slug) {
+        CustodyPathsClear { paths: _ } => true
+        CustodyPathOccupied { path: _ } => false
+        CustodyPreflightNameUnsafe { name: _ } => false
+      }
+      let planted = Filesystem.Write(path: paths.pem, content: "stale probe pem")
+      let occupied_after = match custody_preflight(name: custody_probe_slug) {
+        CustodyPathOccupied { path: p } => p == paths.pem
+        CustodyPathsClear { paths: _ } => false
+        CustodyPreflightNameUnsafe { name: _ } => false
+      }
+      let removed = shell.Remove.RecursiveForce(path: paths.pem).success
+      if !clear_before {
+        exit_failure(reason: join(["the probe handoff was not clear before planting; stale residue at ", paths.pem], ""))
+      } else if !planted.success {
+        exit_failure(reason: join(["could not plant the probe file at ", paths.pem, ": ", planted.error], ""))
+      } else if !occupied_after {
+        exit_failure(reason: join([
+          "the preflight reported a CLEAR path while a file existed at ", paths.pem,
+          " -- it would sit before the exchange and prevent nothing",
+        ], ""))
+      } else if !removed {
+        exit_failure(reason: join(["the probe file could not be removed from ", paths.pem], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}

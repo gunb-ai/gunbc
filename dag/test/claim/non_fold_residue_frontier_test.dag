@@ -14,9 +14,10 @@ import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 // GREEN: every enrolled non-fold-residue row is well-formed (nonempty subject, reason, trigger),
 // path keys are unique via keyed_roster_build construction (lane 4), and the roster is populated.
 // RED controls: a synthetic row with an empty trigger fails well-formedness; a synthetic duplicate
-// path key yields KeyedRosterBuildDuplicateKey. The host-side equivalence receipt
-// (nfr_roster_receipt: unrostered=0, stale=0 against the live corpus scan) lives in cli_run.rs
-// nfr_tests and the always-on witness enrollment on src/v2/lens/non_fold_residue_test.dag.
+// path key yields KeyedRosterBuildDuplicateKey. Equivalence with the live corpus is the typed
+// walk's: the required floor's diff-scoped non_fold_residue_diff_verdict on every PR, and the
+// whole-corpus census (cli_run/non_fold_residue.rs nfr_whole_corpus_typed_census) at unrostered=0,
+// stale=0 for the roster as a whole.
 
 test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
   non_fold_residue_frontier_well_formed()

@@ -3,8 +3,8 @@ module test.claim.runner_host_deploy
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.exec.command { shell_command_render }
-import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
-import extdeps.systemd.systemctl { systemctl_program }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
 import gunbc.runner_host_deploy {
   admitted_deploy_for,
   gunbc_ci_github_app,
@@ -31,7 +31,7 @@ import gunbc.runner_activation {
 }
 import gunbc.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance, runner_slot_index_suffix }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, String }
 import gunbc.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
@@ -43,11 +43,19 @@ test fn srv4_docker_prereq_cites_official_repo() -> Bool {
     && string_contains(s: s, pattern: "docker-ce-rootless-extras")
 }
 
+// THE MOVE STEP IS ASSERTED AS THE ELEVATED, QUOTED ARGV IT IS, NOT AS THE SPELLING IT HAD. The third
+// pattern read `.../sccache' /usr/local/bin/sccache` -- a hand-rendered `sudo mv` line whose
+// destination was unquoted. #10568 (84b67392e4) routed the step through extdeps.sudo.elevation
+// sudo_elevate_argv and quotes every word with posix_single_quote, deliberately, so the row was red
+// from that landing while the install it describes was unchanged. What the row pins is the upstream
+// fact -- v0.15.0's musl tarball unpacks to sccache-v0.15.0-<arch>-unknown-linux-musl/sccache -- and
+// that the binary lands at the installed path; both are spelled here from the release layout and the
+// POSIX quoting rule, not copied from the rendered script.
 test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool {
   let s = runner_host_sccache_provision_script(arch: "aarch64", sha256: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8")
   string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
     && string_contains(s: s, pattern: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8  /tmp/sccache.tar.gz")
-    && string_contains(s: s, pattern: "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' /usr/local/bin/sccache")
+    && string_contains(s: s, pattern: "'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'")
 }
 
 test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
@@ -96,7 +104,7 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // "'sudo' 'systemctl' 'enable' '--now'" -- correct against the hand-built argv this row was written
 // for, and false the moment runner_enable_command_argv started routing through
 // extdeps.systemd.systemctl systemctl_enable_now_command, which mints through the sealed
-// argv_command with sudo_binary_path as the program and inserts sudo's non-interactive flag. The
+// argv_command with sudo_program as the program and inserts sudo's non-interactive flag. The
 // spelling was a THIRD authoring of facts extdeps.sudo.elevation and extdeps.systemd.systemctl
 // already own, so it rotted exactly the way a re-spelling does (DESIGN section 3).
 //
@@ -122,13 +130,13 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
         && string_contains(
              s: enable,
              pattern: concat(
-               concat("'", sudo_binary_path as String),
+               concat("'", sudo_program().invocation as String),
                concat("' '", concat(sudo_non_interactive_flag as String, "'")),
              ),
            )
         && string_contains(
              s: enable,
-             pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+             pattern: concat(concat("'", systemctl_path_resolved_program().invocation as String), "' 'enable' '--now'"),
            )
     }
   }

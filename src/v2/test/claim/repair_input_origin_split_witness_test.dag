@@ -6,6 +6,7 @@ import std.repair_input_origin {
   RepairInputOriginCandidate,
   SourceCarrierCandidate,
   RenderedTargetVocabularyCarrier,
+  SourceDeclarationCarrier,
   repair_input_origin_candidates,
   repair_input_origin_compatibility_names,
   qualified_item_emit_surface_compatibility_names,
@@ -17,6 +18,7 @@ fn is_rendered(candidate: RepairInputOriginCandidate, want: String) -> Bool {
   match candidate {
     RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier == want
     SourceCarrierCandidate { identity: _ } => false
+    SourceDeclarationCarrier { identity: _ } => false
   }
 }
 
@@ -25,6 +27,7 @@ fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
     SourceCarrierCandidate { identity } =>
       repair_input_origin_compatibility_names(candidates: [SourceCarrierCandidate { identity: identity }]) |> any(name => name == want)
     RenderedTargetVocabularyCarrier { identity: _ } => false
+    SourceDeclarationCarrier { identity: _ } => false
   }
 }
 

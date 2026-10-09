@@ -1,0 +1,318 @@
+module test.claim.machine_intake.mtcollins1_census_member_readback_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, NonEmptyStr, String }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
+import gunbc.machine_intake_mtcollins1_census_member_readback {
+  census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
+  MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
+  CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, BootChainControlDidNotDiscriminate,
+  BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus, BootChainMediumExporterUnsupported,
+  census_member_readback,
+  CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
+  census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
+  census_member_attempt_of,
+  CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
+  member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
+}
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host_command_binding {
+  HostLeg, host_leg_of_typed_argv, FleetSshTransport,
+  CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
+  Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
+}
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.machine_intake_mtcollins1_census_medium_readback { RemoteAnswer }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stock_iso: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+data census_iso: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
+data census: BootMedium = mtcollins1_census_boot_medium(output_digest: census_iso)
+
+// THE SAME CENSUS MEDIUM -- genuine name, digest, directory and label -- NAMING ANOTHER EXPORTER. Only the
+// export's SSH target differs: another endpoint, or another principal at the supported endpoint. Its
+// bytes live on an exporter these readers never read, so a successful readback from the supported one
+// would answer for bytes the medium did not name (side-chat review at cad3011782).
+fn census_at(endpoint: String, principal: String) -> BootMedium {
+  BootMedium {
+    image_name: census.image_name,
+    digest: census.digest,
+    export: BootImageExport { target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }, dir: census.export.dir },
+    terminal: census.terminal,
+  }
+}
+
+fn census_at_other_endpoint() -> BootMedium {
+  census_at(endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+}
+
+fn census_as_other_principal() -> BootMedium {
+  census_at(endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
+
+fn read(d: NonEmptyStr) -> MemberReading { MemberRead { digest: d } }
+
+// Supplied member digests: the fold is over readings, the producer is the srv2 run.
+fn over(stock_grub: MemberReading, census_grub: MemberReading, census_kernel: MemberReading, census_initrd: MemberReading) -> CensusMemberReadback {
+  census_member_readback_from_readings(
+    medium: census,
+    stock_iso: IsoMeasured { digest: stock_iso },
+    census_iso: IsoMeasured { digest: census_iso },
+    stock_grub: stock_grub, census_grub: census_grub,
+    stock_kernel: read(d: "k0"), census_kernel: census_kernel,
+    stock_initrd: read(d: "i0"), census_initrd: census_initrd,
+  )
+}
+
+// POSITIVE: the declared rewrite differs, kernel and initrd pass through -- the only verdict that holds.
+test fn a_rewritten_grub_and_an_unchanged_kernel_and_initrd_read_as_identical_boot_chain() -> Bool {
+  let r = over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k0"), census_initrd: read(d: "i0"))
+  census_member_readback_holds(readback: r)
+    && match r {
+      BootChainIdenticalToStock { stock_iso: _, census_iso: _, kernel: k, initrd: i } => (k as String) == "k0" && (i as String) == "i0"
+      _ => false
+    }
+}
+
+// RED: a differing initrd is located as the first differing boundary, with both digests retained.
+test fn a_differing_initrd_is_the_first_difference_and_does_not_hold() -> Bool {
+  let r = over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k0"), census_initrd: read(d: "i1"))
+  census_member_readback_holds(readback: r) == false
+    && match r {
+      BootChainFirstDifference { stock_iso: _, census_iso: _, member: CasperInitrd, stock: s, census: c } => (s as String) == "i0" && (c as String) == "i1"
+      _ => false
+    }
+}
+
+// RED: the kernel precedes the initrd in boot order, so a differing kernel is named first.
+test fn a_differing_kernel_is_named_before_a_differing_initrd() -> Bool {
+  match over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k1"), census_initrd: read(d: "i1")) {
+    BootChainFirstDifference { stock_iso: _, census_iso: _, member: CasperKernel, stock: _, census: _ } => true
+    _ => false
+  }
+}
+
+// RED: an equal grub.cfg means the difference control failed (cause not chosen); identical kernel and initrd do not rescue it.
+test fn an_equal_grub_config_refuses_as_a_control_that_did_not_discriminate() -> Bool {
+  match over(stock_grub: read(d: "g0"), census_grub: read(d: "g0"), census_kernel: read(d: "k0"), census_initrd: read(d: "i0")) {
+    BootChainControlDidNotDiscriminate { grub_digest: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unread_census_initrd_is_unread_not_identical() -> Bool {
+  match over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k0"), census_initrd: MemberUnread { reason: "xorriso" }) {
+    BootChainUnread { member: CasperInitrd, side: CensusSide, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_census_iso_off_its_pin_refuses_before_any_member_is_compared() -> Bool {
+  let r = census_member_readback_from_readings(
+    medium: census,
+    stock_iso: IsoMeasured { digest: stock_iso },
+    census_iso: IsoMeasured { digest: stock_iso },
+    stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
+    stock_kernel: read(d: "k0"), census_kernel: read(d: "k0"),
+    stock_initrd: read(d: "i0"), census_initrd: read(d: "i0"),
+  )
+  match r {
+    BootChainIsoNotPinned { side: CensusSide, expected: _, observed: _ } => true
+    _ => false
+  }
+}
+
+test fn the_stock_medium_row_has_no_census_boot_chain_to_read() -> Bool {
+  let r = census_member_readback_from_readings(
+    medium: stock_installer_boot_medium,
+    stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso },
+    stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
+    stock_kernel: read(d: "k0"), census_kernel: read(d: "k0"),
+    stock_initrd: read(d: "i0"), census_initrd: read(d: "i0"),
+  )
+  match r {
+    BootChainMediumNotCensus => true
+    _ => false
+  }
+}
+
+fn answer(code: Int, stdout: String, stderr: String) -> RemoteAnswer { RemoteAnswer { exit_code: code, stdout: stdout, stderr: stderr } }
+
+data stock_member_digest: NonEmptyStr = "deb2c288c12e6f35c2b9242134116ea03f7d4eb91f0c354ecd993680ffabbbf7"
+
+// THE PIN GATE PRECEDES EXTRACTION: an off-pin census ISO is refused by the gate the producer
+// evaluates before it acquires a workspace, so the gate's refusal carries no member reading at all.
+test fn an_off_pin_iso_is_refused_by_the_gate_that_precedes_extraction() -> Bool {
+  match census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso }) {
+    PinsRefused { readback: BootChainIsoNotPinned { side: CensusSide, expected: _, observed: _ } } => true
+    _ => false
+  }
+    && match census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+      PinsAdmitted { stock_iso: _, census_iso: _ } => true
+      _ => false
+    }
+}
+
+// A FAILED EXTRACTION IS NEVER HASHED: its reading is decided from the extract leg alone.
+test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
+  match member_reading_after_extract(extract: answer(code: 1, stdout: "", stderr: "xorriso : FAILURE")) {
+    Present { value: MemberUnread { reason: r } } => string_contains(s: r, pattern: "xorriso extract exit=1")
+    _ => false
+  }
+    && match member_reading_after_extract(extract: answer(code: 0, stdout: "", stderr: "")) { Absent => true _ => false }
+    && match member_reading_of_measure(measure: answer(code: 0, stdout: concat(stock_member_digest as String, "  /tmp/x/stock-initrd\n"), stderr: "")) {
+      MemberRead { digest: d } => (d as String) == (stock_member_digest as String)
+      _ => false
+    }
+}
+
+// ---- the attempt consumer: every workspace outcome, composed as the producer composes it ----
+
+fn ran(code: Int, stdout: String, stderr: String) -> HostLeg {
+  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
+}
+
+fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: TypedArgvExecRefused { reason: reason }) }
+
+data admitted: CensusPinGate = PinsAdmitted { stock_iso: stock_iso, census_iso: census_iso }
+
+data workspace_dir: String = "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34"
+
+// Supplied member readings for an acquired workspace: an identical chain, so a non-holding attempt is
+// attributable to its workspace outcome alone.
+fn identical_readings(dir: NonEmptyStr) -> CensusMemberReadings {
+  CensusMemberReadings {
+    stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
+    stock_kernel: read(d: "k0"), census_kernel: read(d: "k0"),
+    stock_initrd: read(d: "i0"), census_initrd: read(d: "i0"),
+  }
+}
+
+fn attempt(gate: CensusPinGate, creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
+  census_member_attempt_of(kind: FleetSshTransport, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+}
+
+fn says(a: CensusMemberReadbackAttempt, pattern: String) -> Bool { string_contains(s: render_census_member_attempt(attempt: a), pattern: pattern) }
+
+// POSITIVE: an admitted path, an identical chain, a confirmed removal -- the only holding attempt.
+test fn an_acquired_workspace_that_is_removed_holds() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 0, stdout: concat(workspace_dir, "\n"), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  census_member_attempt_holds(attempt: a)
+    && says(a: a, pattern: "verdict=boot_chain_identical_to_stock")
+    && says(a: a, pattern: concat("workspace=", concat(workspace_dir, " removed")))
+}
+
+// A PIN REFUSAL ISSUES NO CREATION: the creation leg is never consulted, and "never created" is
+// justified because it was never requested.
+test fn a_pin_refusal_requests_no_creation() -> Bool {
+  let refused = census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso })
+  let a = attempt(gate: refused, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationNotRequested => true _ => false }
+    && says(a: a, pattern: "creation was not requested")
+}
+
+// ssh 255 WITH NO PATH: mktemp was sent and its result is unknown -- residue outstanding, never
+// "never created", and nothing extracted.
+test fn an_unacknowledged_creation_without_a_path_is_unconfirmed_not_never_created() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 255, stdout: "", stderr: "Connection reset by peer"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationUnconfirmed { exit_code: c, stdout: _, stderr: _ } => c == 255 _ => false }
+    && match a.readback { BootChainWorkspaceUnavailable { reason: _ } => true _ => false }
+    && says(a: a, pattern: "CREATION UNCONFIRMED") && says(a: a, pattern: "MAY REMAIN")
+    && !says(a: a, pattern: "never created")
+}
+
+// ssh 255 WITH A PARTIAL PATH: the returned text is retained as evidence and is NOT admitted as a
+// workspace -- nothing is extracted under it and nothing deletes it.
+test fn an_unacknowledged_creation_with_a_partial_path_keeps_the_text_and_admits_nothing() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 255, stdout: "/tmp/gunbc-mtcollins1-census-mem", stderr: "client_loop: send disconnect"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationUnconfirmed { exit_code: _, stdout: o, stderr: _ } => o == "/tmp/gunbc-mtcollins1-census-mem" _ => false }
+    && says(a: a, pattern: "returned stdout=\"/tmp/gunbc-mtcollins1-census-mem\"")
+    && says(a: a, pattern: "not removed, nothing written into it")
+    && !says(a: a, pattern: "workspace=/tmp")
+}
+
+// EXIT 0 WITH UNUSABLE OUTPUT: two paths, or a path outside the prefix, establish no owned
+// workspace and no non-creation either.
+test fn a_zero_exit_with_unusable_output_is_unconfirmed() -> Bool {
+  let two = attempt(gate: admitted, creation: ran(code: 0, stdout: concat(workspace_dir, concat("\n", workspace_dir)), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  let elsewhere = attempt(gate: admitted, creation: ran(code: 0, stdout: "/srv/bmc/x", stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: two) && !census_member_attempt_holds(attempt: elsewhere)
+    && match two.workspace { CreationUnconfirmed { exit_code: c, stdout: _, stderr: _ } => c == 0 _ => false }
+    && match elsewhere.workspace { CreationUnconfirmed { exit_code: _, stdout: _, stderr: _ } => true _ => false }
+}
+
+// A LEGITIMATE mktemp FAILURE (its own non-255 status) established that nothing was created; a leg
+// the transport refused before dispatch is kept as that, not as a lost reply.
+test fn a_reported_mktemp_failure_and_an_undispatched_creation_are_never_created() -> Bool {
+  let failed = attempt(gate: admitted, creation: ran(code: 1, stdout: "", stderr: "mktemp: failed to create directory via template"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  let undispatched = attempt(gate: admitted, creation: not_dispatched(reason: "remote words are not portable"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: failed) && !census_member_attempt_holds(attempt: undispatched)
+    && match failed.workspace { CreationFailed { exit_code: c, stderr: _ } => c == 1 _ => false }
+    && says(a: failed, pattern: "never created: mktemp reported failure")
+    && match undispatched.workspace { CreationNotDispatched { reason: _ } => true _ => false }
+    && says(a: undispatched, pattern: "mktemp was not dispatched")
+}
+
+// CLEANUP REPLY LOSS BESIDE A RETAINED COMPARISON: the identical-chain verdict survives, the removal
+// is UNCONFIRMED (not "remains"), and the attempt does not hold.
+test fn a_lost_cleanup_reply_is_unconfirmed_beside_the_retained_verdict() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 255, stdout: "", stderr: "Connection closed"))
+  !census_member_attempt_holds(attempt: a)
+    && census_member_readback_holds(readback: a.readback)
+    && says(a: a, pattern: "verdict=boot_chain_identical_to_stock")
+    && says(a: a, pattern: "REMOVAL UNCONFIRMED") && says(a: a, pattern: "may or may not remain")
+}
+
+// rm's OWN failure and an undispatched rm are distinct from a lost reply.
+test fn a_reported_rm_failure_and_an_undispatched_rm_are_distinct_from_a_lost_reply() -> Bool {
+  let failed = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 1, stdout: "", stderr: "Device or resource busy"))
+  let undispatched = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: not_dispatched(reason: "no transport"))
+  !census_member_attempt_holds(attempt: failed) && !census_member_attempt_holds(attempt: undispatched)
+    && match failed.workspace { RemovalFailed { dir: _, exit_code: c, stderr: _ } => c == 1 _ => false }
+    && says(a: failed, pattern: "REMOVAL FAILED")
+    && match undispatched.workspace { RemovalNotDispatched { dir: _, reason: _ } => true _ => false }
+    && says(a: undispatched, pattern: "rm was not dispatched")
+}
+
+fn member_exporter_unsupported_naming(r: CensusMemberReadback, endpoint: String, principal: String) -> Bool {
+  match r {
+    BootChainMediumExporterUnsupported { supported: _, named: n } => (n.target.endpoint as String) == endpoint && (n.target.principal as String) == principal
+    _ => false
+  }
+}
+
+// REDS: THE PIN GATE REFUSES A CENSUS MEDIUM NAMING ANOTHER EXPORTER, by endpoint and by principal at the
+// same endpoint, even when both ISOs measure exactly at their pins; the unchanged export is admitted.
+test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
+  let e = census_at_other_endpoint()
+  let p = census_as_other_principal()
+  let pe = census.export.target.principal as String
+  let ee = census.export.target.endpoint as String
+  (match census_pin_gate(medium: e, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: "fixture-other-exporter", principal: pe)
+    PinsAdmitted { stock_iso: _, census_iso: _ } => false
+  })
+    && (match census_pin_gate(medium: p, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+      PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: ee, principal: "fixture-other-principal")
+      PinsAdmitted { stock_iso: _, census_iso: _ } => false
+    })
+    && (match census_pin_gate(medium: census_at(endpoint: ee, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+      PinsAdmitted { stock_iso: _, census_iso: _ } => true
+      PinsRefused { readback: _ } => false
+    })
+}
+
+// THE PRODUCTION ENTRY QUALIFIES BEFORE ANY LEG IS DISPATCHED: for either changed exporter it requests
+// no workspace and reads nothing, and the attempt does not hold.
+test fn the_member_readback_refuses_another_exporter_before_any_leg() -> Bool {
+  let ae = census_member_readback(medium: census_at_other_endpoint())
+  let ap = census_member_readback(medium: census_as_other_principal())
+  member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: census.export.target.principal as String) && !census_member_attempt_holds(attempt: ae)
+    && member_exporter_unsupported_naming(r: ap.readback, endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}

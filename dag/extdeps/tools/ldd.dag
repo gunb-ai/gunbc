@@ -1,0 +1,104 @@
+module extdeps.tools.ldd
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { NonEmptyStr, List }
+import std.algebra { Cons, Empty, list_append, trim }
+import std.content_hash { content_hash_validate_lower_hex_syntax }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// glibc's ldd(1): prints each shared object an ELF executable depends on and where the dynamic
+// linker resolves it. A dependency the linker cannot find prints as `<soname> => not found`, and
+// ldd still exits zero in that case -- so "a library is missing" is read from the OUTPUT, never from
+// the exit status.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/ldd.1.html"
+  }
+}
+
+fn ldd_program() -> ProgramIdentity = uncataloged_program(invocation: "ldd")
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.ldd",
+      decl_name: "ldd_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn ldd_command(binary: String) -> ArgvCommand {
+  argv_command(program: ldd_program(), arguments: [binary])
+}
+
+// LDD OUTPUT IS ACCEPTED LINE BY LINE AS RECOGNIZED EVIDENCE OR NOT AT ALL. A line is a resolved
+// dependency (`<soname> => <path> (0x...)`), the vdso or the loader (`<path> (0x...)`), or an
+// unresolved one (`<soname> => not found`). Any other non-empty line -- "not a dynamic executable",
+// a loader error, truncation -- makes the whole reading unreadable rather than resolved, and so does
+// empty output: absence of a recognized failure is not a positive reading. The shapes are ldd's, so
+// the parse lives with ldd; each consumer maps an unresolved soname to its own remedy.
+type LddLine
+  = LddLineResolved
+  | LddLineMissing { soname: String }
+  | LddLineUnrecognized { line: String }
+
+type LddReading
+  = LddAllResolved
+  | LddUnresolved { sonames: List<String> }
+  | LddUnreadable { reason: String }
+
+// THE COMPLETE DECLARED SHAPES, WORD BY WORD: `<soname> => not found` (four words),
+// `<soname> => <path> (0x<hex>)` (four words), or `<path> (0x<hex>)` (two words, the vdso and the
+// loader), where the address is "(0x", lower-case hex, ")" and nothing else. A line that merely
+// contains " (0x" -- truncation, garbage -- is unrecognized.
+fn ldd_words_of(line: String) -> List<String> {
+  fold(split(trim(s: line), " "), init: [], f: (acc, w) => if w == "" { acc } else { list_append(left: acc, right: [w]) })
+}
+
+fn ldd_address_word(w: String) -> Bool {
+  let inner = replace(s: replace(s: w, from: "(0x", to: ""), from: ")", to: "")
+  inner != "" && w == concat(concat("(0x", inner), ")") && content_hash_validate_lower_hex_syntax(text: inner)
+}
+
+fn ldd_line_of(line: String) -> LddLine {
+  match ldd_words_of(line: line) {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
+      if b == "=>" && c == "not" && d == "found" {
+        LddLineMissing { soname: a }
+      } else if b == "=>" && ldd_address_word(w: d) {
+        LddLineResolved
+      } else {
+        LddLineUnrecognized { line: trim(s: line) }
+      }
+    Cons { head: _, tail: Cons { head: addr, tail: Empty } } =>
+      if ldd_address_word(w: addr) { LddLineResolved } else { LddLineUnrecognized { line: trim(s: line) } }
+    _ => LddLineUnrecognized { line: trim(s: line) }
+  }
+}
+
+fn ldd_reading_of(output: String) -> LddReading {
+  let lines = fold(split(output, "\n"), init: [], f: (acc, l) => if trim(s: l) == "" { acc } else { list_append(left: acc, right: [l]) })
+  let classified = map(lines, l => ldd_line_of(line: l))
+  let unrecognized = fold(classified, init: [], f: (acc, c) => match c { LddLineUnrecognized { line: l } => list_append(left: acc, right: [l])  _ => acc })
+  let missing = fold(classified, init: [], f: (acc, c) => match c { LddLineMissing { soname: so } => list_append(left: acc, right: [so])  _ => acc })
+  match lines {
+    Empty => LddUnreadable { reason: "ldd printed nothing" }
+    Cons { head: _, tail: _ } =>
+      match unrecognized {
+        Cons { head: l, tail: _ } => LddUnreadable { reason: concat("ldd printed a line that is neither a resolved nor an unresolved dependency: ", l) }
+        Empty =>
+          match missing {
+            Empty => LddAllResolved
+            Cons { head: _, tail: _ } => LddUnresolved { sonames: missing }
+          }
+      }
+  }
+}

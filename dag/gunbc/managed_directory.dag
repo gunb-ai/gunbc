@@ -12,7 +12,6 @@ import extdeps.access.posix {
 import std.effect_grant { Verb, Read, Write, Execute, verb_eq }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root }
 
 // A host directory the fleet owns, carried as WHO NEEDS WHAT rather than as a mode. The mode is
 // DERIVED (managed_directory_permissions below), which is the whole point: gunbc.live_deploy.emit's
@@ -45,18 +44,101 @@ import gunbc.host_layout { srv1_dispatch_attempt_state_root }
 // deployment_owned_steps carries a ManagedDirectory, at which point install_d_owned_command loses
 // its mode argument entirely and this frontier note is deleted.
 
+// ── THE DIRECTORIES WHOSE DEPENDENTS ARE NOT YET ESTABLISHED ────────────────────────────────────
+//
+// THIS IS THE "SHARED CONSTANT" THE SCOPE NOTE ABOVE ALREADY ADMITS, GIVEN A HOME AND A TYPE. That
+// note says the other owned directories keep a shared constant until each one's dependents are
+// established by evidence rather than by assumption, and that a blanket re-derivation is a host
+// behaviour change disguised as a refactor. What it did not do is say WHERE the constant lives, so
+// each directory kept its own: gunbc.auth.approval_ntfy_converge declared the octal "0750" for the
+// ntfy state and config directories, and gunbc.host_credential_custody_converge declared "0750" and
+// "0700" again for the custody rows -- one of which ensures THE SAME DIRECTORY as the ntfy config
+// member. Two converges asserting a mode on one directory would flap it on every run, and the
+// repair reached for was a witness holding the two strings equal, which is §5's validation standing
+// where construction was available.
+//
+// SO THE ARM IS CLOSED AND THE OCTAL IS DERIVED. A named arm, never a caller-supplied octal, so no
+// consumer can spell a group- or world-writable directory; and the octal is rendered by
+// file_mode_octal over a constructed FileMode, the same Open Group serialization
+// managed_directory_mode_octal uses, so this module still mints no permission literal. It is the
+// INTERIM shape, not a rival to the derivation above: a directory here has a mode because someone
+// chose one, and a directory above has a mode because its dependents require one.
+//
+// DISSOLUTION: an arm-holding directory becomes a ManagedDirectory with its dependents declared,
+// at which point its consumers take managed_directory_mode_octal and the arm is deleted. That is
+// the same trigger the scope note already carries, and it is blocked for the ntfy directories by a
+// modelled gap worth naming rather than working around: ManagedDirectory derives owner/group/other
+// class membership from the OWNER's uid and gid (dependent_class_of), so it cannot yet express a
+// root-owned directory whose GROUP is another principal's -- root:gunbc-ntfy, which is exactly what
+// both ntfy directories are. Extending it to carry an owning group distinct from the owner's
+// primary group is the capability that retires these arms.
+type DeclaredDirectoryMode
+  = DirectoryOwnerOnly
+  | DirectoryOwnerAllGroupTraverse
+
+fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
+  match m {
+    DirectoryOwnerOnly => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: false, write: false, execute: false },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+    DirectoryOwnerAllGroupTraverse => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+  }
+}
+
+fn declared_directory_mode_octal(m: DeclaredDirectoryMode) -> String {
+  file_mode_octal(mode: declared_directory_mode(m: m))
+}
+
+// THE GROUP LEG READ OFF THE SAME ARM, so a consumer asking whether a group may traverse a
+// directory asks the mode rather than re-deciding it. The custody admission gate needs exactly this
+// to refuse a group-readable file under a directory the group cannot enter.
+fn declared_directory_grants_group_traverse(m: DeclaredDirectoryMode) -> Bool {
+  declared_directory_mode(m: m).group.execute
+}
+
 type DirectoryDependent {
   who: PosixUser
   needs: List<Verb>
 }
 
+// THE DIRECTORY'S GROUP IS A PRINCIPAL'S PRIMARY GROUP, NAMED BY THAT PRINCIPAL. It is the capability
+// the frontier note above names as missing -- a group distinct from the owner's -- and it is carried
+// as a PosixUser rather than a group name because PosixUser is where the roster already states a gid,
+// and srv1's primary groups share their user's name (the coincidence install_d_managed_command
+// records). For every directory whose group is its owner's, group_principal IS the owner and the
+// derivation is unchanged byte for byte.
 type ManagedDirectory {
   member: NonEmptyStr
   path: FilePath
   owner: PosixUser
+  group_principal: PosixUser
   dependents: List<DirectoryDependent>
   ownership: Ownership
+  entries: ManagedDirectoryEntries
 }
+
+// WHETHER THE DIRECTORY'S ENTRIES ARE PART OF WHAT IS MANAGED. Most managed directories are a mode on
+// a path and nothing more, and for them the entries are the writer's business. A directory whose
+// dependents READ EACH OTHER'S ENTRIES is different: an entry at a mode its declared readers cannot
+// open is the directory failing its dependents exactly as a wrong directory mode would, so the entry
+// mode is derived from the same dependents (managed_directory_entry_mode) and the ensure repairs the
+// entries it can. `repaired_by` is the principal the ensure runs as; it can chmod only the entries it
+// owns, so the repair touches exactly those and needs no elevation.
+type ManagedDirectoryEntries
+  = EntriesUnmanaged
+  | EntriesReadableByDependents { repaired_by: PosixUser }
 
 type DependentClass = OwnerClass | GroupClass | OtherClass
 
@@ -68,10 +150,10 @@ fn dependent_class_eq(a: DependentClass, b: DependentClass) -> Bool {
   }
 }
 
-fn dependent_class_of(owner: PosixUser, who: PosixUser) -> DependentClass {
+fn dependent_class_of(owner: PosixUser, group_gid: Int, who: PosixUser) -> DependentClass {
   if who.uid == owner.uid {
     OwnerClass
-  } else if who.gid == owner.gid {
+  } else if who.gid == group_gid {
     GroupClass
   } else {
     OtherClass
@@ -84,6 +166,7 @@ fn needs_verb(needs: List<Verb>, v: Verb) -> Bool {
 
 fn class_needs(
   owner: PosixUser,
+  group_gid: Int,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
 ) -> List<Verb> {
@@ -91,7 +174,7 @@ fn class_needs(
     filter(
       xs: dependents,
       predicate: d => dependent_class_eq(
-        a: dependent_class_of(owner: owner, who: d.who),
+        a: dependent_class_of(owner: owner, group_gid: group_gid, who: d.who),
         b: cls,
       ),
     ),
@@ -101,10 +184,11 @@ fn class_needs(
 
 fn class_bits(
   owner: PosixUser,
+  group_gid: Int,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
 ) -> PermissionBits {
-  let needs = class_needs(owner: owner, dependents: dependents, cls: cls)
+  let needs = class_needs(owner: owner, group_gid: group_gid, dependents: dependents, cls: cls)
   PermissionBits {
     read: needs_verb(needs: needs, v: Read),
     write: needs_verb(needs: needs, v: Write),
@@ -112,17 +196,123 @@ fn class_bits(
   }
 }
 
+// SETGID IS DERIVED FROM THE GROUP, NOT CHOSEN: it is set exactly when the directory's group is not
+// its owner's. Such a directory exists because a second principal writes into it, and without setgid
+// every entry the OWNER creates would land in the owner's group while the other writer's entries land
+// in theirs -- two groups inside one directory, so any later tightening of the other-class bits would
+// silently cut one writer off from the other's entries. With setgid every entry carries the
+// directory's group, and the group is what both writers share.
 fn managed_directory_permissions(d: ManagedDirectory) -> FilePermissions {
+  let g = d.group_principal.gid
   FilePermissions {
-    ownership: FileOwnership { uid: d.owner.uid, gid: d.owner.gid },
+    ownership: FileOwnership { uid: d.owner.uid, gid: g },
     mode: FileMode {
-      owner: class_bits(owner: d.owner, dependents: d.dependents, cls: OwnerClass),
-      group: class_bits(owner: d.owner, dependents: d.dependents, cls: GroupClass),
-      other: class_bits(owner: d.owner, dependents: d.dependents, cls: OtherClass),
+      owner: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: OwnerClass),
+      group: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: GroupClass),
+      other: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: OtherClass),
       setuid: false,
-      setgid: false,
+      setgid: g != d.owner.gid,
       sticky: false,
     },
+  }
+}
+
+// ── THE ENTRIES' MODE, DERIVED FROM THE SAME DEPENDENTS ──────────────────────────────────────────
+//
+// An entry is owned by the dependent that CREATED it, not by the directory's owner, and its group is
+// the directory's group when setgid is set (managed_directory_permissions) and the creator's own
+// group otherwise. So a reader's class is decided per (writer, reader) pair: the entry's owner when
+// it is the writer, its group when its gid is the entry's group, and OTHER otherwise -- which is
+// where a directory OWNER lands when another writer created the entry and the owner is not in that
+// writer's group. Each class gets Read exactly when some such pair puts a declared reader in it.
+// Nothing gets Write or Execute: these entries are create-only, never rewritten or run.
+//
+// OTHER-READ IS ADMITTED ONLY BEHIND A DIRECTORY THAT DENIES OTHER TRAVERSAL. A derived o+r reaches
+// every account on the host that can reach the entry, and the entry's own directory is on every
+// path to it, so when that directory grants no other-execute the o+r reaches exactly the declared
+// reader that needed it (the directory's owner) and nobody else. If the directory ever granted o+x
+// the same bit would publish the entries to every account; the derivation REFUSES rather than
+// either widening or quietly tightening away a declared reader's access.
+type ManagedEntryMode
+  = ManagedEntryModeDerived { mode: FileMode }
+  | ManagedEntryModeRefused { member: NonEmptyStr, path: FilePath, reason: NonEmptyStr }
+
+fn entry_class_of(d: ManagedDirectory, writer: PosixUser, reader: PosixUser) -> DependentClass {
+  let g = if d.group_principal.gid != d.owner.gid { d.group_principal.gid } else { writer.gid }
+  dependent_class_of(owner: writer, group_gid: g, who: reader)
+}
+
+fn entry_class_reads(d: ManagedDirectory, cls: DependentClass) -> Bool {
+  let writers = filter(xs: d.dependents, predicate: dep => needs_verb(needs: dep.needs, v: Write))
+  let readers = filter(xs: d.dependents, predicate: dep => needs_verb(needs: dep.needs, v: Read))
+  any(writers, w => any(readers, r => dependent_class_eq(a: entry_class_of(d: d, writer: w.who, reader: r.who), b: cls)))
+}
+
+fn entry_read_bits(d: ManagedDirectory, cls: DependentClass) -> PermissionBits {
+  PermissionBits { read: entry_class_reads(d: d, cls: cls), write: false, execute: false }
+}
+
+fn managed_directory_entry_mode(d: ManagedDirectory) -> ManagedEntryMode {
+  let mode = FileMode {
+    owner: entry_read_bits(d: d, cls: OwnerClass),
+    group: entry_read_bits(d: d, cls: GroupClass),
+    other: entry_read_bits(d: d, cls: OtherClass),
+    setuid: false,
+    setgid: false,
+    sticky: false,
+  }
+  if mode.other.read && managed_directory_permissions(d: d).mode.other.execute {
+    ManagedEntryModeRefused {
+      member: d.member,
+      path: d.path,
+      reason: "a declared reader reaches these entries only through other-read, and the directory grants other-execute, so the same bit would publish every entry to every account" as NonEmptyStr,
+    }
+  } else {
+    ManagedEntryModeDerived { mode: mode }
+  }
+}
+
+// chmod(1)'s additive symbolic spelling of the read bits: `u+r,g+r,o+r` for the classes that read.
+// Additive, so a repair never removes a bit anyone set, and idempotent.
+fn entry_mode_add_read_symbolic(mode: FileMode) -> String {
+  join(concat(concat(
+    if mode.owner.read { ["u+r"] } else { [] },
+    if mode.group.read { ["g+r"] } else { [] }),
+    if mode.other.read { ["o+r"] } else { [] }), ",")
+}
+
+// ── ADMISSION: A WRITER THE OWNER AND GROUP DO NOT COVER REFUSES ─────────────────────────────────
+//
+// The derivation above is total: a dependent in the other class that needs Write gets o+w, because
+// that is what it asked for. For a directory the fleet ensures that is the wrong answer -- a
+// world-writable store is not a way to admit one more writer -- so a consumer that emits an ensure
+// takes the directory through this admission, and a writer outside the owner and the group REFUSES
+// with its name rather than widening the mode. The remedy the refusal points at is the model:
+// make that writer the owner, or the directory's group principal, or (for a third writer with its
+// own gid) a shared group, which this module does not model yet and so refuses rather than fakes.
+type ManagedDirectoryAdmission
+  = ManagedDirectoryAdmitted { dir: ManagedDirectory }
+  | ManagedDirectoryRefused { member: NonEmptyStr, path: FilePath, writer: NonEmptyStr }
+
+fn managed_directory_admit(d: ManagedDirectory) -> ManagedDirectoryAdmission {
+  let g = d.group_principal.gid
+  let stray = filter(
+    xs: d.dependents,
+    predicate: dep => needs_verb(needs: dep.needs, v: Write) && dependent_class_eq(
+      a: dependent_class_of(owner: d.owner, group_gid: g, who: dep.who),
+      b: OtherClass,
+    ),
+  )
+  match first(stray) {
+    Absent => ManagedDirectoryAdmitted { dir: d }
+    Present { value: dep } => ManagedDirectoryRefused { member: d.member, path: d.path, writer: dep.who.name }
+  }
+}
+
+fn managed_directory_admission_path(a: ManagedDirectoryAdmission) -> FilePath {
+  match a {
+    ManagedDirectoryAdmitted { dir } => dir.path
+    ManagedDirectoryRefused { member: _, path, writer: _ } => path
   }
 }
 
@@ -158,9 +348,9 @@ fn srv1_dashboard_service_principal() -> PosixUser {
 // instance existed.\n\nOwner and dependents genuinely do not vary — every instance's attempt state
 // is written and read by that instance's own service user, so the derivation of the mode is
 // unchanged and this is not a loosening. Only the placement moves to a parameter, which is the axis
-// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory survives as the
-// production placement of the general row rather than as a second definition, so its single
-// consumer keeps working and there is still exactly one statement of what the directory requires.
+// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory (gunbc.host_layout) is
+// the production placement of the general row rather than a second definition, so there is still
+// exactly one statement of what the directory requires.
 
 fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
@@ -168,13 +358,11 @@ fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
     member: "attempt-state-root" as NonEmptyStr,
     path: path,
     owner: service,
+    group_principal: service,
     dependents: [
       DirectoryDependent { who: service, needs: [Read, Write, Execute] },
     ],
     ownership: Owned,
+    entries: EntriesUnmanaged,
   }
-}
-
-fn srv1_attempt_state_directory() -> ManagedDirectory {
-  attempt_state_directory_at(path: srv1_dispatch_attempt_state_root)
 }

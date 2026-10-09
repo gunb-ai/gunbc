@@ -42,8 +42,10 @@ module gunbc.scm.repository_load
 // function's job. Manufacturing a standing for "file missing" would invent the entailment DESIGN
 // names as authority substitution.
 
-import std.types { List, String }
-import extdeps.filesystem.filesystem_io {
+import std.types { List, String, Map }
+import v2.std.collection { map_lookup }
+import std.content_hash { Fnv1a64Structural }
+import extdeps.filesystem.filesystem_io { Filesystem,
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
   FilesystemReadRefused,
@@ -56,7 +58,24 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
   JsonDocumentGap,
 }
+import gunbc.scm.json_member { read_string_member, MemberString, MemberArray, MemberObject, MemberFailed }
+import gunbc.scm.object_shard_json { decode_object_shard, ObjectShardDecoded, ObjectShardNotDecodable, object_shard_path_for }
+import gunbc.scm.object_store {
+  ScmObject, ObjectId, ObjectStore, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision,
+  RosteredObject, rostered_store, store_rostered_lookup, find_object, scm_object_identity, scm_object_kind,
+  store_admit_materialized, MaterializedAdmission, MaterializedAdmitted, MaterializedNotRostered,
+  MaterializedKindDisagrees, MaterializedCollision,
+}
 import gunbc.scm.repository_envelope {
+  repository_format_of, RepositoryFormatV9, RepositoryFormatV8, RepositoryFormatV7,
+  decode_repository_v8_index, decode_repository_v9_index, RepositoryShardedIndexDecode, RepositoryShardedIndex, RepositoryObjectRoster, ObjectRosterAbsentByFormat, ObjectRosterDeclared,
+  RepositoryIndexHasNoObjectRoster, RepositoryObjectRosterMalformed, RepositoryFormatV6, RepositoryFormatV5, RepositoryFormatV4,
+  RepositoryFormatRetiredV3, RepositoryFormatUnknown,
+  decode_repository_v7_index, decode_repository_v7_finish,
+  ShardedIndexDecoded, ShardedIndexRefused,
+  RepositoryShardNotDecodable,
+  supersession_census, SupersessionsAdmitted, SupersessionsAwaitManifests, SupersessionCensusRefused,
+  RepositorySupersessionCensusRefused, RepositorySupersessionRootsUnverifiable,
   RepositoryEnvelope,
   decode_repository,
   RepositoryDecodeOutcome,
@@ -67,7 +86,9 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolRetiredFormat,
   RepositoryProtocolUnrecognizedFormat,
   RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolIndexHasNoObjectRoster,
   RepositoryProtocolNotAProtocolRefusal,
+  repository_generation_of_content,
 }
 
 // THE REFUSALS ARE THEIR OWN TYPE SO A CONSUMER CAN CARRY ONE WITHOUT BEING ABLE TO HOLD A SUCCESS.
@@ -103,7 +124,7 @@ type RepositoryLoadRefusal
 // shape has now been removed three times (`checkout_succeeded`, `gunbc.scm.ancestry` under review
 // 56207, and here). Consumers match the arms.
 type RepositoryLoad
-  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
+  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope, generation: Fnv1a64Structural }
   | RepositoryLoadRefused { cause: RepositoryLoadRefusal }
 
 // THE ONLY HOST EFFECT IN THE READ PATH, AND IT IS FOLDED BEFORE IT IS READ. The scalar transport
@@ -118,23 +139,53 @@ type RepositoryLoad
 // only the success channel separates them. Deciding on content alone would fuse a legitimate empty
 // document with a missing one -- so consuming the raw projections here while the header above
 // argues against conflating channels would have been incoherent, not merely untidy.
+// v7's index document is not a whole repository: it names its shards by content identity
+// and the loader reads them. Every older format is a whole document and takes the
+// unchanged decode path.
+// THE LOADED ARM CARRIES THE GENERATION OF THE BYTES IT DECODED, because that hash is the evidence
+// a later guarded save needs to refuse a stale write (gunbc.scm.repository_save
+// save_repository_sharded_guarded): the load observed the document at one generation, and the save
+// must compare against exactly that observation -- re-reading later could observe a NEWER
+// generation and admit a write derived from older bytes, which is the clobber the guard exists to
+// refuse. The generation travels beside the envelope so the pairing cannot drift: a caller holding
+// the envelope holds the generation it was decoded from, with no second lookup to mis-pair.
 fn load_repository(path: String) -> RepositoryLoad {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } =>
       RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: path, error: e } }
     FilesystemReadSucceeded { content: content } =>
+      let generation = repository_generation_of_content(content: content)
       match parse_json_document(s: content) {
         JsonDocumentUnreadable { gap: gap } =>
           RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: path, gap: gap } }
         JsonDocumentParsed { value: v } =>
-          match decode_repository(v: v) {
-            RepositoryDecoded { envelope: envelope } =>
-              RepositoryLoaded { path: path, envelope: envelope }
-            RepositoryDecodeRefused { cause: cause } =>
-              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+          match read_string_member(v: v, key: "format") {
+            MemberString { value: format } =>
+              match repository_format_of(tag: format) {
+                RepositoryFormatV9 => load_repository_sharded_rostered(path: path, index_decode: decode_repository_v9_index(v: v), found: format, generation: generation)
+                RepositoryFormatV8 => load_repository_sharded_rostered(path: path, index_decode: decode_repository_v8_index(v: v), found: format, generation: generation)
+                RepositoryFormatV7 => load_repository_sharded(path: path, v: v, generation: generation)
+                RepositoryFormatV6 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV5 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV4 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatRetiredV3 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatUnknown { found: _ } => load_repository_whole(path: path, v: v, generation: generation)
+              }
+            MemberArray { elements: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberObject { value: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberFailed { cause: _ } => load_repository_whole(path: path, v: v, generation: generation)
           }
       }
+  }
+}
+
+fn load_repository_whole(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match decode_repository(v: v) {
+    RepositoryDecoded { envelope: envelope } =>
+      RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    RepositoryDecodeRefused { cause: cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
   }
 }
 
@@ -188,7 +239,495 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
             concat("  at ", path),
             "  this build reads the format but not that identity rule, so its contents were not validated",
           ]
+        RepositoryProtocolIndexHasNoObjectRoster { found: f } =>
+          [
+            concat("the document declares repository format ", f),
+            concat("  at ", path),
+            "  its index carries no object roster, so it cannot be read by identity; convert it once (gunbc.scm.repository_convert scm_convert_repository_cli)",
+          ]
         RepositoryProtocolNotAProtocolRefusal => [concat("not a repository document: ", path)]
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SHARDED READ (v7). The index document names its objects by content identity; each shard is
+// then read and decoded on its own (gunbc.scm.object_shard_json), and the store is assembled in
+// one pass (gunbc.scm.object_store store_assemble_decoded) rather than by an insert per object.
+// The downstream adjudication is the shared decode body, unchanged: v7 changes WHERE the objects
+// come from, never what a repository may mean.
+// ------------------------------------------------------------------------------------------------
+
+
+// The fold carries BLOCKS (one per shard) and prepends: concat-at-end would copy the accumulator
+// per shard, the quadratic shape the sharded read exists to remove at envelope scale. Prepending
+// flat object lists and reversing once at the end is NOT order-preserving -- it also reverses
+// inside each shard (measured 2026-09-23: a four-object store loaded back exactly backwards, and
+// every sealed shard identity moved at the next save). Each read therefore wraps its objects as
+// one block, and the flatten concatenates blocks in writer order.
+type ShardedObjectRead
+  = ShardObjectsRead { blocks: List<List<ScmObject>> }
+  | ShardObjectReadRefused { path: String, reason: String }
+
+// CONTRACT: blocks arrive in writer order (first shard first). Copy work is one accumulator pass
+// per block boundary -- bounded by the shard count, not the object count.
+fn shard_blocks_flatten(blocks: List<List<ScmObject>>) -> List<ScmObject> {
+  fold(blocks, init: [] as List<ScmObject>, f: fn(acc, block) { concat(acc, block) })
+}
+
+fn load_object_shard(envelope_path: String, digest: String) -> ShardedObjectRead {
+  let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
+  let read = Filesystem.Read(path: shard_path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      ShardObjectReadRefused {
+        path: shard_path,
+        reason: join(["the index rosters this shard but it could not be read: ", shard_path, " (", e, ")"], ""),
+      }
+    FilesystemReadSucceeded { content } =>
+      match decode_object_shard(text: content) {
+        ObjectShardNotDecodable { reason } =>
+          ShardObjectReadRefused { path: shard_path, reason: reason }
+        ObjectShardDecoded { objects } =>
+          ShardObjectsRead { blocks: [objects] }
+      }
+  }
+}
+
+fn load_sharded_objects(envelope_path: String, digests: List<String>) -> ShardedObjectRead {
+  let acc = fold(
+    digests,
+    init: ShardObjectsRead { blocks: [] },
+    f: fn(acc, digest) {
+      match acc {
+        ShardObjectReadRefused { path: _, reason: _ } => acc
+        ShardObjectsRead { blocks } =>
+          match load_object_shard(envelope_path: envelope_path, digest: digest) {
+            ShardObjectReadRefused { path: p, reason: r } => ShardObjectReadRefused { path: p, reason: r }
+            ShardObjectsRead { blocks: one } =>
+              ShardObjectsRead { blocks: concat(one, blocks) }
+          }
+      }
+    },
+  )
+  match acc {
+    ShardObjectReadRefused { path: _, reason: _ } => acc
+    ShardObjectsRead { blocks } => ShardObjectsRead { blocks: [shard_blocks_flatten(blocks: reverse(blocks))] }
+  }
+}
+
+fn load_repository_sharded(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match decode_repository_v7_index(v: v) {
+    ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+    ShardedIndexDecoded { index } =>
+      match load_sharded_objects(envelope_path: path, digests: index.shard_digests) {
+        ShardObjectReadRefused { path: p, reason } =>
+          RepositoryLoadRefused {
+            cause: RepositoryDocumentRefused {
+              path: p,
+              cause: RepositoryShardNotDecodable { detail: reason },
+            },
+          }
+        ShardObjectsRead { blocks } =>
+          match store_assemble_decoded(objects: shard_blocks_flatten(blocks: blocks)) {
+            StoreAssemblyCollision { identity: _ } =>
+              RepositoryLoadRefused {
+                cause: RepositoryDocumentRefused {
+                  path: path,
+                  cause: RepositoryShardNotDecodable {
+                    detail: "two shards hold different content under one content identity",
+                  },
+                },
+              }
+            StoreAssembled { store } =>
+              match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
+                RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+                RepositoryDecodeRefused { cause } =>
+                  RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+              }
+          }
+      }
+  }
+}
+
+
+// THE WHOLE v8 LOAD: every rostered shard, and the roster CHECKED against what the shards hold. The
+// roster is what an indexed load trusts for kind questions without reading a shard, so the whole load
+// -- the one route that does read every shard -- is where a roster that disagrees with its shards is
+// caught: an object the roster does not place in the shard that holds it, a kind it misstates, or a
+// roster row with no object behind it all refuse as a malformed roster, never re-derived silently.
+type ShardRosterCheck
+  = ShardRosterAgrees { objects: List<ScmObject>, held: Int }
+  | ShardRosterDisagrees { detail: String }
+
+fn shard_objects_agree_with_roster(
+  rows: Map<String, RosteredObject>,
+  shard: String,
+  objects: List<ScmObject>,
+) -> String? {
+  fold(objects, init: none, f: fn(found, o) {
+    match found {
+      Present { value: _ } => found
+      Absent => {
+        let digest = scm_object_identity(object: o).digest as String
+        match map_lookup(m: rows, key: digest) {
+          Absent => Present { value: join(["shard ", shard, " holds ", digest, ", which the object roster does not name"], "") }
+          Present { value: row } =>
+            if row.shard != shard {
+              Present { value: join(["the object roster places ", digest, " in shard ", row.shard, " but shard ", shard, " holds it"], "") }
+            } else if row.kind != scm_object_kind(object: o) {
+              Present { value: join(["the object roster misstates the kind of ", digest], "") }
+            } else {
+              none
+            }
+        }
+      }
+    }
+  })
+}
+
+fn rows_by_digest(rows: List<RosteredObject>) -> Map<String, RosteredObject> {
+  fold(rows, init: empty_map(), f: fn(m, r) { map_insert(m, r.identity.digest as String, r) })
+}
+
+fn load_v8_shards_checked(envelope_path: String, index: RepositoryShardedIndex, rows: List<RosteredObject>) -> ShardRosterCheck {
+  let by_digest = rows_by_digest(rows: rows)
+  let acc = fold(index.shard_digests, init: ShardRosterAgrees { objects: [], held: 0 }, f: fn(acc, digest) {
+    match acc {
+      ShardRosterDisagrees { detail: _ } => acc
+      ShardRosterAgrees { objects, held } =>
+        match load_object_shard(envelope_path: envelope_path, digest: digest) {
+          ShardObjectReadRefused { path: _, reason } => ShardRosterDisagrees { detail: reason }
+          ShardObjectsRead { blocks } => {
+            let shard_objects = shard_blocks_flatten(blocks: blocks)
+            match shard_objects_agree_with_roster(rows: by_digest, shard: digest, objects: shard_objects) {
+              Present { value: detail } => ShardRosterDisagrees { detail: detail }
+              Absent => ShardRosterAgrees { objects: concat(reverse(shard_objects), objects), held: held + count(shard_objects) }
+            }
+          }
+        }
+    }
+  })
+  match acc {
+    ShardRosterDisagrees { detail } => acc
+    ShardRosterAgrees { objects, held } =>
+      if held != count(rows) {
+        ShardRosterDisagrees {
+          detail: join(["the object roster names ", to_string(count(rows)), " objects but the rostered shards hold ", to_string(held)], ""),
+        }
+      } else {
+        ShardRosterAgrees { objects: reverse(objects), held: held }
+      }
+  }
+}
+
+// v8 AND v9 SHARE THIS LOAD: their index layouts are one, and the commit member population the
+// index decoder recorded (index.commit_policy) is what the shared body reads commits under.
+fn load_repository_sharded_rostered(path: String, index_decode: RepositoryShardedIndexDecode, found: String, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match index_decode {
+    ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+    ShardedIndexDecoded { index } =>
+      match index.roster {
+        ObjectRosterAbsentByFormat =>
+          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: found } } }
+        ObjectRosterDeclared { rows } =>
+          match load_v8_shards_checked(envelope_path: path, index: index, rows: rows) {
+            ShardRosterDisagrees { detail } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryObjectRosterMalformed { detail: detail } } }
+            ShardRosterAgrees { objects, held: _ } =>
+              match store_assemble_decoded(objects: objects) {
+                StoreAssemblyCollision { identity: _ } =>
+                  RepositoryLoadRefused {
+                    cause: RepositoryDocumentRefused {
+                      path: path,
+                      cause: RepositoryShardNotDecodable { detail: "two shards hold different content under one content identity" },
+                    },
+                  }
+                StoreAssembled { store } =>
+                  match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
+                    RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+                    RepositoryDecodeRefused { cause } =>
+                      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE INDEXED LOAD (2026-10-03, the affected-set capture): the index document and NOTHING ELSE. Its
+// envelope's store is PARTIAL -- no object resident, every persisted object rostered
+// (gunbc.scm.object_store rostered_store) -- and the shared decode body adjudicates commit roots and
+// the staged reference against the roster at map cost. An operation that needs an object's CONTENT
+// asks materialize_objects for exactly those identities. A document with no object roster (v7 and
+// the monoliths) REFUSES, typed and located, rather than falling back to the whole load: the
+// fallback is the repository-sized decode this route exists to remove, and taking it silently would
+// hide the missing migration (gunbc.scm.repository_convert) until the belt timed out again.
+fn load_repository_indexed(path: String) -> RepositoryLoad {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: path, error: e } }
+    FilesystemReadSucceeded { content: content } =>
+      let generation = repository_generation_of_content(content: content)
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap: gap } =>
+          RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: path, gap: gap } }
+        JsonDocumentParsed { value: v } =>
+          match read_string_member(v: v, key: "format") {
+            MemberString { value: format } =>
+              match repository_format_of(tag: format) {
+                RepositoryFormatV9 => load_repository_indexed_rostered(path: path, index_decode: decode_repository_v9_index(v: v), found: format, generation: generation)
+                RepositoryFormatV8 => load_repository_indexed_rostered(path: path, index_decode: decode_repository_v8_index(v: v), found: format, generation: generation)
+                RepositoryFormatV7 => repository_index_has_no_roster(path: path, found: format)
+                RepositoryFormatV6 => repository_index_has_no_roster(path: path, found: format)
+                RepositoryFormatV5 => repository_index_has_no_roster(path: path, found: format)
+                RepositoryFormatV4 => repository_index_has_no_roster(path: path, found: format)
+                RepositoryFormatRetiredV3 => repository_index_has_no_roster(path: path, found: format)
+                RepositoryFormatUnknown { found: _ } => load_repository_whole(path: path, v: v, generation: generation)
+              }
+            MemberArray { elements: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberObject { value: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberFailed { cause: _ } => load_repository_whole(path: path, v: v, generation: generation)
+          }
+      }
+  }
+}
+
+fn repository_index_has_no_roster(path: String, found: String) -> RepositoryLoad {
+  RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: found } } }
+}
+
+// THE CORRECTED-ROOT EQUALITY, ANSWERED FOR AN INDEXED LOAD (the NO-LAND ruling on gunbc#13402,
+// blocker 5). The index-grain decode ran every supersession law it can answer from the commit table
+// and named the manifests the root equality needs; this reads exactly those shards -- one corrective
+// commit's three merge sides, nothing else -- and asks the census again. Anything still outstanding
+// after the read refuses: no load hands a caller a corrective record whose tree was not checked.
+fn indexed_supersession_roots(path: String, envelope: RepositoryEnvelope, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match supersession_census(repository: envelope) {
+    SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    SupersessionCensusRefused { cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+    SupersessionsAwaitManifests { demand } =>
+      match materialize_objects(envelope_path: path, store: envelope.store, identities: demand) {
+        ObjectMaterializationRefused { detail } =>
+          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryShardNotDecodable { detail: detail } } }
+        ObjectsMaterialized { store: with_sides, read_shards: _ } => {
+          let read = RepositoryEnvelope { store: with_sides, commits: envelope.commits, commit_allocator: envelope.commit_allocator, checked_out: envelope.checked_out, staged: envelope.staged }
+          match supersession_census(repository: read) {
+            SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: read, generation: generation }
+            SupersessionCensusRefused { cause } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+            SupersessionsAwaitManifests { demand: still } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionRootsUnverifiable { missing: still } } }
+          }
+        }
+      }
+  }
+}
+
+fn load_repository_indexed_rostered(path: String, index_decode: RepositoryShardedIndexDecode, found: String, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match index_decode {
+    ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+    ShardedIndexDecoded { index } =>
+      match index.roster {
+        ObjectRosterAbsentByFormat => repository_index_has_no_roster(path: path, found: found)
+        ObjectRosterDeclared { rows } =>
+          match decode_repository_v7_finish(
+            v: index.document,
+            store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests),
+            commit_policy: index.commit_policy,
+          ) {
+            RepositoryDecoded { envelope } => indexed_supersession_roots(path: path, envelope: envelope, generation: generation)
+            RepositoryDecodeRefused { cause } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+          }
+      }
+  }
+}
+
+// THE DEMAND, DECIDED BEFORE ANY READ. Which shards an operation must read is a pure function of the
+// partial store and the identities whose content it needs: a resident identity needs nothing, a
+// rostered one needs exactly its shard, and an identity neither resident nor rostered is UNDERIVABLE
+// -- the store cannot say where it is -- and refuses, typed and located, instead of widening to a
+// read of every shard. The effectful reader below reads exactly `shards`, so the read population is
+// this plan by construction and a witness can count it without a filesystem.
+type ObjectDemand
+  = ObjectDemandPlanned { shards: List<String>, wanted: List<ObjectId> }
+  | ObjectDemandUnderivable { identity: ObjectId }
+
+type ObjectDemandAcc {
+  shards: List<String>
+  shard_seen: Map<String, Bool>
+  wanted: List<ObjectId>
+  wanted_seen: Map<String, Bool>
+  underivable: ObjectId?
+}
+
+fn object_demand(store: ObjectStore, identities: List<ObjectId>) -> ObjectDemand {
+  let acc = fold(
+    identities,
+    init: ObjectDemandAcc { shards: [], shard_seen: empty_map(), wanted: [], wanted_seen: empty_map(), underivable: none },
+    f: fn(acc, identity) {
+      match acc.underivable {
+        Present { value: _ } => acc
+        Absent =>
+          match find_object(store: store, identity: identity) {
+            Present { value: _ } => acc
+            Absent =>
+              match store_rostered_lookup(store: store, identity: identity) {
+                Absent =>
+                  ObjectDemandAcc { shards: acc.shards, shard_seen: acc.shard_seen, wanted: acc.wanted, wanted_seen: acc.wanted_seen, underivable: Present { value: identity } }
+                Present { value: row } => {
+                  let key = identity.digest as String
+                  let wanted_next = match map_lookup(m: acc.wanted_seen, key: key) {
+                    Present { value: _ } => acc.wanted
+                    Absent => concat([identity], acc.wanted)
+                  }
+                  match map_lookup(m: acc.shard_seen, key: row.shard) {
+                    Present { value: _ } =>
+                      ObjectDemandAcc { shards: acc.shards, shard_seen: acc.shard_seen, wanted: wanted_next, wanted_seen: map_insert(acc.wanted_seen, key, true), underivable: none }
+                    Absent =>
+                      ObjectDemandAcc {
+                        shards: concat([row.shard], acc.shards),
+                        shard_seen: map_insert(acc.shard_seen, row.shard, true),
+                        wanted: wanted_next,
+                        wanted_seen: map_insert(acc.wanted_seen, key, true),
+                        underivable: none,
+                      }
+                  }
+                }
+              }
+          }
+      }
+    },
+  )
+  match acc.underivable {
+    Present { value: identity } => ObjectDemandUnderivable { identity: identity }
+    Absent => ObjectDemandPlanned { shards: reverse(acc.shards), wanted: reverse(acc.wanted) }
+  }
+}
+
+// THE READ, EXACTLY THE PLAN. Each planned shard is read once and only its demanded members are
+// admitted -- through store_admit_materialized, which refuses an object the roster does not place,
+// a misstated kind, or a collision with a resident object. A demanded identity its rostered shard
+// does not hold refuses as roster damage. `read_shards` is the receipt: the shard population this
+// call actually read, which equals the plan's `shards` on every success.
+type ObjectMaterialization
+  = ObjectsMaterialized { store: ObjectStore, read_shards: List<String> }
+  | ObjectMaterializationRefused { detail: String }
+
+fn wanted_in_shard(store: ObjectStore, shard: String, wanted: List<ObjectId>) -> Map<String, Bool> {
+  fold(wanted, init: empty_map(), f: fn(m, identity) {
+    match store_rostered_lookup(store: store, identity: identity) {
+      Present { value: row } => if row.shard == shard { map_insert(m, identity.digest as String, true) } else { m }
+      Absent => m
+    }
+  })
+}
+
+fn admit_demanded_members(store: ObjectStore, want: Map<String, Bool>, objects: List<ScmObject>) -> ObjectMaterialization {
+  fold(objects, init: ObjectsMaterialized { store: store, read_shards: [] }, f: fn(acc, o) {
+    match acc {
+      ObjectMaterializationRefused { detail: _ } => acc
+      ObjectsMaterialized { store: held, read_shards } =>
+        match map_lookup(m: want, key: scm_object_identity(object: o).digest as String) {
+          Absent => acc
+          Present { value: _ } =>
+            match store_admit_materialized(store: held, object: o) {
+              MaterializedAdmitted { store: next } => ObjectsMaterialized { store: next, read_shards: read_shards }
+              MaterializedNotRostered { identity } =>
+                ObjectMaterializationRefused { detail: join(["a demanded object is not rostered: ", identity.digest as String], "") }
+              MaterializedKindDisagrees { identity, rostered: _, found: _ } =>
+                ObjectMaterializationRefused { detail: join(["the object roster misstates the kind of ", identity.digest as String], "") }
+              MaterializedCollision { identity } =>
+                ObjectMaterializationRefused { detail: join(["a demanded object collides with a resident object under ", identity.digest as String], "") }
+            }
+        }
+    }
+  })
+}
+
+// THE PURE HALF OF THE READ: given the plan and the contents of exactly the planned shards (in
+// plan order), admit the demanded members. Split from the effectful reader so a witness can hand it
+// a planted reader's answers and count, by construction, what was asked for.
+type ShardContent {
+  digest: String
+  objects: List<ScmObject>
+}
+
+fn materialize_planned(store: ObjectStore, wanted: List<ObjectId>, contents: List<ShardContent>) -> ObjectMaterialization {
+  match fold(contents, init: ObjectsMaterialized { store: store, read_shards: [] }, f: fn(acc, content) {
+    match acc {
+      ObjectMaterializationRefused { detail: _ } => acc
+      ObjectsMaterialized { store: held, read_shards } =>
+        match admit_demanded_members(store: held, want: wanted_in_shard(store: held, shard: content.digest, wanted: wanted), objects: content.objects) {
+          ObjectMaterializationRefused { detail } => ObjectMaterializationRefused { detail: detail }
+          ObjectsMaterialized { store: next, read_shards: _ } => ObjectsMaterialized { store: next, read_shards: concat(read_shards, [content.digest]) }
+        }
+    }
+  }) {
+    ObjectMaterializationRefused { detail } => ObjectMaterializationRefused { detail: detail }
+    ObjectsMaterialized { store: done, read_shards } =>
+      match (wanted |> filter(identity => match find_object(store: done, identity: identity) { Present { value: _ } => false Absent => true })).first() {
+        Present { value: missing } =>
+          ObjectMaterializationRefused {
+            detail: join(["the object roster places ", missing.digest as String, " in a shard that does not hold it"], ""),
+          }
+        Absent => ObjectsMaterialized { store: done, read_shards: read_shards }
+      }
+  }
+}
+
+type ShardContentsRead
+  = ShardContentsGathered { contents: List<ShardContent> }
+  | ShardContentsRefused { detail: String }
+
+fn read_planned_shards(envelope_path: String, shards: List<String>) -> ShardContentsRead {
+  match fold(shards, init: ShardContentsGathered { contents: [] }, f: fn(acc, shard) {
+    match acc {
+      ShardContentsRefused { detail: _ } => acc
+      ShardContentsGathered { contents } =>
+        match load_object_shard(envelope_path: envelope_path, digest: shard) {
+          ShardObjectReadRefused { path: _, reason } => ShardContentsRefused { detail: reason }
+          ShardObjectsRead { blocks } =>
+            ShardContentsGathered { contents: concat([ShardContent { digest: shard, objects: shard_blocks_flatten(blocks: blocks) }], contents) }
+        }
+    }
+  }) {
+    ShardContentsRefused { detail } => ShardContentsRefused { detail: detail }
+    ShardContentsGathered { contents } => ShardContentsGathered { contents: reverse(contents) }
+  }
+}
+
+fn materialize_objects(envelope_path: String, store: ObjectStore, identities: List<ObjectId>) -> ObjectMaterialization {
+  match object_demand(store: store, identities: identities) {
+    ObjectDemandUnderivable { identity } =>
+      ObjectMaterializationRefused {
+        detail: join([
+          "object ", identity.digest as String,
+          " is neither resident nor rostered, so the shard holding it cannot be derived; the read refuses rather than widening to every shard",
+        ], ""),
+      }
+    ObjectDemandPlanned { shards, wanted } =>
+      match read_planned_shards(envelope_path: envelope_path, shards: shards) {
+        ShardContentsRefused { detail } => ObjectMaterializationRefused { detail: detail }
+        ShardContentsGathered { contents } => materialize_planned(store: store, wanted: wanted, contents: contents)
+      }
+  }
+}
+
+// BEFORE ANY INSERT UNDER AN IDENTITY THE REPOSITORY MAY ALREADY PERSIST: a resident or unrostered
+// identity needs no read; a rostered, non-resident one is materialized from exactly its shard so the
+// store's identity law compares it. Skipping this is not silent -- the append-only save refuses a
+// produced object shadowing a rostered identity -- but doing it keeps an identical insert idempotent.
+fn materialize_if_rostered(envelope_path: String, store: ObjectStore, identity: ObjectId) -> ObjectMaterialization {
+  match find_object(store: store, identity: identity) {
+    Present { value: _ } => ObjectsMaterialized { store: store, read_shards: [] }
+    Absent =>
+      match store_rostered_lookup(store: store, identity: identity) {
+        Absent => ObjectsMaterialized { store: store, read_shards: [] }
+        Present { value: _ } => materialize_objects(envelope_path: envelope_path, store: store, identities: [identity])
       }
   }
 }

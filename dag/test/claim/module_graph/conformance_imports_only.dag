@@ -1,5 +1,6 @@
 module test.claim.module_graph.conformance_imports_only
 
+import v2.std.node { Symbol }
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior

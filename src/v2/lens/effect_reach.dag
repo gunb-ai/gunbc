@@ -1,5 +1,6 @@
 module v2.lens.effect_reach
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.lens.module_graph { path_matches_touched }
@@ -13,7 +14,6 @@ import v2.std.algebra {
   fold_list,
   length,
   any,
-  list_snoc_item,
   list_head,
   list_tail,
   HeadFound,
@@ -21,8 +21,8 @@ import v2.std.algebra {
   TailFound,
   TailAbsent
 }
-import v2.std.collection { Absent, List, Present }
-import v2.std.compilers.lexing { symbol_lexeme }
+import std.algebra { list_snoc_item }
+import v2.std.collection { Absent, Present }
 import v2.std.data_index {
   DataInitDecl,
   data_init_decl_facts_live,
@@ -34,6 +34,7 @@ import v2.std.effect_reach {
   EffectReachClassification,
   LocalEffect,
   HostEffectReach,
+  EffectReachRefused,
   FilesystemReadSink,
   WitnessBinRunSink,
   ShellExecRunSink,
@@ -50,7 +51,6 @@ import v2.std.fn_index {
   is_path_like_lexeme
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
@@ -59,7 +59,9 @@ import v2.std.node {
   NodeFold,
   Positional,
   Symbol,
-  fold_node
+  fold_node,
+  symbol_lexeme,
+  Authored, StructuralLabel,
 }
 import v2.std.text { String, string_eq }
 
@@ -82,7 +84,7 @@ fn callee_text_is_host_sink(text: String) -> Bool {
 }
 
 fn data_init_belongs_to_modules(decl: DataInitDecl, modules: List<String>) -> Bool {
-  any(xs: modules, predicate: fn(m) { string_eq(a: decl.module, b: m) })
+  any(xs: modules, predicate: fn(m) { decl.module == m })
 }
 
 fn data_inits_in_modules(
@@ -108,15 +110,15 @@ fn data_init_fp_matches_path(decl: DataInitDecl, path: String) -> Bool {
 }
 
 fn sink_kind_for_callee(callee_text: String) -> HostEffectSinkKind {
-  if string_eq(a: callee_text, b: "Read")
-    || string_eq(a: callee_text, b: "Filesystem.Read") {
+  if callee_text == "Read"
+    || callee_text == "Filesystem.Read" {
     FilesystemReadSink
-  } else if string_eq(a: callee_text, b: "WitnessBin.Run")
-    || string_eq(a: callee_text, b: "gunbc.WitnessBin.Run") {
+  } else if callee_text == "WitnessBin.Run"
+    || callee_text == "gunbc.WitnessBin.Run" {
     WitnessBinRunSink
-  } else if string_eq(a: callee_text, b: "Run")
-    || string_eq(a: callee_text, b: "shell.Exec.Run")
-    || string_eq(a: callee_text, b: "Exec.Run") {
+  } else if callee_text == "Run"
+    || callee_text == "shell.Exec.Run"
+    || callee_text == "Exec.Run" {
     ShellExecRunSink
   } else {
     UnknownHostEffectSink
@@ -128,8 +130,8 @@ fn flow_eq(a: EffectReachFlow, b: EffectReachFlow) -> Bool {
     EffectReachFlow { sink: sa, path_literal: pa, init_literal_fp: fpa } =>
       match b {
         EffectReachFlow { sink: sb, path_literal: pb, init_literal_fp: fpb } =>
-          string_eq(a: pa, b: pb)
-            && string_eq(a: fpa, b: fpb)
+          pa == pb
+            && fpa == fpb
             && sink_kind_eq(a: sa, b: sb)
       }
   }
@@ -183,7 +185,7 @@ fn path_literal_from_lexeme(
         } else {
           ""
         }
-      } else if string_eq(a: decl.name, b: text) && data_init_is_path_literal(decl: decl) {
+      } else if decl.name == text && data_init_is_path_literal(decl: decl) {
         decl.name
       } else {
         acc
@@ -195,8 +197,9 @@ fn path_literal_from_lexeme(
 fn positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }
@@ -226,25 +229,36 @@ fn flows_from_sink_call(
   let sink = sink_kind_for_callee(callee_text: callee_text)
   match sink {
     UnknownHostEffectSink => empty_flow_list
-    _ =>
-      match list_head(xs: args) {
-        HeadFound { value: arg } =>
-          let text = symbol_lexeme(sym: arg)
-          let path = path_literal_from_lexeme(
-            text: text,
-            param_names: param_names,
-            data_inits: data_inits
-          )
-          [
-            EffectReachFlow {
-              sink: sink,
-              path_literal: path,
-              init_literal_fp: ""
-            }
-          ]
-        HeadAbsent =>
-          [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
-      }
+    FilesystemReadSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    WitnessBinRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    ShellExecRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    GunbcCompileEntrySink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+  }
+}
+
+fn flows_from_sink_call_known(
+  sink: HostEffectSinkKind,
+  args: List<Symbol>,
+  param_names: List<String>,
+  data_inits: List<DataInitDecl>
+) -> List<EffectReachFlow> {
+  match list_head(xs: args) {
+    HeadFound { value: arg } =>
+      let text = symbol_lexeme(sym: arg)
+      let path = path_literal_from_lexeme(
+        text: text,
+        param_names: param_names,
+        data_inits: data_inits
+      )
+      [
+        EffectReachFlow {
+          sink: sink,
+          path_literal: path,
+          init_literal_fp: ""
+        }
+      ]
+    HeadAbsent =>
+      [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
   }
 }
 
@@ -425,14 +439,14 @@ fn effect_reach_classification_from_facts(
   data_inits: List<DataInitDecl>
 ) -> EffectReachClassification {
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
-  let reachable = call_reachable_decls(
+  let reach = call_reachable_decls(
     entry_module: entry_module,
     terminal_callee_symbols: effect_reach_host_sink_callee_symbols_v0,
     closure_modules: closure_modules,
     decls: decls
   )
   let from_calls = flows_from_reachable_decls(
-    reachable: reachable,
+    reachable: reach.reached,
     data_inits: data_inits
   )
   let from_data = closure_data_init_path_flows(
@@ -440,7 +454,9 @@ fn effect_reach_classification_from_facts(
     data_inits: data_inits
   )
   let flows = merge_flows(left: from_calls, right: from_data)
-  if length(xs: flows) == 0 {
+  if length(xs: reach.refusals) > 0 {
+    EffectReachRefused { refusals: reach.refusals }
+  } else if length(xs: flows) == 0 {
     LocalEffect
   } else {
     HostEffectReach { flows: flows }
@@ -464,11 +480,17 @@ fn classification_is_local(classification: EffectReachClassification) -> Bool {
   match classification {
     LocalEffect => true
     HostEffectReach { flows: _ } => false
+    EffectReachRefused { refusals: _ } => false
   }
 }
 
+// A refused reading establishes neither answer, so both predicates are false on it.
 fn derived_host_reading(classification: EffectReachClassification) -> Bool {
-  !classification_is_local(classification: classification)
+  match classification {
+    LocalEffect => false
+    HostEffectReach { flows: _ } => true
+    EffectReachRefused { refusals: _ } => false
+  }
 }
 
 fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
@@ -484,6 +506,8 @@ fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
   }
 }
 
+// A refused reading carries no flow, so no path literal: "false" there is not "untouched". That
+// conclusion needs derived_host_reading or classification_is_local first, both false on a refusal.
 fn classification_has_path_literal(
   classification: EffectReachClassification,
   path: String
@@ -492,6 +516,7 @@ fn classification_has_path_literal(
     LocalEffect => false
     HostEffectReach { flows: flows } =>
       any(xs: flows, predicate: fn(flow) { flow_touched_by_path(flow: flow, path: path) })
+    EffectReachRefused { refusals: _ } => false
   }
 }
 
@@ -509,5 +534,6 @@ fn effect_reach_flow_count(classification: EffectReachClassification) -> Int {
   match classification {
     LocalEffect => 0
     HostEffectReach { flows: flows } => length(xs: flows)
+    EffectReachRefused { refusals: _ } => 0
   }
 }

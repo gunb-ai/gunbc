@@ -1,6 +1,6 @@
 module product.spatial_dimension
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, brand }
 import std.nat { Nat }
 import std.measure { Millimeter, millimeter_count }
 import std.interval {

@@ -1,14 +1,21 @@
 module gunbc.spark.serving_performance_subject
 
 import std.types { Bool, String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire, VllmSpeculativePolicy, vllm_speculative_policy_wire }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire, VllmSpeculativePolicy, vllm_speculative_policy_wire, SpeculativeDecodingOff,
+  VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_key, VllmSchedulerAdmissionRequest, vllm_scheduler_admission_key,
+}
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
+import extdeps.docker.cli { DockerEnvAssignment }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ServingLaunchProfile, serving_checkpoint_row, serving_topology_rank_count, serving_launch_profile_key, serving_deployment_env_key,
+  QuantizationSpelledOnArgv, QuantizationResolvedFromCheckpointConfig,
 }
 
 // ── A PERFORMANCE MEASUREMENT NAMES THE PROFILE IT WAS TAKEN AGAINST, OR IT IS NOT A MEASUREMENT ─
@@ -61,6 +68,10 @@ type ServingPerformanceSubject sole_constructor {
   kv_cache_dtype: VllmKvCacheDtypeRequest?
   speculative: VllmSpeculativePolicy?
   collective_transport: NcclRealizedTransport?
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest?
+  scheduler_admission: VllmSchedulerAdmissionRequest?
+  launch_profile_key: String?
+  deployment_env_key: String?
 }
 
 // THE FACTORY IS THE ONLY WAY TO BUILD ONE, which is what `sole_constructor` buys and is the same
@@ -81,6 +92,10 @@ fn serving_performance_subject(
   kv_cache_dtype: VllmKvCacheDtypeRequest?,
   speculative: VllmSpeculativePolicy?,
   collective_transport: NcclRealizedTransport?,
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest?,
+  scheduler_admission: VllmSchedulerAdmissionRequest?,
+  launch_profile_key: String?,
+  deployment_env_key: String?,
 ) -> ServingPerformanceSubject {
   ServingPerformanceSubject {
     checkpoint: checkpoint,
@@ -95,6 +110,70 @@ fn serving_performance_subject(
     kv_cache_dtype: kv_cache_dtype,
     speculative: speculative,
     collective_transport: collective_transport,
+    indexer_kv_dtype: indexer_kv_dtype,
+    scheduler_admission: scheduler_admission,
+    launch_profile_key: launch_profile_key,
+    deployment_env_key: deployment_env_key,
+  }
+}
+
+// ── THE SUBJECT OF A LAUNCH IS DERIVED FROM THE PROFILE THAT LAUNCHED ───────────────────────────
+//
+// THE TWO HAND-BUILT LIVE SUBJECTS THIS REPLACES each filled the axes from a different source -- the
+// GLM one from an authored concurrent profile that was not the one running, the V4.1 one from its
+// measurement shape -- so a subject could describe a configuration that never ran. Here every launch
+// axis is read off the executable profile the launch rendered, the rank population off the topology,
+// and the weight quantization off the checkpoint row (see AxisWeightQuantization). What a launch does
+// not decide -- the realized transport, the speculative policy observed -- is supplied by the caller
+// as a reading, and absent means unread, never a default.
+//
+// THE WHOLE PROFILE IS PART OF THE IDENTITY (review on #12976): the launch-profile axis carries
+// gunbc.spark.serving_arm serving_launch_profile_key -- cold floor, ceiling, memory fraction, prefix
+// caching, Engram, modality, scheduler controls and both KV dtypes -- so two launches differing in any of
+// them are two subjects, while the named axes stay for diagnostics. SPECULATION IS PART OF THE LAUNCH:
+// the profile renders no speculative configuration (gunbc.spark.serving_arm_launch arm_engine_argv), so a
+// launch's speculation is off, known, not unread. Only the realized collective transport is a reading.
+fn serving_subject_for_launch(
+  checkpoint_revision: NonEmptyStr?,
+  runtime: ServingRuntime,
+  runtime_image_reference: NonEmptyStr,
+  topology: ServingTopology,
+  profile: ServingLaunchProfile,
+  deployment_env: List<DockerEnvAssignment>,
+  collective_transport: NcclRealizedTransport?,
+) -> ServingPerformanceSubject {
+  serving_performance_subject(
+    checkpoint: profile.checkpoint,
+    checkpoint_revision: checkpoint_revision,
+    runtime: runtime,
+    runtime_image_reference: runtime_image_reference,
+    topology: Present { value: topology },
+    rank_population: Present { value: serving_topology_rank_count(t: topology) },
+    context_ceiling: Present { value: profile.max_model_len },
+    max_num_batched_tokens: profile.max_num_batched_tokens,
+    max_num_seqs: Present { value: profile.max_num_seqs },
+    kv_cache_dtype: Present { value: profile.kv_cache_dtype },
+    speculative: Present { value: SpeculativeDecodingOff },
+    collective_transport: collective_transport,
+    indexer_kv_dtype: Present { value: profile.indexer_kv_dtype },
+    scheduler_admission: Present { value: profile.scheduler_admission },
+    launch_profile_key: Present { value: serving_launch_profile_key(p: profile) },
+    deployment_env_key: Present { value: serving_deployment_env_key(env: deployment_env) },
+  )
+}
+
+// THE WEIGHT QUANTIZATION IS AN AXIS BUT NOT A FIELD: it is a fact about the checkpoint row
+// (gunbc.spark.serving_arm ServingCheckpointRow quantization), so storing it beside the checkpoint
+// would be a second authority that could disagree with the first. It is compared as its own axis, so
+// two subjects that differ in it say so by name; a checkpoint with no row reads as unread.
+fn subject_weight_quantization(s: ServingPerformanceSubject) -> NonEmptyStr? {
+  match serving_checkpoint_row(c: s.checkpoint) {
+    Absent => none
+    Present { value: row } =>
+      match row.quantization {
+        QuantizationSpelledOnArgv { wire: w } => Present { value: w }
+        QuantizationResolvedFromCheckpointConfig { wire: w, because: _ } => Present { value: w }
+      }
   }
 }
 
@@ -127,6 +206,11 @@ type ServingSubjectAxis
   | AxisKvCacheDtype
   | AxisSpeculativePolicy
   | AxisCollectiveTransport
+  | AxisWeightQuantization
+  | AxisIndexerKvDtype
+  | AxisSchedulerAdmission
+  | AxisLaunchProfile
+  | AxisDeploymentEnv
 
 fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
@@ -142,6 +226,11 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
     AxisKvCacheDtype => "kv cache dtype" as NonEmptyStr
     AxisSpeculativePolicy => "speculative policy" as NonEmptyStr
     AxisCollectiveTransport => "collective transport" as NonEmptyStr
+    AxisWeightQuantization => "weight quantization" as NonEmptyStr
+    AxisIndexerKvDtype => "indexer kv dtype" as NonEmptyStr
+    AxisSchedulerAdmission => "scheduler admission" as NonEmptyStr
+    AxisLaunchProfile => "launch profile" as NonEmptyStr
+    AxisDeploymentEnv => "deployment env" as NonEmptyStr
   }
 }
 
@@ -195,6 +284,31 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Absent => axis_value_unread_marker
         Present { value: tr } => nccl_realized_transport_wire(t: tr)
       }
+    AxisWeightQuantization =>
+      match subject_weight_quantization(s: s) {
+        Absent => axis_value_unread_marker
+        Present { value: w } => w
+      }
+    AxisIndexerKvDtype =>
+      match s.indexer_kv_dtype {
+        Absent => axis_value_unread_marker
+        Present { value: d } => vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr
+      }
+    AxisSchedulerAdmission =>
+      match s.scheduler_admission {
+        Absent => axis_value_unread_marker
+        Present { value: a } => vllm_scheduler_admission_key(r: a) as NonEmptyStr
+      }
+    AxisLaunchProfile =>
+      match s.launch_profile_key {
+        Absent => axis_value_unread_marker
+        Present { value: k } => k as NonEmptyStr
+      }
+    AxisDeploymentEnv =>
+      match s.deployment_env_key {
+        Absent => axis_value_unread_marker
+        Present { value: k } => k as NonEmptyStr
+      }
   }
 }
 
@@ -213,6 +327,11 @@ data serving_subject_axes: List<ServingSubjectAxis> = [
   AxisKvCacheDtype,
   AxisSpeculativePolicy,
   AxisCollectiveTransport,
+  AxisWeightQuantization,
+  AxisIndexerKvDtype,
+  AxisSchedulerAdmission,
+  AxisLaunchProfile,
+  AxisDeploymentEnv,
 ]
 
 fn serving_subject_axis_agrees(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
@@ -284,6 +403,16 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.max_num_seqs { Absent => true, Present { value: _ } => false }
     AxisKvCacheDtype =>
       match s.kv_cache_dtype { Absent => true, Present { value: _ } => false }
+    AxisWeightQuantization =>
+      match subject_weight_quantization(s: s) { Absent => true, Present { value: _ } => false }
+    AxisIndexerKvDtype =>
+      match s.indexer_kv_dtype { Absent => true, Present { value: _ } => false }
+    AxisSchedulerAdmission =>
+      match s.scheduler_admission { Absent => true, Present { value: _ } => false }
+    AxisLaunchProfile =>
+      match s.launch_profile_key { Absent => true, Present { value: _ } => false }
+    AxisDeploymentEnv =>
+      match s.deployment_env_key { Absent => true, Present { value: _ } => false }
   }
 }
 
@@ -465,4 +594,39 @@ fn serving_subject_axis_delta(
       AxisDeltaNone
     }
   }
+}
+
+// ── THE SUBJECT'S IDENTITY KEY, FOR RECEIPTS THAT MUST NAME EXACTLY ONE SUBJECT ─────────────────
+//
+// THE KEY RELATION (DESIGN 3b keys/hashing; review 74175). Relation: "this receipt is evidence about this
+// serving subject". Scope: promotion evidence (gunbc.spark.serving_promotion). Preimage: every axis of
+// serving_subject_axes, in roster order, each written as its name and its value, EACH LENGTH-PREFIXED
+// ("<len>:<text>"), so no axis value can forge a separator and two different subjects cannot share a
+// preimage. Equality: exact equality of that preimage -- not of the digest -- so a hash collision cannot
+// merge two subjects. The digest is std.content_hash content_hash_of_value over the preimage, carried for
+// display and indexing only. An unread axis is part of the preimage as unread, so a receipt taken with an
+// axis unread does not stand for a subject that has it read.
+type ServingSubjectKey sole_constructor {
+  preimage: NonEmptyStr
+  digest: ContentHash
+}
+
+fn length_prefixed(text: String) -> String {
+  join([to_string(string_length(s: text)), ":", text], "")
+}
+
+fn serving_subject_key(s: ServingPerformanceSubject) -> ServingSubjectKey {
+  let pre = join(map(serving_subject_axes, a => join([
+    length_prefixed(text: serving_subject_axis_wire(a: a) as String),
+    length_prefixed(text: serving_subject_axis_value(s: s, a: a) as String),
+  ], "")), "") as NonEmptyStr
+  ServingSubjectKey { preimage: pre, digest: content_hash_of_value(value: pre) }
+}
+
+fn serving_subject_key_equal(a: ServingSubjectKey, b: ServingSubjectKey) -> Bool {
+  (a.preimage as String) == (b.preimage as String)
+}
+
+fn serving_subject_key_display(k: ServingSubjectKey) -> NonEmptyStr {
+  serialize_content_hash(hash: k.digest)
 }

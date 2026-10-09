@@ -1,8 +1,9 @@
 module v2.workflow.module_resolution_plan
 
+import std.types { List }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact }
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import std.algebra { list_snoc_item }
+import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Node }
 import v2.workflow.realization_runner {
@@ -18,7 +19,7 @@ import v2.workflow.realization_runner {
 // authority for the module-node schedule shape; the resolver stops being the system's one
 // scheduling special case here.
 
-data module_resolution_store_value_note: String = "Store-value grain: ordering-only for the schedule facts modeled here. The module handler's produced value is the module's interface (std.interface_summary is the modeled carrier) - Inc B LANDED (#6543): cross-module consumption reads ModuleInterface; the host typed_module_cache still holds full TypecheckModuleResult for cache-hit semantics. Cross-worker share (S2a increment C, cross-worker-typecheck-share-design.md) moves that cache to process-scoped Arc at SharedStateFrame - modeled cross-boundary read remains interface grain only."
+data module_resolution_store_value_note: String = "Store-value grain: ordering-only for the schedule facts modeled here. The module handler's produced value is the module's interface (std.interface_summary is the modeled carrier) - Inc B LANDED (#6543): cross-module consumption reads ModuleInterface; the host typed_module_cache still holds full TypecheckModuleResult for cache-hit semantics. The cross-worker share (S2a increment C) that would have moved that cache to a process-scoped Arc was deleted as test-only (2026-10-04); the cache stays per index, and the modeled cross-boundary read remains interface grain only."
 
 // Host realization: module_schedule_batches + the dispatch/assembly split in
 // reconcile_with_typed_cache (src/v1/stage0/src/cli_run.rs) walk the same antichain-batch shape

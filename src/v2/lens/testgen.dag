@@ -1,14 +1,15 @@
 module v2.lens.testgen
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import v2.std.collection { List }
-import std.algebra { FreeMonoid, Empty, Cons }
-import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, list_flat_map, list_map, non_empty, list_snoc_item, zip_eq }
+import std.algebra { FreeMonoid, Empty, Cons, list_append, list_snoc_item }
+import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_flat_map, list_map, non_empty, zip_eq }
 import v2.std.diagnostic {
   Outcome,
+  DeclarationLocus,
   Diagnostic,
   Locus,
   NodeLocus,
@@ -43,15 +44,13 @@ import v2.std.diagnostic {
 }
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness { PreservationPredicate, verify_witness }
-import v2.std.nat {
-  NatAlgebraLawObligation,
-  nat_declared_algebra_law_obligations
-}
+import v2.std.nat { NatAlgebraLawObligation, nat_declared_algebra_law_obligations }
 import v2.std.node {
   Atom,
   Edge,
   Node,
-  Named,
+  Authored,
+  Positional,
   Connective,
   Conj,
   Disj,
@@ -475,9 +474,9 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
+          Edge { label: Authored { name: ^refinement_preservation_list_head_edge }, target: h },
           Edge {
-            label: Named { name: ^refinement_preservation_list_tail_edge },
+            label: Authored { name: ^refinement_preservation_list_tail_edge },
             target: tail_node
           }
         ],
@@ -521,7 +520,87 @@ fn testgen_emit_refinement_preservation_claim(
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -630,7 +709,79 @@ fn testgen_emit_language_behavior_equivalence_claim(
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -744,7 +895,157 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -767,9 +1068,9 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      Edge { label: Authored { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Authored { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Authored { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -779,8 +1080,8 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
+      Edge { label: Authored { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Authored { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -798,9 +1099,9 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
+      Edge { label: Authored { name: ^witness_validity_field_algebra }, target: p.algebra },
       Edge {
-        label: Named { name: ^witness_validity_field_preservation_rule },
+        label: Authored { name: ^witness_validity_field_preservation_rule },
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
     ],
@@ -813,10 +1114,10 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^witness_validity_field_property },
+        label: Authored { name: ^witness_validity_field_property },
         target: witness_validity_symbol_atom_node(s: w.property)
       },
-      Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
+      Edge { label: Authored { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -850,18 +1151,18 @@ fn witness_validity_subject_node(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
+            Edge { label: Authored { name: ^witness_validity_field_source_facts }, target: source_facts },
+            Edge { label: Authored { name: ^witness_validity_field_candidate }, target: candidate },
             Edge {
-              label: Named { name: ^witness_validity_field_predicate },
+              label: Authored { name: ^witness_validity_field_predicate },
               target: witness_validity_predicate_node(p: predicate)
             },
             Edge {
-              label: Named { name: ^witness_validity_field_witness },
+              label: Authored { name: ^witness_validity_field_witness },
               target: witness_validity_witness_node(w: witness)
             },
             Edge {
-              label: Named { name: ^witness_validity_field_oracle_outcome },
+              label: Authored { name: ^witness_validity_field_oracle_outcome },
               target: oracle_outcome
             }
           ],
@@ -892,7 +1193,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
+          Edge { label: Authored { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
         occurrence_id: OccurrenceSynthetic
 }
@@ -901,7 +1202,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^witness_validity_correction_tag_unavailable },
+            label: Authored { name: ^witness_validity_correction_tag_unavailable },
             target: witness_validity_no_correction_reason_node(r: r)
           }
         ],
@@ -935,16 +1236,16 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: ^witness_validity_locus_tag_textual },
+                label: Authored { name: ^witness_validity_locus_tag_textual },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: ^witness_validity_locus_textual_file },
+                      label: Authored { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
                     Edge {
-                      label: Named { name: ^witness_validity_locus_textual_extent },
+                      label: Authored { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
                   ],
@@ -962,7 +1263,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
+            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
           occurrence_id: OccurrenceSynthetic
 },
@@ -975,15 +1276,15 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: ^witness_validity_locus_tag_source_port },
+                label: Authored { name: ^witness_validity_locus_tag_source_port },
                 target: witness_validity_symbol_atom_node(s: a.at)
               },
               Edge {
-                label: Named { name: ^witness_validity_locus_source_port_file },
+                label: Authored { name: ^witness_validity_locus_source_port_file },
                 target: witness_validity_symbol_atom_node(s: f)
               },
               Edge {
-                label: Named { name: ^witness_validity_locus_source_port_extent },
+                label: Authored { name: ^witness_validity_locus_source_port_extent },
                 target: en
               }
             ],
@@ -998,14 +1299,37 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: ^witness_validity_locus_tag_invariant_port },
+              label: Authored { name: ^witness_validity_locus_tag_invariant_port },
               target: witness_validity_symbol_atom_node(s: a.at)
             },
             Edge {
-              label: Named { name: ^witness_validity_locus_invariant },
+              label: Authored { name: ^witness_validity_locus_invariant },
               target: witness_validity_symbol_atom_node(s: invariant)
             }
           ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    DeclarationLocus { declaration: declaration } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: declaration,
+            empty: [
+              Edge {
+                label: Authored { name: ^witness_validity_locus_tag_declaration },
+                target: witness_validity_symbol_atom_node(s: ^witness_validity_locus_tag_declaration)
+              }
+            ],
+            cons: fn(acc, seg) {
+              list_snoc_item(xs: acc, item: Edge {
+                label: Positional,
+                target: witness_validity_symbol_atom_node(s: seg)
+              })
+            }
+          ),
           occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
@@ -1020,15 +1344,15 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^witness_validity_diag_field_reason },
+            label: Authored { name: ^witness_validity_diag_field_reason },
             target: witness_validity_symbol_atom_node(s: d.reason)
           },
           Edge {
-            label: Named { name: ^witness_validity_diag_field_at },
+            label: Authored { name: ^witness_validity_diag_field_at },
             target: at_node
           },
           Edge {
-            label: Named { name: ^witness_validity_diag_field_correction },
+            label: Authored { name: ^witness_validity_diag_field_correction },
             target: witness_validity_correction_node(c: d.correction)
           }
         ],
@@ -1053,8 +1377,8 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
-                Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
+                Edge { label: Authored { name: ^witness_validity_list_cons_head }, target: hn },
+                Edge { label: Authored { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
               occurrence_id: OccurrenceSynthetic
 },
@@ -1074,11 +1398,11 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: ^witness_validity_diags_field_head },
+              label: Authored { name: ^witness_validity_diags_field_head },
               target: hn
             },
             Edge {
-              label: Named { name: ^witness_validity_diags_field_tail },
+              label: Authored { name: ^witness_validity_diags_field_tail },
               target: tn
             }
           ],
@@ -1104,7 +1428,7 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: ^witness_validity_diagnostics_tag_some },
+                label: Authored { name: ^witness_validity_diagnostics_tag_some },
                 target: ndn
               }
             ],
@@ -1125,16 +1449,16 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: ^witness_validity_outcome_holds },
+                label: Authored { name: ^witness_validity_outcome_holds },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: ^witness_validity_outcome_accepted_value },
+                      label: Authored { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
                     Edge {
-                      label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
+                      label: Authored { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
                   ],
@@ -1154,7 +1478,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: ^witness_validity_outcome_violates },
+                label: Authored { name: ^witness_validity_outcome_violates },
                 target: dn
               }
             ],
@@ -1623,7 +1947,7 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
     },
     children: [
       Edge {
-        label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
+        label: Authored { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )

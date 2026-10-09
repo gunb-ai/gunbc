@@ -117,13 +117,13 @@ fn program_representability(document: JsonValue) -> ProgramRepresentability {
     ProgramMembersNotConserved { verdict } => FanProgramNotConserved { verdict: verdict }
     ProgramDecoded { program, partitions, element_partitions } => {
       let refusals = representability_of_partitions(partitions: partitions)
-      if refusals.length() > 0 {
-        FanProgramNotRepresentable { refusal: refusals.first() }
-      } else {
-        FanProgramFullyRepresentable {
-          program: program,
-          semantic_digest: semantic_program_digest(program: program),
-        }
+      match refusals.first() {
+        Present { value: refusal } => FanProgramNotRepresentable { refusal: refusal }
+        Absent =>
+          FanProgramFullyRepresentable {
+            program: program,
+            semantic_digest: semantic_program_digest(program: program),
+          }
       }
     }
   }

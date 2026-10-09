@@ -1,6 +1,7 @@
 module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
@@ -73,7 +74,7 @@ data deepseek_v4_flash_tool_call_parser: NonEmptyStr = "deepseek_v4" as NonEmpty
 data glm_5_3_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   identity: "glm-5.3-flash" as NonEmptyStr,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   revision_provenance: "resolved from the Hub model API for zai-org/GLM-5.3-Flash on 2026-09-07; the same response reported lastModified 2026-09-07T12:13:47Z, so the branch was moving when this was taken" as NonEmptyStr,
 }
@@ -132,6 +133,10 @@ fn snapshot_install_path(placement: SnapshotPlacement, repo: HubRepoId, revision
 
 // THE DOWNLOAD COMMAND, DERIVED PER PLACEMENT. `hf download --local-dir` is upstream's own supported
 // form and keeps its metadata beside the tree so a later run is incremental rather than a re-fetch.
+// THE HUB-CACHE ARM NAMES NO PATH, BY DESIGN: where the CLI writes is its environment's cache root
+// (extdeps.huggingface.hub hub_cache_root_for), and the executor that runs it owns that environment
+// (gunbc.spark.model_snapshot_materialize containerized_hub_cli sets HF_HUB_CACHE to its mount and refuses
+// any wrap whose resolved root is not the placement). A flag here would be a second spelling of that fact.
 fn snapshot_download_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
   let base = [hub_cli_program as String, "download", repo.path as String, "--revision", revision as String]
   match placement {
@@ -388,6 +393,23 @@ fn model_snapshot_download_argv(snapshot: ModelSnapshotDesired) -> List<String> 
 // binds read-only at /weights, and it is carried here rather than re-spelled at the realization so
 // the acquisition and the mount cannot drift apart.
 data spark_hub_cache_root: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
+
+// THE FLEET'S LOCAL-DIRECTORY MODELS ROOT, beside the hub cache root and for the same reason: every
+// LocalDirectoryPlacement a desired row names on a Spark sits under it, so it is one declaration rather
+// than a prefix re-spelled per row.
+data spark_models_root: NonEmptyStr = "/home/briansrls/models" as NonEmptyStr
+
+// WHERE A PINNED CHECKPOINT MATERIALIZED UNDER THE MODELS ROOT LIVES: the Hub's own repo folder name
+// under the root, and the pinned revision beneath it, so a revision bump lands in a new directory rather
+// than on top of the old one. The materializer that installs it and the launch that mounts it both
+// read this, so the install path and the mount cannot be two derivations of one directory.
+fn spark_local_checkpoint_repo_directory(repo: HubRepoId) -> NonEmptyStr {
+  join([spark_models_root as String, "/", hub_repo_cache_directory_name(repo: repo) as String], "") as NonEmptyStr
+}
+
+fn spark_local_checkpoint_directory(repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
+  join([spark_local_checkpoint_repo_directory(repo: repo) as String, "/", revision as String], "") as NonEmptyStr
+}
 
 fn model_snapshot_install_path(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
   match model_snapshot_subject(snapshot: snapshot, cache_root: spark_hub_cache_root) {

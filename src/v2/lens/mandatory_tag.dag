@@ -1,15 +1,13 @@
 module v2.lens.mandatory_tag
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import std.disposition { SubstrateMandatoryTag }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
 import v2.std.integer { Int }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -27,7 +25,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -60,6 +57,21 @@ import v2.extdeps.languages.dag {
 // filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that
 // supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs
 // scaffold block).
+//
+// NATIVE-EVAL PREPARE DOES NOT OWE THIS GATE PER MODULE (valiant-ram-872, DESIGN section 6b).
+// CompileLensRoot is a compile-door obligation: the single gate surface is
+// validate_then_compile (v2.compiler.compile required_lens_grain_note). Its production
+// callers are compile_ingest_with_admission, compile_source_root_ingest_with_admission and
+// stage_translate. The native floor prepare path (native_lane_module_inference ->
+// native_test_infer_resolved) is infer-for-eval, not compilation; it does not call that
+// door. Wiring the required roster there would be a second gate surface (DESIGN section 3)
+// that multiplies whole-tree root-lens cost by the test population. Region coverage of
+// dag/extdeps/** that has not entered the compile door is the corpus grain above (and,
+// until that witness runs at native speed, the host corpus_scan scaffold). Native
+// compile-door coverage climbs when admitted subjects enter validate_then_compile
+// (gunbc.v2_compile_obligation_census native_door_entry_trigger) -- the one door, never
+// by re-hosting this gate on infer. A member-kind channel on the native-resolved tree
+// (when present) is provenance for that door, not a license for a second surface.
 
 // Two carrier shapes, one reader family, mirroring qualified_name_from_module_node's dual path: an
 // emit-shaped declaration carries Named edges (dag_surface_data_decl_name / _type / _expr -
@@ -149,7 +161,8 @@ fn mandatory_tag_subtree_atoms(n: Node) -> List<Symbol> {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } => [s]
-          _ => []
+          TypeNode { connective: _ } => []
+          ComputationNode { behavior: _ } => []
         }
       },
       step: fn(acc, _edge, child) { concat(acc, child) }

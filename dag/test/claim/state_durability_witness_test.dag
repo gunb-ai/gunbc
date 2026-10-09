@@ -59,7 +59,7 @@ import std.state_durability {
   state_durability_evidence_refusal,
   state_durability_verdict,
 }
-import std.types { Bool, List, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr, list_length, brand }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

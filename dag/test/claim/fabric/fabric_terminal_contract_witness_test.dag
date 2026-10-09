@@ -8,7 +8,7 @@ import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, OfferKey }
 import product.fabric.work { MaterializedProgram, CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, declared_terminal_obligations }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
-import product.fabric.supply { SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
+import product.fabric.supply { UnobservedSupply, SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
 import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, CapabilityEscalation, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -263,7 +263,7 @@ test fn owned_supply_states_zero_rather_than_absent() -> Bool {
     && rented_offer.quantity_bound == 64
 }
 
-// Observed and quoted supply are one type with two evidences.
+// Observed, quoted and unobserved supply are one type with three evidences.
 
 test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
   match owned_offer.evidence {
@@ -271,8 +271,10 @@ test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
       match rented_offer.evidence {
         QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
         ObservedSupply { observed_at: _, receipt: _ } => false
+        UnobservedSupply { obligation: _ } => false
       }
     QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => false
+    UnobservedSupply { obligation: _ } => false
   }
 }
 

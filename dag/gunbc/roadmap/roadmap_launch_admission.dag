@@ -4,28 +4,28 @@ import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_sized, node_unmet_parent_ids }
-import gunbc.roadmap_execution_contract {
-  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
-  OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
-  NonAgentWorkMode,
-  contract_closure,
-  non_agent_work_mode_label,
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, ReadinessGraph, readiness_graph, node_readiness_in_graph }
+import gunbc.roadmap.roadmap_lineage { lineage_lookup }
+import gunbc.roadmap.roadmap_readiness {
+  ReadinessGap, GapCentering, NodeReadiness, ReadyToDispatch, NotReady,
+  node_readiness, readiness_text, readiness_reason_text,
 }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
+  AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
+}
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
 import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
-import extdeps.languages.json.emit { JsonValue, JsonString, json_string, json_object, json_kv }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonKeyValue, json_string, json_object, json_kv }
 import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -43,13 +43,13 @@ import extdeps.languages.json.parse {
 // (LaunchHostStanding) and the graph once (RoadmapAuthorityProjection) -- so every gate is
 // witnessable with synthetic inputs and the effectful surfaces are thin projections. Gate ORDER is
 // the plan's and is the safety property: instance actuatable, transition clear, desired==deployed,
-// node exists and is not superseded/accepted/review-only, size and contract complete, dependencies
-// closed, no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the
+// node exists, node READY (one gunbc.roadmap.roadmap_readiness value: open, rooted, centered, sized,
+// contract closing, dependencies closed), no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the
 // arms the actuator, environment and belt already modeled (the labels below are the existing wire
 // words wherever one existed) and adds only what the plan's sketch left implicit: a superseded
 // node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm.
-// `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS an unsized one, so it is
-// one fact (LaunchSizeMissing) with SchedulingUnplanned as its presentation.
+// The node's own facts refuse together as LaunchNotReady { missing }, the same value the page
+// renders, so there is no per-fact refusal arm to drift from the page's reading.
 
 type LaunchCause
   = Operator
@@ -98,13 +98,17 @@ fn launch_identity_instance_text(id: LaunchIdentity) -> String { id.instance_id 
 fn launch_identity_revision_hex(id: LaunchIdentity) -> String { git_object_id_wire_hex(oid: id.revision) as String }
 
 fn launch_identity_json(id: LaunchIdentity) -> JsonValue {
-  json_object(members: [
+  json_object(members: launch_identity_json_members(id: id))
+}
+
+fn launch_identity_json_members(id: LaunchIdentity) -> List<JsonKeyValue> {
+  [
     json_kv(key: "node_id", value: json_string(s: launch_identity_node_id_text(id: id))),
     json_kv(key: "cause", value: json_string(s: launch_cause_label(c: id.cause))),
     json_kv(key: "mode", value: json_string(s: spawn_mode_label(m: id.mode))),
     json_kv(key: "instance_id", value: json_string(s: launch_identity_instance_text(id: id))),
     json_kv(key: "revision", value: json_string(s: launch_identity_revision_hex(id: id))),
-  ])
+  ]
 }
 
 type LaunchIdentityDecode
@@ -188,6 +192,49 @@ fn launch_identity_of_json(doc: JsonValue) -> LaunchIdentityDecode {
   }
 }
 
+// THE ATTEMPT LAUNCH RECORD: the launch identity as the belt persists it in ONE attempt's state,
+// bound to that attempt. The identity itself is minted at admission, before any attempt key exists,
+// and travels in admission and tick receipts where no attempt is meant -- so the binding lives on
+// the per-attempt record, not on LaunchIdentity. A record written before the binding existed
+// decodes as AttemptLaunchUnbound, a typed standing a consumer must refuse or accept by name; it is
+// never defaulted to the reader's own attempt. Readers that need only the identity keep reading it
+// with launch_identity_of_json, which ignores the extra member.
+type AttemptLaunchRecordDecode
+  = AttemptLaunchBound { identity: LaunchIdentity, attempt_key: NonEmptyStr }
+  | AttemptLaunchUnbound { identity: LaunchIdentity }
+  | AttemptLaunchUnreadable { reason: String }
+
+fn attempt_launch_record_json(id: LaunchIdentity, attempt_key: NonEmptyStr) -> JsonValue {
+  json_object(members: concat(launch_identity_json_members(id: id), [
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key as String)),
+  ]))
+}
+
+// A present attempt_key member must be one non-empty string; any other shape is unreadable.
+fn attempt_launch_record_bound(doc: JsonValue, identity: LaunchIdentity) -> AttemptLaunchRecordDecode {
+  match launch_identity_member_string(doc: doc, key: "attempt_key") {
+    LaunchIdentityMemberRefused { reason } => AttemptLaunchUnreadable { reason: reason }
+    LaunchIdentityMemberString { value: k } =>
+      match launch_identity_non_empty(key: "attempt_key", value: k) {
+        LaunchIdentityMemberRefused { reason } => AttemptLaunchUnreadable { reason: reason }
+        LaunchIdentityMemberString { value: key } => AttemptLaunchBound { identity: identity, attempt_key: key as NonEmptyStr }
+      }
+  }
+}
+
+fn attempt_launch_record_of_json(doc: JsonValue) -> AttemptLaunchRecordDecode {
+  match launch_identity_of_json(doc: doc) {
+    LaunchIdentityUnreadable { reason } => AttemptLaunchUnreadable { reason: reason }
+    LaunchIdentityDecoded { identity } =>
+      match json_object_unique_member(v: doc, key: "attempt_key") {
+        JsonMemberAbsent => AttemptLaunchUnbound { identity: identity }
+        JsonMemberFound { value: _ } => attempt_launch_record_bound(doc: doc, identity: identity)
+        JsonMemberDuplicated { count: _ } => attempt_launch_record_bound(doc: doc, identity: identity)
+        JsonMemberNotAnObject => attempt_launch_record_bound(doc: doc, identity: identity)
+      }
+  }
+}
+
 // git's null object id (every octet zero) is the one revision value git itself defines as naming no
 // object; it is the exemplar's and the UI fixtures' revision so a synthetic identity can never
 // collide with an observed one.
@@ -206,6 +253,11 @@ fn launch_identity_exemplar() -> LaunchIdentity {
   }
 }
 
+// LaunchNoPlacementGrant (G5, dogfood route) is the one arm decided at ACTUATION rather than by the
+// pure gate ledger: the session's placement is a reservation in the host's agent-session pool
+// (gunbc.roadmap_session_placement), and taking it is an effect that cannot run inside the pure
+// fold. It is still a launch refusal and not a spawn failure, because it is taken before any host
+// step runs -- nothing is created -- and the belt returns it as SpawnNotAdmitted with this arm.
 type LaunchRefusal
   = LaunchNoActuatingInstance { reason: String }
   | LaunchInstanceActuationRefused { instance_id: String, reason: String }
@@ -213,13 +265,7 @@ type LaunchRefusal
   | LaunchRevisionUnobserved { cause: String }
   | LaunchAuthorityUnobserved { detail: String }
   | LaunchNodeUnknown
-  | LaunchNodeSuperseded { by: String }
-  | LaunchAlreadyAccepted
-  | LaunchReviewRequired
-  | LaunchSizeMissing
-  | LaunchExecutionContractMissing { reason: String }
-  | LaunchNotAgentWork { mode: NonAgentWorkMode }
-  | LaunchDependenciesBlocked { blockers: List<String> }
+  | LaunchNotReady { missing: List<ReadinessGap> }
   | LaunchSessionsUnobservable { reason: String }
   | LaunchAlreadyLive { session_name: String }
   | LaunchStaleSession { session_name: String, detail: String }
@@ -228,6 +274,7 @@ type LaunchRefusal
   | LaunchNoCapacity { occupied: Int, max_concurrent: Int }
   | LaunchCauseNotPermitted { cause: LaunchCause, mode: SpawnMode }
   | LaunchGateNotEvaluated { gate: String }
+  | LaunchNoPlacementGrant { detail: String }
 
 type LaunchAdmission
   = LaunchAdmitted { identity: LaunchIdentity }
@@ -238,13 +285,6 @@ type LaunchAdmission
 // the operator's reading do not change under the migration; the arms the plan added carry new words
 // in the same shape.
 
-fn launch_non_agent_work_wire_label(mode: NonAgentWorkMode) -> String {
-  fold(
-    split(s: non_agent_work_mode_label(mode: mode), delimiter: "-"),
-    init: "",
-    f: (acc, part) => if acc == "" { part } else { concat(concat(acc, "_"), part) },
-  )
-}
 
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
@@ -254,13 +294,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchRevisionUnobserved { cause: _ } => "deployed_revision_unobserved"
     LaunchAuthorityUnobserved { detail: _ } => "authority_refused"
     LaunchNodeUnknown => "node_not_found"
-    LaunchNodeSuperseded { by: _ } => "node_superseded"
-    LaunchAlreadyAccepted => "already_done_signed_off"
-    LaunchReviewRequired => "review_required"
-    LaunchSizeMissing => "size_missing"
-    LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
-    LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
-    LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
+    LaunchNotReady { missing: _ } => "not_ready"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
     LaunchAlreadyLive { session_name: _ } => "already_live"
     LaunchStaleSession { session_name: _, detail: _ } => "stale_session"
@@ -269,6 +303,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => "no_capacity"
     LaunchCauseNotPermitted { cause: _, mode: _ } => "cause_not_permitted_by_mode"
     LaunchGateNotEvaluated { gate: _ } => "gate_not_evaluated"
+    LaunchNoPlacementGrant { detail: _ } => "no_placement_grant"
   }
 }
 
@@ -280,14 +315,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchRevisionUnobserved { cause } => join(["deployed revision could not be observed: ", cause], "")
     LaunchAuthorityUnobserved { detail } => join(["roadmap authority projection refused: ", detail], "")
     LaunchNodeUnknown => "node is not in the roadmap authority"
-    LaunchNodeSuperseded { by } => join(["node is superseded by ", by], "")
-    LaunchAlreadyAccepted => "node is signed off as accepted; relaunch refused"
-    LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
-    LaunchSizeMissing => "node is unsized; a launch needs intricacy, volume, repo and acceptance"
-    LaunchExecutionContractMissing { reason } => reason
-    LaunchNotAgentWork { mode } =>
-      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
-    LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
+    LaunchNotReady { missing } => join([readiness_text(r: NotReady { missing: missing }), " -- ", readiness_reason_text(r: NotReady { missing: missing })], "")
     LaunchSessionsUnobservable { reason } => join(["live session set could not be observed: ", reason], "")
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
     LaunchStaleSession { session_name, detail } => join([session_name, ": ", detail], "")
@@ -296,6 +324,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchNoCapacity { occupied, max_concurrent } => join(["belt at capacity: ", to_string(occupied), " of ", to_string(max_concurrent), " slots occupied"], "")
     LaunchCauseNotPermitted { cause, mode } => join(["cause ", launch_cause_label(c: cause), " may not start new work in spawn mode ", spawn_mode_label(m: mode)], "")
     LaunchGateNotEvaluated { gate } => join(["gate ", gate, " was not evaluated; fail-closed"], "")
+    LaunchNoPlacementGrant { detail } => join(["the agent session holds no placement grant, so it is not spawned: ", detail], "")
   }
 }
 
@@ -307,15 +336,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchRevisionUnobserved { cause: "c" },
     LaunchAuthorityUnobserved { detail: "d" },
     LaunchNodeUnknown,
-    LaunchNodeSuperseded { by: "s" },
-    LaunchAlreadyAccepted,
-    LaunchReviewRequired,
-    LaunchSizeMissing,
-    LaunchExecutionContractMissing { reason: "r" },
-    LaunchNotAgentWork { mode: OperatorExclusiveMode },
-    LaunchNotAgentWork { mode: ExternalLeadMode },
-    LaunchNotAgentWork { mode: CalendarObservationMode },
-    LaunchDependenciesBlocked { blockers: ["p"] },
+    LaunchNotReady { missing: [GapCentering] },
     LaunchSessionsUnobservable { reason: "r" },
     LaunchAlreadyLive { session_name: "s" },
     LaunchStaleSession { session_name: "s", detail: "d" },
@@ -324,21 +345,59 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchNoCapacity { occupied: 3, max_concurrent: 3 },
     LaunchCauseNotPermitted { cause: Timer, mode: ManualReady },
     LaunchGateNotEvaluated { gate: "g" },
+    LaunchNoPlacementGrant { detail: "d" },
   ]
 }
 
-// The observed live-session set, or the located reason it could not be observed. Unobservable is a
-// REFUSAL at the no-live-attempt gate, never an empty set: an empty set would license a second
-// attempt beside one the observer could not see.
+// THE CENSUS ROW IS REALIZATION-NEUTRAL (branch review 2026-09-23, blocker 1): the gate asks three
+// things of a live attempt -- which node, which container, whether a process holds it -- and the
+// tmux-shaped DispatchLiveSession was the population's own row, not the census's. A systemd-held
+// attempt has no lease verdict or window count to project, and fabricating them would be the
+// fabricated-field defect; the lean row carries exactly what the gates read. The rich session row
+// stays with the tmux population's own producers and the dashboard.
+type LaunchCensusRow {
+  session_name: String
+  node_id: String
+  process: WorkerProcessEvidence
+}
+
+// OCCURRENCE TO CENSUS ROW, the only projection the launch gate makes: a classified occurrence
+// with a live container is its node's row; an unclassified or malformed one keeps its real
+// process read (an observed process occupies; an unobserved one occupies conservatively) with the
+// node it hints at or none; a foreign container and a records-only occurrence (no live container)
+// produce no row -- the first is not ours, the second is history.
+fn occurrence_census_row(o: DispatchAttemptOccurrence) -> LaunchCensusRow? {
+  match o {
+    AttemptOccurrenceObserved { node, attempt: _, container, process, spawn_identity: _ } =>
+      match container {
+        Absent => none
+        Present { value: c } =>
+          Present { value: LaunchCensusRow { session_name: attempt_container_name(c: c), node_id: node, process: process } }
+      }
+    AttemptOccurrenceUnclassified { observed_container, process, node_hint, cause: _ } =>
+      Present { value: LaunchCensusRow {
+        session_name: attempt_container_name(c: observed_container),
+        node_id: match node_hint { Present { value: n } => n  Absent => "" },
+        process: process,
+      } }
+    AttemptOccurrenceForeign { observed_container: _ } => none
+    AttemptOccurrenceMalformed { observed_container, process, cause: _ } =>
+      Present { value: LaunchCensusRow {
+        session_name: attempt_container_name(c: observed_container),
+        node_id: "",
+        process: process,
+      } }
+  }
+}
 
 type LaunchSessionsStanding
   = LaunchSessionsPending
-  | LaunchSessionsObserved { live: List<DispatchLiveSession> }
+  | LaunchSessionsObserved { live: List<LaunchCensusRow> }
   | LaunchSessionsUnobserved { reason: String }
 
 // SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review
 // 5059681676 finding 2). The staged observer produces a standing whose sessions are PENDING; the
-// decision is asked in two stages -- launch_admission_staged runs instance..dependencies and
+// decision is asked in two stages -- launch_admission_staged runs instance..readiness and
 // answers LaunchStageNeedsSessions only when a node has passed every pre-session gate -- and only
 // then does the driver list tmux once (POST: for that node; page: one shared observation when at
 // least one row reaches the live gate; timer: once, because its reap pass needs the set regardless)
@@ -458,17 +517,20 @@ fn launch_host_unobserved_static_render() -> LaunchHostStanding {
 // the plan's order.
 
 type LaunchGraphStanding
-  = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+  = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, readiness: ReadinessGraph }
   | LaunchGraphUnobserved { detail: String }
 
 // The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page
 // render asks the decision for every row, and re-walking the document's sections for each would be
-// a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). The per-row
-// node find and the dependency scan over these lists remain linear scans -- the substrate carries
-// no keyed index here yet -- and that residual is named rather than hidden.
+// a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). It is INDEXED
+// once too (gunbc.roadmap_spawner readiness_graph): the per-row node find is a lookup in its lineage
+// index, and the readiness gate reads the same indexed graph the page's scheduling reads, so a row's
+// readiness costs lookups rather than a scan of every edge and node.
 
 fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
-  LaunchGraphProjected { nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc) }
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  LaunchGraphProjected { nodes: nodes, edges: edges, readiness: readiness_graph(nodes: nodes, edges: edges) }
 }
 
 fn launch_graph_of_projection(proj: RoadmapAuthorityProjection) -> LaunchGraphStanding {
@@ -487,7 +549,7 @@ type LaunchGateVerdict
 // conditional, for one reason: the mutation control. The plan's falsifier (c) says `removing the
 // dependency check admits the blocked child`; a nested conditional can only be mutated by editing
 // production, while a ledger can be mutated as DATA -- the witness takes the real ledger, replaces
-// the dependencies verdict with GatePassed, and asserts the fold admits. That proves the dependency
+// the readiness verdict with GatePassed, and asserts the fold admits. That proves the readiness
 // gate is the load-bearing one over otherwise-admissible facts, with no production escape hatch.
 // GateNotReached marks a gate that could not be evaluated because an earlier one refused (a later
 // gate reads the node the lookup did not find); the fold refuses fail-closed if it ever meets one
@@ -498,8 +560,7 @@ type LaunchGateLedger {
   transition: LaunchGateVerdict
   revision: LaunchGateVerdict
   node: LaunchGateVerdict
-  contract: LaunchGateVerdict
-  dependencies: LaunchGateVerdict
+  readiness: LaunchGateVerdict
   live: LaunchGateVerdict
   capacity: LaunchGateVerdict
   cause: LaunchGateVerdict
@@ -535,8 +596,7 @@ fn launch_gate_template() -> List<LaunchGateRow> {
     transition: GateNotReached,
     revision: GateNotReached,
     node: GateNotReached,
-    contract: GateNotReached,
-    dependencies: GateNotReached,
+    readiness: GateNotReached,
     live: GateNotReached,
     capacity: GateNotReached,
     cause: GateNotReached,
@@ -590,8 +650,7 @@ fn launch_ledger_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
     LaunchGateRow { gate: "transition", stage: PreSessionGate, verdict: l.transition },
     LaunchGateRow { gate: "revision", stage: PreSessionGate, verdict: l.revision },
     LaunchGateRow { gate: "node", stage: PreSessionGate, verdict: l.node },
-    LaunchGateRow { gate: "contract", stage: PreSessionGate, verdict: l.contract },
-    LaunchGateRow { gate: "dependencies", stage: PreSessionGate, verdict: l.dependencies },
+    LaunchGateRow { gate: "readiness", stage: PreSessionGate, verdict: l.readiness },
     LaunchGateRow { gate: "live", stage: SessionGate, verdict: l.live },
     LaunchGateRow { gate: "capacity", stage: SessionGate, verdict: l.capacity },
     LaunchGateRow { gate: "cause", stage: SessionGate, verdict: l.cause },
@@ -698,69 +757,35 @@ fn launch_gate_revision(revision: LocalTreeRevision) -> LaunchGateVerdict {
 }
 
 type LaunchNodeLookup
-  = LaunchNodeFound { node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+  = LaunchNodeFound { node: RoadmapNode, readiness: ReadinessGraph }
   | LaunchNodeLookupRefused { refusal: LaunchRefusal }
-
-fn launch_find_node(nodes: List<RoadmapNode>, node_id: String) -> RoadmapNode? {
-  fold(nodes, init: none, f: fn(acc, n) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if n.node == node_id { Present { value: n } } else { none }
-    }
-  })
-}
 
 fn launch_lookup_node(graph: LaunchGraphStanding, node_id: String) -> LaunchNodeLookup {
   match graph {
     LaunchGraphUnobserved { detail } =>
       LaunchNodeLookupRefused { refusal: LaunchAuthorityUnobserved { detail: detail } }
-    LaunchGraphProjected { nodes, edges } =>
-      match launch_find_node(nodes: nodes, node_id: node_id) {
+    LaunchGraphProjected { nodes: _, edges: _, readiness } =>
+      match lineage_lookup(index: readiness.lineage, id: node_id) {
         Absent => LaunchNodeLookupRefused { refusal: LaunchNodeUnknown }
-        Present { value: n } => LaunchNodeFound { node: n, nodes: nodes, edges: edges }
+        Present { value: n } => LaunchNodeFound { node: n, readiness: readiness }
       }
   }
 }
 
-fn launch_gate_node_state(node: RoadmapNode, merged: List<Int>) -> LaunchGateVerdict {
-  let by = item_superseded_by(item: node.line)
-  if by != "" {
-    GateRefused { refusal: LaunchNodeSuperseded { by: by } }
-  } else if signoff_accepts(s: node.signoff) {
-    GateRefused { refusal: LaunchAlreadyAccepted }
-  } else if item_is_done(item: node.line, merged: merged) {
-    GateRefused { refusal: LaunchReviewRequired }
-  } else {
-    GatePassed
-  }
+// READINESS IS ONE GATE, and it is the page's predicate (gunbc.roadmap.roadmap_readiness
+// node_readiness): state (superseded, accepted, in review), lineage (a parent that reaches the
+// admitted root), centering, size, contract and dependencies are read in one value and refused
+// together as LaunchNotReady { missing }, so the dispatcher names every missing fact the page names
+// and neither can admit a node the other calls not ready. The lineage is walked over the graph the
+// admission was handed; the dependencies are its unmet parents over the same graph.
+fn launch_node_readiness(node: RoadmapNode, readiness: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness_in_graph(node: node, graph: readiness, merged: merged)
 }
 
-fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
-  if !node_is_sized(n: node) {
-    GateRefused { refusal: LaunchSizeMissing }
-  } else {
-    match contract_closure(contract: node.execution) {
-      ContractDeclaresNoValidation =>
-        GateRefused { refusal: LaunchExecutionContractMissing {
-          reason: "work item execution contract is unspecified; launch will not guess validation or dependencies",
-        } }
-      ContractClosesNothing =>
-        GateRefused { refusal: LaunchExecutionContractMissing {
-          reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit a launch",
-        } }
-      ContractNotAgentWork { mode } =>
-        GateRefused { refusal: LaunchNotAgentWork { mode: mode } }
-      ContractCloses { validations: _ } => GatePassed
-    }
-  }
-}
-
-fn launch_gate_dependencies(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> LaunchGateVerdict {
-  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: node.node)
-  if count(unmet) == 0 {
-    GatePassed
-  } else {
-    GateRefused { refusal: LaunchDependenciesBlocked { blockers: map(unmet, p => p as String) } }
+fn launch_gate_readiness(node: RoadmapNode, readiness: ReadinessGraph, merged: List<Int>) -> LaunchGateVerdict {
+  match launch_node_readiness(node: node, readiness: readiness, merged: merged) {
+    ReadyToDispatch => GatePassed
+    NotReady { missing } => GateRefused { refusal: LaunchNotReady { missing: missing } }
   }
 }
 
@@ -806,7 +831,7 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
       } else {
         match matched.first() {
           Absent => GatePassed
-          Present { value: s } => launch_session_liveness(session_name: s.session_name, process: s.worker.process)
+          Present { value: s } => launch_session_liveness(session_name: s.session_name, process: s.process)
         }
       }
     }
@@ -824,8 +849,8 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
 // (LaunchSessionsUnobserved) never reaches this count: the live gate refuses SessionsUnobservable
 // first.
 
-fn launch_occupying_count(live: List<DispatchLiveSession>) -> Int {
-  count(filter(live, s => match s.worker.process {
+fn launch_occupying_count(live: List<LaunchCensusRow>) -> Int {
+  count(filter(live, s => match s.process {
     WorkerProcessRunning { command: _ } => true
     WorkerProcessUnobserved { reason: _ } => true
     WorkerProcessExited { exit_code: _, last_command: _ } => false
@@ -862,7 +887,7 @@ fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity
 // node, the timer may not start new work; the timer's reconciliation, verification, publication and
 // cleanup are NOT launches and never pass through this gate. AutomaticReady admits both causes;
 // Paused admits neither. The gate is LAST in the order on purpose: a refusal names the most
-// specific fact first, so a timer looking at a blocked node reports DependenciesBlocked, and only a
+// specific fact first, so a timer looking at a blocked node reports NotReady, and only a
 // node the timer could otherwise start reports CauseNotPermitted.
 
 fn launch_gate_cause(cause: LaunchCause, mode: SpawnMode) -> LaunchGateVerdict {
@@ -883,8 +908,7 @@ fn launch_facts_unreached_after_instance(refusal: LaunchRefusal) -> LaunchDecisi
       transition: GateNotReached,
       revision: GateNotReached,
       node: GateNotReached,
-      contract: GateNotReached,
-      dependencies: GateNotReached,
+      readiness: GateNotReached,
       live: GateNotReached,
       capacity: GateNotReached,
       cause: GateNotReached,
@@ -913,7 +937,7 @@ fn launch_identity_of_observed(
             LaunchRevisionBound { oid } =>
               match lookup {
                 LaunchNodeLookupRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
-                LaunchNodeFound { node, nodes: _, edges: _ } =>
+                LaunchNodeFound { node, readiness: _ } =>
                   LaunchIdentityBound { identity: LaunchIdentity {
                     node_id: node.node,
                     cause: cause,
@@ -953,8 +977,7 @@ fn launch_decision_facts(
               transition: GateRefused { refusal: refusal },
               revision: GateNotReached,
               node: GateNotReached,
-              contract: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
@@ -968,8 +991,7 @@ fn launch_decision_facts(
               transition: GatePassed,
               revision: GateRefused { refusal: refusal },
               node: GateNotReached,
-              contract: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
@@ -988,23 +1010,21 @@ fn launch_decision_facts(
               transition: launch_gate_transition(transition: transition),
               revision: launch_gate_revision(revision: revision),
               node: GateRefused { refusal: refusal },
-              contract: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
             },
             identity: identity,
           }
-        LaunchNodeFound { node, nodes, edges } =>
+        LaunchNodeFound { node, readiness } =>
           LaunchDecisionFacts {
             ledger: LaunchGateLedger {
               instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
               transition: launch_gate_transition(transition: transition),
               revision: launch_gate_revision(revision: revision),
-              node: launch_gate_node_state(node: node, merged: merged),
-              contract: launch_gate_contract(node: node),
-              dependencies: launch_gate_dependencies(node: node, nodes: nodes, edges: edges),
+              node: GatePassed,
+              readiness: launch_gate_readiness(node: node, readiness: readiness, merged: merged),
               live: launch_gate_live(sessions: sessions, node_id: node_id),
               capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),
               cause: launch_gate_cause(cause: cause, mode: mode),

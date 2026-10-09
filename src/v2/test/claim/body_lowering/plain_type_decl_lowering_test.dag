@@ -1,0 +1,191 @@
+module v2.test.claim.body_lowering.plain_type_decl_lowering
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.symbol_index_fill { symbol_index_declared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes, StructuralLabel }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PLAIN DECLARATION LOWERS TO THE SAME REPRESENTATION A GENERIC ONE DOES (v2.compiler.body_lowering_fold
+// body_lower_eq_type_decl): a coproduct to a Disj member, an alias to the alias wrapper, a bodyless
+// declaration to the opaque wrapper -- the last two carrying an EMPTY binder Conj. Until this was one
+// path, these declarations were returned as their unlowered parse shells and accepted
+// (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2), and infer met grammar
+// tokens where a declaration should stand. Every row reads the REAL assembled tree (lowered, resolved,
+// through tpb_assemble) and asserts the representation positively -- the declared name, its exact
+// alternatives, the alias's right-hand side, the binder count -- because "no grammar tokens" alone is
+// satisfied by deleting the declaration.
+//
+// OUT OF SCOPE, AND NOT CLAIMED: grounding these declarations. v2.compiler.infer's product-introduction
+// rule derives no Disj and keeps a childless Conj (a payloadless variant, an empty binder list) on the
+// frontier, so infer returns these trees PARTIALLY grounded; that is the next capability, owned
+// separately, and nothing here asserts it or suppresses it.
+
+// The target the assembled tree declares under `name`: the first Named edge carrying that label.
+fn ptd_declared_target(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: optional_absent(), f: fn(acc, n) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            fold(n.children, init: optional_absent(), f: fn(a, e) {
+              match a {
+                Present { value: _ } => a
+                Absent =>
+                  match e.label {
+                    StructuralLabel { label: _ } => a
+                    Authored { name: l } => if l == name { optional_present(value: e.target) } else { a }
+                    Positional => a
+                  }
+              }
+            })
+        }
+      })
+  }
+}
+
+fn ptd_named_labels(n: Node) -> List<Symbol> {
+  fold(n.children, init: [], f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => acc
+      Authored { name: l } => concat(acc, [l])
+      Positional => acc
+    }
+  })
+}
+
+fn ptd_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
+}
+
+// WHAT THE ROWS READ FROM ONE ASSEMBLY, AND NOTHING ELSE: the view arm the declared target takes, the
+// Named labels of its member (a coproduct's alternatives), its binder count, whether the symbol index
+// declares members under it, and whether an alias's right-hand side is a resolved atom. ONE NULLARY
+// PRODUCER PER SPECIMEN, published portable (no Node) and WARM in v2.workflow.floor_pure_producer_share:
+// each assembly pays a grammar preparation and a full front end, more than one claim's budget.
+type PtdVerdict
+  = PtdDeclared { view: Symbol, member_kind: Symbol, labels: List<Symbol>, binders: Int, declares_members: Bool, aliased_atom: Bool }
+  | PtdNotDeclared
+
+fn ptd_kind_tag(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Disj } => ^ptd_kind_disj
+    TypeNode { connective: Conj } => ^ptd_kind_conj
+    _ => ^ptd_kind_other
+  }
+}
+
+fn ptd_members_declared(t: Node) -> Bool {
+  match symbol_index_declared(target: t).members {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ptd_verdict_of(o: Outcome<ResolvedTree>, name: Symbol) -> PtdVerdict {
+  match ptd_declared_target(o: o, name: name) {
+    Absent => PtdNotDeclared
+    Present { value: t } =>
+      match type_decl_view(target: t) {
+        PlainTypeDecl { member: m } =>
+          PtdDeclared { view: ^ptd_view_plain, member_kind: ptd_kind_tag(n: m), labels: ptd_named_labels(n: m), binders: 0, declares_members: ptd_members_declared(t: t), aliased_atom: false }
+        TypeAlias { binders: b, aliased: a } =>
+          PtdDeclared {
+            view: ^ptd_view_alias, member_kind: ^ptd_kind_other, labels: [], binders: count(b.children),
+            declares_members: ptd_members_declared(t: t),
+            aliased_atom: match ptd_atom_identity(n: a) { Present { value: _ } => true  Absent => false }
+          }
+        OpaqueTypeDecl { binders: b } =>
+          PtdDeclared { view: ^ptd_view_opaque, member_kind: ^ptd_kind_other, labels: [], binders: count(b.children), declares_members: ptd_members_declared(t: t), aliased_atom: false }
+        GenericTypeDecl { binders: b, member: m } =>
+          PtdDeclared { view: ^ptd_view_generic_member, member_kind: ptd_kind_tag(n: m), labels: ptd_named_labels(n: m), binders: count(b.children), declares_members: ptd_members_declared(t: t), aliased_atom: false }
+      }
+  }
+}
+
+fn ptd_coproduct_verdict() -> PtdVerdict {
+  ptd_verdict_of(o: tpb_assemble(src: "module p\n\ntype Decision = Allowed | Blocked\n"), name: ^Decision)
+}
+
+fn ptd_alias_used_verdict() -> PtdVerdict {
+  ptd_verdict_of(o: tpb_assemble(src: "module p\n\ntype Id = Int\n\nfn keep(x: Id) -> Id { x }\n"), name: ^Id)
+}
+
+fn ptd_alias_of_alias_verdict() -> PtdVerdict {
+  ptd_verdict_of(o: tpb_assemble(src: "module p\n\ntype Id = Int\n\ntype Ref = Id\n"), name: ^Ref)
+}
+
+fn ptd_bodyless_verdict() -> PtdVerdict {
+  ptd_verdict_of(o: tpb_assemble(src: "module p\n\ntype PointerWidth\n"), name: ^PointerWidth)
+}
+
+fn ptd_payload_single_variant_verdict() -> PtdVerdict {
+  ptd_verdict_of(o: tpb_assemble(src: "module p\n\ntype Wrapped = Only { a: Int }\n"), name: ^Wrapped)
+}
+
+// A plain coproduct is a named Disj whose alternatives are exactly the authored ones, in order -- the
+// member representation a generic coproduct's <type-body> carries, with no wrapper because it binds
+// nothing -- and the index descends into it. Fresh names, so a variant resolved through a predeclared
+// roster cannot stand in for it.
+test fn a_plain_coproduct_lowers_to_its_named_alternatives_holds() -> Bool {
+  match ptd_coproduct_verdict() {
+    PtdDeclared { view: v, member_kind: k, labels: ls, binders: _, declares_members: dm, aliased_atom: _ } =>
+      (v == ^ptd_view_plain) && (k == ^ptd_kind_disj) && (ls == [^Allowed, ^Blocked]) && dm
+    PtdNotDeclared => false
+  }
+}
+
+// A plain alias is the alias wrapper with an EMPTY binder list and its right-hand side preserved as a
+// resolved atom, and the alias is usable where a type is expected: the module assembles with
+// `keep(x: Id) -> Id` (an assembly refusal would leave the name undeclared, which is false).
+test fn a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds() -> Bool {
+  match ptd_alias_used_verdict() {
+    PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: _, aliased_atom: at } =>
+      (v == ^ptd_view_alias) && (b == 0) && at
+    PtdNotDeclared => false
+  }
+}
+
+// AN ALIAS DECLARES NO MEMBERS, whatever its binder count: v2.compiler.symbol_index_fill binds the name
+// to the wrapper and does not descend, so the right-hand side's own names never become declarations
+// under the alias. Read on the real lowered alias-of-an-alias, whose right-hand side is itself a
+// declared name.
+test fn a_plain_alias_declares_no_members_holds() -> Bool {
+  match ptd_alias_of_alias_verdict() {
+    PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: dm, aliased_atom: _ } =>
+      (v == ^ptd_view_alias) && (b == 0) && !dm
+    PtdNotDeclared => false
+  }
+}
+
+// A plain bodyless declaration is the OPAQUE wrapper with no binders -- never an empty member, which
+// would assert a record with no fields, and never its parse shell -- and the index declares no member
+// under it.
+test fn a_plain_bodyless_declaration_is_opaque_not_an_empty_record_holds() -> Bool {
+  match ptd_bodyless_verdict() {
+    PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: dm, aliased_atom: _ } =>
+      (v == ^ptd_view_opaque) && (b == 0) && !dm
+    PtdNotDeclared => false
+  }
+}
+
+// A single variant WITH A PAYLOAD is a member, not an alias: the dispatch the generic arm already had
+// (a lowered Conj rides as a member) now serves plain declarations too, so this does not become an
+// alias naming `Only`.
+test fn a_plain_payload_single_variant_stays_a_member_holds() -> Bool {
+  match ptd_payload_single_variant_verdict() {
+    PtdDeclared { view: v, member_kind: _, labels: _, binders: _, declares_members: dm, aliased_atom: _ } =>
+      (v == ^ptd_view_plain) && dm
+    PtdNotDeclared => false
+  }
+}

@@ -1,6 +1,7 @@
 module v2.test.execution.typescript_import_emit_by_execution
 
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_import_canonical_source_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
@@ -39,15 +40,15 @@ fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_surface_import_decl },
+        label: dag_surface_edge_label(edge: ^dag_surface_import_decl),
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_qualified_name },
+        label: dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name),
         target: ts_import_qn_node(segments: segments)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_block },
+        label: dag_surface_edge_label(edge: ^dag_surface_import_decl_block),
         target: ts_import_block_node(names: names)
       }
     ],
@@ -60,11 +61,11 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_surface_import_decl },
+        label: dag_surface_edge_label(edge: ^dag_surface_import_decl),
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_block },
+        label: dag_surface_edge_label(edge: ^dag_surface_import_decl_block),
         target: ts_import_block_node(names: names)
       }
     ],
@@ -135,13 +136,13 @@ fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
 
 fn ts_import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
   bind_outcome(
-    o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
+    o: find_labeled_child(root: carrier, label: dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name)),
     f: fn(qn_node) {
       bind_outcome(
         o: qualified_name_from_node(root: qn_node),
         f: fn(qn) {
           bind_outcome(
-            o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
+            o: find_labeled_child(root: carrier, label: dag_surface_edge_label(edge: ^dag_surface_import_decl_block)),
             f: fn(block) {
               bind_outcome(
                 o: ts_import_name_symbols_from_block(block: block),

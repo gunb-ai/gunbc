@@ -1,0 +1,817 @@
+module v2.compiler.reference_conservation_census
+
+import v2.compiler.tokenize { prepare_lex_rules }
+import std.types { List }
+import v2.std.node { symbol_lexeme }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  filesystem_file_observation,
+  filesystem_listing_observation,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
+  FilesystemListingObservation,
+  FilesystemReadOutcome,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileRead,
+  FilesystemFileSubjectRefused,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  ReferenceConservationReport,
+  reference_conservation_of_read,
+  reference_conservation_report_lines
+}
+import v2.compiler.reference_conservation_admission {
+  ChangedScopeObservedConserved,
+  ChangedScopeConservationObservation,
+  ChangedScopeReadInput,
+  ChangedScopeRow,
+  ChangedScopeObservedDropped,
+  NoBodyLoweringChange,
+  ScopeConserved,
+  ScopeDropped,
+  ScopeMembershipUnreadable,
+  ScopeOutside,
+  changed_scope_observation,
+  changed_scope_observation_conserves,
+  conservation_read_of
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.optional { Absent, Present }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
+import v2.std.integer { integer_int_to_decimal_string }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.text { String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+
+// THE CORPUS ENTRY FOR v2.compiler.reference_conservation: the host reads the file, the pure check
+// does everything else. It is kept out of the check's own module so the check stays a pure
+// function of its read witness, which is what lets the fixture controls exercise the exact code the
+// census runs.
+//
+// ONE PATH LIST PER PROCESS, AND THE LINES ARE THE VALUE. The driver (`gunbc run --function
+// reference_conservation_census_for_paths --arg <csv>`) prints the returned String; a batch is a
+// comma-separated path list sized by the driver so no single process holds the whole corpus. The
+// same shape as v2.lens.complexity_accumulator_copy.corpus_census census_tsv_line_for_path, and for
+// the same recorded reason: a whole-corpus fold in one process is the load this route exists to
+// avoid. An unreadable path is its own line, never an omission.
+
+// WHAT ONE LISTED PATH YIELDED, TYPED. The file is observed through
+// extdeps.filesystem.filesystem_io filesystem_file_observation, which establishes absence from a
+// successful LISTING and never from a failed read (review 71731): a stale pin and an unreadable file
+// call for opposite fixes -- repin, versus find out what is wrong with the environment -- so they
+// are two arms, and the second keeps the host's cause.
+//   SamplePathMissing: the parent directory's listing establishes the file is not there. Only this
+//     arm means the pin is stale.
+//   SamplePathUnreadable: the file is listed but its read failed; the cause is the host's.
+//   SamplePathObservationsDisagree: the listing and the read contradict each other.
+//   SamplePathSubjectRefused: the path does not name a directory entry the listing can be asked about.
+type SamplePathObservation
+  = SamplePathMeasured { report: ReferenceConservationReport }
+  | SamplePathMissing { path: String }
+  | SamplePathUnreadable { path: String, cause: String }
+  | SamplePathObservationsDisagree { path: String, cause: String }
+  | SamplePathSubjectRefused { path: String, cause: String }
+  | SamplePathGrammarUnprepared { path: String }
+
+// A listed path's parent directory and entry name, split at its last `/`, with the parent kept
+// exactly as the path spells it (review 5330814496): an absolute path keeps its root (`/tmp/rc/p.dag`
+// lists `/tmp/rc`, never `tmp/rc`; `/p.dag` lists `/`), and a bare name lists `.`. The listing and
+// the read must name the same file, or the observation answers about a different subject.
+type SamplePathParts {
+  directory: String
+  name: String
+  segments: Int
+}
+
+fn sample_path_parts(path: String) -> SamplePathParts {
+  let walked = fold_list(xs: split(s: path, delimiter: "/"), empty: SamplePathParts { directory: "", name: "", segments: 0 }, cons: fn(acc, part) {
+    if acc.segments == 0 {
+      SamplePathParts { directory: "", name: part, segments: 1 }
+    } else {
+      if acc.segments == 1 {
+        SamplePathParts { directory: acc.name, name: part, segments: 2 }
+      } else {
+        SamplePathParts { directory: acc.directory + "/" + acc.name, name: part, segments: acc.segments + 1 }
+      }
+    }
+  })
+  if walked.segments <= 1 {
+    SamplePathParts { directory: ".", name: walked.name, segments: walked.segments }
+  } else {
+    if walked.directory == "" {
+      SamplePathParts { directory: "/", name: walked.name, segments: walked.segments }
+    } else {
+      walked
+    }
+  }
+}
+
+fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => SamplePathGrammarUnprepared { path: path }
+    Accepted { value: prepared, diagnostics: residue } =>
+      SamplePathMeasured {
+        report: reference_conservation_of_read(
+          read: conservation_read_of(path: path, text: text),
+          lm: dag_language_model(),
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          prepared: prepared,
+          residue: residue
+        )
+      }
+  }
+}
+
+// THE HOST CALLS, AND NOTHING ELSE: list the path's own parent, read the path, and hand both to the
+// pure classification below.
+fn reference_conservation_path_observation(path: String) -> SamplePathObservation {
+  let parts = sample_path_parts(path: path)
+  let listed = Filesystem.List(path: parts.directory)
+  let read = Filesystem.Read(path: path)
+  sample_path_observation_of(
+    path: path,
+    listing: filesystem_listing_observation(directory: parts.directory, success: listed.success, entries: listed.entries, error: listed.error),
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+  )
+}
+
+fn listing_observation_directory(listing: FilesystemListingObservation) -> String {
+  match listing {
+    FilesystemDirectoryListed(l) => l.directory as String
+    FilesystemDirectoryListingRefused { directory: d, error: _ } => d as String
+    FilesystemDirectorySubjectRefused { directory: d, cause: _ } => d
+  }
+}
+
+// THE CLASSIFICATION, PURE. A listing of any directory other than the path's own parent refuses as
+// a subject mismatch rather than being asked about the entry: absence read off the wrong directory
+// would turn an unreadable file into a stale pin and lose the host's cause.
+fn sample_path_observation_of(path: String, listing: FilesystemListingObservation, read: FilesystemReadOutcome) -> SamplePathObservation {
+  let parts = sample_path_parts(path: path)
+  let listed_directory = listing_observation_directory(listing: listing)
+  if listed_directory != parts.directory {
+    SamplePathSubjectRefused { path: path, cause: "the listing is of " + listed_directory + ", not the parent " + parts.directory + " of the path read" }
+  } else {
+    match filesystem_file_observation(listing: listing, name: parts.name, path: path, read: read) {
+      FilesystemFileRead { path: _, content: text } => sample_path_measured(path: path, text: text)
+      FilesystemFileAbsent(_) => SamplePathMissing { path: path }
+      FilesystemFileIndeterminate { cause: c } => SamplePathUnreadable { path: path, cause: c }
+      FilesystemFileObservationsDisagree { path: _, cause: c } => SamplePathObservationsDisagree { path: path, cause: c }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SamplePathSubjectRefused { path: path, cause: c }
+    }
+  }
+}
+
+fn sample_path_observation_text(observation: SamplePathObservation) -> String {
+  match observation {
+    SamplePathMissing { path: p } => "missing " + p + "\n"
+    SamplePathUnreadable { path: p, cause: c } => "unreadable " + p + " " + c + "\n"
+    SamplePathObservationsDisagree { path: p, cause: c } => "observations-disagree " + p + " " + c + "\n"
+    SamplePathSubjectRefused { path: p, cause: c } => "subject-refused " + p + " " + c + "\n"
+    SamplePathGrammarUnprepared { path: p } => "grammar-unprepared " + p + "\n"
+    SamplePathMeasured { report: r } =>
+      fold_list(xs: reference_conservation_report_lines(report: r), empty: "", cons: fn(acc, line) { acc + line + "\n" })
+  }
+}
+
+fn reference_conservation_census_for_path(path: String) -> String {
+  sample_path_observation_text(observation: reference_conservation_path_observation(path: path))
+}
+
+fn reference_conservation_census_for_paths(paths_csv: String) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
+  )
+}
+
+// THE CHANGED-SCOPE ENTRY (MQ-6). The host hands the change's path list (for a PR, the files
+// `git diff --name-only <base>...<head>` names; a deleted path is its own unreadable line) and this
+// reads each one, lets v2.compiler.reference_conservation_admission changed_scope_observation decide
+// which are in the body-lowering scope from their own imports, and renders the typed observation. The
+// first line is the verdict; one line per path follows, and a refused path carries one line per
+// refusal, so the observation is reviewable without re-running it.
+fn changed_scope_read_inputs(paths_csv: String) -> ChangedScopeReadInputs {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: ChangedScopeReadInputs { inputs: Empty, unreadable: Empty },
+    cons: fn(acc, path) {
+      let read = Filesystem.Read(path: path)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: _ } => ChangedScopeReadInputs { inputs: acc.inputs, unreadable: list_snoc_item(xs: acc.unreadable, item: path) }
+        FilesystemReadSucceeded { content: text } =>
+          ChangedScopeReadInputs { inputs: list_snoc_item(xs: acc.inputs, item: ChangedScopeReadInput { path: path, text: text }), unreadable: acc.unreadable }
+      }
+    }
+  )
+}
+
+type ChangedScopeReadInputs {
+  inputs: FreeMonoid<ChangedScopeReadInput>
+  unreadable: FreeMonoid<String>
+}
+
+fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
+  fold_list(
+    xs: rows,
+    empty: "",
+    cons: fn(acc, row) {
+      match row {
+        ScopeOutside { path: p } => acc + "outside " + p + "\n"
+        ScopeMembershipUnreadable { path: p, diagnostics: d } => acc + "membership-unreadable " + p + " " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) + "\n"
+        ScopeConserved { path: p, report: r } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "conserved " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+        ScopeDropped { path: p, report: r, refusals: _ } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "dropped " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+      }
+    }
+  )
+}
+
+fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
+  match observation {
+    NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
+      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+  }
+}
+
+fn changed_scope_observation_rows(observation: ChangedScopeConservationObservation) -> FreeMonoid<ChangedScopeRow> {
+  match observation {
+    NoBodyLoweringChange { rows: r } => r
+    ChangedScopeObservedConserved { rows: r, in_scope: _ } => r
+    ChangedScopeObservedDropped { rows: r, in_scope: _, refused: _ } => r
+  }
+}
+
+// An unreadable path refuses the observation outright: a change's scope that could not be read is not
+// a change that reached no body-lowering module.
+type ChangedScopeRun {
+  conserved: Bool
+  text: String
+}
+
+fn changed_scope_run(paths_csv: String) -> ChangedScopeRun {
+  let read = changed_scope_read_inputs(paths_csv: paths_csv)
+  let observation = changed_scope_observation(inputs: read.inputs)
+  let rows = changed_scope_row_lines(rows: changed_scope_observation_rows(observation: observation))
+  match read.unreadable {
+    Empty => ChangedScopeRun { conserved: changed_scope_observation_conserves(observation: observation), text: changed_scope_verdict_line(observation: observation) + "\n" + rows }
+    Cons { head: _, tail: _ } =>
+      ChangedScopeRun {
+        conserved: false,
+        text: "observation refused-unreadable\n" + fold_list(xs: read.unreadable, empty: "", cons: fn(acc, p) { acc + "unreadable " + p + "\n" }) + rows
+      }
+  }
+}
+
+// The rendered observation, for a reader.
+fn reference_conservation_changed_scope_observation(paths_csv: String) -> String {
+  changed_scope_run(paths_csv: paths_csv).text
+}
+
+// The same observation as a process verdict (`gunbc run --function
+// reference_conservation_changed_scope_observation_exit --arg <csv>`): a refused observation exits non-zero and
+// carries the rendered observation as its reason, so a caller cannot read a refusal as success.
+fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> ProcessExit {
+  let run = changed_scope_run(paths_csv: paths_csv)
+  if run.conserved { ExitSuccess } else { exit_failure(reason: run.text) }
+}
+
+
+// THE PINNED STRATIFIED SAMPLE (XL-2; first pinned at main fec339d561, repinned at the revision
+// reference_conservation_stratified_sample_revision names). The whole-corpus census is about 55
+// CPU-hours on the interpreter, so the drop shapes are first read off this sample. The selection is
+// a rule, not a hand pick, and the rule has one authority: sample_paths_by_rule below. The list is
+// the rule's output at that revision, kept literally so the census re-runs byte-for-byte without
+// reading the object store. reference_conservation_sample_by_rule_at_pin_exit re-derives it at the
+// pinned revision and refuses if the two differ -- but ONLY WHEN THAT INSTRUMENT IS RUN (`gunbc run
+// --function reference_conservation_sample_by_rule_at_pin_exit`): it reads every `.dag` blob at the
+// revision out of the object store, which no hermetic floor claim can do, so no gate executes it.
+// The floor claims in v2.test.claim.namespace_xl0.reference_conservation_census pin the rule's
+// arithmetic on supplied inputs; the list-to-revision pairing is established by the instrument's run
+// recorded with the change that repins, and a repin must run it again. The rule is applied to the PINNED revision, never to the checked-out tree: the sample is
+// a snapshot, and comparing it to a tree that has since grown would only detect change. The
+// 8,000-byte cap bounds the run and biases the sample toward small files; a shape that only appears
+// in large files is not in it, and the full census is what closes that gap. A listed path the tree
+// no longer holds is reported SamplePathMissing (its absence established by a listing, not inferred
+// from a failed read), so a stale pin is visible in the census rather than a smaller population.
+data reference_conservation_stratified_sample_revision: String = "8fcd8e77b898f8188a281be07119fc5e97d09bef"
+
+data reference_conservation_stratified_sample_paths: List<String> = [
+  "dag/examples/blackjack/cards.dag",
+  "dag/examples/blackjack/hand.dag",
+  "dag/examples/blackjack/round.dag",
+  "dag/examples/blackjack/shuffle.dag",
+  "dag/examples/blackjack/simulation.dag",
+  "dag/examples/weather/weather.dag",
+  "dag/extdeps/abi.dag",
+  "dag/extdeps/ampere/mt_collins_product_brief/bmc.dag",
+  "dag/extdeps/astronomy/stellar_classification.dag",
+  "dag/extdeps/bmc/openbmc_message_registry.dag",
+  "dag/extdeps/boot/linux_x86_boot.dag",
+  "dag/extdeps/chassis/types.dag",
+  "dag/extdeps/ci_runner/warpbuild.dag",
+  "dag/extdeps/colo/coresite.dag",
+  "dag/extdeps/colo/sabey.dag",
+  "dag/extdeps/container/oci/linux.dag",
+  "dag/extdeps/cron/schedule_model.dag",
+  "dag/extdeps/docker/docker.dag",
+  "dag/extdeps/editor/vim.dag",
+  "dag/extdeps/firmware/megarac/subject.dag",
+  "dag/extdeps/git/versioning.dag",
+  "dag/extdeps/github/ci.dag",
+  "dag/extdeps/github/org_actions.dag",
+  "dag/extdeps/gpu/machine_shape.dag",
+  "dag/extdeps/iputils/arping.dag",
+  "dag/extdeps/languages/go/emit.dag",
+  "dag/extdeps/languages/llvm_ir/subject.dag",
+  "dag/extdeps/languages/spice/subject.dag",
+  "dag/extdeps/linux/mock_corpus.dag",
+  "dag/extdeps/llm/cli_lifecycle.dag",
+  "dag/extdeps/memory/sk_hynix.dag",
+  "dag/extdeps/network/mcx4621a_acab.dag",
+  "dag/extdeps/ollama/gpu_support.dag",
+  "dag/extdeps/pci/identity.dag",
+  "dag/extdeps/pricing/gitlab_subscription.dag",
+  "dag/extdeps/rack/types.dag",
+  "dag/extdeps/router/verizon_cr1000a.dag",
+  "dag/extdeps/rust/version.dag",
+  "dag/extdeps/shell/credentials.dag",
+  "dag/extdeps/standards/rfc_6979.dag",
+  "dag/extdeps/systemd/systemd_contracts.dag",
+  "dag/extdeps/time/rfc3339.dag",
+  "dag/extdeps/tools/id.dag",
+  "dag/extdeps/tools/tar.dag",
+  "dag/extdeps/units/iec_80000_13.dag",
+  "dag/extdeps/vendor/atlassian.dag",
+  "dag/extdeps/vendor/micron.dag",
+  "dag/extdeps/vendor/tyco_electronics_amp_kk.dag",
+  "dag/gunbc/accelerator_demo/accelerator_demo_eval.dag",
+  "dag/gunbc/auth/access_request.dag",
+  "dag/gunbc/auth/credentials.dag",
+  "dag/gunbc/bare_reference_channel_outcome_seed_growth.dag",
+  "dag/gunbc/bmc/bmc_firmware_transition.dag",
+  "dag/gunbc/cargo_execution_placement.dag",
+  "dag/gunbc/ci/ci_deploy_sudoers.dag",
+  "dag/gunbc/citation/pdf_safe_profile.dag",
+  "dag/gunbc/cli_run_witness_deferral_freeze_scaffold.dag",
+  "dag/gunbc/compile_source_model.dag",
+  "dag/gunbc/declared_import_closure_binding.dag",
+  "dag/gunbc/design/principles.dag",
+  "dag/gunbc/econ/margin_envelope.dag",
+  "dag/gunbc/fabric/fabric_allocation_store_substrate.dag",
+  "dag/gunbc/fabric/fabric_quota.dag",
+  "dag/gunbc/fleet/fleet_converge_timer.dag",
+  "dag/gunbc/fleet/fleet_shell_transport_observation.dag",
+  "dag/gunbc/floor/frame_independent_symbol_seed_growth.dag",
+  "dag/gunbc/gen_one_executable_keep_seed_growth.dag",
+  "dag/gunbc/git_use_census/rust_process_workspace_root.dag",
+  "dag/gunbc/guarantee_stall/algebra_application_owner_resolution_stall.dag",
+  "dag/gunbc/guarantee_stall/doc_graph_dangling_link_population_stall.dag",
+  "dag/gunbc/guarantee_stall/generic_lambda_parameter_receiver_evidence_stall.dag",
+  "dag/gunbc/guarantee_stall/merge_admission_terminal_verdict_stall.dag",
+  "dag/gunbc/guarantee_stall/required_regen_host_derivation_stall.dag",
+  "dag/gunbc/guarantee_stall/variant_owner_identity_stall.dag",
+  "dag/gunbc/host/host_build_cache_provision.dag",
+  "dag/gunbc/host/host_hygiene_liveness_observe.dag",
+  "dag/gunbc/host/host_runner_memory_provision.dag",
+  "dag/gunbc/install_media.dag",
+  "dag/gunbc/instruments/dag_compile_clean_cli_floor_agreement.dag",
+  "dag/gunbc/instruments/direct_rust_door_transport.dag",
+  "dag/gunbc/instruments/infer_semantics_witness_transport.dag",
+  "dag/gunbc/instruments/reference_derived_graph.dag",
+  "dag/gunbc/interpreter_error_location_seed_growth.dag",
+  "dag/gunbc/live_deploy/intent.dag",
+  "dag/gunbc/machine_intake/megarac_pre_os_channel.dag",
+  "dag/gunbc/machine_intake/mtcollins1_handoff_probe.dag",
+  "dag/gunbc/machine_intake/sol_collector_observation.dag",
+  "dag/gunbc/namespace/namespace_structural_observation_bridge_seed_growth.dag",
+  "dag/gunbc/native_witness_transition_receipt.dag",
+  "dag/gunbc/persisted_resolved_graph_consumer_test_seed_growth.dag",
+  "dag/gunbc/plans/affected_set_self_confirmation.dag",
+  "dag/gunbc/plans/resolver_pathology_profile_receipt.dag",
+  "dag/gunbc/product/capacity/event_chain.dag",
+  "dag/gunbc/product/fabric/offer_route.dag",
+  "dag/gunbc/provider_interface_binding.dag",
+  "dag/gunbc/recurring_failure_mode/a_carrier_swap_moves_the_mint_and_strands_the_parser.dag",
+  "dag/gunbc/recurring_failure_mode/a_deconfliction_plan_does_not_enumerate_its_writers.dag",
+  "dag/gunbc/recurring_failure_mode/a_pin_claim_compares_two_copies_while_a_third_drifts.dag",
+  "dag/gunbc/recurring_failure_mode/a_rollback_depends_on_a_credential_that_can_expire_mid_actuation.dag",
+  "dag/gunbc/recurring_failure_mode/absolute_extra_source_root_panics_instead_of_typed_refusal.dag",
+  "dag/gunbc/recurring_failure_mode/an_absent_reading_assigned_an_extent_conclusion.dag",
+  "dag/gunbc/recurring_failure_mode/authority_substitution.dag",
+  "dag/gunbc/recurring_failure_mode/caret_symbol_has_no_lowered_form.dag",
+  "dag/gunbc/recurring_failure_mode/command_not_found_exit_cannot_distinguish_eviction_from_misnaming.dag",
+  "dag/gunbc/recurring_failure_mode/cyclic_alias_head_is_accepted.dag",
+  "dag/gunbc/recurring_failure_mode/derived_artifact_gate_blind_to_its_authority_merge.dag",
+  "dag/gunbc/recurring_failure_mode/else_less_if_statement_has_no_lowered_form.dag",
+  "dag/gunbc/recurring_failure_mode/enforcement_gate_positioned_after_the_effect_it_guards.dag",
+  "dag/gunbc/recurring_failure_mode/extra_source_root_outside_workspace_refuses_annotations_as_unattached.dag",
+  "dag/gunbc/recurring_failure_mode/generic_type_parameter_fixed_only_by_an_untyped_literal.dag",
+  "dag/gunbc/recurring_failure_mode/hedged_benefit_leaves_the_harm_axis_unexamined.dag",
+  "dag/gunbc/recurring_failure_mode/inventory_receipt_cannot_identify_assets.dag",
+  "dag/gunbc/recurring_failure_mode/live_argument_threaded_past_the_arm_that_decides.dag",
+  "dag/gunbc/recurring_failure_mode/match_on_a_call_scrutinee_refused_as_arm_navigation.dag",
+  "dag/gunbc/recurring_failure_mode/module_cited_only_in_annotation_prose.dag",
+  "dag/gunbc/recurring_failure_mode/optional_admitted_where_a_required_value_is_declared.dag",
+  "dag/gunbc/recurring_failure_mode/provider_substituted_action_runtime.dag",
+  "dag/gunbc/recurring_failure_mode/reference_query_answered_before_the_fact_is_earned.dag",
+  "dag/gunbc/recurring_failure_mode/required_floor_runs_at_its_memory_ceiling.dag",
+  "dag/gunbc/recurring_failure_mode/review_summary_inverts_roles_and_affirms_the_join.dag",
+  "dag/gunbc/recurring_failure_mode/shape_predicate_reads_only_the_head_so_a_container_passes_as_its_element.dag",
+  "dag/gunbc/recurring_failure_mode/supervisor_liveness_consumed_as_participation.dag",
+  "dag/gunbc/recurring_failure_mode/transport_defect_repaired_at_one_call_site.dag",
+  "dag/gunbc/recurring_failure_mode/unbound_interpolation_in_service_argv_accepted_until_runtime.dag",
+  "dag/gunbc/recurring_failure_mode/upstream_non_endorsement_consumed_as_physical_prohibition.dag",
+  "dag/gunbc/recurring_failure_mode/witness_oracle_transcribed_from_the_tree_it_measures.dag",
+  "dag/gunbc/repo/repo_self_warning_policy.dag",
+  "dag/gunbc/roadmap/roadmap_acceptance_history_projection.dag",
+  "dag/gunbc/roadmap/roadmap_publish_admission.dag",
+  "dag/gunbc/rung_drop/admit_callers_discarded_on_the_native_route.dag",
+  "dag/gunbc/rung_drop/dashboard_merge_ready_semantic_admissibility.dag",
+  "dag/gunbc/rung_drop/floor_cut_effect_gates.dag",
+  "dag/gunbc/rung_drop/lens_enforcement_censuses.dag",
+  "dag/gunbc/rung_drop/native_lane_closure_walk_unkeyed_membership.dag",
+  "dag/gunbc/rung_drop/roadmap_live_forecast_new_witness_eval_step_cost.dag",
+  "dag/gunbc/rung_drop/sha256_span_program_serialize_new_witness_eval_step_cost.dag",
+  "dag/gunbc/rung_drop/typescript_same_language_round_trip_leaves_off_required_floor.dag",
+  "dag/gunbc/rung_drop_amendment/roster.dag",
+  "dag/gunbc/runner/runner_host_first_boot_receipt.dag",
+  "dag/gunbc/runner/runner_runtime_snapshot.dag",
+  "dag/gunbc/scm/integration.dag",
+  "dag/gunbc/session_admission_policy.dag",
+  "dag/gunbc/site/starlight.dag",
+  "dag/gunbc/spark/remote_step_sequence.dag",
+  "dag/gunbc/srv1_tasks_preapply_observation.dag",
+  "dag/gunbc/srv3/srv3_seeded_install_media_artifact.dag",
+  "dag/gunbc/stage0/stage0_executable_assembly_emit.dag",
+  "dag/gunbc/systemctl_stop_run.dag",
+  "dag/gunbc/tools/cron_tag.dag",
+  "dag/gunbc/unimported_bare_provider_gate_seed_growth.dag",
+  "dag/std/access.dag",
+  "dag/std/contract_identity.dag",
+  "dag/std/fermi.dag",
+  "dag/std/key_relation.dag",
+  "dag/std/nat.dag",
+  "dag/std/rational.dag",
+  "dag/std/stack.dag",
+  "dag/test/claim/accelerator_demo_execution_witness_test.dag",
+  "dag/test/claim/algebra_carrier_roster_witness_test.dag",
+  "dag/test/claim/annotation_erasure_emission_witness_test.dag",
+  "dag/test/claim/asrock_live_probe_witness_test.dag",
+  "dag/test/claim/bmc/bmc_capability_solve_witness_test.dag",
+  "dag/test/claim/board_artifacts_demo_witness_test.dag",
+  "dag/test/claim/busybox_bmc_build_witness_test.dag",
+  "dag/test/claim/census_app_acquisition_refusal_probe_witness_test.dag",
+  "dag/test/claim/ci/ci_floor_measurement_test.dag",
+  "dag/test/claim/cli_run_floor_lens_oracle_witness_test.dag",
+  "dag/test/claim/codex_device_prompt_witness_test.dag",
+  "dag/test/claim/component_dispatch_button_witness_test.dag",
+  "dag/test/claim/cpu_l1_cache_geometry_witness_test.dag",
+  "dag/test/claim/cursor_sdk_model_witness_test.dag",
+  "dag/test/claim/data_row_shared_layer_authority_witness_test.dag",
+  "dag/test/claim/deploy_workflow_retirement_witness_test.dag",
+  "dag/test/claim/doc_graph_reference_partition_witness_test.dag",
+  "dag/test/claim/ebay_listing_witness_test.dag",
+  "dag/test/claim/emit_summary_map_consumer_partition_test.dag",
+  "dag/test/claim/emitter_unprojectable_construct_refuse_witness_test.dag",
+  "dag/test/claim/exec_arg_limit_witness_test.dag",
+  "dag/test/claim/extdeps_version_semver_witness_test.dag",
+  "dag/test/claim/fabric/fci1_bounded_execution_context_emit_witness_test.dag",
+  "dag/test/claim/filesystem_write_closure_scale_witness.dag",
+  "dag/test/claim/fleet/fleet_intent_storage_witness_test.dag",
+  "dag/test/claim/floor/floor_expected_red_coherence_witness_test.dag",
+  "dag/test/claim/fs_box_published_claims_witness_test.dag",
+  "dag/test/claim/githooks_repo_local_git_config_emit_witness_test.dag",
+  "dag/test/claim/grub_console_witness_test.dag",
+  "dag/test/claim/hermetic_mock_fidelity_witness_test.dag",
+  "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag",
+  "dag/test/claim/http_client_get_real_execution_witness_test.dag",
+  "dag/test/claim/input_envelope_admission_test.dag",
+  "dag/test/claim/lambda_receiver_type_witness_test.dag",
+  "dag/test/claim/linux_edac_topology_authority_witness_test.dag",
+  "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
+  "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
+  "dag/test/claim/machine_intake/mtjade1_coverage_frontier_witness_test.dag",
+  "dag/test/claim/markdown_inline_render_test.dag",
+  "dag/test/claim/measure_magnitude_carrier_test.dag",
+  "dag/test/claim/method_arg_declared_contract_witness_test.dag",
+  "dag/test/claim/namespace_import_closure_witness_test.dag",
+  "dag/test/claim/non_fold_residue_witness_test.dag",
+  "dag/test/claim/opaque_census_declaration_scan_witness_test.dag",
+  "dag/test/claim/os_install_actuator_selection_witness_test.dag",
+  "dag/test/claim/plan_lens_witness_test.dag",
+  "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+  "dag/test/claim/random_bytes_csprng_witness_test.dag",
+  "dag/test/claim/reconstruction_door_rest_probe.dag",
+  "dag/test/claim/render_repeat_string_witness_test.dag",
+  "dag/test/claim/resolved_call_emission_identity_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_altitude_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_identity_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag",
+  "dag/test/claim/runner/runner_group_restriction_observation_witness_test.dag",
+  "dag/test/claim/runner/runner_slot_installation_state_witness_test.dag",
+  "dag/test/claim/sccache_local_content_verified_on_read_test.dag",
+  "dag/test/claim/sec_edgar_witness_test.dag",
+  "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag",
+  "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag",
+  "dag/test/claim/service_effect_expansion_budget_witness_test.dag",
+  "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+  "dag/test/claim/spark/pair_incumbent_identity_wet_witness_test.dag",
+  "dag/test/claim/spark/spark_pair_serving_apply_witness_test.dag",
+  "dag/test/claim/srv3/srv3_bmc_credential_resolve_witness_test.dag",
+  "dag/test/claim/srv3/srv3_runner_memory_converge_witness_test.dag",
+  "dag/test/claim/stage0_rust_lifecycle_totality_witness_test.dag",
+  "dag/test/claim/systemctl_status_read_scaffold_witness_test.dag",
+  "dag/test/claim/time_scale_factor_derivation_test.dag",
+  "dag/test/claim/uefi_boot_config_witness_test.dag",
+  "dag/test/claim/v1_dag_parse_witness_test.dag",
+  "dag/test/claim/wet_hermetic_equivalence_witness_test.dag",
+  "dag/test/ctl/neg_field.dag",
+  "dag/test/fixture/decl_fact_value_projection/specimens.dag",
+  "dag/test/fixture/dissolution_live_discriminator/subject.dag",
+  "dag/test/fixture/emitted_closure_partition/mutated/right.dag",
+  "dag/test/fixture/evaluation_store_address_zero_candidate_plant_home/digest.dag",
+  "dag/test/fixture/import_binding_probe/open_field.dag",
+  "dag/test/fixture/module_graph_edge_source/consumer_imported.dag",
+  "dag/test/fixture/qualspell_provider.dag",
+  "dag/test/fixture/reference_derived_graph/consumer_import_only.dag",
+  "dag/test/fixture/scaffold_disposition_census/pool/decoy_nullary.dag",
+  "dag/test/fixture/unit_variant_binding/second_provider.dag",
+  "dag/test/probe/data_effect_permit_forged_probe.dag",
+  "src/v2/compiler/03_body_producer.dag",
+  "src/v2/compiler/build_workspace_grant.dag",
+  "src/v2/compiler/inferred_tree.dag",
+  "src/v2/compiler/parse_diagnostic.dag",
+  "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag",
+  "src/v2/compiler/self_host/seed_emitter_behavioral_wet_module_bindings.dag",
+  "src/v2/extdeps/bmc/lifecycle_fidelity.dag",
+  "src/v2/extdeps/formats/icestorm_pcf.dag",
+  "src/v2/extdeps/formatters/google_java_format.dag",
+  "src/v2/extdeps/github/diagnostic_emit.dag",
+  "src/v2/extdeps/languages/c_bool_literal_emit.dag",
+  "src/v2/extdeps/languages/rust_sg2_mode2_fixtures.dag",
+  "src/v2/lens/affected_set/entry_selection.dag",
+  "src/v2/lens/complexity_accumulator_copy/compile_gate.dag",
+  "src/v2/lens/doc_reachability.dag",
+  "src/v2/lens/grounding_ledger.dag",
+  "src/v2/lens/mandatory_tag/corpus_scan.dag",
+  "src/v2/lens/simulated_relationship.dag",
+  "src/v2/native_lane_fixture/control.dag",
+  "src/v2/std/anonymous_binder.dag",
+  "src/v2/std/cross_tree/import_model.dag",
+  "src/v2/std/execution_surface.dag",
+  "src/v2/std/live_read.dag",
+  "src/v2/std/occurrence_id.dag",
+  "src/v2/std/report.dag",
+  "src/v2/test/algebra_laws/field_patch_monoid_test.dag",
+  "src/v2/test/claim/body_lowering/match_as_field_name_test.dag",
+  "src/v2/test/claim/build_artifact_verification_witness_test.dag",
+  "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+  "src/v2/test/claim/cross_tree_import_model_test.dag",
+  "src/v2/test/claim/emit/produced_decl_two_target_test.dag",
+  "src/v2/test/claim/emit/semantic_decl_all_lex_parity_test.dag",
+  "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+  "src/v2/test/claim/execution/emit_host_transport_wire_test.dag",
+  "src/v2/test/claim/execution/typescript_closure_emit_by_execution_test.dag",
+  "src/v2/test/claim/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
+  "src/v2/test/claim/fact_cardinality/lens_unit/synthetic_unified_green_test.dag",
+  "src/v2/test/claim/gpt_oss_120b_resolution_test.dag",
+  "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag",
+  "src/v2/test/claim/languages_consumer_census/corpus/rust_statements_composition_only_test.dag",
+  "src/v2/test/claim/long/dag_import_block_lexeme_stamp_test.dag",
+  "src/v2/test/claim/long/native_routing_membership_receipt_test.dag",
+  "src/v2/test/claim/long/syntactic_audit_witness_test.dag",
+  "src/v2/test/claim/manual/body_lowering_infix_test.dag",
+  "src/v2/test/claim/manual/cross_language_add_python_to_typescript_test.dag",
+  "src/v2/test/claim/manual/fold_node_topdown.dag",
+  "src/v2/test/claim/manual/language_model_dissolution_test.dag",
+  "src/v2/test/claim/manual/nominal_distinctness_cross_call_test.dag",
+  "src/v2/test/claim/manual/rust_grammar_structure.dag",
+  "src/v2/test/claim/manual/typescript_bind_let_iife_emit_test.dag",
+  "src/v2/test/claim/manual/verilog_concurrency_anchor.dag",
+  "src/v2/test/claim/namespace_graft/zero_metadata_test.dag",
+  "src/v2/test/claim/parse/parse_token_first_empty_semantics_test.dag",
+  "src/v2/test/claim/qualified_name/from_module_node.dag",
+  "src/v2/test/claim/round_trip/source_authority_contract.dag",
+  "src/v2/test/claim/self_host/native_agreement_test.dag",
+  "src/v2/test/claim/spine/spine_receipt_witness_test.dag",
+  "src/v2/test/claim/translate/declaration_reference_form_test.dag",
+  "src/v2/test/extdeps_react/structural_receipts_test.dag",
+  "src/v2/test/fixture/extdeps_external_authority/missing_anchor/plant.dag",
+  "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag",
+  "src/v2/test/lens_application/apply_lens_introspect_rejection_is_advisory_test.dag",
+  "src/v2/test/lens_complexity_lowering/loop_invariant_hoist_test.dag",
+  "src/v2/test/lens_coverage/near_miss_vacuous_not_parallel_test.dag",
+  "src/v2/test/lens_idempotency/write_effect_test.dag",
+  "src/v2/test/lens_non_fold_residue/non_fold_residue_test.dag",
+  "src/v2/test/lens_synthesis/synthesis_no_technique_diagnostic_test.dag",
+  "src/v2/test/lens_visibility/visibility_test.dag",
+  "src/v2/test/runtimes/effect_io_host_mode_test.dag",
+  "src/v2/workflow/bash_emit.dag",
+  "src/v2/workflow/ci_release_build_emit.dag",
+  "src/v2/workflow/compiler_closure_ingest_transport.dag",
+  "src/v2/workflow/floor_enrolment_dead_band.dag",
+  "src/v2/workflow/module_binding_supply_transport.dag",
+  "src/v2/workflow/phase_profile_proof_plan.dag"
+]
+
+fn reference_conservation_stratified_sample_census() -> String {
+  fold_list(
+    xs: reference_conservation_stratified_sample_paths,
+    empty: "",
+    cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
+  )
+}
+
+// ---- the sampling rule, the one authority for the pinned list ------------------------------------
+
+// One `.dag` file the rule may select: its path, and whether it is at most the 8,000-byte cap.
+type SampleFile {
+  path: String
+  within_cap: Bool
+}
+
+data sample_rule_byte_cap: Int = 8000
+data sample_rule_target: Int = 300
+data sample_rule_stratum_floor: Int = 6
+
+// UTF-8 never takes fewer bytes than code points, so text of more code points than the cap is over
+// it without being encoded; only text at or under the cap in code points has its bytes counted.
+fn sample_file_within_cap(content: String) -> Bool {
+  if string_length(s: content) > sample_rule_byte_cap {
+    false
+  } else {
+    length(xs: bytes_octets(b: utf8_encode_bytes(s: content))) <= sample_rule_byte_cap
+  }
+}
+
+// A file's stratum: its first two path segments under dag/, its first three under src/v2/.
+fn sample_stratum(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let depth = if starts_with(s: path, prefix: "dag/") { 2 } else { 3 }
+  fold_list(xs: segments, empty: SampleStratumAcc { taken: 0, text: "" }, cons: fn(acc, seg) {
+    if acc.taken >= depth {
+      acc
+    } else {
+      if acc.taken == 0 {
+        SampleStratumAcc { taken: 1, text: seg }
+      } else {
+        SampleStratumAcc { taken: acc.taken + 1, text: acc.text + "/" + seg }
+      }
+    }
+  }).text
+}
+
+type SampleStratumAcc {
+  taken: Int
+  text: String
+}
+
+// round(q / d) with ties to even, in integers (d > 0, q >= 0).
+fn sample_round_half_even(q: Int, d: Int) -> Int {
+  let f = q / d
+  let twice_rem = 2 * (q - f * d)
+  if twice_rem > d {
+    f + 1
+  } else {
+    if twice_rem == d {
+      if f % 2 == 1 { f + 1 } else { f }
+    } else {
+      f
+    }
+  }
+}
+
+// A stratum's quota: max(6, round(300 * share)), at most the files it can take from.
+fn sample_stratum_quota(stratum_count: Int, total: Int, small_count: Int) -> Int {
+  let rounded = sample_round_half_even(q: sample_rule_target * stratum_count, d: total)
+  let wanted = if rounded < sample_rule_stratum_floor { sample_rule_stratum_floor } else { rounded }
+  if wanted > small_count { small_count } else { wanted }
+}
+
+type SampleTakeAcc {
+  index: Int
+  next: Int
+  taken: FreeMonoid<String>
+}
+
+// The small files at indices floor(i * n / k), i in 0..k-1, in one ordered walk: the targets are
+// strictly increasing, so each element is compared with the next target only.
+fn sample_stratum_take(small: FreeMonoid<String>, quota: Int) -> FreeMonoid<String> {
+  let n = length(xs: small)
+  fold_list(xs: small, empty: SampleTakeAcc { index: 0, next: 0, taken: Empty }, cons: fn(acc, path) {
+    if acc.next < quota && acc.index == (acc.next * n) / quota {
+      SampleTakeAcc { index: acc.index + 1, next: acc.next + 1, taken: list_snoc_item(xs: acc.taken, item: path) }
+    } else {
+      SampleTakeAcc { index: acc.index + 1, next: acc.next, taken: acc.taken }
+    }
+  }).taken
+}
+
+type SampleRuleAcc {
+  stratum: String
+  count: Int
+  small: FreeMonoid<String>
+  selected: FreeMonoid<String>
+}
+
+fn sample_rule_flush(acc: SampleRuleAcc, total: Int) -> FreeMonoid<String> {
+  if acc.count == 0 {
+    acc.selected
+  } else {
+    fold_list(
+      xs: sample_stratum_take(small: acc.small, quota: sample_stratum_quota(stratum_count: acc.count, total: total, small_count: length(xs: acc.small))),
+      empty: acc.selected,
+      cons: fn(out, path) { list_snoc_item(xs: out, item: path) }
+    )
+  }
+}
+
+// The `.dag` suffix is read with the builtin substring: the bare name ends_with also names a corpus
+// function (gunbc.rust_item_scan), so the floor's import hygiene refuses it unimported here.
+fn sample_file_in_rule_roots(path: String) -> Bool {
+  let n = string_length(s: path)
+  n > 4 && substring(s: path, start: n - 4, end: n) == ".dag" && (starts_with(s: path, prefix: "dag/") || starts_with(s: path, prefix: "src/v2/"))
+}
+
+// THE RULE. Sorting by path makes every stratum one contiguous run -- a stratum's paths share a
+// prefix ending at a segment boundary, so no other path sorts between two of them -- and one pass
+// then groups them. The output is in path order.
+fn sample_paths_by_rule(files: FreeMonoid<SampleFile>) -> FreeMonoid<String> {
+  let in_roots = sort_by(filter(files, f => sample_file_in_rule_roots(path: f.path)), f => f.path)
+  let total = length(xs: in_roots)
+  let last = fold_list(xs: in_roots, empty: SampleRuleAcc { stratum: "", count: 0, small: Empty, selected: Empty }, cons: fn(acc, f) {
+    let st = sample_stratum(path: f.path)
+    let current = if acc.count > 0 && st == acc.stratum {
+      acc
+    } else {
+      SampleRuleAcc { stratum: st, count: 0, small: Empty, selected: sample_rule_flush(acc: acc, total: total) }
+    }
+    SampleRuleAcc {
+      stratum: current.stratum,
+      count: current.count + 1,
+      small: if f.within_cap { list_snoc_item(xs: current.small, item: f.path) } else { current.small },
+      selected: current.selected
+    }
+  })
+  sample_rule_flush(acc: last, total: total)
+}
+
+// THE PAIRING CHECK, run as an instrument (`gunbc run --function
+// reference_conservation_sample_by_rule_at_pin_exit`): read the tree at the pinned revision out of
+// the object store, apply the rule, and refuse unless the result is the pinned list exactly.
+fn reference_conservation_sample_by_rule_at(ref: String) -> SampleRuleAtRevision {
+  match collect_step0_subject_vector_at(ref: ref) {
+    Step0SubjectCollectionRefused { cause: _ } => SampleRuleRevisionUnreadable { ref: ref }
+    Step0SubjectCollected { vector: vector } =>
+      SampleRuleApplied {
+        selected: sample_paths_by_rule(files: fold(vector.members, init: Empty, f: fn(acc, m) {
+          list_snoc_item(xs: acc, item: SampleFile { path: m.path as String, within_cap: sample_file_within_cap(content: m.content) })
+        }))
+      }
+  }
+}
+
+type SampleRuleAtRevision
+  = SampleRuleApplied { selected: FreeMonoid<String> }
+  | SampleRuleRevisionUnreadable { ref: String }
+
+fn sample_paths_not_in(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> FreeMonoid<String> {
+  let present = fold_list(xs: ys, empty: empty_map(), cons: fn(m, y) { map_insert(m: m, key: y, value: true) })
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, x) {
+    match map_lookup(m: present, key: x) {
+      Present { value: _ } => acc
+      Absent => list_snoc_item(xs: acc, item: x)
+    }
+  })
+}
+
+fn reference_conservation_sample_by_rule_at_pin_exit() -> ProcessExit {
+  match reference_conservation_sample_by_rule_at(ref: reference_conservation_stratified_sample_revision) {
+    SampleRuleRevisionUnreadable { ref: r } => exit_failure(reason: "the pinned revision " + r + " could not be read from the object store")
+    SampleRuleApplied { selected: derived } =>
+      let pinned = sort_by(reference_conservation_stratified_sample_paths, p => p)
+      let missing = sample_paths_not_in(xs: derived, ys: pinned)
+      let extra = sample_paths_not_in(xs: pinned, ys: derived)
+      if length(xs: missing) == 0 && length(xs: extra) == 0 && length(xs: derived) == length(xs: pinned) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + integer_int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + integer_int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + integer_int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + integer_int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
+      }
+  }
+}

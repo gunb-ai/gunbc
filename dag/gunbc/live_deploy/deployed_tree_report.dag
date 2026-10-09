@@ -14,7 +14,7 @@ import gunbc.fleet_ssh_locus {
   fleet_locus_ssh_target,
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_desired_observe {
   observe_fleet_desired_revision,
   converge_target_revision,
@@ -120,7 +120,6 @@ fn deployed_tree_report_for_context(
   context: FleetSshExecutionContext,
   context_receipt: String,
 ) -> ProcessExit
-  uses net: Network
 {
   match converge_target_revision(
     observed: observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
@@ -147,7 +146,6 @@ fn deployed_tree_report_for_context(
 }
 
 fn deployed_tree_report_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
     FleetSshContextRefused { cause: c } =>

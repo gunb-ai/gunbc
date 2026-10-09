@@ -677,20 +677,3 @@ test fn scm_stg_a_committed_repository_reads_back_clean() -> Bool {
   }
   }
 }
-
-test fn scm_staging_witness_suite() -> Bool {
-  scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() &&
-  scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() &&
-  scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference() &&
-  scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() &&
-  scm_stg_a_candidate_over_no_history_stands_with_no_base() &&
-  scm_stg_an_edit_after_a_commit_differs_from_its_base() &&
-  scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() &&
-  scm_stg_an_empty_file_stages_as_itself() &&
-  scm_stg_a_checkout_that_would_discard_staged_work_refuses() &&
-  scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() &&
-  scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() &&
-  scm_stg_a_staged_candidate_survives_a_document_round_trip() &&
-  scm_stg_an_absent_candidate_survives_as_absent() &&
-  scm_stg_a_committed_repository_reads_back_clean()
-}

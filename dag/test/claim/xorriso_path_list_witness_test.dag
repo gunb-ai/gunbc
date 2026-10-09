@@ -1,0 +1,99 @@
+module test.claim.xorriso_path_list_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.xorriso {
+  XorrisoPathListCommand, XorrisoChownRecursive, XorrisoChgrpRecursive, XorrisoChmod,
+  xorriso_path_list_words, xorriso_replay_build_pinned_dates_command, xorriso_list_long_command,
+}
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_attribute_pins, install_media_remaster_seed_directory_levels }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SILENT-DROP CLASS THIS TYPE CLOSES: xorriso's path-list commands run until `--`, so a pin
+// spelled without it swallows the rest of the argv, -commit included, and xorriso writes no image and
+// reports nothing (measured 2026-09-29). There is no way to spell a path-list command except
+// XorrisoPathListCommand, and its words always end with the terminator; these claims read the words.
+
+fn last_word(words: List<String>) -> String {
+  match first(words.skip(n: count(words) - 1)) {
+    Absent => ""
+    Present { value: w } => w
+  }
+}
+
+fn count_word(words: List<String>, w: String) -> Int {
+  count(flat_map(words, x => if x == w { [x] } else { [] }))
+}
+
+test fn every_path_list_verb_ends_with_the_terminator() -> Bool {
+  let chown = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: 0 }, first_path: "/a", more_paths: ["/b"] })
+  let chgrp = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChgrpRecursive { gid: 0 }, first_path: "/a", more_paths: [] })
+  let chmod = xorriso_path_list_words(command: XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: "0644" }, first_path: "/a", more_paths: ["/b", "/c"] })
+  chown == ["-chown_r", "0", "/a", "/b", "--"]
+    && chgrp == ["-chgrp_r", "0", "/a", "--"]
+    && chmod == ["-chmod", "0644", "/a", "/b", "/c", "--"]
+}
+
+// THE REPLAY WITH PINS: each pin closed, the date commands after the pins, -commit last.
+test fn the_replay_with_pins_keeps_commit_last_and_closes_every_pin() -> Bool {
+  let pins = [
+    XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: 0 }, first_path: "/seed", more_paths: ["/boot/grub/grub.cfg"] },
+    XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: "0755" }, first_path: "/seed", more_paths: [] },
+  ]
+  let words = argv_words(command: xorriso_replay_build_pinned_dates_command(
+    stock_iso_path: "/s.iso", output_path: "/o.iso", volume_id: "V", volume_uuid: "2025080615525000", file_date: "2025.08.06.155250",
+    map_one_source: "/w/seed", map_one_iso_path: "/seed", map_two_source: "/w/grub.cfg", map_two_iso_path: "/boot/grub/grub.cfg",
+    attribute_pins: pins,
+  ))
+  last_word(words: words) == "-commit"
+    && count_word(words: words, w: "--") == 2
+    && count_word(words: words, w: "-commit") == 1
+    && count_word(words: words, w: "-volume_date") == 2
+}
+
+test fn the_long_listing_is_closed_too() -> Bool {
+  last_word(words: argv_words(command: xorriso_list_long_command(iso_path: "/s.iso", first_path: "/gunbc-census", more_paths: ["/boot/grub/grub.cfg"]))) == "--"
+}
+
+// THE CENSUS PINS NAME THE MAPPED MEMBERS: owner and group over the seed dir and grub.cfg, 0644 on each
+// seed file and grub.cfg, 0755 on the seed dir.
+test fn the_census_pins_cover_every_mapped_member() -> Bool {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => false
+    Mtcollins1CensusImageDerived { input: i } => {
+      let words = flat_map(install_media_remaster_attribute_pins(input: i), p => xorriso_path_list_words(command: p))
+      words == [
+        "-chown_r", "0", "/gunbc-census", "/boot/grub/grub.cfg", "--",
+        "-chgrp_r", "0", "/gunbc-census", "/boot/grub/grub.cfg", "--",
+        "-chmod", "0644", "/boot/grub/grub.cfg", "/gunbc-census/user-data", "/gunbc-census/meta-data", "/gunbc-census/capture.sh", "--",
+        "-chmod", "0755", "/gunbc-census", "--",
+      ]
+    }
+  }
+}
+
+// A NESTED seed dir (srv3's nocloud/<host>): owner and group are pinned from the topmost level -map
+// creates (/nocloud, which would otherwise carry the build user), and every level gets a mode.
+test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level() -> Bool {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => false
+    Mtcollins1CensusImageDerived { input: i } => {
+      let nested = UbuntuSeededInstallMediaBuildInput {
+        stock_artifact: i.stock_artifact, nocloud_dir_on_iso: "nocloud/srv3", user_data_body: i.user_data_body, seed_files: [],
+        grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision,
+      }
+      install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: "nocloud/srv3") == ["/nocloud", "/nocloud/srv3"]
+        && flat_map(install_media_remaster_attribute_pins(input: nested), p => xorriso_path_list_words(command: p)) == [
+          "-chown_r", "0", "/nocloud", "/boot/grub/grub.cfg", "--",
+          "-chgrp_r", "0", "/nocloud", "/boot/grub/grub.cfg", "--",
+          "-chmod", "0644", "/boot/grub/grub.cfg", "/nocloud/srv3/user-data", "/nocloud/srv3/meta-data", "--",
+          "-chmod", "0755", "/nocloud", "/nocloud/srv3", "--",
+        ]
+    }
+  }
+}

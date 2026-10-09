@@ -16,11 +16,11 @@ import std.materialization_provider {
   ResolvedGraphArtifact,
   ProviderProbe,
   ProbeAbsent,
-  ProbeFound,
   ProviderMiss,
   ProviderRefusedWrongArtifact,
   artifact_content_digest,
   request_key,
+  in_process_materialization,
 }
 import v2.workflow.floor_discovery {
   FloorDiscoverySubject,
@@ -144,12 +144,14 @@ fn artifact_for(entry: PreparedFloorEntryRequest) -> MaterializedArtifact {
 
 fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
   let artifact = artifact_for(entry: entry)
+  let req = prepared_floor_entry_artifact_request(discovery: discovery_request(), entry: entry)
   PreparedFloorEntryProbe {
     witness: entry.witness,
-    probe: ProbeFound {
+    probe: in_process_materialization(
+      req: req,
       artifact: artifact,
-      observed_digest: artifact_content_digest(artifact: artifact),
-    }
+      observed_digest: artifact_content_digest(artifact: artifact)
+    )
   }
 }
 
@@ -200,10 +202,11 @@ test fn wrong_artifact_key_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [PreparedFloorEntryProbe {
       witness: witness_a(),
-      probe: ProbeFound {
+      probe: in_process_materialization(
+        req: prepared_floor_entry_artifact_request(discovery: discovery_request(), entry: entry_a()),
         artifact: wrong,
-        observed_digest: artifact_content_digest(artifact: wrong),
-      }
+        observed_digest: artifact_content_digest(artifact: wrong)
+      )
     }],
   ) {
     PreparedFloorSubjectRefused {
@@ -263,15 +266,4 @@ test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool {
     )
   )
   canonical.artifact_set_identity.digest != changed.artifact_set_identity.digest
-}
-
-test fn all_floor_preparation_controls_hold() -> Bool {
-  exact_prepared_artifact_set_serves()
-    && missing_prepared_identity_refuses()
-    && absent_artifact_is_typed_miss_without_cold_fallback()
-    && wrong_artifact_key_refuses()
-    && duplicate_selected_identity_refuses()
-    && duplicate_probe_identity_refuses()
-    && unexpected_probe_identity_refuses()
-    && changed_closure_changes_prepared_artifact_set_identity()
 }

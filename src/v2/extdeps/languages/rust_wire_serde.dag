@@ -63,20 +63,19 @@ data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden
 
 data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
 
-data rust_wire_serde_review_event_emitted: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge {
-      label: Positional,
-      target: Node {
-        kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
-        children: [],
-        occurrence_id: OccurrenceSynthetic
-      }
-    }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data rust_wire_serde_review_event_emitted: Node = anonymous_signature_arrow(
+  domain_types: [],
+  codomain: Node {
+    kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  },
+  source: Node {
+    kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+)
 
 fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToken> {
   [
@@ -88,7 +87,7 @@ fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToke
 fn rust_ws_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
@@ -108,7 +107,8 @@ fn rust_ws_lex_rules() -> LexRuleSet {
         token_class: ^rust_ws_token_enum_review_event_body,
         text: rust_ws_review_event_body_golden
       )
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -211,43 +211,11 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
   }
 }
 
-fn rust_ws_serialize_source_prefix_edges(naming: VariantNaming) -> List<Edge> {
-  [
-    v2.extdeps.languages.rust.rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_ws_source_literal)
-    ),
-    v2.extdeps.languages.rust.rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_ws_production_string_variant_enum)
-    ),
-    v2.extdeps.languages.rust.rust_named_edge(
-      name: ^grammar_relation_field_tokens,
-      target: grammar_relation_tokens_node(
-        tokens: rust_ws_review_event_tokens(naming: naming),
-        token_to_node: rust_concrete_token_node
-      )
-    )
-  ]
-}
-
-fn rust_ws_serialize_source_node(naming: VariantNaming) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: rust_ws_serialize_source_prefix_edges(naming: naming),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
   [
     v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_ws_translation_rules_node(naming: naming)
-    ),
-    v2.extdeps.languages.rust.rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_ws_serialize_source_node(naming: naming)
     ),
     v2.extdeps.languages.rust.rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,

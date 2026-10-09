@@ -17,13 +17,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// A TAGGED dhcp-boot CARRIES AT LEAST ONE TAG BY CONSTRUCTION (first_tag): an untagged dhcp-boot
+// applies to every client on the segment, so an empty tag list would silently invert a restricted
+// boot line into a permissive one.
 type DnsmasqDirective =
     DnsmasqComment { text: String }
   | DnsmasqPort { value: Int }
   | DnsmasqDhcpRangeProxy { network_address: String }
   | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
-  | DnsmasqDhcpBootTag { tag: String, target: String }
+  | DnsmasqDhcpHostSetTag { mac: String, tag: String }
+  | DnsmasqDhcpBootTags { first_tag: String, more_tags: List<String>, target: String, server_name: String, server_address: String }
+  | DnsmasqLogDhcp
+  | DnsmasqEnableTftp
+  | DnsmasqTftpRoot { path: String }
 
 data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -36,8 +43,17 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
       concat(concat(concat("dhcp-match=set:", tag), concat(",", option)), concat(",", value))
     DnsmasqDhcpOptionForceTag { tag: tag, option: option, value: value } =>
       concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
-    DnsmasqDhcpBootTag { tag: tag, target: target } =>
-      concat(concat("dhcp-boot=tag:", tag), concat(",", target))
+    DnsmasqDhcpHostSetTag { mac: mac, tag: tag } =>
+      concat(concat("dhcp-host=", mac), concat(",set:", tag))
+    DnsmasqDhcpBootTags { first_tag: first, more_tags: more, target: target, server_name: name, server_address: address } =>
+      join([
+        "dhcp-boot=tag:", first, ",",
+        fold(more, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ","))),
+        target, ",", name, ",", address,
+      ], "")
+    DnsmasqLogDhcp => "log-dhcp"
+    DnsmasqEnableTftp => "enable-tftp"
+    DnsmasqTftpRoot { path: path } => concat("tftp-root=", path)
   }
 }
 

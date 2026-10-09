@@ -1,5 +1,21 @@
 module v2.test.claim.body_lowering.statement_let_bind
 
+import v2.compiler.reference_conservation_admission {
+  ExplainedDrop,
+  StatementLetBinder,
+  conservation_subject_of_text,
+  conserved_normalize,
+  no_explained_drops
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.std.type_binder { type_annotation_optional }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
+import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes, StructuralLabel }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants
@@ -20,20 +36,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
 // retire when the capability lands; it is the standing control that the capability stayed honest.
 
-fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^statement_let_bind_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
-  }
+// A statement-form let's binder -- and, when it has one, its type annotation -- is lost by
+// lowering today, pinned by
+// v2.test.claim.namespace_xl0.reference_conservation a_statement_let_binder_is_reported_dropped_holds.
+fn let_binder_lost_at(start: Int, end: Int) -> ExplainedDrop {
+  ExplainedDrop { start: start, end: end, shape: StatementLetBinder }
 }
 
 data statement_let_then_reference_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
@@ -55,26 +62,158 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
 test fn statement_let_then_reference_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_then_reference_source) == "ACCEPTED"
+  match conserved_normalize(subject: let_then_reference_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn statement_let_chain_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_chain_source) == "ACCEPTED"
+  match conserved_normalize(subject: let_chain_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 45, end: 46), tail: Empty } }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
-  normalize_outcome(src: unbound_statement_prefix_source)
-    == "body_lowering_reason_statement_precedes_without_binding"
+  match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 test fn single_statement_body_unchanged_holds() -> Bool {
-  normalize_outcome(src: single_statement_source) == "ACCEPTED"
+  match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-test fn let_in_form_unchanged_holds() -> Bool {
-  normalize_outcome(src: let_in_form_source) == "ACCEPTED"
+// THE `in` FORM REFUSES AT THE PARSE, BY NAME, AT THE `in`. `let x = e in body` was dropped
+// (statement `let` only; v2.extdeps.languages.dag dag_grammar_let_in_refusal_expr), so this source
+// is refused as parse_let_in_expression_dropped located at the `in` (bytes 39..41), never as tokens
+// left over and never lowered.
+test fn let_in_form_refuses_at_the_in_holds() -> Bool {
+  match let_in_form_subject().parsed {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "parse_let_in_expression_dropped" && let_in_locus_starts_at(at: ds.head.at, start: 39)
+  }
 }
 
-test fn typed_statement_let_lowers_holds() -> Bool {
-  normalize_outcome(src: typed_statement_let_source) == "ACCEPTED"
+fn let_in_locus_starts_at(at: Locus, start: Int) -> Bool {
+  match at {
+    SourcePortLocus { anchor: _, file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
+    Textual { file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
+    NodeLocus { anchor: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
+  }
 }
+
+fn let_in_extent_starts_at(extent: Extent, start: Int) -> Bool {
+  match extent {
+    ByteRange { start: s, end: _ } => s == start
+    WholeFile => false
+  }
+}
+
+// A STATEMENT LET'S VALUE IS THE LITERAL, NOT ITS TOKEN CLASS. `let x = 1` binds its value through
+// the first-atom fallback as the int-literal atom -- identity dag_token_int_literal, its magnitude
+// carried as a child edge (v2.extdeps.languages.dag dag_int_literal_magnitude_node_optional). A
+// keyword guard that asked "is this atom a lexer token" refused it (gunbc#12248, fixed to ask "is
+// it a keyword"); a reader that kept the class atom but dropped its magnitude would erase the `1`.
+// This row asserts both halves on the real normalize route: the Bind's value is an int-literal atom
+// and it carries a magnitude.
+fn let_bind_values_with_magnitude() -> List<Bool> {
+  match let_then_reference_subject().normalized {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, n) {
+        match n.kind {
+          ComputationNode { behavior: Bind } =>
+            match positional_target_at(n: n, index: 1) {
+              Present { value: v } =>
+                concat(acc, [dag_node_is_int_literal_atom(node: v) && match dag_int_literal_magnitude_node_optional(node: v) {
+                  Present { value: _ } => true
+                  Absent => false
+                }])
+              Absent => concat(acc, [false])
+            }
+          _ => acc
+        }
+      })
+  }
+}
+
+fn positional_target_at(n: Node, index: Int) -> Optional<Node> {
+  fold(n.children, init: LetPositionalScan { at: 0, found: optional_absent() }, f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => acc
+      Positional =>
+        if acc.at == index {
+          LetPositionalScan { at: acc.at + 1, found: optional_present(value: e.target) }
+        } else {
+          LetPositionalScan { at: acc.at + 1, found: acc.found }
+        }
+      Authored { name: _ } => acc
+    }
+  }).found
+}
+
+type LetPositionalScan {
+  at: Int
+  found: Optional<Node>
+}
+
+test fn statement_let_binds_the_literal_value_holds() -> Bool {
+  let_bind_values_with_magnitude() == [true]
+}
+
+// A TYPED STATEMENT LET LOWERS WITH ITS ANNOTATION CARRIED. `let x: Int = 1` lowers to a Bind with
+// the v2.std.type_binder <type-annotation> edge -> Int beside its three positionals, and only the
+// binder is an explained drop: the annotation is NOT explained away, so reference conservation
+// holds only because `Int` reached the lowered tree. It retired the declared rung drop
+// gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, under which this row
+// asserted the let refused at its annotation. A lowering that dropped the edge again fails both
+// halves: conservation refuses the dropped `Int`, and no Bind carries an annotation.
+test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool {
+  match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match type_annotation_optional(n: n) {
+          Present { value: _ } => acc + 1
+          Absent => acc
+        }
+      }) == 1
+  }
+}
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// are paid once and the claim is charged only the admitted route it names.
+fn let_then_reference_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: statement_let_then_reference_source)
+}
+
+fn let_chain_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: statement_let_chain_source)
+}
+
+fn let_in_form_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: let_in_form_source)
+}
+
+fn unbound_prefix_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: unbound_statement_prefix_source)
+}
+
+fn single_statement_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: single_statement_source)
+}
+
+fn typed_let_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: typed_statement_let_source)
+}
+

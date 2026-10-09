@@ -22,9 +22,10 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // refuses that reading at either gate. That removes a standing mechanically-preventable wall,
 // so it is declared here rather than landed silently.
 //
-// WHAT THIS DROP IS NOT. It is not the typed cost-debt constructor. Half two of the same
-// change (`v2.workflow.floor_cost_debt_admission` `floor_cost_debt_row`) still refuses a 325ms
-// observed reading into the roster, so Roster ground cannot be minted from a margin crossing.
+// WHAT THIS DROP IS NOT. It does not cover the Roster ground. A typed admission is
+// live-conditioned (`v2.workflow.floor_enrolment_margin` `enrolment_declared_measured_standing`):
+// a 325ms reading under the per-subject line leaves it stale and blocking, and a planned Roster
+// identity with no reading is NotMeasured, so Roster ground cannot hold on a margin crossing.
 // Undeclared new witnesses at 325ms still refuse over the margin. Wall deadline and semantic
 // red stay armed. Censored and absent-with-verdict readings still stop the run on
 // changed-witness; those walls were not lowered.

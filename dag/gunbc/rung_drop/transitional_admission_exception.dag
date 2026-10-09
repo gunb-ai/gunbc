@@ -1,6 +1,6 @@
 module gunbc.rung_drop.transitional_admission_exception
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
@@ -17,7 +17,6 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 data transitional_admission_exception_identities: List<String> = [
   "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
-  "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
   "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag::legacy_test_behavior_unclassified_frontier_is_zero",
   "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag::observation_emit_frontier_is_zero",
   "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_classifies_as_runtime_read",
@@ -25,7 +24,6 @@ data transitional_admission_exception_identities: List<String> = [
   "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag::witness_p1_proof_kernel_acceptance_contract_holds",
   "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
   "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
-  "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
   "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag::self_host_use_site_verdict_behavioral_receipt_holds",
   "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds",
   "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
@@ -44,18 +42,16 @@ data transitional_admission_exception_identities: List<String> = [
 // CONSTRUCTOR — derives the RungDrop from the single identity list authority.
 // DESIGN §3 single authority: the population field reads from the data above,
 // not from a separately-maintained list.
-fn transitional_admission_exception() -> RungDrop {
-  RungDrop {
-    identity: "transitional_admission_exception" as NonEmptyStr,
-    subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
-    declared: "2026-09-08",
-    standing: Standing,
-    declaration: TypedDeclaration {
-      previous: Mitigatable,
-      temporary: OutsideTheLadder,
-      reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
-      population: transitional_admission_exception_identities,
-      restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). The cadence category those routes need is gunbc.rung_drop.shared_capability missing_cadence_category; the remainder is the per-identity migration onto a live route. Waiters whose remaining unsatisfied condition is only that capability retire together. When the category fires and any named identity still lacks a live scheduled route, this identity is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and this row stays Standing until every named identity has that route. If every named identity already has a live scheduled route when the category fires, retire with the enrolled set.",
-    }
+data transitional_admission_exception: RungDrop = RungDrop {
+  identity: "transitional_admission_exception" as NonEmptyStr,
+  subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
+  declared: "2026-09-08",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
+    population: transitional_admission_exception_identities,
+    restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). The cadence category those routes need is gunbc.rung_drop.shared_capability missing_cadence_category; the remainder is the per-identity migration onto a live route. Waiters whose remaining unsatisfied condition is only that capability retire together. When the category fires and any named identity still lacks a live scheduled route, this identity is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and this row stays Standing until every named identity has that route. If every named identity already has a live scheduled route when the category fires, retire with the enrolled set.",
   }
 }

@@ -1,0 +1,3 @@
+module svk.decl
+
+type String = Int

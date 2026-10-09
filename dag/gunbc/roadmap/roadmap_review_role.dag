@@ -58,7 +58,10 @@ fn review_verdict_shape_text() -> String {
 fn review_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -83,7 +86,10 @@ fn review_reasons_of(doc: JsonValue) -> List<ReviewReason>? {
         Present { value: fold(parsed, init: [], f: (acc, r) => match r { Present { value: x } => concat(acc, [x])  Absent => acc }) }
       }
     }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -210,17 +216,56 @@ fn criterion_standing_text(s: CriterionStanding) -> String {
   }
 }
 
-fn standing_is_changes(s: CriterionStanding) -> Bool { match s { CriterionChangesRequested { key: _, reasons: _ } => true  _ => false } }
-fn standing_is_approved(s: CriterionStanding) -> Bool { match s { CriterionApproved { key: _, summary: _ } => true  _ => false } }
-fn standing_is_running(s: CriterionStanding) -> Bool { match s { CriterionReviewerRunning { key: _ } => true  _ => false } }
+fn standing_is_changes(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => true
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => false
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
+fn standing_is_approved(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => true
+    CriterionChangesRequested { key: _, reasons: _ } => false
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => false
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
+fn standing_is_running(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => false
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => true
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
 fn standing_blocks(s: CriterionStanding) -> Bool {
   match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => false
     CriterionCannotJudge { key: _, reason: _ } => true
     CriterionUndecodable { key: _, reason: _ } => true
     CriterionUnreadable { key: _, detail: _ } => true
+    CriterionReviewerRunning { key: _ } => false
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
     CriterionReviewerUnobserved { key: _, reason: _ } => true
-    _ => false
+    CriterionAwaitingReviewer { key: _ } => false
   }
 }
 
@@ -285,7 +330,14 @@ fn review_feedback(evidence: List<CriterionReviewEvidence>) -> WorkerFeedback {
 fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedback {
   let must_fix = fold(standings, init: [], f: (acc, s) => match s {
     CriterionChangesRequested { key, reasons } => fold(reasons, init: acc, f: (acc2, r) => feedback_add(acc: acc2, criterion: key, r: r))
-    _ => acc
+    CriterionApproved { key: _, summary: _ } => acc
+    CriterionCannotJudge { key: _, reason: _ } => acc
+    CriterionUndecodable { key: _, reason: _ } => acc
+    CriterionUnreadable { key: _, detail: _ } => acc
+    CriterionReviewerRunning { key: _ } => acc
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => acc
+    CriterionReviewerUnobserved { key: _, reason: _ } => acc
+    CriterionAwaitingReviewer { key: _ } => acc
   })
   WorkerFeedback {
     must_fix: must_fix,
@@ -295,13 +347,32 @@ fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedba
       CriterionUnreadable { key, detail } => [join([key, ": verdict unreadable: ", detail], "")]
       CriterionReviewerExitedWithoutVerdict { key, exit_code } => [join([key, ": reviewer exited ", to_string(value: exit_code), " without a verdict"], "")]
       CriterionReviewerUnobserved { key, reason } => [join([key, ": reviewer unobserved: ", reason], "")]
-      _ => []
+      CriterionApproved { key: _, summary: _ } => []
+      CriterionChangesRequested { key: _, reasons: _ } => []
+      CriterionReviewerRunning { key: _ } => []
+      CriterionAwaitingReviewer { key: _ } => []
     }),
-    approved: flat_map(standings, s => match s { CriterionApproved { key, summary: _ } => [key]  _ => [] }),
+    approved: flat_map(standings, s => match s {
+      CriterionApproved { key, summary: _ } => [key]
+      CriterionChangesRequested { key: _, reasons: _ } => []
+      CriterionCannotJudge { key: _, reason: _ } => []
+      CriterionUndecodable { key: _, reason: _ } => []
+      CriterionUnreadable { key: _, detail: _ } => []
+      CriterionReviewerRunning { key: _ } => []
+      CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => []
+      CriterionReviewerUnobserved { key: _, reason: _ } => []
+      CriterionAwaitingReviewer { key: _ } => []
+    }),
     incomplete: flat_map(standings, s => match s {
       CriterionReviewerRunning { key } => [key]
       CriterionAwaitingReviewer { key } => [key]
-      _ => []
+      CriterionApproved { key: _, summary: _ } => []
+      CriterionChangesRequested { key: _, reasons: _ } => []
+      CriterionCannotJudge { key: _, reason: _ } => []
+      CriterionUndecodable { key: _, reason: _ } => []
+      CriterionUnreadable { key: _, detail: _ } => []
+      CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => []
+      CriterionReviewerUnobserved { key: _, reason: _ } => []
     }),
     overlap_count: count(filter(must_fix, g => feedback_path_criteria_count(g: g) > 1)),
   }

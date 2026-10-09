@@ -1,0 +1,250 @@
+module gunbc.auth.approval_enrolment_handshake
+
+import std.types { NonEmptyStr, String, Timestamp, Int, Bool }
+import extdeps.crypto.signature { VerifyingKey }
+import extdeps.apple.app_attest { AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal }
+import gunbc.auth.approval_capability { utc_instant_before }
+import gunbc.auth.approval_device_wire { MobilePlatform, MobileIos, MobileAndroid, enrolment_transcript, enrollment_id_for_code }
+import gunbc.auth.approval_device_redemption {
+  EnrolmentChallenge, VerifiedPlatformEvidence, IosAttestedAppInstance, AndroidAttestedDecisionKey,
+}
+
+// ── ENROLMENT IS A HANDSHAKE, NOT ONE POST ───────────────────────────────────────────────────
+// The design is docs/plans/approval-enrolment-handshake.md; this module is its authority. One POST
+// used to both consume the code and mint the enrolment, so a phone whose POST went unanswered held
+// SubmissionUnknown with no typed exit (2026-09-30). Here the phone SUBMITS (SYN) and the server
+// answers with a challenge (SYN-ACK). The enrolment decides nothing until the phone CONFIRMS (ACK)
+// with a signature by its decision key over that challenge.
+//
+// THE ONE INVARIANT: an enrolment can decide only if it is ACTIVE, and it is ACTIVE only through
+// confirm_admission, which requires a signature by the pending decision key. A phone that discards
+// its prepared keys cannot produce that signature, so nothing it discarded before the ACK can ever
+// become ACTIVE. The handshake ends by expiry or by either party walking away. The phone never has
+// to tell the server it is leaving (operator refinement, 2026-09-30), and Cancel is a local discard.
+
+// THE PENDING WINDOW. A PENDING record not confirmed by its deadline reads as Lapsed and cannot be
+// confirmed. The window only has to cover one Face ID prompt and one POST after the SYN-ACK
+// arrives. It matches the code's own window, so the operator's phone gets the same ten minutes for
+// both steps.
+data approval_enrolment_pending_window_seconds: Int = 600
+
+// THE DEADLINE IS READ, NOT SWEPT -- the same pattern the code uses for its own expires_at. No
+// writer ends a handshake, so none can be forgotten.
+type EnrolmentPending {
+  enrollment_id: NonEmptyStr
+  operator_login: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  evidence: VerifiedPlatformEvidence
+  submitted_at: Timestamp
+  pending_deadline: Timestamp
+  confirm_nonce: NonEmptyStr
+}
+
+// THE ACTIVE RECORD IS THE CONFIRMED PENDING ONE, nothing added but the instant it was confirmed.
+// It is this module's own carrier, not gunbc.auth.approval_device_redemption VerifiedDeviceEnrollment:
+// that type is sole-constructed where the store's bytes are re-minted, and the redemption path mints
+// it from THIS record at the store cut-over. So the handshake decides what ACTIVE means, and the
+// redemption module stays the one place a deciding enrolment is minted.
+type EnrolmentActive {
+  pending: EnrolmentPending
+  confirmed_at: Timestamp
+}
+
+// The slot's standing: generations 1 (issued), 2 (pending), 3 (active), 4 (revoked) of one CAS slot
+// keyed by the code, or nothing at all, or unreadable. Each write expects the generation before it,
+// so there is exactly one writer of each transition.
+type EnrolmentSlot
+  = SlotAbsent
+  | SlotIssued { challenge: EnrolmentChallenge }
+  | SlotPending { pending: EnrolmentPending }
+  | SlotActive { active: EnrolmentActive }
+  | SlotRevoked { active: EnrolmentActive, revoked_at: Timestamp, reason: NonEmptyStr }
+  | SlotUnreadable { detail: NonEmptyStr }
+
+// ── THE STATUS READ: one closed answer per stored standing ──────────────────────────────────
+// Authenticated by possession of the code (the request carries it). Every state has a code, and
+// the phone holds it from the moment it is typed, so one authentication covers states where the
+// server holds no key for the phone. Active answers only whether the PRESENTED decision key is the
+// stored one, so a code holder learns whether its own key is active and nothing about anyone else's.
+type EnrolmentStatus
+  = StatusCodeNotIssued
+  | StatusCodeExpired { expires_at: Timestamp }
+  | StatusNeverSubmitted { expires_at: Timestamp }
+  | StatusPending { enrollment_id: NonEmptyStr, confirm_nonce: NonEmptyStr, pending_deadline: Timestamp }
+  | StatusLapsed { enrollment_id: NonEmptyStr, pending_deadline: Timestamp }
+  | StatusActive { enrollment_id: NonEmptyStr, decision_key_matches: Bool }
+  | StatusRevoked { enrollment_id: NonEmptyStr }
+  | StatusUnreadable { detail: NonEmptyStr }
+
+fn verifying_keys_equal(a: VerifyingKey, b: VerifyingKey) -> Bool {
+  (a.point_b64url as String) == (b.point_b64url as String)
+}
+
+fn pending_is_live(p: EnrolmentPending, observed_at: Timestamp) -> Bool {
+  utc_instant_before(a: observed_at, b: p.pending_deadline)
+}
+
+fn enrolment_status_at(slot: EnrolmentSlot, presented_key: VerifyingKey, observed_at: Timestamp) -> EnrolmentStatus {
+  match slot {
+    SlotAbsent => StatusCodeNotIssued
+    SlotIssued { challenge: c } =>
+      if utc_instant_before(a: observed_at, b: c.expires_at) { StatusNeverSubmitted { expires_at: c.expires_at } }
+      else { StatusCodeExpired { expires_at: c.expires_at } }
+    SlotPending { pending: p } =>
+      if pending_is_live(p: p, observed_at: observed_at) {
+        StatusPending { enrollment_id: p.enrollment_id, confirm_nonce: p.confirm_nonce, pending_deadline: p.pending_deadline }
+      } else {
+        StatusLapsed { enrollment_id: p.enrollment_id, pending_deadline: p.pending_deadline }
+      }
+    SlotActive { active: a } =>
+      StatusActive { enrollment_id: a.pending.enrollment_id, decision_key_matches: verifying_keys_equal(a: a.pending.decision_key, b: presented_key) }
+    SlotRevoked { active: a, revoked_at: _, reason: _ } => StatusRevoked { enrollment_id: a.pending.enrollment_id }
+    SlotUnreadable { detail: d } => StatusUnreadable { detail: d }
+  }
+}
+
+// ── SYN: the submission ─────────────────────────────────────────────────────────────────────
+// What the phone submits, after the route has verified its platform evidence over the code's
+// transcript. evidence_ok carries that verdict rather than re-deciding it here.
+type EnrolmentSubmission {
+  code: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  attestation: AttestationVerification
+}
+
+type SubmitRefusal
+  = SubmitCodeNotIssued
+  | SubmitCodeExpired { expires_at: Timestamp }
+  | SubmitCodeAlreadyUsed
+  | SubmitAttestationRefused { cause: AttestationRefusal }
+  | SubmitAttestationForOtherBytes
+  | SubmitAndroidUnrealized
+  | SubmitSlotUnreadable { detail: NonEmptyStr }
+
+// THREE OUTCOMES, AND THE MIDDLE ONE IS WHY THE PHONE CAN RETRY. WritePending is the one CAS from
+// generation 1. ReplayPending answers a repeated identical submission with the SAME pending record
+// (same enrollment id, nonce and deadline) and writes nothing, so a lost SYN-ACK is recovered by
+// resending the SYN. A different key under a spent code is refused.
+type SubmitAdmission
+  = SubmitWritesPending { pending: EnrolmentPending }
+  | SubmitReplaysPending { pending: EnrolmentPending }
+  | SubmitRefused { cause: SubmitRefusal }
+
+fn submission_matches_pending(s: EnrolmentSubmission, p: EnrolmentPending) -> Bool {
+  verifying_keys_equal(a: s.decision_key, b: p.decision_key)
+    && match s.attestation {
+      AttestationVerified { verified: v } =>
+        match p.evidence {
+          IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } => (v.key_id as String) == (k as String)
+          AndroidAttestedDecisionKey => false
+        }
+      AttestationRefused { cause: _ } => false
+    }
+}
+
+// The fresh-submission arm: the code must be live, the platform realized, and the attestation
+// verified over exactly this code's transcript. The nonce is supplied by the caller (the route draws
+// it), so this fold stays pure and its claims supply one.
+fn submit_admission(
+  slot: EnrolmentSlot,
+  s: EnrolmentSubmission,
+  observed_at: Timestamp,
+  pending_deadline: Timestamp,
+  confirm_nonce: NonEmptyStr,
+) -> SubmitAdmission {
+  match slot {
+    SlotAbsent => SubmitRefused { cause: SubmitCodeNotIssued }
+    SlotUnreadable { detail: d } => SubmitRefused { cause: SubmitSlotUnreadable { detail: d } }
+    SlotPending { pending: p } =>
+      if submission_matches_pending(s: s, p: p) { SubmitReplaysPending { pending: p } }
+      else { SubmitRefused { cause: SubmitCodeAlreadyUsed } }
+    SlotActive { active: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
+    SlotIssued { challenge: c } =>
+      if !utc_instant_before(a: observed_at, b: c.expires_at) {
+        SubmitRefused { cause: SubmitCodeExpired { expires_at: c.expires_at } }
+      } else {
+        match s.platform {
+          MobileAndroid => SubmitRefused { cause: SubmitAndroidUnrealized }
+          MobileIos =>
+            match s.attestation {
+              AttestationRefused { cause: r } => SubmitRefused { cause: SubmitAttestationRefused { cause: r } }
+              AttestationVerified { verified: v } =>
+                if v.client_data != enrolment_transcript(code: c.code, decision_key: s.decision_key, platform: MobileIos) {
+                  SubmitRefused { cause: SubmitAttestationForOtherBytes }
+                } else {
+                  SubmitWritesPending { pending: EnrolmentPending {
+                    enrollment_id: enrollment_id_for_code(code: c.code),
+                    operator_login: c.issued_to_login,
+                    platform: MobileIos,
+                    decision_key: s.decision_key,
+                    evidence: IosAttestedAppInstance { attest_key_id: v.key_id, attest_public_key_b64url: v.public_key_point_b64url, receipt_b64: v.receipt_b64 },
+                    submitted_at: observed_at,
+                    pending_deadline: pending_deadline,
+                    confirm_nonce: confirm_nonce,
+                  } }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ── ACK: the confirmation ───────────────────────────────────────────────────────────────────
+// The route verifies the phone's signature over confirm_signing_input under the PENDING record's
+// decision key and hands the verdict here. signature_by_pending_key is that verdict and nothing
+// else: a signature by any other key never reaches this fold as true.
+type ConfirmRefusal
+  = ConfirmNothingPending
+  | ConfirmLapsed { pending_deadline: Timestamp }
+  | ConfirmSignatureRefused
+  | ConfirmEnrollmentMismatch
+  | ConfirmRevoked
+  | ConfirmSlotUnreadable { detail: NonEmptyStr }
+
+type ConfirmAdmission
+  = ConfirmWritesActive { active: EnrolmentActive }
+  | ConfirmReplaysActive { active: EnrolmentActive }
+  | ConfirmRefused { cause: ConfirmRefusal }
+
+
+// A repeated ACK against an ACTIVE record whose key signed it answers active again and writes
+// nothing, so a lost ACK answer is recovered by resending the ACK.
+fn confirm_admission(
+  slot: EnrolmentSlot,
+  enrollment_id: NonEmptyStr,
+  signature_by_pending_key: Bool,
+  observed_at: Timestamp,
+) -> ConfirmAdmission {
+  match slot {
+    SlotAbsent => ConfirmRefused { cause: ConfirmNothingPending }
+    SlotIssued { challenge: _ } => ConfirmRefused { cause: ConfirmNothingPending }
+    SlotUnreadable { detail: d } => ConfirmRefused { cause: ConfirmSlotUnreadable { detail: d } }
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => ConfirmRefused { cause: ConfirmRevoked }
+    SlotActive { active: a } =>
+      if (a.pending.enrollment_id as String) != (enrollment_id as String) { ConfirmRefused { cause: ConfirmEnrollmentMismatch } }
+      else if !signature_by_pending_key { ConfirmRefused { cause: ConfirmSignatureRefused } }
+      else { ConfirmReplaysActive { active: a } }
+    SlotPending { pending: p } =>
+      if (p.enrollment_id as String) != (enrollment_id as String) { ConfirmRefused { cause: ConfirmEnrollmentMismatch } }
+      else if !pending_is_live(p: p, observed_at: observed_at) { ConfirmRefused { cause: ConfirmLapsed { pending_deadline: p.pending_deadline } } }
+      else if !signature_by_pending_key { ConfirmRefused { cause: ConfirmSignatureRefused } }
+      else { ConfirmWritesActive { active: EnrolmentActive { pending: p, confirmed_at: observed_at } } }
+  }
+}
+
+// ── WHO MAY DECIDE ──────────────────────────────────────────────────────────────────────────
+// The redemption path's one question of this module. Only ACTIVE answers an enrolment. PENDING,
+// lapsed or not, answers none, which is the invariant's enforcement point.
+fn deciding_enrollment(slot: EnrolmentSlot) -> EnrolmentActive? {
+  match slot {
+    SlotActive { active: a } => Present { value: a }
+    SlotAbsent => none
+    SlotIssued { challenge: _ } => none
+    SlotPending { pending: _ } => none
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => none
+    SlotUnreadable { detail: _ } => none
+  }
+}

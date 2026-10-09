@@ -118,6 +118,7 @@ test fn w_refusal_carries_its_phase() -> Bool {
         SharedModuleIndexBuild => false
         BareReferenceEdgeIndexBuild => true
         LanguagesConsumerCensusBuild => false
+        CrossClaimPureProducerWarm => false
       }
   }
 }

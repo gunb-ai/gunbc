@@ -115,3 +115,66 @@ data crs812_rest_neighbor_path: NonEmptyStr = "/rest/ip/neighbor" as NonEmptyStr
 data crs812_rest_discovery_settings_path: NonEmptyStr = "/rest/ip/neighbor/discovery-settings" as NonEmptyStr
 data crs812_rest_identity_path: NonEmptyStr = "/rest/system/identity" as NonEmptyStr
 data crs812_rest_monitor_path: NonEmptyStr = "/rest/interface/ethernet/monitor" as NonEmptyStr
+
+// ================= READING THE LANE STATE BACK (the inverse of the wire encodings above) =================
+//
+// The wire ENCODINGS above (crs812_lane_speed_wire, crs812_fec_mode_wire) turn a domain value into
+// the string RouterOS accepts. Reading the switch is the same grammar in the other direction
+// (DESIGN §4): the REST GET of /rest/interface/ethernet returns these same strings, so the inverse
+// is a decode of a value RouterOS OWNS, not a new fact. It is partial and fail-closed: a wire value
+// this module does not model decodes to an explicit Unmodelled arm carrying the string, never to a
+// silent default, so a switch that reports a speed or FEC the corpus has not seen refuses loudly at
+// the boundary rather than being coerced into the nearest known value.
+
+// The fields the reader CONSUMES, and only those: name (the lane), speed and fec-mode (the two
+// values a lane intent constrains), disabled (admin state), comment (the fabric-leg marker the
+// filter reads). The RouterOS response also carries auto-negotiation and running; they are NOT
+// modeled here because nothing reads them yet (DESIGN §3c: a field no fold reads is red). They
+// return with their consumers -- auto-negotiation with the autoneg axis (gap G1), running with the
+// live link-state outcome (gap G3) -- not before.
+type Crs812EthernetWire {
+  name: NonEmptyStr
+  speed: String
+  fec_mode: String
+  disabled: String
+  comment: String
+}
+
+type Crs812LaneSpeedFromWire
+  = LaneSpeedParsed { speed: Crs812LaneSpeed }
+  | LaneSpeedWireUnmodelled { wire: String }
+
+fn crs812_lane_speed_from_wire(w: String) -> Crs812LaneSpeedFromWire {
+  if w == (crs812_lane_speed_wire(s: Lane50GCr2) as String) { LaneSpeedParsed { speed: Lane50GCr2 } }
+  else if w == (crs812_lane_speed_wire(s: Lane100GCr2) as String) { LaneSpeedParsed { speed: Lane100GCr2 } }
+  else if w == (crs812_lane_speed_wire(s: Lane100GCr4) as String) { LaneSpeedParsed { speed: Lane100GCr4 } }
+  else if w == (crs812_lane_speed_wire(s: Lane200GCr4) as String) { LaneSpeedParsed { speed: Lane200GCr4 } }
+  else if w == (crs812_lane_speed_wire(s: Lane400GCr8) as String) { LaneSpeedParsed { speed: Lane400GCr8 } }
+  else { LaneSpeedWireUnmodelled { wire: w } }
+}
+
+type Crs812FecModeFromWire
+  = FecModeParsed { fec: Crs812FecMode }
+  | FecModeWireUnmodelled { wire: String }
+
+fn crs812_fec_mode_from_wire(w: String) -> Crs812FecModeFromWire {
+  if w == (crs812_fec_mode_wire(f: FecAuto) as String) { FecModeParsed { fec: FecAuto } }
+  else if w == (crs812_fec_mode_wire(f: FecOff) as String) { FecModeParsed { fec: FecOff } }
+  else if w == (crs812_fec_mode_wire(f: Fec74) as String) { FecModeParsed { fec: Fec74 } }
+  else if w == (crs812_fec_mode_wire(f: Fec91) as String) { FecModeParsed { fec: Fec91 } }
+  else { FecModeWireUnmodelled { wire: w } }
+}
+
+// RouterOS renders booleans as the strings "true"/"false" in the REST JSON. A value that is neither
+// is not coerced: the caller that needs a Bool gets a typed refusal, so a wire the switch never
+// sends (or a schema change) is caught rather than read as false.
+type Crs812WireBool
+  = WireBoolTrue
+  | WireBoolFalse
+  | WireBoolUnmodelled { wire: String }
+
+fn crs812_wire_bool(w: String) -> Crs812WireBool {
+  if w == "true" { WireBoolTrue }
+  else if w == "false" { WireBoolFalse }
+  else { WireBoolUnmodelled { wire: w } }
+}

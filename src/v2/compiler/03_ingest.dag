@@ -1,10 +1,12 @@
 module v2.compiler.ingest
 
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
+import std.types { List }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import std.algebra { Empty, list_append }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,
@@ -29,15 +31,13 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_list_from_node,
 }
 import v2.compiler.compile { CoreNode }
-import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  target_bundle_child
-}
+import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.target_serialize { target_bundle_child }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Conj }
+import v2.std.node { Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, Conj }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -133,12 +133,18 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbo
         init: empty_map(),
         f: fn(acc, e) {
           match e.label {
-            Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            Authored { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
         }
       )
-    _ => empty_map()
+    TypeNode { connective: Atom { identity: _ } } => empty_map()
+    TypeNode { connective: Disj } => empty_map()
+    TypeNode { connective: Arrow } => empty_map()
+    TypeNode { connective: Cardinality } => empty_map()
+    TypeNode { connective: Instantiation } => empty_map()
+    ComputationNode { behavior: _ } => empty_map()
   }
 }
 
@@ -165,12 +171,18 @@ fn grammar_relation_token_class_set(rules: Node) -> Map<Symbol, Symbol> {
         init: empty_map(),
         f: fn(acc, e) {
           match e.label {
-            Named { name: _ } => token_class_set_merge_row(acc: acc, row: e.target)
+            Authored { name: _ } => token_class_set_merge_row(acc: acc, row: e.target)
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
         }
       )
-    _ => empty_map()
+    TypeNode { connective: Atom { identity: _ } } => empty_map()
+    TypeNode { connective: Disj } => empty_map()
+    TypeNode { connective: Arrow } => empty_map()
+    TypeNode { connective: Cardinality } => empty_map()
+    TypeNode { connective: Instantiation } => empty_map()
+    ComputationNode { behavior: _ } => empty_map()
   }
 }
 
@@ -226,7 +238,7 @@ fn operational_parse_tree_project_to_formal_captures(
             o: acc,
             f: fn(prefix) {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == ^grammar_production_identity_node_projection {
                     outcome_accepted(value: prefix)
                   } else {
@@ -237,6 +249,13 @@ fn operational_parse_tree_project_to_formal_captures(
                       token_classes: token_classes
                     )
                   }
+                StructuralLabel { label: _ } =>
+                  parse_tree_frontier_extend(
+                    prefix: prefix,
+                    child: edge.target,
+                    binding_to_class: binding_to_class,
+                    token_classes: token_classes
+                  )
                 Positional =>
                   parse_tree_frontier_extend(
                     prefix: prefix,
@@ -310,12 +329,15 @@ fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) 
   )
 }
 
+// The bridge infers the emitted node directly: it never passed through resolve, so it is
+// supplied with an index that holds no declarations (a declaration lookup through it finds
+// nothing and refuses, never fabricates one).
 fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
       bind_outcome(
-        o: infer(tree: emitted),
+        o: infer_and_discharge(tree: ResolvedTree { root: emitted, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [] }),
         f: fn(inferred) {
           bind_outcome(
             o: coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
@@ -327,6 +349,7 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
   )
 }
 
+// Not resolved either (neutralized from the bridge's core): no declarations indexed.
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
@@ -339,7 +362,7 @@ fn cross_language_compile(
         o: neutralize_core_for_target(core: core, target: target_model),
         f: fn(neutralized) {
           bind_outcome(
-            o: infer(tree: neutralized),
+            o: infer_and_discharge(tree: ResolvedTree { root: neutralized, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [] }),
             f: fn(inferred) {
               emit(tree: inferred, target: target_model)
             }

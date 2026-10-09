@@ -25,6 +25,7 @@ import gunbc.host_effect_nbd_proxy_serve {
   NbdProxyServeApplyRefused,
 }
 import gunbc.session_lease { PortObserved, PortObservedStaleExpected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -72,32 +73,25 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
-  let curl_args = bmcweb_session_login_curl_args(
+// FIELD GRAIN: the login is a described curl command minted at extdeps.tools.curl; the
+// assertions read its fields -- the program against the cited curl_cli_tool row, and the flag
+// and operand words by membership. The joined-surface spelling this witness used (and the
+// never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
+// retired with the raw flag lists. No secret reaches argv in either form: the body path does,
+// the password bytes stay in the file.
+test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
-  let argv = bmcweb_session_login_argv(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
-  )
-  let curl_args_surface = fold(
-    curl_args,
-    init: "" as String,
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  let argv_surface = fold(
-    argv,
-    init: "" as String,
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  string_contains(s: argv_surface, pattern: curl_cli_tool.name as String)
-    && string_contains(s: argv_surface, pattern: curl_args_surface)
-    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_body_path)
-    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_response_path)
-    && !string_contains(s: argv_surface, pattern: "serialize_bash")
+  login.program.invocation == curl_cli_tool.program.invocation
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-X")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "POST")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "--data")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == concat("@", srv3_bmcweb_login_body_path as String))
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-o")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == (srv3_bmcweb_login_response_path as String))
 }
 
 test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool {
@@ -167,7 +161,7 @@ test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
 }
 
 test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       match host_effect_nbd_proxy_serve_apply_with_observation(
@@ -188,7 +182,7 @@ test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Boo
 }
 
 test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } => {
       let binding = host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k)
@@ -214,10 +208,10 @@ test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() ->
 }
 
 test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
-      host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
+      host_effect_nbd_proxy_serve_websocat_command_materialized_omits_shell_env_ref(
         intent: i,
         token: "materialized-bmcweb-token" as NonEmptyStr,
       )
@@ -234,7 +228,7 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
 // genuinely wrong" are different facts, and the apply refusal reason names the transport, not a
 // fabricated "port inaccessible" string.
 test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
@@ -249,7 +243,7 @@ test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fai
 }
 
 test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       match host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k) {
@@ -266,7 +260,7 @@ test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
 test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_bmc_target(),
-    effect: srv3_nbd_proxy_serve_host_effect(),
+    effect: srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"),
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ) {
@@ -274,10 +268,6 @@ test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
       string_contains(s: why, pattern: "cannot target BmcController")
     Converged { evidence: _, applied: _ } => false
   }
-}
-
-test fn srv3_typed_receipt_emit_realizes_in_process_not_shell() -> Bool {
-  witness_srv3_receipt_emit_apply_converges_in_process()
 }
 
 test fn srv3_typed_receipt_carrier_holds_lines() -> Bool {

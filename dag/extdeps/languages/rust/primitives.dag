@@ -4,6 +4,11 @@ import std.algebra { OrderedRing, Semiring, BooleanAlgebra }
 import std.bit { Bit, Byte, Word16, Word32, Word64, Word128 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.kernel_type_name { KernelTypeName, KernelTypeNameAdmission, KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
+import std.kernel_type_denotation {
+  KernelTypeDenotationAdmission, KernelTypeDenoted, KernelTypeUndenoted,
+  BinaryInterchangeFormatMeaning, kernel_type_denotation_for
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -109,3 +114,86 @@ data rust_grounding_primitives: List<RustPrimitive> = [
   NonIntegerPrimitive { target_name: "()", algebra: TerminalAlgebra, carrier: TerminalCarrier,
     is_copy: true }
 ]
+
+// Rust f64 IS NOT THE DEFINITION OF KERNEL Float; it is a checked binding to what Float denotes
+// (std.kernel_type_denotation, IEEE 754-2019 binary64). The constants below are Rust's own, as the
+// standard library documents them at the anchor, under Rust's conventions: MANTISSA_DIGITS counts
+// the implicit bit (= p); MAX_EXP and MIN_EXP are one above IEEE's emax and emin (so MAX_EXP =
+// emax + 1 and MIN_EXP = emin + 1 = 2 - emax). The Rust reference describes f64 as the IEEE 754-2008
+// binary64 format; the binary64 interchange parameters are unchanged in the 2019 revision.
+data rust_std_f64_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/std/primitive.f64.html"
+  }
+}
+
+// kernel_name is the ADMISSION, not a String: the row is built through std.kernel_type_name
+// kernel_type_name, so a binding keyed on a name the kernel does not roster is refused by the
+// verdict rather than silently undenoted.
+type RustFloatBinding {
+  kernel_name: KernelTypeNameAdmission
+  target_name: String
+  authority: ExternalAuthority
+  radix: Int
+  mantissa_digits: Int
+  max_exp: Int
+  min_exp: Int
+}
+
+data rust_f64_binding: RustFloatBinding = RustFloatBinding {
+  kernel_name: kernel_type_name(name: "Float"),
+  target_name: "f64",
+  authority: rust_std_f64_anchor,
+  radix: 2,
+  mantissa_digits: 53,
+  max_exp: 1024,
+  min_exp: -1021
+}
+
+type RustFloatBindingVerdict
+  = RustFloatBindingHolds
+  | RustFloatBindingNotAKernelName { name: String }
+  | RustFloatBindingUndenoted { kernel_name: KernelTypeName }
+  | RustFloatBindingDisagrees { kernel_name: KernelTypeName, target_name: String }
+  | RustFloatBindingNoPrimitive { target_name: String }
+
+fn rust_grounding_primitive_named(target_name: String) -> Bool {
+  rust_grounding_primitives |> fold(init: false, f: (found, p) => if found { true } else { rust_primitive_is_float_named(p: p, target_name: target_name) })
+}
+
+fn rust_primitive_is_float_named(p: RustPrimitive, target_name: String) -> Bool {
+  match p {
+    IntegerPrimitive { target_name: _, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } => false
+    NonIntegerPrimitive { target_name: n, algebra: a, carrier: _, is_copy: _ } => n == target_name && a == ApproximateFieldAlgebra
+  }
+}
+
+// The denotation rows are a parameter so a claim can plant a mismatched table at this interface;
+// the production reading is rust_float_binding_verdict(b, denotations: kernel_type_denotation_rows).
+fn rust_float_binding_verdict(b: RustFloatBinding, denotations: List<KernelTypeDenotationAdmission>) -> RustFloatBindingVerdict {
+  if rust_grounding_primitive_named(target_name: b.target_name) == false {
+    RustFloatBindingNoPrimitive { target_name: b.target_name }
+  } else {
+    match b.kernel_name {
+      NotAKernelTypeName { name: n } => RustFloatBindingNotAKernelName { name: n }
+      KernelTypeNameAdmitted { kernel_name: k } => rust_float_binding_against_denotation(b: b, kernel_name: k, denotations: denotations)
+    }
+  }
+}
+
+fn rust_float_binding_against_denotation(b: RustFloatBinding, kernel_name: KernelTypeName, denotations: List<KernelTypeDenotationAdmission>) -> RustFloatBindingVerdict {
+  match kernel_type_denotation_for(kernel_name: kernel_name, rows: denotations) {
+    KernelTypeUndenoted { kernel_name: k } => RustFloatBindingUndenoted { kernel_name: k }
+    KernelTypeDenoted { meaning: BinaryInterchangeFormatMeaning { format: f } } =>
+      if b.radix == 2
+        && b.mantissa_digits == f.p
+        && b.max_exp == f.emax + 1
+        && b.min_exp == 2 - f.emax
+      {
+        RustFloatBindingHolds
+      } else {
+        RustFloatBindingDisagrees { kernel_name: kernel_name, target_name: b.target_name }
+      }
+  }
+}

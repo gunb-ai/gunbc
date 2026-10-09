@@ -1,5 +1,17 @@
 module gunbc.srv3_host_effect_apply
 
+import gunbc.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
+import gunbc.nbd_proxy_virtual_media_install { actuator_image_unresolved_reason }
+import gunbc.os_install_actuator_selection {
+  ActuatorSelected,
+  ActuatorUnsatisfiable,
+  OsInstallActuatorSelection,
+  srv3_os_install_actuator_selection,
+}
+import gunbc.seeded_install_media_publish { SeededImageResolved }
+import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_resolve }
 
 type Srv3TypedReceipt {
   lines: List<String>
@@ -86,8 +98,15 @@ fn srv3_bmcweb_token_extract_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3BmcwebTokenExtract)
 }
 
+// The served bytes are the seeded image this host's derivation record resolves to, re-measured now;
+// an unresolved image refuses the serve rather than serving whatever a path happens to hold.
 fn srv3_nbd_proxy_serve_apply() -> Srv3ApplyDisposition {
-  srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect())
+  match srv3_seeded_install_media_resolve() {
+    SeededImageResolved { built: _, path: p } =>
+      srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect(iso_path: p))
+    other =>
+      Srv3ApplyRefused { reason: concat("nbd-proxy-serve: seeded image unresolved: ", actuator_image_unresolved_reason(image: other)) }
+  }
 }
 
 fn srv3_boot_once_read_back_sleep_apply() -> Srv3ApplyDisposition {

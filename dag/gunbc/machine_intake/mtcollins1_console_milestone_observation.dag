@@ -1,0 +1,158 @@
+module gunbc.machine_intake_mtcollins1_console_milestone_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.optional { Present }
+import extdeps.bootloader.grub { grub_console_banner_prefix, grub_failed_default_and_fallback, grub_error_prefix }
+import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
+import gunbc.machine_intake_pre_os_bringup_verdict { is_firmware_error_line, is_firmware_err_code_line }
+import extdeps.linux.efi_stub { linux_efi_stub_line_prefix, linux_efi_stub_initrd_load_failed_prefix }
+import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_prefix, linux_kernel_panic_end_marker }
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }
+import gunbc.machine_intake_ampere_socket_console_observation { ampere_summary_rc_marker }
+import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointFold, AmpereCheckpointSpan, checkpoint_fold_step, empty_span }
+
+// THE CONSOLE MILESTONES ONE mtcollins1 CAPTURE SHOWS, as an observation receipt of this repository
+// (docs/plans/power-on-sequence-model.md, ruling Q1).
+//
+// A MILESTONE IS AN EXACT, COMPONENT-OWNED LINE, AND IT ESTABLISHES ONLY THAT THAT COMPONENT'S CODE
+// RAN FAR ENOUGH TO PRINT IT. It never establishes an extdeps.ampere.scp_diagnostic AmpereBootStage,
+// a stage's completion, the component's health, or a successful handoff to the next one: those come
+// from an SMpro register reading (gunbc.machine_intake_mtcollins1_power_on_account) or not at all.
+// Each milestone carries the exact line, which parser recognised it (the marker it matched), its
+// index in the capture and the console span it falls in, so a later reader can re-derive it.
+//
+// THE MARKERS ARE THE OWNING MODULES' OWN DATA, imported rather than restated: the DRAM firmware
+// banner (gunbc.machine_intake_ampere_dram_console_observation), the firmware summary's first line
+// (gunbc.machine_intake_ampere_socket_console_observation), the GRUB banner (extdeps.bootloader.grub),
+// the EFI stub's prefix and the kernel banner (extdeps.linux.efi_stub, extdeps.linux.boot_console).
+// The two UEFI lines below have no other home in this corpus:
+//
+// - The AMI Aptio setup prompt is transcribed from our own captures (it is AMI product output this
+//   repository observed, not a published specification): run 37069907299's SOL capture and the
+//   committed artifacts/bmc/mtcollins1-hw-census-sol.log both print it verbatim.
+// - The UEFI shell banner is edk2's STR_VER_OUTPUT_MAIN_SHELL, "UEFI %s Shell v%d.%d"
+//   (github.com/tianocore/edk2 ShellPkg/Application/Shell/Shell.uni), which mtcollins1 printed as
+//   "UEFI Interactive Shell v2.2" in eager-gull-22's 2026-10-03 step-3 capture. The prompt is the
+//   weaker milestone (UEFI code ran far enough to offer setup); the shell is the stronger (UEFI
+//   reached its boot manager's shell); neither says anything about the next boot option.
+data ami_aptio_setup_prompt_marker: NonEmptyStr = "Press <DEL> or <ESC> to Entering the Setup."
+
+data edk2_shell_banner_prefix: NonEmptyStr = "UEFI "
+
+data edk2_shell_banner_infix: NonEmptyStr = " Shell v"
+
+type ConsoleMilestone
+  = DramFirmwareBannerObserved
+  | FirmwareSummaryObserved
+  | UefiConsolePromptObserved
+  | UefiShellObserved
+  | GrubBannerObserved
+  | EfiStubLineObserved
+  | KernelBannerObserved
+
+type ConsoleMilestoneSighting {
+  milestone: ConsoleMilestone
+  line: NonEmptyStr
+  marker: NonEmptyStr
+  line_index: Int
+  span: Int
+}
+
+// THE SPAN A MILESTONE FALLS IN IS THE CHECKPOINT READER'S, NOT A SECOND COUNT: the fold below runs
+// gunbc.machine_intake_ampere_checkpoint_console_observation checkpoint_fold_step itself and reads
+// the span index it is in after each line, so a milestone and a checkpoint token in one span are in
+// one span by construction, whatever rule that reader uses for the span before the first banner.
+// WHERE A STATED FAILURE WAS PRINTED. The whole-capture readers (pre_os firmware statements, GRUB, the
+// EFI stub, the kernel, module decompression) decide WHAT a failure is; this reader records EVERY line
+// of each kind, with its index and span, using those modules' own markers and predicates, so
+// the power-on account can bind the failure to a cycle. A failure line is never a milestone.
+type ConsoleFailureLine
+  = FirmwareErrorStatementLine
+  | GrubFailureLine
+  | InitrdLoadFailureLine
+  | KernelPanicLine
+  | ModuleDecompressionRefusalLine
+
+type ConsoleFailureSighting {
+  kind: ConsoleFailureLine
+  line: NonEmptyStr
+  line_index: Int
+  span: Int
+}
+
+
+type ConsoleMilestoneObservation {
+  sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
+}
+
+fn failure_kind_of(line: String) -> ConsoleFailureLine? {
+  if is_firmware_error_line(line: line) || is_firmware_err_code_line(line: line) { Present { value: FirmwareErrorStatementLine } }
+  else if string_contains(s: line, pattern: grub_failed_default_and_fallback as String) || starts_with(s: line, prefix: grub_error_prefix as String) { Present { value: GrubFailureLine } }
+  else if string_contains(s: line, pattern: linux_efi_stub_initrd_load_failed_prefix as String) { Present { value: InitrdLoadFailureLine } }
+  else if string_contains(s: line, pattern: linux_kernel_panic_prefix as String) && !string_contains(s: line, pattern: linux_kernel_panic_end_marker as String) { Present { value: KernelPanicLine } }
+  else if string_contains(s: line, pattern: linux_module_zstd_decompress_failed_stem as String) { Present { value: ModuleDecompressionRefusalLine } }
+  else { none }
+}
+
+fn milestone_marker_of(line: String) -> ConsoleMilestoneSighting? {
+  let banner_shell = starts_with(s: line, prefix: edk2_shell_banner_prefix as String) && string_contains(s: line, pattern: edk2_shell_banner_infix as String)
+  if string_contains(s: line, pattern: ampere_dram_fw_version_marker) { Present { value: sighting(m: DramFirmwareBannerObserved, line: line, marker: ampere_dram_fw_version_marker) } }
+  else if starts_with(s: line, prefix: ampere_summary_rc_marker) { Present { value: sighting(m: FirmwareSummaryObserved, line: line, marker: ampere_summary_rc_marker) } }
+  else if string_contains(s: line, pattern: ami_aptio_setup_prompt_marker as String) { Present { value: sighting(m: UefiConsolePromptObserved, line: line, marker: ami_aptio_setup_prompt_marker as String) } }
+  else if banner_shell { Present { value: sighting(m: UefiShellObserved, line: line, marker: concat(edk2_shell_banner_prefix as String, "%s", edk2_shell_banner_infix as String)) } }
+  else if string_contains(s: line, pattern: grub_console_banner_prefix as String) { Present { value: sighting(m: GrubBannerObserved, line: line, marker: grub_console_banner_prefix as String) } }
+  else if string_contains(s: line, pattern: linux_efi_stub_line_prefix as String) { Present { value: sighting(m: EfiStubLineObserved, line: line, marker: linux_efi_stub_line_prefix as String) } }
+  else if string_contains(s: line, pattern: linux_banner_prefix as String) { Present { value: sighting(m: KernelBannerObserved, line: line, marker: linux_banner_prefix as String) } }
+  else { none }
+}
+
+fn sighting(m: ConsoleMilestone, line: String, marker: String) -> ConsoleMilestoneSighting {
+  ConsoleMilestoneSighting { milestone: m, line: line as NonEmptyStr, marker: marker as NonEmptyStr, line_index: 0, span: 0 }
+}
+
+type MilestoneFold {
+  index: Int
+  spans: AmpereCheckpointFold
+  sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
+}
+
+fn milestone_fold_step(acc: MilestoneFold, raw: String) -> MilestoneFold {
+  let spans = checkpoint_fold_step(acc: acc.spans, raw: raw)
+  let line = trim(ampere_dram_console_line(raw: raw))
+  let seen = match milestone_marker_of(line: line) {
+    Absent => acc.sightings
+    Present { value: s } => concat(acc.sightings, [ConsoleMilestoneSighting { milestone: s.milestone, line: s.line, marker: s.marker, line_index: acc.index, span: spans.current.index }])
+  }
+  let failed = match failure_kind_of(line: line) {
+    Absent => acc.failures
+    Present { value: k } => concat(acc.failures, [ConsoleFailureSighting { kind: k, line: line as NonEmptyStr, line_index: acc.index, span: spans.current.index }])
+  }
+  MilestoneFold { index: acc.index + 1, spans: spans, sightings: seen, failures: failed }
+}
+
+fn mtcollins1_console_milestones(lines: List<String>) -> ConsoleMilestoneObservation {
+  let none_seen: List<ConsoleMilestoneSighting> = []
+  let none_failed: List<ConsoleFailureSighting> = []
+  let none_closed: List<AmpereCheckpointSpan> = []
+  let done = fold(lines, init: MilestoneFold { index: 0, spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, sightings: none_seen, failures: none_failed }, f: (acc, l) => milestone_fold_step(acc: acc, raw: l))
+  ConsoleMilestoneObservation { sightings: done.sightings, failures: done.failures }
+}
+
+fn console_milestone_name(m: ConsoleMilestone) -> String {
+  match m {
+    DramFirmwareBannerObserved => "DRAM firmware banner"
+    FirmwareSummaryObserved => "firmware boot summary"
+    UefiConsolePromptObserved => "UEFI setup prompt"
+    UefiShellObserved => "UEFI shell"
+    GrubBannerObserved => "GRUB banner"
+    EfiStubLineObserved => "Linux EFI stub line"
+    KernelBannerObserved => "Linux kernel banner"
+  }
+}
+
+fn console_milestone_sighting_text(s: ConsoleMilestoneSighting) -> String {
+  concat(console_milestone_name(m: s.milestone), " at line ", to_string(s.line_index), " (span ", to_string(s.span), "): ", s.line as String)
+}

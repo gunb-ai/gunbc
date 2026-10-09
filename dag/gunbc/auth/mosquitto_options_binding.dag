@@ -1,8 +1,12 @@
 module gunbc.auth.mosquitto_options_binding
 
+import extdeps.tools.mosquitto_rr { mosquitto_rr_options_file_name }
+
+import extdeps.tools.mosquitto_sub { mosquitto_sub_options_file_name }
+
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.tools.mosquitto_pub {
   mosquitto_pub_options_file_name, mosquitto_pub_options_dir_env,
@@ -93,27 +97,7 @@ fn place_mosquitto_options_privately(
   password: Secret,
 ) -> MosquittoOptionsPlacement
 {
-  let created = shell.Mktemp.Dir()
-  if created.success == false {
-    MosquittoOptionsRefused {
-      cause: "no private directory could be created for the credential, so none was placed",
-    }
-  } else {
-    let options_path = concat(
-      concat(created.path as String, "/"),
-      mosquitto_pub_options_file_name as String)
-    if Filesystem.WriteOwnerOnly(
-      path: options_path,
-      content: mosquitto_options_content(login: login, password: password)
-    ).success {
-      MosquittoOptionsPlaced {
-        binding: MosquittoOptionsBinding { dir: created.path as FilePath },
-      }
-    } else {
-      mosquitto_options_write_refusal(
-        removed_after_failure: shell.Remove.RecursiveForce(path: created.path as FilePath).success)
-    }
-  }
+  place_mosquitto_named_options(login:login,password:password,filename:mosquitto_pub_options_file_name)
 }
 
 // SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused publish that
@@ -123,4 +107,22 @@ fn place_mosquitto_options_privately(
 // cannot reuse and the caller cannot see.
 fn shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
   shell.Remove.RecursiveForce(path: binding.dir).success
+}
+
+// All clients use one private placement/cleanup bracket; only the upstream filename varies.
+fn place_mosquitto_named_options(login:NonEmptyStr,password:Secret,filename:NonEmptyStr) -> MosquittoOptionsPlacement {
+ let created=shell.Mktemp.Dir()
+ if !created.success {MosquittoOptionsRefused {cause:"Cannot create private options directory"}}
+ else {
+  let path=join([created.path as String,"/",filename as String],"")
+  if Filesystem.WriteOwnerOnly(path:path,content:mosquitto_options_content(login:login,password:password)).success {
+   MosquittoOptionsPlaced {binding:MosquittoOptionsBinding {dir:created.path as FilePath}}
+  } else {mosquitto_options_write_refusal(removed_after_failure:shell.Remove.RecursiveForce(path:created.path as FilePath).success)}
+ }
+}
+fn place_mosquitto_sub_options_privately(login:NonEmptyStr,password:Secret) -> MosquittoOptionsPlacement {
+ place_mosquitto_named_options(login:login,password:password,filename:mosquitto_sub_options_file_name)
+}
+fn place_mosquitto_rr_options_privately(login:NonEmptyStr,password:Secret) -> MosquittoOptionsPlacement {
+ place_mosquitto_named_options(login:login,password:password,filename:mosquitto_rr_options_file_name)
 }

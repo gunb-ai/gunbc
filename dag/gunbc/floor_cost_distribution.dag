@@ -386,10 +386,28 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
 // The acceptance-path disagreement itself is NOT diagnosed by this edit and is reported separately;
 // re-spelling until the checker stops complaining would have been the authoring-time workaround
 // DESIGN section 5 names, so this is a decomposition that stands on its own terms.
-fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
-  match parse_int(s: fields[columns.observed_cpu_ms]) {
+// A CELL THE ROW DOES NOT CARRY IS NOT A FIGURE. `fields[ix]` answers `String?` (an index past the
+// row has no cell), and a missing cell reads exactly as an unparseable one: no reading. The width
+// guard in parse_claim_cost_line refuses a torn row first, so this is the index's own typed answer
+// rather than a recovery.
+fn field_int(fields: List<String>, ix: Int) -> Int? {
+  match fields[ix] {
+    Present { value: cell } => parse_int(s: cell)
     Absent => none
-    Present { value: cpu } => match parse_int(s: fields[columns.eval_steps]) {
+  }
+}
+
+fn field_is(fields: List<String>, ix: Int, want: String) -> Bool {
+  match fields[ix] {
+    Present { value: cell } => cell == want
+    Absent => false
+  }
+}
+
+fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  match field_int(fields: fields, ix: columns.observed_cpu_ms) {
+    Absent => none
+    Present { value: cpu } => match field_int(fields: fields, ix: columns.eval_steps) {
       Absent => none
       Present { value: steps } => Present {
         value: ObservedCpuReading {
@@ -418,7 +436,7 @@ fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> Cla
 // reason: it answers a question that is not the cost reading, so an artifact lacking it is still a
 // sound cost artifact and only the ceiling-relative question is unavailable over it.
 fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
-  match parse_int(s: fields[columns.cpu_at_least_ms]) {
+  match field_int(fields: fields, ix: columns.cpu_at_least_ms) {
     Absent => none
     Present { value: bound } => match censored_eval_steps(fields: fields, columns: columns) {
       Absent => none
@@ -429,7 +447,7 @@ fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) 
             eval_steps_before_censor: eval_step_count(count: steps)
           }
         }
-        Present { value: ceiling_ix } => match parse_int(s: fields[ceiling_ix]) {
+        Present { value: ceiling_ix } => match field_int(fields: fields, ix: ceiling_ix) {
           Absent => none
           Present { value: ceiling } => Present {
             value: RightCensoredCpuReading {
@@ -461,19 +479,19 @@ fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) 
 // that is where the producer wrote it. Refusing those rows would retire the reader against every
 // run before the split, which is the same trade the optional ceiling column already makes.
 fn censored_eval_steps(fields: List<String>, columns: ClaimCostColumns) -> Int? {
-  match parse_int(s: fields[columns.eval_steps]) {
+  match field_int(fields: fields, ix: columns.eval_steps) {
     Present { value: performed } => Present { value: performed }
     Absent => match columns.eval_steps_at_least {
       Absent => none
-      Present { value: ix } => parse_int(s: fields[ix])
+      Present { value: ix } => field_int(fields: fields, ix: ix)
     }
   }
 }
 
 fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
-  if fields[columns.cost_reading] == "observed" {
+  if field_is(fields: fields, ix: columns.cost_reading, want: "observed") {
     observed_cost_reading(fields: fields, columns: columns)
-  } else if fields[columns.cost_reading] == "right_censored" {
+  } else if field_is(fields: fields, ix: columns.cost_reading, want: "right_censored") {
     right_censored_cost_reading(fields: fields, columns: columns)
   } else {
     none
@@ -495,7 +513,7 @@ type RowReachabilityReading
 fn parse_row_reachability(fields: List<String>, columns: ClaimCostColumns) -> RowReachabilityReading {
   match columns.preemption_reachability {
     Absent => ReachabilityColumnUnrecorded
-    Present { value: idx } => match parse_preemption_reachability(value: fields[idx]) {
+    Present { value: idx } => match (match fields.skip(n: idx).first() { Absent => none  Present { value: cell } => parse_preemption_reachability(value: cell) }) {
       Absent => ReachabilityColumnUnreadable
       Present { value: reach } => ReachabilityColumnRead { value: reach }
     }
@@ -530,19 +548,23 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     )
     if count(fields) <= widest {
       none
-    } else if fields[columns.identity] == "identity" {
+    } else if field_is(fields: fields, ix: columns.identity, want: "identity") {
       none
     } else {
-      match parse_claim_cost_reading(fields: fields, columns: columns) {
+      match fields[columns.identity] {
+      Absent => none
+      Present { value: identity } => match fields[columns.module] {
+      Absent => none
+      Present { value: row_module } => match parse_claim_cost_reading(fields: fields, columns: columns) {
         Absent => none
-        Present { value: reading } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
+        Present { value: reading } => match (match fields.skip(n: columns.verdict_reached).first() { Absent => none  Present { value: cell } => parse_verdict_reached(value: cell) }) {
           Absent => none
           Present { value: reached } => match parse_row_reachability(fields: fields, columns: columns) {
             ReachabilityColumnUnreadable => none
             ReachabilityColumnUnrecorded => Present {
               value: FloorCostRow {
-                identity: fields[columns.identity],
-                module: fields[columns.module],
+                identity: identity,
+                module: row_module,
                 verdict_reached: reached,
                 cost: reading,
                 reachability: none
@@ -550,8 +572,8 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
             }
             ReachabilityColumnRead { value: reach } => Present {
               value: FloorCostRow {
-                identity: fields[columns.identity],
-                module: fields[columns.module],
+                identity: identity,
+                module: row_module,
                 verdict_reached: reached,
                 cost: reading,
                 reachability: Present { value: reach }
@@ -559,6 +581,8 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
             }
           }
         }
+      }
+      }
       }
     }
   }
@@ -745,13 +769,15 @@ fn rows_at_or_above(rows: List<FloorCostRow>, ms: Millisecond) -> Int {
 fn cost_bands(rows: List<FloorCostRow>, edges: List<Millisecond>) -> List<CostBand> {
   enumerate(edges)
     |> flat_map(e =>
-         if e.first + 1 < count(edges) {
-           [CostBand {
-              lower_ms: e.second,
-              upper_ms: edges[e.first + 1],
-              rows: rows_in_band(rows: rows, lower_ms: e.second, upper_ms: edges[e.first + 1])
-            }]
-         } else { [] })
+         match edges.skip(n: e.first + 1).first() {
+           Present { value: upper } =>
+             [CostBand {
+                lower_ms: e.second,
+                upper_ms: upper,
+                rows: rows_in_band(rows: rows, lower_ms: e.second, upper_ms: upper)
+              }]
+           Absent => []
+         })
 }
 
 // CROSSINGS AND THE COUNTERFACTUAL REPLAY.
@@ -1055,16 +1081,13 @@ fn identity_inflation_permille(base: RunCost, other: RunCost, min_base_ms: Milli
 }
 
 // An order statistic over the observed values: `percent` is 0-100 and the result is always a
-// member of the input, so it is a measurement and not an interpolation.
+// member of the input, so it is a measurement and not an interpolation. The index read is the
+// answer: an empty input has no member at any rank, so it is absent.
 fn permille_percentile(values: List<Int>, percent: Int) -> Int? {
   let sorted = values |> sort_by(v => v)
   let n = count(sorted)
-  if n == 0 {
-    none
-  } else {
-    let idx = (percent * n) / 100
-    if idx >= n { Present { value: sorted[n - 1] } } else { Present { value: sorted[idx] } }
-  }
+  let idx = (percent * n) / 100
+  if idx >= n { sorted[n - 1] } else { sorted[idx] }
 }
 
 // THE MARGIN THE MEASURED INFLATION IMPLIES: the largest clean-run cost that still lands under the

@@ -1,0 +1,203 @@
+module gunbc.self_host_behavioral_equivalence_receipt
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
+import v2.std.algebra { filter, any }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bazel.label { render_label }
+import gunbc.instrument_targets { self_host_behavioral_equivalence_label }
+import tools.self_host_module_behavioral_transport_roster {
+  ModuleBehavioralTransportConfig,
+  compiler_module_behavioral_transport_roster,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SELF-HOST BEHAVIORAL EQUIVALENCE AS A DELIBERATELY TAKEN RECEIPT SERIES (operator ruling
+// 2026-09-27): not nightly, not per pull request. A run is taken on purpose by
+// `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`
+// (tools.self_host_behavioral_equivalence_take take_self_host_behavioral_equivalence_receipt), which
+// prints the receipt as the declaration to append below; the persisted row is the data, and
+// gunbc.compiler_frontend_program_status derives SelfHostEmittedContractsHeld from
+// the latest one. The shape follows gunbc.self_host_compile_phase_frontier: an authored series of
+// observations, each naming the revision it measured, judged by a fold rather than re-measured.
+//
+// THE ROWS ARE THE PER-MODULE BEHAVIORAL RECEIPTS, NOT A SECOND CORPUS. Each row is one
+// tools.self_host_module_behavioral_transport_roster compiler_module_behavioral_transport_roster
+// entry -- the emitted module linked against the seed, driven by its witness driver -- and its
+// verdict is that roster's own three-way evidence (held, refuted, no verdict), kept three-way here:
+// a row that never ran and a row that ran and diverged have different owners and must not share a
+// rendering.
+//
+// A RECEIPT SPEAKS FOR THE TREE IT NAMES AND FOR THE ROSTER IT JOINS. The standing reads only the
+// latest receipt, which describes a past revision by construction; it is never a claim about the
+// tree under judgment. And completeness is an identity join against the CURRENT roster (DESIGN
+// section 5): a roster module the receipt carries no row for, a row naming no roster module, or a
+// duplicated row are each outstanding, so growing the roster makes an old receipt stop reading
+// Clear instead of letting it speak for modules it never measured.
+
+type BehavioralRowVerdict
+  = BehavioralRowHeld
+  | BehavioralRowRefuted { observed: String }
+  | BehavioralRowNoVerdict { cause: String }
+
+type BehavioralEquivalenceRow {
+  module_path: String
+  verdict: BehavioralRowVerdict
+}
+
+type BehavioralEquivalenceReceipt {
+  sequence: Int
+  main_sha: CommitSha
+  instrument: NonEmptyStr
+  observed_at: NonEmptyStr
+  rows: List<BehavioralEquivalenceRow>
+}
+
+type BehavioralEquivalenceStanding
+  = BehavioralEquivalenceSeriesEmpty
+  | BehavioralEquivalenceSeriesInvalid { reason: NonEmptyStr }
+  | BehavioralEquivalenceLatest { latest: BehavioralEquivalenceReceipt, outstanding: List<String> }
+
+fn behavioral_row_outstanding(row: BehavioralEquivalenceRow) -> List<String> {
+  match row.verdict {
+    BehavioralRowHeld => []
+    BehavioralRowRefuted { observed } => [concat(concat(concat("behavior diverges: ", row.module_path), ": "), observed)]
+    BehavioralRowNoVerdict { cause } => [concat(concat(concat("no verdict: ", row.module_path), ": "), cause)]
+  }
+}
+
+fn rows_naming(rows: List<BehavioralEquivalenceRow>, module_path: String) -> List<BehavioralEquivalenceRow> {
+  rows |> filter(r => r.module_path == module_path)
+}
+
+fn roster_names(roster: List<ModuleBehavioralTransportConfig>, module_path: String) -> Bool {
+  roster |> any(c => c.module_path == module_path)
+}
+
+// The identity join, both directions, plus the per-row verdicts. Empty is Clear and is reachable
+// only from a receipt whose rows are exactly the roster and all held.
+fn behavioral_equivalence_outstanding(
+  receipt: BehavioralEquivalenceReceipt,
+  roster: List<ModuleBehavioralTransportConfig>
+) -> List<String> {
+  let missing = roster
+    |> filter(c => count(rows_naming(rows: receipt.rows, module_path: c.module_path)) == 0)
+    |> map(c => concat("roster module has no row in the receipt: ", c.module_path))
+  let duplicated = roster
+    |> filter(c => count(rows_naming(rows: receipt.rows, module_path: c.module_path)) > 1)
+    |> map(c => concat("roster module has more than one row in the receipt: ", c.module_path))
+  let unrostered = receipt.rows
+    |> filter(r => !roster_names(roster: roster, module_path: r.module_path))
+    |> map(r => concat("receipt row names no roster module: ", r.module_path))
+  let verdicts = fold(receipt.rows, init: [], f: fn(acc, r) { concat(acc, behavioral_row_outstanding(row: r)) })
+  concat(concat(concat(missing, duplicated), unrostered), verdicts)
+}
+
+// The series is ordered by sequence, starting at 1 and strictly increasing; the last receipt is
+// the latest. An out-of-order series has no latest and refuses rather than choosing one.
+fn series_sequence_violation(series: List<BehavioralEquivalenceReceipt>) -> List<String> {
+  let walk = fold(series, init: BehavioralSequenceWalk { previous: 0, violations: [] }, f: fn(acc, r) {
+    if r.sequence > acc.previous {
+      BehavioralSequenceWalk { previous: r.sequence, violations: acc.violations }
+    } else {
+      BehavioralSequenceWalk {
+        previous: acc.previous,
+        violations: concat(acc.violations, [concat("receipt sequence does not increase at ", to_string(r.sequence))])
+      }
+    }
+  })
+  walk.violations
+}
+
+// A receipt speaks only for the instrument that takes this series. One carrying any other label --
+// a different instrument's output pasted in, or a hand-written row -- refuses the whole series rather
+// than letting the latest receipt answer for a measurement this instrument never made.
+fn series_instrument_violation(series: List<BehavioralEquivalenceReceipt>) -> List<String> {
+  let expected = render_label(l: self_host_behavioral_equivalence_label())
+  series
+    |> filter(r => (r.instrument as String) != expected)
+    |> map(r => concat(concat(concat("receipt ", to_string(r.sequence)), " names instrument "), r.instrument as String))
+}
+
+type BehavioralSequenceWalk {
+  previous: Int
+  violations: List<String>
+}
+
+fn behavioral_equivalence_standing(
+  series: List<BehavioralEquivalenceReceipt>,
+  roster: List<ModuleBehavioralTransportConfig>
+) -> BehavioralEquivalenceStanding {
+  match concat(series_sequence_violation(series: series), series_instrument_violation(series: series)) |> first {
+    Present { value: v } => BehavioralEquivalenceSeriesInvalid { reason: v as NonEmptyStr }
+    Absent => match reverse(series) |> first {
+      Absent => BehavioralEquivalenceSeriesEmpty
+      Present { value: latest } => BehavioralEquivalenceLatest {
+        latest: latest,
+        outstanding: behavioral_equivalence_outstanding(receipt: latest, roster: roster)
+      }
+    }
+  }
+}
+
+data behavioral_equivalence_receipt_1_978fb0a5: BehavioralEquivalenceReceipt = BehavioralEquivalenceReceipt {
+  sequence: 1,
+  main_sha: "978fb0a566d540d82013775724385d3d947f3342" as CommitSha,
+  instrument: "//gunbc/instruments:self-host-behavioral-equivalence" as NonEmptyStr,
+  observed_at: "2026-10-03T14:42:28Z" as NonEmptyStr,
+  rows: [
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/00_compile.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/01_tokenize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/02_parse.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_body_producer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_ingest.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_normalize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_resolve.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/04_infer.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/07_target_carriers.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/discovery_enumeration.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/materialization_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_assembly.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_partition.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/source_authority.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/use_site_verdict.dag", verdict: BehavioralRowHeld },
+  ]
+}
+
+data behavioral_equivalence_receipt_2_bc7838f7: BehavioralEquivalenceReceipt = BehavioralEquivalenceReceipt {
+  sequence: 2,
+  main_sha: "bc7838f7b46f1b5a06d577dd6a825843794a6d8a" as CommitSha,
+  instrument: "//gunbc/instruments:self-host-behavioral-equivalence" as NonEmptyStr,
+  observed_at: "2026-10-04T05:16:25Z" as NonEmptyStr,
+  rows: [
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/00_compile.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/01_tokenize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/02_parse.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_body_producer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_ingest.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_normalize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_resolve.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/04_infer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/07_target_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/discovery_enumeration.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/materialization_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_assembly.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_partition.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/source_authority.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/use_site_verdict.dag", verdict: BehavioralRowHeld },
+  ]
+}
+
+// THE PERSISTED SERIES. Append the declaration the instrument prints; never edit a taken receipt.
+data self_host_behavioral_equivalence_receipts: List<BehavioralEquivalenceReceipt> = [
+  behavioral_equivalence_receipt_1_978fb0a5,
+  behavioral_equivalence_receipt_2_bc7838f7
+]
+
+fn current_behavioral_equivalence_standing() -> BehavioralEquivalenceStanding {
+  behavioral_equivalence_standing(
+    series: self_host_behavioral_equivalence_receipts,
+    roster: compiler_module_behavioral_transport_roster
+  )
+}

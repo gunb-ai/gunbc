@@ -1,0 +1,59 @@
+module v2.test.infer_facts.key_collision_ref_and_int
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+
+// A DECLARATION REFERENCE BESIDE AN INT LITERAL MUST INFER. Measured on main c95f906 (smart-newt-725):
+// with #12582's facts-key conflict refusal, this program was refused infer_facts_key_conflict while
+// either function alone, or two int-literal functions, was accepted. The colliding key was the
+// childless synthetic Conj that terminates both a qualified-name spine and an int literal's digit
+// list: one Node value carrying two different facts. #12582 was reverted for it; this claim is the
+// control a re-land must keep green, so a re-land that still keys facts on that shared terminator fails.
+// WHAT THIS IS NOT. On the reverted tree it passes THROUGH first-wins: the two terminators still share
+// a key and one fact is silently kept. So it is a REGRESSION GUARD against blanket refusal, not
+// coverage that the facts key is sound. It must stay green after the re-land for the RIGHT reason --
+// the structural terminator recording no facts entry -- and the re-land's own conflict claims are what
+// establish soundness.
+fn kc_infers(src: String) -> Bool {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// ONE PRODUCER, THREE VERDICTS. Each source's assembly is a full front end (dag_language_model), over
+// a new claim's budget on its own, so the three verdicts are computed once by this nullary pure
+// producer -- enrolled in v2.workflow.floor_pure_producer_share -- and each claim reads its own field.
+// The value is three Bools, so the cross-claim store can keep it.
+type KcVerdicts {
+  ref_and_int: Bool
+  int_alone: Bool
+  two_ints: Bool
+}
+
+fn kc_verdicts() -> KcVerdicts {
+  KcVerdicts {
+    ref_and_int: kc_infers(src: "module p\n\nfn kc_g() -> Int { 1 }\n\nfn kc_f() -> Int { kc_g() }\n"),
+    int_alone: kc_infers(src: "module p\n\nfn kc_g() -> Int { 1 }\n"),
+    two_ints: kc_infers(src: "module p\n\nfn kc_g() -> Int { 1 }\n\nfn kc_h() -> Int { 2 }\n")
+  }
+}
+
+test fn kc_a_reference_beside_an_int_literal_infers_holds() -> Bool {
+  kc_verdicts().ref_and_int
+}
+
+// Controls: each shape on its own infers, so a red above is the combination, not either part.
+test fn kc_an_int_literal_alone_infers_holds() -> Bool {
+  kc_verdicts().int_alone
+}
+
+test fn kc_two_int_literals_infer_holds() -> Bool {
+  kc_verdicts().two_ints
+}

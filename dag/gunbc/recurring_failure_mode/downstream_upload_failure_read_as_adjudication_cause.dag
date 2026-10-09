@@ -23,7 +23,7 @@ data downstream_upload_failure_read_as_adjudication_cause: RecurringFailureMode 
 
     "RUNG FOUND AT: mitigatable -- the jobs API already names per-step conclusions, and the published JSON already names standing and blockers. The harm is a human causal reversal that sends the next repair at the upload steps or at the adjudicator.",
 
-    "CEILING: mechanically preventable for repository-owned triage once a refusal that names `standing=` and `blockers=` cannot be filed without those fields being read; it is not structurally impossible, because GitHub will still list later steps as failed when their inputs were never written.",
+    "CEILING: mechanically preventable for repository-owned triage once a refusal that names `standing=` and `blocked_phases=` (spelled `blockers=` in logs before gunbc#12834) cannot be filed without those fields being read; it is not structurally impossible, because GitHub will still list later steps as failed when their inputs were never written.",
 
     "NEXT-RUNG TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: a required-floor triage surface that joins D0-ADJUDICATE's exit to the measurement receipt's standing and blocker identities before any upload conclusion is offered as a cause -- sufficient that a missing TSV cannot be cited as what adjudicate refused over. Until then this row is the join.)",
   ],

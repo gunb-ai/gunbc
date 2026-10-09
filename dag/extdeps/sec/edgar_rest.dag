@@ -1,6 +1,6 @@
 module extdeps.sec.edgar_rest
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, AuthScheme }
 import extdeps.sec.edgar {
   CompanyConceptResponse,
   CompanyFactsResponse,
@@ -9,6 +9,9 @@ import extdeps.sec.edgar {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,6 +27,7 @@ service sec.Edgar {
   }
 
   operation GetCompanyFacts {
+    requires Network
     input {
       cik_path_segment: NonEmptyStr
     }
@@ -43,6 +47,7 @@ service sec.Edgar {
   }
 
   operation GetCompanyConcept {
+    requires Network
     input {
       cik_path_segment: NonEmptyStr
       taxonomy: NonEmptyStr

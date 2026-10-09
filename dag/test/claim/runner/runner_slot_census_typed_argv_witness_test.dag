@@ -1,0 +1,198 @@
+module test.claim.runner.runner_slot_census_typed_argv_witness
+
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_effect_realize { slot_census_from_process_outcome }
+import gunbc.runner_slot_population_census {
+  CensusDerived, CensusRefused, SlotCensusRow,
+  slot_census_from_typed_argv_outcome,
+}
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.typed_argv_exec {
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+  typed_argv_shell_safe_refusal_argv,
+}
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.systemd.systemctl {
+  systemctl_list_all_service_units_command,
+  systemctl_list_all_service_units_argv,
+}
+import extdeps.exec.command { argv_words }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SLOT CENSUS RUNS ON TYPED ARGV, WITNESSED AT EACH GATE THE MIGRATION HAD TO CROSS.
+//
+// `gunbc.host_effect_realize observe_slot_population_over_host_effect_transport` is the live read
+// behind every runner-slot memory-cap decision. It spent its life running the probe as a rendered
+// script -- typed systemctl words serialized to shell text, handed to run_shell_transport as a
+// BODY -- and the serialization is what made the census unreachable over the fleet transport,
+// whose wall refuses a script BODY before any word is examined. The migration swapped the carrier:
+// the probe is held as an ArgvCommand whose single spelling lives in extdeps.systemd.systemctl
+// (systemctl_list_all_service_units_command), the word list is derived from it, and the census fn
+// dispatches per transport -- run_shell_command_capture on the local seam, run_typed_argv_transport
+// on the remote ones -- the local record flattened into the classifier's fields beside that fn, the
+// typed record decoded by the census module's own one adapter, shared with its fleet reader. The
+// rendered bridge and its std.dissolution retirement trigger
+// were deleted in the same commit that discharged them, per the trigger's own terms; what remains
+// of that obligation is the counted removal, one row off the section 5.E RetainedShellScript
+// frontier, recorded beside the census fn in host_effect_realize.
+//
+// This file witnesses the facts that make the migrated census what it claims to be:
+//
+// - THE WORDS DID NOT CHANGE WITH THE CARRIER. The argv the census executes today is derived from
+//   the command spelling by argv_words, so the rendered-form/typed-form fork this migration exists
+//   to remove cannot reappear between the two -- and the words are the words the census has always
+//   run, which is what makes this a carrier swap rather than a behavior change.
+//
+// - THE WORDS CROSS BOTH REMOTE WALLS. A script body could never be shaped past the fleet path's
+//   portable-remote-words wall; the same words as argv pass it typed. That is the precise sense in
+//   which FleetSsh stopped refusing the census: the carrier the census arrives in is one the fleet
+//   wall admits, where the carrier it arrived in for its whole life was one that wall refused
+//   unconditionally.
+//
+// - A REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION, ON EVERY ARM. The decoders turn a typed
+//   transport refusal into CensusRefused and a nonzero local exit into the classifier's
+//   refused arm -- so a shrink that cannot read a host stops, exactly as the census module's own
+//   comment requires. The fixtures are constructed the way the srv3 unobservable-probe witness
+//   constructs its transport outcomes: a converged SshSessionExecResult is directly constructible,
+//   so the decode is testable without a host; what the fixtures cannot forge is a FleetSsh
+//   execution context, whose KnownHostsAnchor seal makes it unfakeable -- the seal that makes a
+//   fleet context unforgeable also makes it unfixturable, and the fleet ARM's reachability is
+//   carried by the portability rows below rather than by a fixture.
+
+// THE WORDS DID NOT CHANGE WITH THE CARRIER. One spelling (the ArgvCommand), one flattening
+// (argv_words); this row reds the moment anyone edits the word list and the command apart.
+test fn the_census_words_are_derived_from_the_census_command() -> Bool {
+  argv_words(command: systemctl_list_all_service_units_command())
+    == systemctl_list_all_service_units_argv()
+}
+
+// The fleet transport's own typed wall admits the census words -- the gate a script body never
+// reached, because run_shell_transport refused the carrier shape before any word was examined.
+test fn the_slot_census_words_cross_the_fleet_portable_word_wall() -> Bool {
+  match portable_remote_words(raws: systemctl_list_all_service_units_argv()) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The SshShell seam's allowlist admits every word, so the argv census executes over the fleet SSH
+// edge rather than refusing there as a diagnosed non-portable word.
+test fn the_slot_census_words_cross_the_ssh_portable_allowlist() -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: systemctl_list_all_service_units_argv()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The census unit rows a converged read decodes to. The fixture line is the shape systemctl
+// list-units --no-legend --plain prints: UNIT LOAD ACTIVE SUB DESCRIPTION.
+data census_decode_fixture: String = join([
+  "actions-runner@srv1-01.service loaded active running GitHub Actions Runner\n",
+  "ssh.service loaded active running OpenBSD Secure Shell server\n",
+], "")
+
+fn rows_mention_unit(rows: List<SlotCensusRow>, unit: String) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: (acc, r) => match r {
+      RetainedSlot { unit: u } => acc || u == unit
+      RetiringSlot { unit: u, active: _ } => acc || u == unit
+      MissingSlot { unit: u } => acc || u == unit
+      ForeignOccupant { unit: u } => acc || u == unit
+    },
+  )
+}
+
+// THE TYPED ARM DECODES A CONVERGED READ INTO A REAL CENSUS. The fixture carries one slot unit and
+// one foreign service; the census must derive (not refuse) and must hold the slot row the bytes
+// named. This is the arm the host-effect census never had over FleetSsh: bytes from the fleet
+// wall's admitted carrier, decoded by the census module's one decode.
+test fn a_converged_typed_argv_reads_a_real_census() -> Bool {
+  match slot_census_from_typed_argv_outcome(
+    host: operator_host_srv1,
+    outcome: typed_converged_with_census_fixture(),
+    edge_noun: "the fleet edge",
+  ) {
+    CensusDerived { rows: rows } =>
+      rows_mention_unit(rows: rows, unit: "actions-runner@srv1-01.service")
+    CensusRefused { cause: _ } => false
+  }
+}
+
+fn typed_converged_with_census_fixture() -> TypedArgvExecOutcome {
+  TypedArgvExecConverged {
+    result: SshSessionExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: census_decode_fixture,
+      stderr: "",
+    },
+  }
+}
+
+fn typed_argv_refusal_fixture() -> TypedArgvExecOutcome {
+  TypedArgvExecRefused { reason: "witness: the fleet wall refused the probe before it ran" }
+}
+
+// A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. A fleet edge that refuses the words
+// says nothing about how many slots the host runs, and rendering that as "no surplus" is the narrow
+// that would let a shrink raise caps on a host it could not read.
+test fn a_typed_argv_refusal_is_a_refused_census_not_an_empty_population() -> Bool {
+  match slot_census_from_typed_argv_outcome(
+    host: operator_host_srv1,
+    outcome: typed_argv_refusal_fixture(),
+    edge_noun: "the fleet edge",
+  ) {
+    CensusRefused { cause: cause } =>
+      starts_with(s: cause, prefix: "runner slot population unreadable over the fleet edge: ")
+    CensusDerived { rows: _ } => false
+  }
+}
+
+// THE REALIZER'S REMOTE ARMS NAME THE TRANSPORT, NOT THE FLEET EDGE. The same refused outcome,
+// decoded with the noun the host-effect realizer supplies, reads "over the transport" -- a census
+// refused over the ssh edge is not a fleet-edge fact, and the reason that follows the noun still
+// names the concrete endpoint.
+test fn the_realizers_transport_refusal_names_the_transport() -> Bool {
+  match slot_census_from_typed_argv_outcome(
+    host: operator_host_srv1,
+    outcome: typed_argv_refusal_fixture(),
+    edge_noun: "the transport",
+  ) {
+    CensusRefused { cause: cause } =>
+      starts_with(s: cause, prefix: "runner slot population unreadable over the transport: ")
+    CensusDerived { rows: _ } => false
+  }
+}
+
+// THE LOCAL ARM DECODES THE SAME WAY. A nonzero local exit is the classifier's refused arm -- the
+// same judgment the remote arms reach, reached from the local seam's own observation record.
+test fn a_local_refusal_is_a_refused_census_not_an_empty_population() -> Bool {
+  match slot_census_from_process_outcome(
+    host: operator_host_srv1,
+    outcome: ProcessRefused { exit_code: 7, stderr: "witness: systemctl could not reach the manager" },
+  ) {
+    CensusRefused { cause: cause } => starts_with(s: cause, prefix: "systemctl list-units exit=7 ")
+    CensusDerived { rows: _ } => false
+  }
+}
+
+// AND A SUCCESSFUL LOCAL READ DECODES BYTES, NOT SENTINELS: the same fixture through the local
+// seam's output-bearing arm reaches the same census the typed arms reach.
+test fn a_local_output_present_reads_a_real_census() -> Bool {
+  match slot_census_from_process_outcome(
+    host: operator_host_srv1,
+    outcome: ProcessOutputPresent { text: census_decode_fixture },
+  ) {
+    CensusDerived { rows: rows } =>
+      rows_mention_unit(rows: rows, unit: "actions-runner@srv1-01.service")
+    CensusRefused { cause: _ } => false
+  }
+}

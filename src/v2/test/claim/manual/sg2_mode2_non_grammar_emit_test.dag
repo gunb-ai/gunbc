@@ -4,14 +4,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetModel }
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  translate_type_expression_project,
-  target_bundle_child,
-  target_serialize_source_from_model,
-  translate,
-  translate_apply_use_site_ownership_to_projected_type
-}
+import v2.compiler.translate { translate_type_expression_project, translate }
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted, target_bundle_child, target_serialize_source_from_model, translate_apply_use_site_ownership_to_projected_type }
 import v2.extdeps.languages.rust {
   rust_sg2_arrow_xy_emitted,
   rust_sg2_binding_spellings,
@@ -31,7 +25,7 @@ import v2.std.algebra { is_empty }
 import v2.std.collection {
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present,
@@ -47,7 +41,6 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.witness { Violates, Witness }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

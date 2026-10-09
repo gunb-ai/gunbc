@@ -1,5 +1,6 @@
 module v2.test.emit.semantic_decl_decoration_binding_test
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
@@ -8,9 +9,8 @@ import v2.std.compilers.semantic_decl_emission {
   target_semantic_decl_coproduct_decoration_lines
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, TypeNode }
-import v2.std.collection { List, fold_list }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, TypeNode }
+import v2.std.collection { fold_list }
 import v2.std.text { is_empty }
 import std.algebra { Empty }
 
@@ -18,8 +18,8 @@ fn bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
+      Edge { label: Authored { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Authored { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
     ],
     occurrence_id: OccurrenceSynthetic
   }

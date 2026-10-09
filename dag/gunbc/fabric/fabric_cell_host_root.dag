@@ -1,9 +1,9 @@
 module gunbc.fabric_cell_host_root
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
-import std.disposition { Disposition, SingleAuthority }
-import v2.std.optional { Optional, Present }
-import product.placement_supply { HostIdentity }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import std.optional { Optional, Present }
+import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric_cell_converge { fabric_cell_base_dir }
@@ -23,7 +23,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
 }
 
-data fabric_cell_host_root_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_host_root_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THE SUBJECT AND ITS OWNERSHIP PROJECTION LIVE IN gunbc.fabric_cell_subject, upstream of both
 // cell families, so that one total match serves the slot-scoped family and this one without either

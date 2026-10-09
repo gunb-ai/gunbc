@@ -1,7 +1,9 @@
 module gunbc.fleet.printer_job_start
 
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
+import extdeps.tools.gnu_coreutils {timeout_command}
+import std.measure {second}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
-import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -176,7 +178,6 @@ type CaBundleAcquisition
 // verification, which is the absorbing fallback DESIGN section 5 forbids -- a failure arm that
 // widens instead of stopping. The bytes either match what was recorded or the leg ends.
 fn acquire_pinned_ca_bundle() -> CaBundleAcquisition
-  uses net: Network
 {
   let created = shell.Mktemp.Dir()
   if created.success == false {
@@ -336,7 +337,6 @@ fn start_print_on_printer(
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> PrintStart
-  uses net: Network
 {
   match printer_serial(printer: printer) {
     PrinterSerialUnknown { printer: p } =>
@@ -419,7 +419,6 @@ fn publish_start_with_credential(
   remote_name: NonEmptyStr,
   credential: Secret,
 ) -> PrintStart
-  uses net: Network
 {
   match acquire_pinned_ca_bundle() {
     CaBundleRefused { cause: cause } => PrintStartRefused { printer: printer, cause: cause }
@@ -449,14 +448,14 @@ fn publish_start_with_credential(
           outcome = run_shell_command_capture(
             command: env_prefixed_command(
               bindings: mosquitto_options_env(binding: binding),
-              command: mosquitto_publish_command(
+              command: timeout_command(duration:second(count:20),kill_after:second(count:2),command:mosquitto_publish_command(
                 endpoint: endpoint,
                 topic: topic as NonEmptyStr,
                 payload: bambu_start_payload_json(
                   command: command,
                   sequence_id: start_attempt_identity(workspace: workspace) as String),
                 qos: bambu_start_command_qos,
-                ca_bundle: pinned_ca_bundle_path(bundle: bundle))),
+                ca_bundle: pinned_ca_bundle_path(bundle: bundle)))),
             transport: LocalExec
           )
           let credential_shredded = shred_mosquitto_options_binding(binding: binding)
@@ -547,4 +546,15 @@ fn start_refusal(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) 
         ". Whether the printer received the start command is UNKNOWN and it may be printing; reconcile by reading the report topic, never by publishing again.") as NonEmptyStr,
     }
   }
+}
+
+fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr) -> PrintStart {
+ let printer=session_printer(s:session)
+ match printer_serial(printer:printer) {
+  PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
+   PrinterAddressFound {address:a}=>publish_start_with_credential(printer:printer,serial:serial,lan_address:a,remote_name:remote_name,credential:session_credential(s:session))
+   PrinterAddressUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"}
+  }
+  PrinterSerialUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"}
+ }
 }

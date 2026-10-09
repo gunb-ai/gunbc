@@ -1,6 +1,6 @@
 module gunbc.fabric_m0_commit
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, brand }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { WorkKey }

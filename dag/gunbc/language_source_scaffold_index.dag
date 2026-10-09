@@ -1,6 +1,8 @@
 module gunbc.language_source_scaffold_index
 
+import std.disposition { Disposition }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority, RealizationDispatch }
 
 // B2 inventory for hand-authored target-language semantics in language files. Every blob of
 // hand-written target source carries a row here whose disposition is a std.disposition Scaffold
@@ -11,7 +13,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an
 // unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only
 // inhabitants, and 'unmarked' is genuinely unwritable. CONSTRUCTION (literal sites only, PR #7438):
-// DeclarationRef.module_path and decl_name are NonEmptyStr (String where non_empty) and the v1
+// DeclarationRef.module_path and decl_name are NonEmptyStr (String where string_non_empty) and the v1
 // typechecker enforces non_empty at string-literal construction sites — an empty bind is unwritable
 // at compile time. Non-literal string values at those positions emit counted
 // WhereRefinementUnenforced advisory (wall after grounding: decidable whether evidence exists,
@@ -37,15 +39,6 @@ data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {
   }
 }
 
-data rust_bool_host_bridge_scaffold_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.plans.value_null_split",
-    decl_name: "value_null_split_plan",
-    field: WholeDeclaration
-  }
-}
-
 data rust_dry_run_mode_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -59,12 +52,6 @@ data rust_pair_completion_spelling_scaffold_row: LanguageSourceScaffoldRow = Lan
   carrier_module: "extdeps.languages.rust.emit",
   blob_decl: "rust_pair_completion_spellings",
   disposition: rust_pair_completion_spelling_scaffold_trigger
-}
-
-data rust_bool_host_bridge_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
-  carrier_module: "extdeps.languages.rust.emit",
-  blob_decl: "rust_supplemental_impls_bool_coproduct",
-  disposition: rust_bool_host_bridge_scaffold_trigger
 }
 
 data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
@@ -294,11 +281,6 @@ data ct_row_ct_pipeline_test: LanguageSourceScaffoldRow = LanguageSourceScaffold
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
-data ct_row_ct_self_parse_all_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
-  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_parse_all_test",
-  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
-}
-
 data ct_row_ct_self_resolve_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_resolve_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -496,7 +478,6 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_tokenizer_tests,
   ct_row_ct_parse_tests,
   ct_row_ct_pipeline_test,
-  ct_row_ct_self_parse_all_test,
   ct_row_ct_self_resolve_test,
   ct_row_ct_self_compile_test,
   ct_row_ct_self_compile_cargo_check_test,
@@ -543,7 +524,6 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   runtime_rust_rc_container_row,
   runtime_rust_filesystem_row,
   rust_pair_completion_spelling_scaffold_row,
-  rust_bool_host_bridge_scaffold_row,
   rust_dry_run_mode_scaffold_row,
   runtime_rust_trace_mark_scaffold_row,
   runtime_rust_kernel_opcode_scaffold_row,

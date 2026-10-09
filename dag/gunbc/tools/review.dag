@@ -1,7 +1,10 @@
 module gunbc.tools.review
 
+import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 
@@ -84,6 +87,19 @@ fn build_user_message(
   "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
 }
 
+// A REST REFUSAL TAKES THE SAME EXIT AS A REFUSED CONTEXT READ: reviewed is false and comment_url
+// carries the reason, naming the operation that refused.
+fn review_rest_refusal_reason(step: String, refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } =>
+      concat("review refused: ", step, " answered HTTP ", to_string(status), ": ", body)
+    RestTransportRefused { cause } =>
+      concat("review refused: ", step, " was not reached: ", cause as String)
+    RestBodyUndecodable { status, cause } =>
+      concat("review refused: ", step, " answered HTTP ", to_string(status), " with an undecodable body: ", cause as String)
+  }
+}
+
 fn review_pr(
   owner: String,
   repo: String,
@@ -91,81 +107,103 @@ fn review_pr(
   model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
-  pr = github.Pulls.Get(
+  match github.Pulls.Get(
     auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pr_number
-  )
-
-  existing = github.Pulls.ListReviews(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    pull_number: pr_number
-  )
-  already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
-
-  diff = github.Pulls.Diff(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    pull_number: pr_number
-  )
-  let _ = fetch_pr_head_ref(ref: pr.pr.head.ref)
-  let origin_ref = concat("origin/", pr.pr.head.ref) as GitRef
-  match review_context_read(ref: origin_ref) {
-    ReviewContextRefused { reason: why } =>
-      return { reviewed: false, comment_url: concat("review refused: ", why) }
-    ReviewContextReady { design: design, algebra_ref: algebra_ref } => {
-      system_prompt = build_system_prompt(
-        design: design,
-        algebra_ref: algebra_ref
-      )
-      user_msg = build_user_message(
-        pr_title: pr.pr.title,
-        pr_number: pr_number,
-        branch: pr.pr.head.ref,
-        base_ref: pr.pr.base.ref,
-        diff: diff.diff
-      )
-      llm_response = llm.Anthropic.Messages(
-        api_key: "",
-        model: model,
-        messages: review_messages,
-        max_tokens: 8192,
-        temperature: none,
-        system: "{system_prompt}\n\n{user_msg}"
-      )
-
-      posted = github.Pulls.CreateReview(
+  ) {
+    RestRefused { refusal } =>
+      return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Get", refusal: refusal) }
+    RestAnswered { answer: pr } =>
+      match github.Pulls.ListReviews(
         auth_token: "",
         owner: owner,
         repo: repo,
-        pull_number: pr_number,
-        commit_id: pr.pr.head.sha,
-        body: llm_response.content,
-        comments: "[]"
-      )
+        pull_number: pr_number
+      ) {
+        RestRefused { refusal } =>
+          return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.ListReviews", refusal: refusal) }
+        RestAnswered { answer: existing } => {
+          already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
-      return { reviewed: true, comment_url: posted.html_url }
-    }
+          match github.Pulls.Diff(
+            auth_token: "",
+            owner: owner,
+            repo: repo,
+            pull_number: pr_number
+          ) {
+            RestRefused { refusal } =>
+              return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Diff", refusal: refusal) }
+            RestAnswered { answer: diff } => {
+              let _ = fetch_pr_head_ref(ref: pr.pr.head.ref)
+              let origin_ref = concat("origin/", pr.pr.head.ref) as GitRef
+              match review_context_read(ref: origin_ref) {
+                ReviewContextRefused { reason: why } =>
+                  return { reviewed: false, comment_url: concat("review refused: ", why) }
+                ReviewContextReady { design: design, algebra_ref: algebra_ref } => {
+                  system_prompt = build_system_prompt(
+                    design: design,
+                    algebra_ref: algebra_ref
+                  )
+                  user_msg = build_user_message(
+                    pr_title: pr.pr.title,
+                    pr_number: pr_number,
+                    branch: pr.pr.head.ref,
+                    base_ref: pr.pr.base.ref,
+                    diff: diff.diff
+                  )
+                  match llm.Anthropic.Messages(
+                    api_key: "",
+                    model: model,
+                    messages: review_messages,
+                    max_tokens: 8192,
+                    temperature: none,
+                    system: "{system_prompt}\n\n{user_msg}"
+                  ) {
+                    RestRefused { refusal } =>
+                      return { reviewed: false, comment_url: review_rest_refusal_reason(step: "llm.Anthropic.Messages", refusal: refusal) }
+                    RestAnswered { answer: llm_response } =>
+                      match github.Pulls.CreateReview(
+                        auth_token: "",
+                        owner: owner,
+                        repo: repo,
+                        pull_number: pr_number,
+                        commit_id: pr.pr.head.sha,
+                        body: llm_response.content,
+                        comments: "[]"
+                      ) {
+                        RestRefused { refusal } =>
+                          return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.CreateReview", refusal: refusal) }
+                        RestAnswered { answer: posted } =>
+                          return { reviewed: true, comment_url: posted.html_url }
+                      }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
   }
 }
+
+type ReviewAgentCycle
+  = ReviewAgentCycleCompleted { reviewed_count: Int }
+  | ReviewAgentCycleRefused { refusal: RestRefusal }
 
 // THE DEFAULTS PROJECT FROM gunbc.repository RATHER THAN RESPELLING THE SLUG, closing the last of
 // the five nicknames (review 46301). Hazard not visible at this line: a default argument expression
 // is evaluated in the CALLER'S scope, so a caller in a module that does not import gunbc.repository
 // dies at the call site with an undefined variable it never wrote. Safe today only because
-// review_cycle has no in-corpus caller (the one reference is a command string invoking
-// review_codex's function of the same name), so the default is unreachable rather than proven. A
+// review_cycle has no in-corpus caller, so the default is unreachable rather than proven. A
 // caller that appears must import gunbc.repository, or pass owner and repo explicitly (the better
 // habit).
 
 fn review_cycle(
   owner: String = gunbc_repository.owner,
   repo: String = gunbc_repository.name
-) -> { reviewed_count: Int } {
+) -> ReviewAgentCycle {
 
   upsert_tagged_cron_tab(
     tag: "review-agent",
@@ -174,20 +212,24 @@ fn review_cycle(
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
 
-  open_prs = github.Pulls.List(
+  match github.Pulls.List(
     auth_token: "",
     owner: owner,
     repo: repo,
     state: extdeps.github.pulls.Open
-  )
+  ) {
+    RestRefused { refusal } =>
+      return ReviewAgentCycleRefused { refusal: refusal }
+    RestAnswered { answer: open_prs } => {
+      results = for pr in open_prs.pulls {
+        review_pr(
+          owner: owner,
+          repo: repo,
+          pr_number: pr.number
+        )
+      }
 
-  results = for pr in open_prs.pulls {
-    review_pr(
-      owner: owner,
-      repo: repo,
-      pr_number: pr.number
-    )
+      return ReviewAgentCycleCompleted { reviewed_count: count(results) }
+    }
   }
-
-  return { reviewed_count: count(results) }
 }

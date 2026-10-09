@@ -1,6 +1,7 @@
 module tools.cas_store_live_probe
 
 import std.types { NonEmptyStr, String, Bool, Int }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt, cas_generation_count }
 import gunbc.durable_cas_file_store {
@@ -51,7 +52,17 @@ fn cas_probe_run(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr, expe
   }
 }
 
-fn cas_store_live_probe(root: NonEmptyStr) -> Bool {
+// THE ENTRY RETURNS ProcessExit because the host maps only a ProcessExit to an exit code and refuses
+// a bare Bool rather than print it and exit 0; as a Bool the recipe above could not report a verdict.
+fn cas_store_live_probe(root: NonEmptyStr) -> ProcessExit {
+  if cas_store_live_probe_holds(root: root) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "a CAS store live probe attempt did not reach its expected outcome")
+  }
+}
+
+fn cas_store_live_probe_holds(root: NonEmptyStr) -> Bool {
   let first = cas_probe_run(root: root, key: "slot-a", payload: "state-A", expected: ExpectSlotAbsent)
   let repeat = cas_probe_run(root: root, key: "slot-a", payload: "state-B", expected: ExpectSlotAbsent)
   let advance = cas_probe_run(root: root, key: "slot-a", payload: "state-C", expected: ExpectSlotGeneration { generation: 1 })

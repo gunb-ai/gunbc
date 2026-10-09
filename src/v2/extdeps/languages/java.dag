@@ -1,5 +1,7 @@
 module v2.extdeps.languages.java
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -45,13 +47,12 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection {
-  List,
   Map,
   PointwisePower,
   empty_map,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Present,
   Optional
@@ -81,15 +82,16 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node, fold_list, fold_list_right, list_append, list_snoc_item }
+import v2.std.logic { bool_boolean_algebra }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.algebra { BooleanAlgebra, fold_list, fold_list_right }
+import v2.std.algebra_structure_signature { boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node }
 import v2.std.text { String }
 
 type JavaIntKind
@@ -501,7 +503,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn java_declared_inhabitants_root() -> Node {
@@ -527,15 +529,7 @@ fn java_selection_policy_node() -> Node {
 }
 
 fn java_emitted_add_method_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [java_inhabitant_int_node(), java_inhabitant_int_node()], codomain: java_inhabitant_int_node(), source: java_inhabitant_int_node())
 }
 
 fn java_source_text_authority() -> String {
@@ -545,47 +539,6 @@ fn java_source_text_authority() -> String {
 fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn java_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: java_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: java_inhabitant_atom(id: ^java_source_literal)
-    ),
-    tail: Cons {
-      head: java_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: java_inhabitant_atom(id: ^java_production_method_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn java_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: java_serialize_source_prefix_edges(),
-    right: [
-      java_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: java_concrete_tokens(),
-          token_to_node: java_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn java_serialize_source_node() -> Node {
-
-  let _authority = java_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: java_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -711,10 +664,6 @@ fn java_target_model_node() -> Node {
       java_named_edge(
         name: ^target_model_edge_translation_rules,
         target: java_translation_rules_node()
-      ),
-      java_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: java_serialize_source_node()
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -748,7 +697,7 @@ fn java_target_model() -> TargetModel {
 fn java_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
@@ -780,7 +729,8 @@ fn java_method_add_lex_rules() -> LexRuleSet {
       java_lex_rule(token_class: ^java_token_rparen, text: ") "),
       java_lex_rule(token_class: ^java_token_comma, text: ", "),
       java_lex_rule(token_class: ^java_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -852,7 +802,8 @@ fn java_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: java_method_add_lex_rules().rules,
       right: java_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1387,7 +1338,7 @@ fn java_grammar_root() -> GrammarRoot {
     expression: java_grammar_result_expr(),
     emitted: ^java_surface_result
   )
-  let type = java_grammar_production(
+  let type_production = java_grammar_production(
     name: ^java_production_type,
     expression: java_grammar_type_expr(),
     emitted: ^java_surface_type
@@ -1467,7 +1418,7 @@ fn java_grammar_root() -> GrammarRoot {
       field_declaration,
       primitive_type,
       result,
-      type,
+      type_production,
       formal_parameter_list,
       method_declarator,
       block,

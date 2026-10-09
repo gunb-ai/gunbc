@@ -1,29 +1,29 @@
 module gunbc.host_reset_subject_roster
 
 import std.types { Bool, List, NonEmptyStr, String }
-import product.placement_supply { HostIdentity }
-import extdeps.bmc.access_profile { BmcAccessObservation }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import product.host_identity { HostIdentity }
 import gunbc.machine_intake_oob_boot_handoff {
   OobBootHandoffAdmission,
   oob_boot_handoff_admission,
   oob_handoff_is_admitted,
 }
-import gunbc.machine_intake_mtcollins1_access_observation {
-  mtcollins1_access_observation,
-  mtcollins1_capability_row,
+import gunbc.managed_host {
+  ManagedHost,
+  ManagedHostBinding,
+  ManagedHostBindingStanding,
+  ManagedHostAccessUnobserved,
+  ManagedHostBound,
+  ManagedHostEndpointMismatch,
+  ManagedHostNotSecured,
+  managed_host_binding,
+  managed_hosts,
 }
-import gunbc.machine_intake_mtcollins1_actuate {
-  mtcollins1_bmc_username,
-  mtcollins1_cdrom_device,
-  mtcollins1_cdrom_readback_rendering,
-  mtcollins1_power_action,
-}
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.host_reset_boot_selection { reset_boot_selection }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
-// DERIVED SUBSET rather than a list anyone maintains.
+// DERIVED SUBSET of gunbc.managed_host managed_hosts() rather than a list anyone maintains.
 //
 // "MAY HAVE ITS POWER DRIVEN OUT OF BAND" IS NOT "IS AN EXECUTOR FLEET HOST", and conflating the two
 // is the §3 meaning fork this module exists to avoid. gunbc.fleet_runner_connectivity fleet_hosts()
@@ -32,64 +32,64 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // host with runner slots is not thereby drivable out of band. Two predicates, two rosters, one
 // naming authority underneath both: every identity here comes from gunbc.fleet_intent_network.
 //
-// MEMBERSHIP IS AN IDENTITY JOIN AGAINST THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS. A host is
-// a reset subject exactly when oob_boot_handoff_admission -- the same fold
-// gunbc.machine_intake_oob_boot_handoff runs before it writes anything to a controller -- admits its
-// observation against its capability row. So the roster cannot drift from the capability it claims
-// to describe: the evidence that authorizes the act is the evidence that produces the membership,
-// and there is no second place to edit.
-// THE PER-HOST RESET POLICY TRAVELS WITH THE ROSTER ROW, and that is the layer it belongs to rather
-// than an accident of convenience. gunbc.machine_intake_oob_boot_handoff takes the boot device, the
-// expected read-back rendering and the power action as PARAMETERS precisely because which of them a
-// workflow picks is business policy, and its own note says so; this roster is the workflow-layer
-// authority that picks them for a reset.
-//
-// THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
-// the device word, the exact text ipmitool renders for it, and the cycle verb the unit's SEL
-// confirmed. The username is mtcollins1_bmc_username — the BmcSecured managed account, not a
-// factory literal. A host that is not BmcSecured is not a reset candidate.
-type ResetSubjectCandidate {
-  host: HostIdentity
-  observation: BmcAccessObservation
-  capability_row: BmcFirmwareReleaseCapabilityRow
-  username: NonEmptyStr
-  boot_device: NonEmptyStr
-  boot_readback_rendering: NonEmptyStr
-  power_action: NonEmptyStr
+// MEMBERSHIP IS THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS, AND NOTHING THE RUN DOES NOT USE.
+// A managed host is a reset subject exactly when gunbc.managed_host managed_host_binding binds its
+// secured account to an access observation of the same controller, gunbc.host_reset_boot_selection
+// gives it a reset selection, and oob_boot_handoff_admission -- the fold
+// gunbc.machine_intake_oob_boot_handoff runs before it writes anything to a controller -- admits the
+// observation against its capability row. The admitted subject carries the binding and the
+// selection, and the run reads both from it, so a roster member can never fail dispatch for want of
+// a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
+// its only mint and no module can hand the run a subject that skipped this admission.
+type AdmittedResetSubject sole_constructor {
+  binding: ManagedHostBinding
+  boot_selection: IpmiBootSelection
 }
 
-// THE CANDIDATE SET IS EVERY HOST THAT HAS LANDED THE EVIDENCE, ADMITTED OR NOT. It is stated as
-// candidates rather than as members so that the admission fold below has something to refuse: a
-// roster assembled from already-admitted hosts would make its own filter unreachable.
-//
-// THERE IS EXACTLY ONE TODAY AND THAT IS A MEASUREMENT, NOT A CHOICE. Outside test fixtures the
-// corpus carries exactly one landed BmcAccessObserved standing, mtcollins1_access_standing, and
-// gunbc.machine_intake_mtcollins1_access_observation says so about itself -- it is the first landed
-// BmcAccessObservation in the repository and no host, srv3 included, has ever authored one. A second
-// host joins this list the day it authors an observation, and nobody edits a roster to let it.
-fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
-  match mtcollins1_bmc_username {
-    Absent => []
-    Present { value: username } =>
-      [
-        ResetSubjectCandidate {
-          host: operator_host_mtcollins1,
-          observation: mtcollins1_access_observation,
-          capability_row: mtcollins1_capability_row,
-          username: username,
-          boot_device: mtcollins1_cdrom_device,
-          boot_readback_rendering: mtcollins1_cdrom_readback_rendering,
-          power_action: mtcollins1_power_action,
-        },
-      ]
+type ResetSubjectAdmission
+  = ResetSubjectAdmitted { subject: AdmittedResetSubject }
+  | ResetSubjectUnbound { standing: ManagedHostBindingStanding }
+  | ResetSubjectNoSelection { host: HostIdentity }
+  | ResetSubjectControllerNotAdmitted { admission: OobBootHandoffAdmission }
+
+fn admit_reset_subject(host: ManagedHost) -> ResetSubjectAdmission {
+  match managed_host_binding(host: host) {
+    ManagedHostBound { binding: b } =>
+      match reset_boot_selection(host: host) {
+        Absent => ResetSubjectNoSelection { host: host.host }
+        Present { value: selection } => {
+          let admission = oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row)
+          if oob_handoff_is_admitted(admission: admission) {
+            ResetSubjectAdmitted { subject: AdmittedResetSubject { binding: b, boot_selection: selection } }
+          } else {
+            ResetSubjectControllerNotAdmitted { admission: admission }
+          }
+        }
+      }
+    ManagedHostAccessUnobserved { endpoint: e } => ResetSubjectUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } }
+    ManagedHostNotSecured { cause: c } => ResetSubjectUnbound { standing: ManagedHostNotSecured { cause: c } }
+    ManagedHostEndpointMismatch { observed: o, secured: sc } =>
+      ResetSubjectUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: sc } }
   }
 }
 
-fn reset_subject_admission(candidate: ResetSubjectCandidate) -> OobBootHandoffAdmission {
-  oob_boot_handoff_admission(
-    observation: candidate.observation,
-    capability_row: candidate.capability_row,
+// THE FOLD RUNS OVER EVERY HOST IT IS GIVEN, ADMITTED OR NOT, so the filter has something to refuse: a
+// roster assembled from already-admitted hosts would make its own filter unreachable.
+fn admitted_reset_subjects(hosts: List<ManagedHost>) -> List<AdmittedResetSubject> {
+  fold(
+    hosts,
+    init: [],
+    f: (acc, h) => match admit_reset_subject(host: h) {
+      ResetSubjectAdmitted { subject: s } => concat(acc, [s])
+      ResetSubjectUnbound { standing: _ } => acc
+      ResetSubjectNoSelection { host: _ } => acc
+      ResetSubjectControllerNotAdmitted { admission: _ } => acc
+    },
   )
+}
+
+fn reset_subject_roster_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
+  map(admitted_reset_subjects(hosts: hosts), s => s.binding.host.host as NonEmptyStr)
 }
 
 // THE FILTER IS A PREDICATE, NOT A FAILURE ARM, AND THE DIFFERENCE MATTERS HERE. Dropping a
@@ -99,16 +99,7 @@ fn reset_subject_admission(candidate: ResetSubjectCandidate) -> OobBootHandoffAd
 // gunbc.host_reset_return reset_dispatch_options, where an unmintable observer pairing refuses the
 // whole option list rather than quietly shrinking it.
 fn reset_subject_roster() -> List<NonEmptyStr> {
-  fold(
-    reset_subject_candidates(),
-    init: [],
-    f: (acc, c) =>
-      if oob_handoff_is_admitted(admission: reset_subject_admission(candidate: c)) {
-        concat(acc, [c.host as NonEmptyStr])
-      } else {
-        acc
-      },
-  )
+  reset_subject_roster_of(hosts: managed_hosts())
 }
 
 // THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts, and this is the one place the two
@@ -119,16 +110,17 @@ fn reset_observer_peer_roster() -> List<NonEmptyStr> {
   map(fleet_hosts(), h => h as NonEmptyStr)
 }
 
-// THE ROW FOR ONE SUBJECT, so a caller that resolved a subject label can reach the evidence and the
-// policy for it without re-walking the roster in its own vocabulary. Absent means the label names no
-// candidate, which a caller must treat as a refusal and never as a host it may drive with defaults.
-fn reset_subject_candidate_for(host: NonEmptyStr) -> ResetSubjectCandidate? {
+// THE ADMITTED SUBJECT FOR ONE LABEL, so a caller that resolved a subject reaches its binding and
+// selection without re-walking the roster in its own vocabulary. Absent means the label names no
+// admitted subject, which a caller must treat as a refusal and never as a host it may drive with
+// defaults.
+fn reset_subject_for(host: NonEmptyStr) -> AdmittedResetSubject? {
   fold(
-    reset_subject_candidates(),
+    admitted_reset_subjects(hosts: managed_hosts()),
     init: none,
-    f: (acc, c) => match acc {
+    f: (acc, s) => match acc {
       Present { value: _ } => acc
-      Absent => if (c.host as String) == (host as String) { Present { value: c } } else { acc }
+      Absent => if (s.binding.host.host as String) == (host as String) { Present { value: s } } else { acc }
     },
   )
 }

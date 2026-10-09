@@ -29,11 +29,10 @@ import v2.test.name_resolve.admission_fail_closed { fc_duplicate_roots }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -41,11 +40,21 @@ import extdeps.communication.medium { Lossless, Medium }
 // declaration of the prepared module, so a same-named NESTED edge — the graft spine segment
 // v2.test.collision itself — must never be selected and evaluated under the requested identity.
 // The synthetic module declares no top-level collision; its only collision-named edge is the
-// spine segment (plus a record field, which infer erases).
+// spine segment. (An earlier revision also carried `type Probe { collision: Int }` and relied on
+// the graft silently dropping the record; since gunbc#11574 a record survives as a residual
+// shell and refuses in a closure without a parse-phase declaration index -- the standing
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft -- so the
+// incidental field is gone rather than the fixture standing on a silent drop.)
 
-data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\nimport v2.std.integer { Int }\n\ntest fn real_test() -> Bool { true }\n\ntype Probe { collision: Int }\n"
+// The module also carries `data default_shade: Shade = Light`, which lowers to a nullary Arrow whose
+// body is a resolved declaration reference. Eval admits a module only if its whole tree is well
+// formed, so this row is the real-route control for v2.std.node DeclarationReferenceBody: with that
+// arm deleted the reference reads as a record construct, the module fails well_formed, and
+// real_test is refused eval_rejected_invalid_node instead of passing (the native lane canary,
+// 2026-09-26).
+data collision_module_source: String = "module v2.test.collision\n\nimport std.types { Bool }\n\ntype Shade = Light | Dark\n\ndata default_shade: Shade = Light\n\ntest fn real_test() -> Bool { true }\n"
 
-data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
+data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport std.types { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 
 fn collision_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -92,7 +101,7 @@ fn collision_resolved() -> Outcome<ResolvedTree> {
   match native_test_context_from_ingest(ingest: [collision_read(), collision_sibling_read()]) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: context, diagnostics: _ } =>
-      native_test_resolve_module(context: context, module: collision_module())
+      native_test_resolve_module(context: context, module: collision_module()).resolved
   }
 }
 
@@ -109,9 +118,9 @@ fn collision_prepared() -> Optional<NativeTestPreparedModule> {
 
 fn observation_is_entry_not_found(observation: NativeTestObservation) -> Bool {
   match observation.verdict {
-    NativeTestRefused { stage: stage, reason: reason } =>
+    NativeTestRefused { stage: stage, diagnostics: d } =>
       match stage {
-        NativeTestStageEntry => reason == ^native_test_entry_declaration_not_found
+        NativeTestStageEntry => diagnostics_fatal_reason(d: d) == ^native_test_entry_declaration_not_found
         _ => false
       }
     _ => false
@@ -168,10 +177,9 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>
       let context = NativeTestContext {
-        resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots),
-        index: source_root_index_empty(),
-        active_roots: [],
-        file_refusals: []
+        resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: [], policy: v2.std.resolution_policy.default_name_resolution_policy()),
+        file_refusals: [],
+        accepted_file_advisories: []
       }
       match native_lane_module_resolution(
         context: context,
@@ -181,7 +189,7 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
           path: ^native_decl_selection_collision_cu,
           declarations: ["real_test"]
         }
-      ) {
+      ).resolution {
         NativeLaneModuleResolved { resolved: _ } => false
         NativeLaneModuleContextRowsDecided { rows: _ } => false
         NativeLaneModuleResolveRowsDecided { rows: rows } =>
@@ -190,9 +198,9 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
             empty: true,
             cons: fn(ok, row) {
               ok && match row.verdict {
-                NativeTestRefused { stage: stage, reason: reason } =>
+                NativeTestRefused { stage: stage, diagnostics: d } =>
                   match stage {
-                    NativeTestStagePrepare => reason == ^resolve_duplicate_module_name
+                    NativeTestStagePrepare => diagnostics_fatal_reason(d: d) == ^resolve_duplicate_module_name
                     _ => false
                   }
                 _ => false

@@ -1,8 +1,9 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
@@ -17,7 +18,16 @@ import gunbc.instruments.fabric_capacity_standing {
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen,
   LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
-  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing,
+  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current, fabric_capacity_standing_for,
+  standing_for_authority,
+}
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, AuthorityTransitionRecord }
+import product.capacity.event_chain { HeadAbsent }
+import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, ReleasedToFleet, PairRealizationUnestablished,
+  spark_pair_serving_authorities,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -302,12 +312,96 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // the entry refuses until a modeled host-effect realizes remote inventory, so refusal IS today's
 // correct answer on the live path. When that frontier fires this claim flips, and it should -- it is
 // the control that notices, rather than a green that would have said nothing either way.
-test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool {
+// THE ROSTER IS SUPPLIED AT GENERATION 0 -- every claimed group's resting row, which is what the
+// authority log folds to when no transition is recorded -- so the claim stays hermetic while the
+// real group_report producer and the binding that maps it over the roster both execute. The
+// roster READ is exercised by the supplied-host claim below.
+fn w_resting_current() -> List<CurrentAuthority> {
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
+}
+
+test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_today() -> Bool {
   let live = group_report(group: FabricGroupA)
-  match fabric_capacity_standing() {
+  match fabric_capacity_standing_current(current: w_resting_current()) {
     ExitSuccess => false
     ExitFailure { code: _, reason: reason } =>
       (live.admitting == false)
         && string_contains(s: reason, pattern: live.text)
   }
+}
+
+// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. The live entry differs from
+// fabric_capacity_standing_for only in taking the executor from the host's `hostname` and the
+// instant from its clock; both are supplied here, so the verdict does not depend on which runner
+// executes it (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+// Everything beneath the seam is real: store resolution for a host that declares no dashboard
+// instance, the per-group CurrentAuthorityUnread, and the verdict text naming that read. Letting an
+// unreadable log fall back to the resting row turns this red.
+data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
+data witness_instant: EpochSecs = 1000
+
+test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
+  match fabric_capacity_standing_for(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      string_contains(s: reason, pattern: "group-a: serving authority could not be read at store: no dashboard instance is declared for host gunbc-witness-host-without-dashboard-instance")
+  }
+}
+
+// A SUSPENDED GROUP PRODUCES A STANDING THAT DOES NOT ADMIT, AND A RELEASED ONE TOO -- but neither
+// disappears, which is the property the empty-roster guard depends on. If suspension had been modeled
+// by dropping the group from the population instead, the guard would see a shorter list rather than a
+// missing subject, and at one member it would see an empty one and refuse a deliberate pause as though
+// the fleet had lost its roster.
+// THE FIXTURE HASH IS FOLDED HERE TOO. sha256_hex_digest yields Sha256Digest? and ContentHash's arm is
+// Sha256Hash(Sha256Digest); an earlier version of this file passed the Option straight into LeaseEpoch
+// and ReleasedToFleet, which does not typecheck. The sibling witness had already been repaired and this
+// one had not -- the repair did not travel with the lesson, which is why it is written here rather than
+// left as a shape to remember.
+fn with_capacity_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
+    Absent => false
+    Present { value: d } => scenario(Sha256Hash(d))
+  }
+}
+
+fn w_suspended_authority(h: ContentHash) -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation {
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    transaction: "witness-transaction" as NonEmptyStr,
+    authorization_binding: h,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: "witness-lease" as NonEmptyStr,
+        resource_fingerprint: h,
+        owner_fingerprint: h,
+        generation: 1,
+      },
+      observed: LeaseRunningExpected),
+  }
+}
+
+test fn a_suspended_authority_stands_without_admitting() -> Bool {
+  with_capacity_hash(scenario: h => {
+    let st = standing_for_authority(a: w_suspended_authority(h: h))
+    (st.admitting == false) && string_contains(s: st.text, pattern: "deliberately not admitting")
+  })
+}
+
+test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
+  with_capacity_hash(scenario: h => {
+    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupA, release_receipt: h })
+    (st.admitting == false) && string_contains(s: st.text, pattern: "no longer claims these hosts")
+  })
+}
+
+// AN ORDINARY SUBJECT STILL ROUTES TO THE LIVE PROBE, which is what keeps the two claims above from
+// being satisfied by a fold that refuses everything.
+test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
+  let via_authority = standing_for_authority(a: PairServingActive {
+    group: FabricGroupA,
+    exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+  })
+  let direct = group_report(group: FabricGroupA)
+  (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
 }

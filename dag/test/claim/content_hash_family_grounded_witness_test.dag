@@ -1,5 +1,7 @@
 module test.claim.content_hash_family_grounded_witness
 
+import extdeps.cargo_build { cargo_program }
+
 import std.types { NonEmptyStr, Bool, String }
 import std.content_hash {
   ContentHash,
@@ -37,6 +39,7 @@ import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash
 import extdeps.crypto.hash { sha256_digest, sha256_digest_content_hash }
 import extdeps.pin { Pin, ExactPin, admit_pin_integrity, PinIntegrityAdmitted }
 import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_bin_dir }
 import extdeps.version { VersionIdentity }
 import extdeps.container.oci.descriptor { OciDescriptor, accept_descriptor, DescriptorAccepted }
 import extdeps.container.oci.digest {
@@ -66,9 +69,9 @@ fn witness_oci_sha256_row() -> OciContentDigest {
 }
 data tool_pin_fixture: Pin<CliTool> = Pin {
   subject: CliTool {
-    name: "cargo",
+    program: cargo_program(),
     min_version: Absent,
-    installable_via: [SourceApt { package: "cargo" }],
+    installable_via: [SourceApt { package: "cargo", bin_dir: apt_bin_dir }],
   },
   version: "1.93.0" as VersionIdentity,
   expected_identity: content_hash_of_value(value: "cargo-structural-identity" as NonEmptyStr),

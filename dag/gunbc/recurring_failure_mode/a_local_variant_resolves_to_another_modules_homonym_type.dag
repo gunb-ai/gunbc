@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_local_variant_resolves_to_another_modules_homonym_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_local_variant_resolves_to_another_modules_homonym_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_local_variant_resolves_to_another_modules_homonym_type" as NonEmptyStr,
+
+  receipts: [
+    "a local variant resolves to another module's homonym type: a module declares a coproduct variant and constructs it by its bare name, and once an unrelated module elsewhere in the pool declares a TYPE of the same spelling, the bare construction resolves to that other module's declaration instead of the variant its own module declares. The module did not import the other; its own declaration is the nearer one by every scoping rule a reader would apply. It is the flat-namespace bare-name class that gunbc#12494 met from the import side (an unimported bare provider), met here from the declaring side: the resolver does not prefer the referring module's own declaration.",
+
+    "SPECIMEN, gunbc#12500 floor run 36415872954 at head 6edf6201c7: gunbc.runner_browser_toolchain declared `type VersionCapture = CapturedText { text: String } | CaptureRefused { reason: String }` and constructed CapturedText in its own functions; the merge of main brought gunbc.spark.serving_load_probe, which declares `type CapturedText sole_constructor { ... }`. The floor refused three construction sites in gunbc.runner_browser_toolchain with `sole_constructor type 'CapturedText' cannot be constructed outside its defining module` -- a refusal about serving_load_probe's type, reached from a module that neither imports serving_load_probe nor means its type. The same source passed the floor at the previous head, before the homonym existed.",
+
+    "WHAT gunbc#12500 DID IS AVOIDANCE, NOT A REPAIR: the variants were renamed (ToolchainCapturedText, ToolchainCaptureRefused), so this one collision stops firing while the resolver still binds a module-local construction to a foreign homonym. Any module may meet the same refusal the next time an unrelated module adds a type whose spelling matches one of its variants -- and when the foreign declaration is NOT sole_constructor, the construction may silently bind to the wrong declaration instead of refusing.",
+
+    "RUNG: mitigatable -- the class is observed only when a sole_constructor seal happens to refuse the foreign binding; the sealing is not a check of this class. ATTAINABLE CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, at capability grain: bare-name resolution that binds a reference to the referring module's own declaration before any other module's, and never to a declaration in a module the referring module does not import -- sufficient that adding a declaration to an unrelated module cannot change what an existing bare reference binds to.",
+  ],
+
+  evidence: [],
+}

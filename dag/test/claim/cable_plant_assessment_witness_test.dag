@@ -1,6 +1,6 @@
 module test.claim.cable_plant_assessment_witness
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, list_length }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
 import extdeps.transceiver.sff_8636 {
   sff8636_nominal_rate_from_byte140,

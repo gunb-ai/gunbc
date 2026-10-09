@@ -1,0 +1,68 @@
+module gunbc.machine_intake_jade_first_contact_frontier
+
+import std.types { List }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
+
+// THE MODEL LANDS BEFORE THE RUN, AND THIS IS WHAT SAYS SO RATHER THAN LEAVING IT IMPLIED.
+//
+// Every declaration below has exactly one consumer and it is the same one: the read-only
+// first-contact converge against Mt. Jade's factory BMC. That run is NOT in this change, by
+// operator instruction - the window it was built for closed, and shipping the run without a
+// window would mean landing an effectful entry point nobody is positioned to execute.
+//
+// So these are a declared frontier with ONE shared trigger rather than eleven guesses, and the
+// trigger is a capability and not an artifact (DESIGN §4b(3)): the converge existing is not
+// enough, it must READ these on the path that actually probes the controller. A converge that
+// imports the discriminator and then decides a family some other way would satisfy an
+// artifact-shaped trigger while the capability stayed dead.
+//
+// THE THREE EXTDEPS OPERATIONS ARE NOT ROSTERED HERE and that is deliberate: service operations
+// are not data or fn declarations, and the census that produced this roster reads those two
+// forms. Their consumer is the same run, and their absence from this list is a gap in the census
+// rather than a claim that they are consumed - stated so the next reader does not take the
+// roster's silence as coverage.
+
+// RETIRED 2026-10-03: discriminate_family and family_standing_from_discrimination. Their trigger was
+// a decoded Manager response folded through the discriminator, and the receipt that fired it is the
+// HISTORICAL capture gunbc.machine_intake_mtjade1_access_observation
+// read_mtjade1_recorded_manager_identity: artifacts/bmc/mtjade1-redfish-manager-self-2026-10-03.json,
+// digest-checked, decoded and bound to mtjade1's observed BMC link before
+// mtjade1_firmware_family_standing calls them. A live converge is no longer this row's trigger.
+
+data jade_first_contact_frontier_rows: List<FrontierRow> = concat(
+  frontier_rows_for_decls(
+    module_path: "gunbc.machine_intake_bmc_firmware_family_discriminator",
+    decl_names: [
+      "openbmc_oem_key_standing",
+      "megarac_oem_key_standing",
+    ],
+    reason: "The evidentiary standing of the discriminator's two Oem-key claims. Both are still TranscribedUncited: the recorded mtjade1 capture shows an AMI Manager carrying an Ami Oem member, which is one observation consistent with the claim, not a citation of the upstream schema that names it.",
+    dissolution: unbound_dissolution(description: "TRIGGER: each row's read obligation is discharged by citing the upstream release that names the Oem member (bmcweb for OpenBmc, the AMI MegaRAC SP-X Redfish reference for Ami), and the standing is rewritten as CitedToAuthority. SUFFICIENT FOR deleting that row's NAME. NOT satisfied by another capture that happens to carry the key."),
+  ),
+  concat(
+    frontier_rows_for_decls(
+      module_path: "gunbc.machine_intake_factory_segment_lease",
+      decl_names: [
+        "lease_time_standing",
+        "disposition_for_unplaced",
+        "host_was_left_as_found",
+      ],
+      reason: "The lease folds. The disposition TYPE is already load-bearing by construction - no run outcome can be built without one - but these three folds over it have no caller until a run exists to acquire and release an address.",
+      dissolution: unbound_dissolution(description: "NAMED CONSUMER: the same converge, which places 10.0.7.3/29 on srv1's LAN interface under a deadline, arps the controller, probes, and releases on the way out. TRIGGER: that run acquires a real address, reaches a SegmentAddressDisposition on every exit arm, and reads host_was_left_as_found to decide its own exit status. SUFFICIENT FOR deleting the NAME the run reads. NOT satisfied by a run that releases correctly without consulting host_was_left_as_found, because then a refused release would not reach the exit status."),
+    ),
+    frontier_rows_for_decls(
+      module_path: "gunbc.machine_intake_mtjade1_factory_network",
+      decl_names: [
+        "mtjade1_factory_bmc_network_standing",
+        "mtjade1_bmc_address",
+        "srv1_factory_segment_address",
+        "mtjade1_factory_segment_prefix",
+        "srv1_segment_address_is_not_the_bmc",
+        "mtjade1_current_bmc_network_standing",
+      ],
+      reason: "The unit's observed factory network and the two addresses the run needs. The standing already records the GSG divergence, but no production fold reads the addresses because nothing dials them yet. SINCE 2026-10-03 THE UNIT IS NO LONGER ON THE FACTORY SEGMENT: the operator moved it to DHCP (mtjade1_bmc_reconfigured_network, 192.168.1.246), so a converge built on 10.0.7.0 can no longer reach it; its consumer is the managed-host access row for mtjade1 (docs/plans/managed-host-untangle.md), which should read mtjade1_current_bmc_network_standing.",
+      dissolution: unbound_dissolution(description: "NAMED CONSUMER: the same converge, which builds its srv1 CIDR from srv1_factory_segment_address plus mtjade1_factory_segment_prefix and its probe target from mtjade1_bmc_address, rather than from literals in the run. TRIGGER: that run reads these rows to form the address it places and the host it probes. SUFFICIENT FOR deleting the NAME the run reads. NOT satisfied by a run that spells either address as a literal, which is the fork these rows exist to prevent."),
+    ),
+  ),
+)

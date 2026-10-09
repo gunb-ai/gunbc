@@ -1,0 +1,140 @@
+module test.fixture.structural_peano_nat
+
+import std.types { Bool }
+import std.algebra { Ordering, Less, Equal, Greater }
+
+// A USER-DECLARED PEANO TYPE THAT IS NOT std.nat Nat. std.nat Nat is declared inductively and
+// REALIZED as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows,
+// keyed on its DeclarationRef). This declaration has the same shape and no grounding row, so it
+// is the control that the realization is decided by declaration identity and not by shape: it
+// stays structural on every route (an enum in emitted Rust, constructor values in the
+// interpreter), and its literal and ordering rows (literal_homomorphism_rows,
+// structural_ordering_rows) keep the structural realization lane XL-0N built inhabited after that
+// lane was superseded for std.nat Nat (operator default, 2026-09-30).
+//
+// It is the body v2.std.nat carried before the de-fork, under its own names. The names are
+// deliberately NOT std.nat's: a second corpus declaration spelled Nat, Zero or Succ would make
+// those bare names ambiguous again for every closure that reaches this module, which is the fork
+// the de-fork removed. A control that needs a same-SPELLING declaration declares one inside its
+// own probe source, where it is visible to that probe alone.
+type StructuralNat
+  = StructuralZero
+  | StructuralSucc { prev: StructuralNat }
+fn structural_nat_cata<A>(n: StructuralNat, zero: A, succ: fn(A) -> A) -> A {
+  match n {
+    StructuralZero => zero
+    StructuralSucc { prev: p } => succ(structural_nat_cata(n: p, zero: zero, succ: succ))
+  }
+}
+fn structural_nat_add(a: StructuralNat, b: StructuralNat) -> StructuralNat {
+  structural_nat_cata(n: a, zero: b, succ: fn(acc) { StructuralSucc { prev: acc } })
+}
+fn structural_nat_mul(a: StructuralNat, b: StructuralNat) -> StructuralNat {
+  structural_nat_cata(n: a, zero: StructuralZero, succ: fn(acc) { structural_nat_add(a: b, b: acc) })
+}
+
+// THE DECLARED ORDERING OF THE PEANO NATURALS, by exact operand structure: two Zeros are Equal,
+// StructuralZero precedes any StructuralSucc, and two Succs compare as their predecessors. This is the comparison the
+// operator realization authority calls for `<`, `<=`, `>`, `>=` on this fixture's StructuralNat operands
+// (gunbc.structural_realization_bindings structural_ordering_rows -> std.operator_realization),
+// so it must not itself be written with a host ordering operator on StructuralNat -- the previous body
+// (`if a == b .. if a < b`) was exactly the host `<` on Rc<StructuralNat> that rustc refused (E0369).
+fn structural_nat_compare(a: StructuralNat, b: StructuralNat) -> Ordering {
+  match a {
+    StructuralZero =>
+      match b {
+        StructuralZero => Equal
+        StructuralSucc { prev: _ } => Less
+      }
+    StructuralSucc { prev: pa } =>
+      match b {
+        StructuralZero => Greater
+        StructuralSucc { prev: pb } => structural_nat_compare(a: pa, b: pb)
+      }
+  }
+}
+
+// TRUNCATED SUBTRACTION (monus) WITH A TYPED UNDERFLOW OUTCOME. The naturals are not closed under
+// subtraction; a - b for b > a has no answer here and says so as its own arm, never a wrapped or
+// fabricated StructuralZero.
+type StructuralNatSubtraction
+  = StructuralNatDifference { value: StructuralNat }
+  | StructuralNatSubtrahendExceedsMinuend
+
+fn structural_nat_sub(a: StructuralNat, b: StructuralNat) -> StructuralNatSubtraction {
+  match b {
+    StructuralZero => StructuralNatDifference { value: a }
+    StructuralSucc { prev: pb } =>
+      match a {
+        StructuralZero => StructuralNatSubtrahendExceedsMinuend
+        StructuralSucc { prev: pa } => structural_nat_sub(a: pa, b: pb)
+      }
+  }
+}
+
+// EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. structural_nat_div_rem is the general operation: a
+// StructuralZero divisor is its own arm. structural_nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
+// BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor StructuralSucc { prev }
+// cannot be StructuralZero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
+// (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
+type StructuralNatQuotient {
+  quotient: StructuralNat
+  remainder: StructuralNat
+}
+
+type StructuralNatDivision
+  = StructuralNatQuotientRemainder { quotient: StructuralNat, remainder: StructuralNat }
+  | StructuralNatDivisionByZero
+
+fn structural_nat_div_rem(a: StructuralNat, b: StructuralNat) -> StructuralNatDivision {
+  match b {
+    StructuralZero => StructuralNatDivisionByZero
+    StructuralSucc { prev: divisor_prev } =>
+      let q = structural_nat_div_rem_by_succ(a: a, divisor_prev: divisor_prev)
+      StructuralNatQuotientRemainder { quotient: q.quotient, remainder: q.remainder }
+  }
+}
+
+fn structural_nat_div_rem_by_succ(a: StructuralNat, divisor_prev: StructuralNat) -> StructuralNatQuotient {
+  structural_nat_div_rem_by_succ_accumulate(a: a, divisor_prev: divisor_prev, quotient: StructuralZero)
+}
+
+fn structural_nat_div_rem_by_succ_accumulate(a: StructuralNat, divisor_prev: StructuralNat, quotient: StructuralNat) -> StructuralNatQuotient {
+  match structural_nat_sub(a: a, b: StructuralSucc { prev: divisor_prev }) {
+    StructuralNatSubtrahendExceedsMinuend => StructuralNatQuotient { quotient: quotient, remainder: a }
+    StructuralNatDifference { value: rest } =>
+      structural_nat_div_rem_by_succ_accumulate(a: rest, divisor_prev: divisor_prev, quotient: StructuralSucc { prev: quotient })
+  }
+}
+
+fn structural_is_zero(n: StructuralNat) -> Bool {
+  match n {
+    StructuralZero => true
+    StructuralSucc { prev: _ } => false
+  }
+}
+
+fn structural_nat_lte(a: StructuralNat, b: StructuralNat) -> Bool {
+  match structural_nat_compare(a: a, b: b) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+
+fn structural_nat_max(a: StructuralNat, b: StructuralNat) -> StructuralNat {
+  match structural_nat_compare(a: a, b: b) {
+    Less => b
+    Equal => a
+    Greater => a
+  }
+}
+
+fn structural_nat_gte(a: StructuralNat, b: StructuralNat) -> Bool {
+  match structural_nat_compare(a: a, b: b) {
+    Less => false
+    Equal => true
+    Greater => true
+  }
+}

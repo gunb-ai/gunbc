@@ -1,0 +1,203 @@
+module gunbc.witness_floor_lanes
+
+import std.types { String, List }
+import v2.std.algebra { FreeSemigroup, list_map, non_empty_to_list }
+
+// THE REQUIRED LANE, AS ONE CONCEPT WITH N INSTANCES RATHER THAN N NAMED PARAMETERS.
+//
+// This axis was a HARDCODED PAIR -- `build_var` beside `floor_var`, threaded through four
+// functions and spelled 28 times -- which is one concept given one name per instance, the fork
+// DESIGN section 2 horizontal exists to delete. The tell was mechanical: promoting a third job
+// into the aggregate was described by `gunbc.witness_floor_workflow` as a one-row edit, and was
+// in fact a signature change in four places plus a step-name rewrite, because the gate could not
+// say "a lane" at all -- only "the build one" and "the floor one".
+//
+// A LANE IS THREE FACTS AND NOT ONE, and each is read by a different surface: the JOB ID is what
+// the workflow's `needs.<id>.result` expression names, the VARIABLE is what the emitted shell
+// reads, and the LABEL is what the receipt prints. They are genuinely distinct strings -- the job
+// id is `required-witnesses-build`, the variable `BUILD`, the label `build` -- so collapsing any
+// two would force one surface to derive its spelling from another's, which is a nickname for a
+// fact the caller already holds. Carrying all three is what lets the gate AND the step's `env`
+// block be projections of one roster instead of two hand-kept lists whose agreement nothing
+// checks.
+//
+// NON-EMPTY BY CONSTRUCTION, and that is the whole safety argument for the shape. The verdict is
+// an OR-fold over the lanes, and an or-fold over nothing is FALSE -- so an empty lane list would
+// publish the required context GREEN over a gate that read no lane at all, which is section 5's
+// fail-open in its purest form. `FreeSemigroup` has no empty representation, so that state is
+// UNWRITABLE rather than validated: the structurally-impossible rung of section 4b rather than
+// the mechanically-preventable one, and no refusal arm is owed because there is no arm to write.
+//
+// THE BOUNDARY THAT GUARANTEE HOLDS AT, stated because section 4b says unwritable in the ACCEPTED
+// CORPUS and unwritable as SOURCE HANDED TO THE COMPILER are different claims and only the second
+// decides whether a RED is authorable. MEASURED, not reasoned: a fixture module authoring
+// `FreeSemigroup { tail: [] }` was handed to the compiler on 2026-09-02 and refused with
+// `error: missing required field 'head' in literal of type 'FreeSemigroup'`, located at the
+// literal -- one blocking error. So the empty roster is authorable as fixture source and is
+// refused there, which is the stronger of the two boundaries.
+//
+// WHAT THAT DOES NOT ESTABLISH, AND THE TRIGGER IS OWNED ELSEWHERE. The refusal is the compiler's
+// GENERAL record-completeness wall, not anything this roster authored, and the roadmap node
+// `floor-record-construction-wall` (rn_ILWLG34LVL5SAS6QPN5GZDPMFY) records that wall's own
+// evidence as NOT YET ENROLLED -- in its words, a construction wall "currently rests on
+// record-completeness enforcement that is itself unmeasured" -- the refusal measured here is
+// recorded as that node's executed RED specimen rather than restated. So this roster's rung is section
+// 4b(4) CONDITIONAL ON that wall, and its next-rung trigger is that node's probe-pairing rather
+// than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
+// NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
+// duplication declining a sixth NonEmpty carrier avoids.
+// It is deliberately not a fresh NonEmptyRequiredLanes carrier — that would re-invent
+// std.algebra FreeSemigroup.
+type RequiredLane {
+  job_id: String,
+  label: String,
+  var_name: String,
+  class_var_name: String
+}
+
+// THE LANE JOB IDS ARE THEIR OWN DECLARATIONS, AND UN-FUSING THEM FROM THE LANE WORDS IS THE WHOLE
+// OF THIS CHANGE.
+//
+// WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
+// context is the job's name -- which workflow published it is not part of the name. So `build` is
+// not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id is also
+// exactly `build`, and a rule naming `build` names two jobs in two workflows, answered by
+// whichever green arrives. Enforcement cannot move onto a lane job until that lane's context is
+// unique across every workflow emitted here.
+//
+// WHY THE NAME IS NOT COMPUTED FROM THE LANE WORD -- the modeling content, not a spelling
+// preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, which read as single
+// authority because the two strings coincided. They are two facts with different authorities and
+// consumers: the LANE WORD is a CLI argument this workflow passes to `claim_executor
+// --required-lane`, owned by `gunbc.fabric_witness_run` and consumed by an exhaustive
+// `RequiredCiPhase::lane` match inside the binary; the JOB ID is a GitHub required-context name,
+// owned here and consumed by a repository ruleset that is not a `.dag` fact at all. Their
+// coincidence was the accident, not the authority. Deriving the job id from the lane word --
+// including by concatenating a prefix -- re-fuses them through a different door and in the
+// dangerous direction: a lane rename, an ordinary CLI-vocabulary edit, would silently move a
+// REQUIRED CONTEXT NAME and a check would stop being required with nothing going red. The rows
+// below are therefore spelled, and every reference to a job id in this file is taken FROM these
+// declarations rather than typed, so a rename here moves the `needs` list and the `needs.*.result`
+// expressions with it.
+//
+// WHAT THIS DOES NOT DO: move enforcement. `witnesses` remains the aggregation job and the one
+// required context the ruleset names, produced exactly as before, so the gate is unchanged and no
+// window opens. The lane contexts are published and ignored until an operator names them in the
+// ruleset -- a repository setting no wall in this repository can constrain. Until that edit lands
+// the aggregator is still what gates; after it, the aggregator's role is diagnosis rather than
+// enforcement, because a same-run dependent job is SKIPPED when a lane fails or the run is
+// cancelled at run level, and a SKIPPED required context does not block a merge (measured:
+// `mergeable=MERGEABLE mergeStateStatus=UNSTABLE`), while root jobs carrying no `needs` edge take
+// cancelled/success/failure and are never skipped.
+data floor_lane_job_id: String = "required-witnesses-floor"
+
+data build_lane_job_id: String = "required-witnesses-build"
+
+data required_lanes_gate_build_var: String = "BUILD"
+
+data required_lanes_gate_floor_var: String = "FLOOR"
+
+data required_lanes_gate_build_class_var: String = "BUILD_CLASS"
+
+data required_lanes_gate_floor_class_var: String = "FLOOR_CLASS"
+
+// THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
+//
+// The gate's verdict and the step's `env` block are the same fact asked in two directions -- which
+// jobs decide the merge -- and they were previously two hand-kept lists whose agreement nothing
+// checked. A lane present here but absent from `needs` reads an unset variable; a lane in `needs`
+// but absent here is a job that runs and cannot block. Both are silent. Deriving both surfaces
+// from this row makes the second state unwritable and leaves only the `needs` edge to keep in
+// step, which is the one edge GitHub owns rather than us.
+//
+// NON-EMPTY BY CONSTRUCTION -- see `gunbc.witness_floor_lanes` `RequiredLane` for why an empty
+// roster is a fail-open rather than a degenerate case.
+fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
+  FreeSemigroup {
+    head: RequiredLane {
+      job_id: build_lane_job_id,
+      label: "build",
+      var_name: required_lanes_gate_build_var,
+      class_var_name: required_lanes_gate_build_class_var
+    },
+    tail: [
+      RequiredLane {
+        job_id: floor_lane_job_id,
+        label: "floor",
+        var_name: required_lanes_gate_floor_var,
+        class_var_name: required_lanes_gate_floor_class_var
+      }
+    ]
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ADDING A JOB TO THIS LIST REQUIRES OPERATOR SIGN-OFF. IT IS NOT AN ORDINARY EDIT.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// A job here is not a line of configuration, it is a standing claim on a runner that someone pays
+// for, on every push and every pull request, forever. This list was SEVEN on 2026-09-04 and the
+// fleet could not serve seven: the required check's wall is the max over its lanes, so jobs that
+// gated nothing were displacing the ones that do, and the queue -- not any lane's own cost -- was
+// what people waited on. The 2026-09-04 operator ruling cut `rust-unit-tests`, `fabric-evidence`
+// and `emit-copy-qualification-battery` on that basis; the drop rows carry what each cut cost.
+//
+// SO THE ROSTER IS CLOSED TO GROWTH BY DEFAULT, and an author proposing a new lane owes the
+// operator three things BEFORE the edit, not in review of it: the MEASURED wall of the job on a
+// fleet runner (not an estimate, and not a timeout, which says nothing about what the aggregate
+// waits for); what its RED DISCRIMINATES -- a lane that reds for host or shared reasons is worse
+// added than absent, because it converts a known-uninformative signal into repository-wide noise;
+// and why the check cannot be a STEP on a lane that already checks out and builds this tree, which
+// is where every one of these jobs' preludes is otherwise paid a second time.
+//
+// THAT LAST QUESTION IS THE ONE THAT ACTUALLY SHRINKS THIS LIST. A separate job buys isolation and
+// a separate verdict, and it costs a whole checkout, toolchain install and release build of the
+// same tree. `rust_clippy_all_targets_step` is the worked example: it kept its step id, its
+// verdict and its coverage, and stopped costing a job, by moving onto `required-witnesses-build`.
+//
+// THE SECOND WORKED EXAMPLE, AND ITS SIGN-OFF (operator decision msg_6e36a6a2, 2026-09-23, which
+// supersedes msg_4a9045fc and the ~20 min pricing of msg_f1ade7cf-77e4-4896-a8b3-476747692c37).
+// This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases (the
+// latter deleted by operator ruling 2026-10-04: one generation, no determinism re-emit),
+// which no job had run since #11742 -- returns as ONE merge_group-only STEP on the emitted floor
+// job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
+// already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run
+// 35890770775), fitting after the floor process exits. The sign-off covers exactly that step on
+// that event; it admits no per-PR run and no new job. SUPERSEDED TWICE since: operator ruling
+// 2026-09-27 moved the step onto its own `generated` job beside the floor, and operator ruling
+// 2026-09-28 runs it on every event, pull requests included (gunbc.compiler_gate_workflow
+// compiler_gate_stage0_regen_condition), because a pull request that failed it still entered the
+// queue and failed every group stacked on it.
+//
+// THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
+// it records WHY the roster is small so the next author meets the reasoning rather than
+// rediscovering the outage. The construction that would make an over-budget roster unwritable is
+// a runner-wall budget refused at emit time, and it is not built; until it is, this is diligence.
+//
+// THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
+// the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
+// and the aggregate joined that population only as something to filter back out.
+type WitnessFloorLane = WitnessFloorBuildLane | WitnessFloorFloorLane
+
+fn witness_floor_lane_roster() -> FreeSemigroup<WitnessFloorLane> {
+  FreeSemigroup {
+    head: WitnessFloorBuildLane,
+    tail: [WitnessFloorFloorLane]
+  }
+}
+
+// THE IDENTITY PROJECTION IS NARROW ON PURPOSE. A witness deciding which jobs exist must not
+// materialize every job's steps (and therefore the compiler-floor command) merely to read ids.
+// Both this projection and the materialized jobs derive from `witness_floor_lane_roster`, so an
+// added lane cannot enter one without entering the other.
+fn witness_floor_lane_job_id(lane: WitnessFloorLane) -> String {
+  match lane {
+    WitnessFloorBuildLane => build_lane_job_id
+    WitnessFloorFloorLane => floor_lane_job_id
+  }
+}
+
+fn witness_floor_lane_job_ids() -> List<String> {
+  list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
+    witness_floor_lane_job_id(lane: lane)
+  })
+}

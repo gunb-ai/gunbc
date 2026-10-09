@@ -13,8 +13,8 @@ pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, SourceSpan};
+pub use crate::std_optional::Optional;
+pub use crate::std_types::{Bool, List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -227,7 +227,7 @@ pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Rc<OccurrenceId
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED."}))
+            serde_json::from_str("{\"id\": \"rebuilt-reference-identity-preservation\", \"required_receipt\": \"A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.\"}")
                 .expect("valid data definition")
         };
     }
@@ -238,7 +238,7 @@ pub fn occurrence_identity_acceptance_law_collector_dedupe() -> Rc<OccurrenceIde
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure."}))
+            serde_json::from_str("{\"id\": \"one-occurrence-collector-dedupe\", \"required_receipt\": \"Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.\"}")
                 .expect("valid data definition")
         };
     }
@@ -249,7 +249,7 @@ pub fn occurrence_identity_acceptance_law_distinct_occurrences(
 ) -> Rc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries."}))
+            serde_json::from_str("{\"id\": \"structurally-equal-distinct-occurrences\", \"required_receipt\": \"Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.\"}")
                 .expect("valid data definition")
         };
     }
@@ -260,7 +260,7 @@ pub fn occurrence_identity_acceptance_law_pattern_reachability(
 ) -> Rc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders."}))
+            serde_json::from_str("{\"id\": \"pattern-declaration-reachability\", \"required_receipt\": \"Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.\"}")
                 .expect("valid data definition")
         };
     }
@@ -271,7 +271,7 @@ pub fn occurrence_identity_acceptance_law_parser_isolation() -> Rc<OccurrenceIde
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite."}))
+            serde_json::from_str("{\"id\": \"same-spelling-parser-declaration-isolation\", \"required_receipt\": \"Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.\"}")
                 .expect("valid data definition")
         };
     }
@@ -347,15 +347,9 @@ pub enum NodeOccurrenceIdentity {
         id: OccurrenceId,
         caused_by: Rc<ScopedOccurrenceRef>,
     },
-}
-impl NodeOccurrenceIdentity {
-    pub fn id(&self) -> OccurrenceId {
-        match self {
-            NodeOccurrenceIdentity::OccurrenceSynthetic => panic!("no id on unit variant"),
-            NodeOccurrenceIdentity::OccurrenceMinted { id: __val, .. } => __val.clone(),
-            NodeOccurrenceIdentity::OccurrenceProjected { id: __val, .. } => __val.clone(),
-        }
-    }
+    OccurrencePending {
+        caused_by: OccurrenceId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -379,7 +373,7 @@ pub fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> Rc<OccurrenceIdAlloc
             value: alloc.next_id.clone(),
         },
         alloc: OccurrenceIdAllocator {
-            next_id: (alloc.next_id.clone() + 1),
+            next_id: v1_rt::int_add(alloc.next_id.clone(), 1),
         },
     })
 }
@@ -424,6 +418,67 @@ pub fn node_occurrence_identity_projected(
         id: id.clone(),
         caused_by: caused_by.clone(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScopedOccurrenceAllocator {
+    pub alloc: OccurrenceIdAllocator,
+    pub scope: Rc<Fnv1a64Structural>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ProjectedOccurrenceAllocation {
+    pub identity: Rc<NodeOccurrenceIdentity>,
+    pub allocator: Rc<ScopedOccurrenceAllocator>,
+}
+
+pub fn scoped_occurrence_allocator(
+    alloc: OccurrenceIdAllocator,
+    scope: Rc<Fnv1a64Structural>,
+) -> Rc<ScopedOccurrenceAllocator> {
+    Rc::new(ScopedOccurrenceAllocator {
+        alloc: alloc.clone(),
+        scope: scope.clone(),
+    })
+}
+
+pub fn alloc_projected_occurrence(
+    allocator: Rc<ScopedOccurrenceAllocator>,
+    source: OccurrenceId,
+) -> Rc<ProjectedOccurrenceAllocation> {
+    {
+        let minted = alloc_occurrence_id(allocator.alloc.clone());
+        Rc::new(ProjectedOccurrenceAllocation {
+            identity: Rc::new(NodeOccurrenceIdentity::OccurrenceProjected {
+                id: minted.id.clone(),
+                caused_by: Rc::new(ScopedOccurrenceRef {
+                    scope: allocator.scope.clone(),
+                    occurrence: source.clone(),
+                }),
+            }),
+            allocator: Rc::new(ScopedOccurrenceAllocator {
+                alloc: minted.alloc.clone(),
+                scope: allocator.scope.clone(),
+            }),
+        })
+    }
+}
+
+pub fn occurrence_identity_in_image_of(
+    identity: Rc<NodeOccurrenceIdentity>,
+    source: OccurrenceId,
+) -> bool {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => false,
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+            (id.value.clone() == source.value.clone())
+        }
+        NodeOccurrenceIdentity::OccurrencePending {
+            caused_by: caused_by,
+            ..
+        } => (caused_by.value.clone() == source.value.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { .. } => false,
+    }
 }
 
 pub fn occurrence_containment_matches_occurrence(
@@ -474,31 +529,49 @@ pub fn occurrence_id_list_is_prefix_of(
     prefix: Rc<Vec<OccurrenceId>>,
     path: Rc<Vec<OccurrenceId>>,
 ) -> bool {
-    prefix.iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: path.clone(),
-    ok: true,
-}), |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| if !acc.ok.clone() {
-        acc.clone()
-    } else {
-        if ((acc.path_remaining.clone().len() as i64) == 0) {
+    prefix
+        .iter()
+        .cloned()
+        .fold(
             Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(vec![]),
-    ok: false,
-})
-        } else {
-            if occurrence_id_eq(acc.path_remaining.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of occurrence_id_eq (empty Optional at runtime)"), expected.clone()) {
-                Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(acc.path_remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()),
-    ok: true,
-})
-            } else {
-                Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: acc.path_remaining.clone(),
-    ok: false,
-})
-            }
-        }
-    }).ok.clone()
+                path_remaining: path.clone(),
+                ok: true,
+            }),
+            |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| {
+                if !acc.ok.clone() {
+                    acc.clone()
+                } else {
+                    match acc.path_remaining.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(OccurrenceIdListPrefixAcc {
+                            path_remaining: Rc::new(vec![]),
+                            ok: false,
+                        }),
+                        Some(head) => {
+                            if occurrence_id_eq(head.clone(), expected.clone()) {
+                                Rc::new(OccurrenceIdListPrefixAcc {
+                                    path_remaining: Rc::new(
+                                        acc.path_remaining
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
+                                    ok: true,
+                                })
+                            } else {
+                                Rc::new(OccurrenceIdListPrefixAcc {
+                                    path_remaining: acc.path_remaining.clone(),
+                                    ok: false,
+                                })
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        .ok
+        .clone()
 }
 
 pub fn occurrence_containment_ancestors_are_prefix_of(

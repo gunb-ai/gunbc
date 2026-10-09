@@ -1,0 +1,243 @@
+module v2.std.operation_realization
+
+import std.optional { Present, Absent }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.effect_grant {
+  Envelope, HandlerBinding, CoveredBy, NoCoveringGrant, covering_grant,
+  NamespacePosition, ServiceOpTree, Read, Write, Verb,
+}
+import v2.std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
+import std.list { first_duplicate_by_key }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.transports.file { FileExchangeObservation }
+
+// A MODELED OPERATION REALIZATION: the dry arm of an operation's realization, bound per grant.
+//
+// The boundary is the TRANSPORT OBSERVATION of one resolved operation (#12423 decision
+// 5858742863, "bind below the decisions under test"). A handler receives the actual
+// BoundOperationInvocation the dispatcher bound -- the operation's identity and its declared inputs,
+// by name -- and answers with what the transport would have observed: for a shell operation, the
+// exit status and the two captured streams. The interpreter then runs the operation's OWN declared
+// output projection and every production decoder above it, exactly as after a real process. A
+// handler has no slot through which to hand back a decoded judgment.
+//
+// SELECTION IS THE EXISTING ONE. The grant covering the operation's position selects the binding,
+// as it does for REST replay (extdeps.transports.rest rest_handler_selection); a grant bound
+// ModeledRealization names the realization, and the realization's bindings are matched by the
+// operation's RESOLVED identity (OperationRef: declaring path, service, operation), never by an
+// executable name or a spelling. An operation reached while a modeled realization is active that no
+// grant covers, or that the named realization does not bind, REFUSES. There is no arm here that
+// reaches a real process, a recorded fixture or a published mock.
+//
+// WHY THIS IS NOT A PublishedMockCase (std.hermetic_replay). A published mock case is one declared
+// response arm of one operation, keyed by case and answered the same way for every caller: it cannot
+// observe a prior write, so it cannot represent "the attach took effect and the next listing shows
+// it", and gunbc.hermetic_mock_fidelity records what that costs. A modeled realization is a state
+// machine over the invocations actually issued. The two are different realizations of the same
+// dispatch point, and while a modeled realization is active the published-mock layer is not
+// consulted at all, so neither can answer for the other.
+//
+// THE SCENARIO STATE S AND EVERY TRANSITION LIVE IN THE MODEL. This module is generic: it owns no
+// device, no protocol and no scenario. The interpreter holds only the current S, the virtual clock
+// and the dispatch log for the dynamic extent of one witness frame.
+type TransportObservation
+  = ShellObserved { observation: ShellExchangeObservation }
+  | FileObserved { observation: FileExchangeObservation }
+
+// A step either answers with an observation, or reports that the worker died after the effect was
+// (or was not) committed and before any reply, or reports that the SCENARIO is malformed. The last
+// is a harness fault and is kept apart from a device refusal, which is simply an observation (a
+// nonzero exit, an error body).
+type OperationStep<S>
+  = OperationObserved { observation: TransportObservation, state: S, elapsed: Second }
+  | OperationWorkerKilled { committed: Bool, state: S }
+  | OperationHarnessFault { reason: NonEmptyStr }
+
+type OperationCall {
+  invocation: BoundOperationInvocation
+  now: Second
+}
+
+type OperationBinding<S> {
+  at: OperationRef
+  handler: fn(S, OperationCall) -> OperationStep<S>
+}
+
+// epoch is the virtual instant the realization's clock starts at: virtual_clock_origin for a fresh
+// scenario, and for a resume the interrupted attempt's clock (WitnessInterrupted.now) plus whatever
+// absence the supervisor declares -- MODELED TIME DOES NOT ADVANCE WHILE THE WORKER IS ABSENT unless
+// the supervisor says so, because there is no clock between frames. The dispatcher applies advance at
+// the epoch before the subject runs, so every event due by then has fired.
+//
+// advance applies every scheduled event due at the given virtual instant. The interpreter calls it
+// whenever virtual time moves, so an event (a session lost, a process exiting) happens during a
+// quiet interval without any operation being issued.
+type OperationRealization<S> {
+  identity: NonEmptyStr
+  initial: S
+  epoch: Second
+  bindings: List<OperationBinding<S>>
+  advance: fn(S, Second) -> S
+}
+
+type DispatchOutcome
+  = DispatchObserved { observation: TransportObservation }
+  | DispatchWorkerKilled { committed: Bool }
+  | DispatchHarnessFault { reason: NonEmptyStr }
+  | DispatchUnbound { cause: OperationBindingRefusal }
+  | DispatchCallbackFailed { stage: CallbackStage, cause: String }
+
+// Which realization callback failed after the dispatch began: the handler itself (including one that
+// attempted an effect), or the advance after an observed step. The dispatch record keeps the cause.
+type CallbackStage
+  = HandlerFailed
+  | AdvanceFailed
+
+// ONE RECORD PER OPERATION THE SUBJECT ACTUALLY ISSUED, written by the dispatcher from the request it
+// dispatched and the binding it selected -- never by a handler. A scenario cannot author this log.
+type DispatchRecord {
+  ordinal: Int
+  invocation: BoundOperationInvocation
+  realization: NonEmptyStr
+  dispatched_at: Second
+  completed_at: Second
+  outcome: DispatchOutcome
+}
+
+type OperationBindingRefusal
+  = OperationUncovered { at: OperationRef }
+  | OperationBoundElsewhere { at: OperationRef, binding: HandlerBinding }
+  | OperationRealizationMismatch { at: OperationRef, named: String, active: NonEmptyStr }
+  | OperationNotBound { at: OperationRef }
+
+type OperationHandlerSelection<S>
+  = OperationHandlerSelected { binding: OperationBinding<S> }
+  | OperationHandlerRefused { cause: OperationBindingRefusal }
+
+fn operation_ref_eq(a: OperationRef, b: OperationRef) -> Bool {
+  a.path == b.path && a.service == b.service && a.operation == b.operation
+}
+
+fn operation_position(at: OperationRef) -> NamespacePosition {
+  NamespacePosition { tree: ServiceOpTree { service: at.service }, path: [at.operation] }
+}
+
+fn operation_verb(readonly: Bool) -> Verb {
+  if readonly { Read } else { Write }
+}
+
+// THE SINGLE SELECTION DECISION, called by the dispatcher for every operation issued while a modeled
+// realization is active. Grant coverage first (the same covering_grant REST replay uses), then the
+// named realization, then the one binding the admitted index holds for the resolved identity.
+fn operation_handler_selection<S>(
+  env: Envelope,
+  realization: OperationRealization<S>,
+  index: Map<String, OperationBinding<S>>,
+  invocation: BoundOperationInvocation,
+  readonly: Bool,
+) -> OperationHandlerSelection<S> {
+  let at = invocation.at
+  match covering_grant(env: env, verb: operation_verb(readonly: readonly), target: operation_position(at: at)) {
+    NoCoveringGrant { verb: _, target: _, frame: _ } => OperationHandlerRefused { cause: OperationUncovered { at: at } }
+    CoveredBy { grant: covering } => match covering.binding {
+      ModeledRealization { realization: named } =>
+        if named != (realization.identity as String) {
+          OperationHandlerRefused { cause: OperationRealizationMismatch { at: at, named: named, active: realization.identity } }
+        } else {
+          match map_lookup(m: index, key: operation_ref_key(at: at)) {
+            Absent => OperationHandlerRefused { cause: OperationNotBound { at: at } }
+            Present { value: b } => OperationHandlerSelected { binding: b }
+          }
+        }
+      other => OperationHandlerRefused { cause: OperationBoundElsewhere { at: at, binding: other } }
+    }
+  }
+}
+
+// THE BINDINGS BY IDENTITY, BUILT ONCE WHEN THE FRAME IS ADMITTED. Every dispatch then looks its
+// operation up instead of scanning the binding list: the list is fixed for the frame's extent, so a
+// per-dispatch scan re-derived the same fact on every call (DESIGN section 2). Admission has already
+// refused a realization that binds one identity twice, so each key holds exactly one binding.
+fn operation_realization_index<S>(realization: OperationRealization<S>) -> Map<String, OperationBinding<S>> {
+  fold(realization.bindings, init: empty_map(), f: fn(acc, b) { map_insert(m: acc, key: operation_ref_key(at: b.at), value: b) })
+}
+
+// ADMISSION BEFORE THE SUBJECT RUNS: a realization binding one identity twice is malformed whatever
+// the subject later issues. Resolution of each binding against the operation registry is the
+// dispatcher's (it owns the registry); this is the part decidable from the value alone.
+fn operation_ref_key(at: OperationRef) -> String {
+  join([at.path, "#", at.service, ".", at.operation], "")
+}
+
+fn operation_realization_duplicate<S>(realization: OperationRealization<S>) -> OperationBinding<S>? {
+  first_duplicate_by_key(xs: realization.bindings, key: fn(b) { operation_ref_key(at: b.at) })
+}
+
+// The text a dispatcher bound to one declared input of an invocation, by the input's declared name.
+// Absent when the operation declared no such input or bound it as a list: a handler that needs it
+// answers a harness fault rather than guessing.
+fn operation_input_text(invocation: BoundOperationInvocation, name: String) -> String? {
+  fold(invocation.bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if b.name == name {
+        match b.value {
+          InputText { text: t } => Present { value: t }
+          InputTextList { items: _ } => none
+        }
+      } else { none }
+    }
+  })
+}
+
+// A DELAY IS VIRTUAL TIME, NOT A PROCESS. An operation whose whole effect is to wait (a sleep) is
+// realized by advancing the realization's virtual clock by the requested seconds; the dispatcher then
+// applies every scheduled event due in that interval, which is how an event can happen during a quiet
+// wait with no other operation issued. The state is untouched by the delay itself.
+fn virtual_delay_binding<S>(at: OperationRef, seconds_input: String) -> OperationBinding<S> {
+  OperationBinding {
+    at: at,
+    handler: fn(state, call) {
+      match operation_input_text(invocation: call.invocation, name: seconds_input) {
+        Absent => OperationHarnessFault { reason: join(["the delay was dispatched without its `", seconds_input, "` input"], "") as NonEmptyStr }
+        Present { value: text } => match parse_int(s: text) {
+          Absent => OperationHarnessFault { reason: join(["the delay input `", text, "` is not a whole number of seconds"], "") as NonEmptyStr }
+          Present { value: n } => match checked_int_to_nat(n: n) {
+            Absent => OperationHarnessFault { reason: join(["the delay input `", text, "` is not a natural number of seconds"], "") as NonEmptyStr }
+            Present { value: count } => OperationObserved {
+              observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+              state: state,
+              elapsed: second(count: count),
+            }
+          }
+        }
+      }
+    },
+  }
+}
+
+// THE VIRTUAL CLOCK IS A Second, AND ITS ARITHMETIC IS HERE, not in the dispatcher: a realization's
+// clock starts at the origin and each observed step advances it by the step's elapsed Second. Both
+// are Nat-counted, so a negative elapsed time or a clock that runs backwards has no constructor.
+fn virtual_clock_origin() -> Second {
+  second(count: 0)
+}
+
+fn virtual_clock_after(now: Second, elapsed: Second) -> Second {
+  second(count: second_count(s: now) + second_count(s: elapsed))
+}
+
+// A MODELED REALIZATION IS THE DRY ARM, AND ONLY A DRY RUN MAY BE ANSWERED BY ONE. Wet and Record both
+// dispatch real effects (std.execution_mode), so a realization installed in either would silently
+// replace an admitted effect with a modeled answer; the dispatcher asks this before admitting a frame.
+fn modeled_realization_admitted_in(mode: ExecutionMode) -> Bool {
+  match mode {
+    Hermetic => true
+    Wet => false
+    Record => false
+  }
+}

@@ -2,8 +2,7 @@ module extdeps.systemd.oomd
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr, FilePath, Bool, Unit }
-import std.string_type { String }
+import std.types { NonEmptyStr, FilePath, Bool, Unit, String }
 import std.measure { Second, second, Percent, percent, percent_count }
 import std.types { Int }
 
@@ -90,6 +89,7 @@ type OomdDropIn {
 
 service systemd.Oomctl {
   operation Dump {
+    requires none
     input {}
     output {
       stdout: String from "stdout"

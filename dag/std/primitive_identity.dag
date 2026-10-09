@@ -1,6 +1,7 @@
 module std.primitive_identity
 
 import std.algebra {
+  trim,
   AlgebraFieldTemplate,
   AlgebraProfile,
   AlgebraTypeTemplate,
@@ -21,7 +22,9 @@ import std.induction { CostBound, cost_linear }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.languages.rust.emit { rt_function_registry }
+import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
+import gunbc.rust_item_scan { scan_rust_source, RustFileScanned, RustFileScanRefused }
+import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
 import gunbc.v1_interpreter_primitive_surface {
   v1_interpreter_primitive_arms,
   v1_interpreter_row_count,
@@ -32,12 +35,12 @@ import std.primitive_projection {
   PrimitiveProjection, PrimitiveProjectionAnswer,
   DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive, DeclarationPrimitiveUndisposed,
   primitive_projection_roster, primitive_projection_row_for_declaration,
-  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_empty_map,
+  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -384,6 +387,7 @@ type PrimitiveSurfaceAuthority
   | AlgebraTemplate
   | InterpreterDispatch
   | EmitHandler
+  | RuntimeBody
 
 type PrimitiveSurfaceCensusProvenance
   = DerivedFromAuthority
@@ -664,8 +668,31 @@ fn contract_contains_name(name: String) -> Bool {
   primitive_contract_roster() |> any(contract => contract.name == name)
 }
 
-fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
+// Each surface's authored symbols, in one place. The census rows below map over these lists, and
+// primitive_surface_carries_symbol reads them directly: a membership question needs the names, not
+// the full rows (each row also resolves its primitive identity and authority reference).
+fn primitive_registry_surface_symbols() -> List<String> {
   builtin_registry_surface_names()
+}
+
+fn primitive_contract_surface_symbols() -> List<String> {
+  primitive_contract_roster() |> map(contract => contract.name)
+}
+
+fn primitive_algebra_surface_symbols() -> List<String> {
+  all_algebra_field_templates() |> map(template => template.name)
+}
+
+fn primitive_emit_surface_symbols() -> List<String> {
+  rt_function_registry |> map(entry => entry.name)
+}
+
+fn primitive_interpreter_surface_symbols() -> List<String> {
+  v1_interpreter_primitive_arms() |> map(arm => arm.authored_spelling as String)
+}
+
+fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
+  primitive_registry_surface_symbols()
     |> map(sym =>
       surface_row(
         authority: BuiltinRegistry,
@@ -678,19 +705,19 @@ fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
 }
 
 fn primitive_contract_surface_rows() -> List<PrimitiveSurfaceRow> {
-  primitive_contract_roster()
-    |> map(contract =>
+  primitive_contract_surface_symbols()
+    |> map(sym =>
       surface_row(
         authority: PrimitiveContractRow,
-        authored_symbol: contract.name,
+        authored_symbol: sym,
         authority_ref: decl_field_ref(
           module_path: "std.primitives",
-          decl_name: concat(contract.name, "_contract"),
+          decl_name: concat(sym, "_contract"),
           field_name: "name",
         ),
         primitive: primitive_identity_for_symbol(
           authority: PrimitiveContractRow,
-          authored_symbol: contract.name,
+          authored_symbol: sym,
         ),
         provenance: DerivedFromAuthority,
       )
@@ -698,44 +725,44 @@ fn primitive_contract_surface_rows() -> List<PrimitiveSurfaceRow> {
 }
 
 fn primitive_algebra_surface_rows() -> List<PrimitiveSurfaceRow> {
-  all_algebra_field_templates()
-    |> map(template =>
+  primitive_algebra_surface_symbols()
+    |> map(sym =>
       surface_row(
         authority: AlgebraTemplate,
-        authored_symbol: template.name,
+        authored_symbol: sym,
         authority_ref: decl_ref(module_path: "std.algebra", decl_name: "all_algebra_field_templates"),
-        primitive: primitive_identity_for_symbol(authority: AlgebraTemplate, authored_symbol: template.name),
+        primitive: primitive_identity_for_symbol(authority: AlgebraTemplate, authored_symbol: sym),
         provenance: DerivedFromAuthority,
       )
     )
 }
 
 fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
-  rt_function_registry
-    |> map(entry =>
+  primitive_emit_surface_symbols()
+    |> map(sym =>
       surface_row(
         authority: EmitHandler,
-        authored_symbol: entry.name,
+        authored_symbol: sym,
         authority_ref: decl_ref(module_path: "extdeps.languages.rust.emit", decl_name: "rt_function_registry"),
-        primitive: primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name),
+        primitive: primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: sym),
         provenance: DerivedFromAuthority,
       )
     )
 }
 
 fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
-  v1_interpreter_primitive_arms()
-    |> map(arm =>
+  primitive_interpreter_surface_symbols()
+    |> map(sym =>
       surface_row(
         authority: InterpreterDispatch,
-        authored_symbol: arm.authored_spelling as String,
+        authored_symbol: sym,
         authority_ref: decl_ref(
           module_path: "gunbc.v1_interpreter_primitive_surface",
           decl_name: "v1_interpreter_primitive_arms",
         ),
         primitive: primitive_identity_for_symbol(
           authority: InterpreterDispatch,
-          authored_symbol: arm.authored_spelling as String,
+          authored_symbol: sym,
         ),
         provenance: DerivedFromAuthority,
       )
@@ -1030,9 +1057,6 @@ fn primitive_definition_identity(definition: PrimitiveDefinition) -> PrimitiveId
   definition.identity
 }
 
-// The filter is let-bound, not written in the branch condition: a filter in a condition is an
-// unprojectable construct (the FilterInBranchCondition wall), so the condition reads the bound
-// name.
 fn primitive_duplicate_semantic_definition_violation(
   definitions: List<PrimitiveDefinition>,
   target: PrimitiveIdentity
@@ -1228,6 +1252,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "map_insert",
   "map_get",
   "lookup",
+  "get",
   "empty_map",
   "decl_facts",
   "decl_facts_at",
@@ -1239,6 +1264,10 @@ data primitive_projection_target_canonical_names: List<String> = [
   "symbol_lexeme",
   "symbol_intern_lexeme",
   "data_init_decl_facts_live",
+  "bytes_octets",
+  "utf8_encode_bytes",
+  "pure_dag_seam_unreachable",
+  "to_string",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1259,9 +1288,21 @@ AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignoranc
 
 The discrimination is DERIVED, not declared: it asks whether the five-surface census carries the declaration's name, so it stays right as the disposition population grows without anyone maintaining a second list."
 
+fn primitive_surface_symbols() -> List<String> {
+  concat(
+    concat(
+      concat(
+        concat(primitive_registry_surface_symbols(), primitive_contract_surface_symbols()),
+        primitive_algebra_surface_symbols()
+      ),
+      primitive_emit_surface_symbols()
+    ),
+    primitive_interpreter_surface_symbols()
+  )
+}
+
 fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
-  primitive_surface_census_derived()
-    |> any(fn(row) { (row.authored_symbol as String) == authored_symbol })
+  primitive_surface_symbols() |> any(fn(sym) { sym == authored_symbol })
 }
 
 fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
@@ -1546,6 +1587,8 @@ data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTravers
 
 data primitive_lookup_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_lookup, order: OrderFreeResult }
 
+data primitive_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_get, order: OrderFreeResult }
+
 data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
 
 // The parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
@@ -1599,11 +1642,31 @@ data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = Pri
 // SourcePreservingOrder is the executed reading, not CanonicalOrder.
 data primitive_data_init_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_init_decl_facts_live, order: SourcePreservingOrder }
 
+// bytes_octets and utf8_encode_bytes yield octets in index order -- the interpreter's arms and the
+// v1_rt realizations both map over the byte vector (or the string's UTF-8 bytes) in place -- so the
+// result's order is the input's own, SourcePreservingOrder, and no host order is consulted.
+data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_bytes_octets, order: SourcePreservingOrder }
+
+data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_encode_bytes, order: SourcePreservingOrder }
+
+// pure_dag_seam_unreachable produces no value at all -- it diverges -- so no order is consulted.
+data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_pure_dag_seam_unreachable, order: OrderFreeResult }
+
+// to_string RENDERS, and rendering a Map is a traversal of its entries, so it is classified here
+// rather than left Deterministic by non-membership (node adhoc-77383faf-d07). CanonicalOrder is the
+// EXECUTED READING of both realizations: the seed interpreter's Display for Value::Map orders
+// entries by canonical_content_cmp, the realization of std.algebra TotalOrder over value content,
+// never by HamtMap iteration; and the emitted realization renders no Map at all -- v1.compiler
+// emit_rust emitted_map_rendering_refusal refuses it typed and located. Every other argument kind
+// is a scalar whose rendering consults no order. String interpolation lowers to the same Display
+// and is syntax, not a primitive call, so this row covers it only through that shared realization.
+data primitive_to_string_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_to_string, order: CanonicalOrder }
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
   primitive_map_get_traversal,
   primitive_lookup_traversal,
+  primitive_get_traversal,
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
   primitive_decl_facts_at_traversal,
@@ -1615,6 +1678,10 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_symbol_lexeme_traversal,
   primitive_symbol_intern_lexeme_traversal,
   primitive_data_init_decl_facts_live_traversal,
+  primitive_bytes_octets_traversal,
+  primitive_utf8_encode_bytes_traversal,
+  primitive_pure_dag_seam_unreachable_traversal,
+  primitive_to_string_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {
@@ -1675,4 +1742,106 @@ fn primitive_definitions_missing_traversal_fact() -> List<PrimitiveDefinition> {
 
 fn primitive_traversal_denominator_is_closed() -> Bool {
   count(primitive_definitions_missing_traversal_fact()) == 0
+}
+
+// A bridge is an emission instruction, not evidence of a definition. The body surface is
+// supplied by the runtime producer because the std census also runs in closures that do not
+// contain the v1 emitter. Keeping the observation typed prevents a refused scan becoming an
+// empty, apparently complete census. The existing five-surface query retains its denominator;
+// this query is the six-surface acceptance boundary.
+// Scope: definition presence, not behavioral equivalence or availability under every Rust cfg.
+type PrimitiveRuntimeBodyCensus
+  = PrimitiveRuntimeBodiesObserved { rows: List<PrimitiveSurfaceRow> }
+  | PrimitiveRuntimeBodyScanRefused { line: Int, detail: String }
+
+type PrimitiveRuntimeBodyViolation {
+  authored_symbol: String
+  bridge_name: String
+}
+
+type PrimitiveRuntimeBodyCheck
+  = PrimitiveRuntimeBodiesComplete
+  | PrimitiveRuntimeBodiesMissing { violations: List<PrimitiveRuntimeBodyViolation> }
+  | PrimitiveRuntimeBodiesUnreadable { line: Int, detail: String }
+
+// The item scanner also recognizes semicolon-terminated declarations. A runtime BODY must
+// close a block; a function declaration alone is no realization. Extents come from the shared
+// scanner, so comments, nested modules and impl methods cannot mint a file-level function.
+fn primitive_runtime_item_has_body(item: RustItemIdentity, lines: List<String>) -> Bool {
+  match lines |> skip(item.start_line + item.loc - 2) |> first {
+    Present { value: line } => ends_with(s: trim(s: line), suffix: "}")
+    Absent => false
+  }
+}
+
+fn primitive_runtime_body_census_in(
+  registry: List<RuntimeFunction>,
+  source: String,
+) -> PrimitiveRuntimeBodyCensus {
+  let lines = split(s: source, delimiter: "\n")
+  match scan_rust_source(repo_path: "v1_rt.rs", content: source) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: text, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: concat(detail, concat(": ", text)) }
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
+      PrimitiveRuntimeBodiesObserved {
+        rows: items
+          |> filter(item => item.kind == RustFunction && item.enclosing_module == ""
+            && primitive_runtime_item_has_body(item: item, lines: lines))
+          |> flat_map(item => primitive_runtime_body_rows_for_symbol(
+            registry: registry, symbol: item.name as String
+          ))
+      }
+  }
+}
+
+// Preserve every bridge-to-body join. Two operations targeting one body must remain visible
+// to the identity reconciliation; choosing the last registry row would erase that evidence.
+fn primitive_runtime_body_rows_for_symbol(
+  registry: List<RuntimeFunction>, symbol: String,
+) -> List<PrimitiveSurfaceRow> {
+  let bridges = registry |> filter(entry => entry.bridge_name == symbol)
+  let identities = if count(bridges) == 0 { [none] } else {
+    bridges |> map(entry => primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name))
+  }
+  identities |> map(identity => surface_row(
+    authority: RuntimeBody,
+    authored_symbol: symbol,
+    authority_ref: decl_ref(module_path: "v1_rt", decl_name: symbol),
+    primitive: identity,
+    provenance: DerivedFromAuthority,
+  ))
+}
+
+// Both the regression control and the runtime producer call this same acceptance boundary.
+// Join on bridge_name: empty_map is realized by rc_empty_map, not by an empty_map definition.
+fn primitive_runtime_body_check_in(
+  registry: List<RuntimeFunction>,
+  census: PrimitiveRuntimeBodyCensus,
+) -> PrimitiveRuntimeBodyCheck {
+  match census {
+    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
+      PrimitiveRuntimeBodiesUnreadable { line: line, detail: detail }
+    PrimitiveRuntimeBodiesObserved { rows: rows } => {
+      let missing = registry
+        |> filter(entry => !surface_rows_carry_symbol_on(
+          rows: rows, authority: RuntimeBody, authored_symbol: entry.bridge_name
+        ))
+        |> map(entry => PrimitiveRuntimeBodyViolation {
+          authored_symbol: entry.name, bridge_name: entry.bridge_name
+        })
+      if count(missing) == 0 { PrimitiveRuntimeBodiesComplete }
+      else { PrimitiveRuntimeBodiesMissing { violations: missing } }
+    }
+  }
+}
+
+fn primitive_surface_census_with_runtime(
+  runtime: PrimitiveRuntimeBodyCensus,
+) -> PrimitiveRuntimeBodyCensus {
+  match runtime {
+    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: detail }
+    PrimitiveRuntimeBodiesObserved { rows: rows } =>
+      PrimitiveRuntimeBodiesObserved { rows: concat(primitive_surface_census_derived(), rows) }
+  }
 }

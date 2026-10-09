@@ -1,9 +1,11 @@
 module gunbc.auth.approval_capability
 
 import std.types { NonEmptyStr, String, Int, Timestamp }
+import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
-import std.encoding { base64_encode, base64_decode, UrlSafe }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_encode, base64_octets, base64_decode_canonical, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
   MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
@@ -165,7 +167,7 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
 // The tag travels as base64url (RFC 4648 §5, std.encoding UrlSafe, padded as that encoder emits)
 // because it rides in a URL path; the bound implementation speaks hex. The transcoding is the
 // existing codecs composed, and capability_tag_hex below is its only inverse, so a link has one tag
-// spelling: a b64url string that does not re-encode to itself is refused rather than normalized.
+// spelling: a non-canonical b64url string is refused rather than normalized.
 //
 // Issuance refuses rather than minting something that cannot verify:
 //   key id disagreement -- claims naming key A signed under key B is a link verify_capability
@@ -183,6 +185,12 @@ type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
   | CapabilityIssuanceRefused { cause: CapabilityIssuanceRefusal }
 
+// THE SECOND ADMISSION IS GONE BECAUSE THE DECODER NOW CARRIES IT. base16_decode_lower returns
+// the sealed std.integer QualifiedOctets, so re-running its members through base64_octets asked
+// the same question twice, and the refusal arm that step needed -- IssuanceImplementationTagNotOctets
+// -- could not be reached by any hex string. An arm reporting a state no input produces is a
+// refusal vocabulary that lies about what can go wrong, so both the step and the arm are deleted;
+// the hex-shape refusal is the one real cause and it stays.
 fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> CapabilityIssuance {
   if claims.key_id != key.id {
     CapabilityIssuanceRefused {
@@ -195,11 +203,11 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
       MacSigned { tag: t } =>
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
-          Present { value: octets } =>
+          Present { value: qualified } =>
             CapabilityIssued {
               capability: ApprovalCapability {
                 claims: claims,
-                tag_b64url: base64_encode(octets: octets, variant: UrlSafe) as NonEmptyStr,
+                tag_b64url: base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr,
               }
             }
         }
@@ -211,15 +219,21 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
 // tag is not the one canonical base64url spelling of some octet string. Absent is the verifier's
 // MacTagMismatch -- a malformed tag authenticates nothing, and saying which malformation would help
 // only a prober.
+//
+// ONE SPELLING, BY CONSTRUCTION RATHER THAN A SECOND ENCODING. This used to decode and then re-encode
+// the octets to compare against what was presented -- a second encoding standing where the decoder's
+// own canonicality should have been. std.encoding base64_decode_canonical refuses non-zero pad bits
+// (RFC 4648 §3.5) and any padding but the encoder's (base64_padding_after), so the spelling is the
+// encoder's by construction, with one authority for both in std.encoding.
 fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   let presented = capability.tag_b64url as String
-  match base64_decode(s: presented, variant: UrlSafe) {
+  match base64_decode_canonical(s: presented, variant: UrlSafe) {
     Absent => none
     Present { value: octets } =>
-      if base64_encode(octets: octets, variant: UrlSafe) != presented || octets == [] {
-        none
-      } else {
-        Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+      match base64_octets(values: octets) {
+        QualifiedOctetsRefused { observed: _ } => none
+        QualifiedOctetsReady { value: qualified } =>
+          if octets == [] { none } else { Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr } }
       }
   }
 }
@@ -247,8 +261,7 @@ data utc_instant_width: Int = 20
 // produced by a validator that believed it had bounded one. So the accepted domain is validated in
 // full: digits, then field ranges, then the calendar.
 fn is_digit(c: String) -> Bool {
-  c == "0" || c == "1" || c == "2" || c == "3" || c == "4"
-    || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+  decimal_digit_char(ch: c)
 }
 
 // The offsets are a LIST rather than a counted loop because every field in this format has a fixed
@@ -326,6 +339,28 @@ fn utc_instant_before(a: Timestamp, b: Timestamp) -> Bool {
   a < b
 }
 
+// THE SIGNED DISTANCE IN SECONDS BETWEEN TWO CANONICAL INSTANTS, as a pure fold over the fields
+// utc_instant_is_canonical already validates -- so a window around an instant is a comparison of
+// two integers, not a clock call. Like utc_instant_before it is defined ONLY on canonical pairs;
+// the caller establishes canonicity first. Days are counted from a proleptic Gregorian origin
+// shifted by one 400-year cycle, which keeps every term non-negative (year 0000 included) without
+// changing any leap year; the shift cancels in the difference.
+data month_numbers: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+fn utc_instant_seconds(t: Timestamp) -> Int {
+  let year = number_at(t: t, offsets: year_offsets)
+  let month = number_at(t: t, offsets: month_offsets)
+  let shifted = year + 399
+  let days_before_year = 365 * shifted + shifted / 4 - shifted / 100 + shifted / 400
+  let days_before_month = fold(filter(month_numbers, m => m < month), init: 0, f: (acc, m) => acc + days_in_month(y: year, m: m))
+  let days = days_before_year + days_before_month + number_at(t: t, offsets: day_offsets) - 1
+  days * 86400 + number_at(t: t, offsets: hour_offsets) * 3600 + number_at(t: t, offsets: minute_offsets) * 60 + number_at(t: t, offsets: second_offsets)
+}
+
+fn utc_instant_seconds_after(later: Timestamp, earlier: Timestamp) -> Int {
+  utc_instant_seconds(t: later) - utc_instant_seconds(t: earlier)
+}
+
 // EXPIRY IS CHECKED WITH A STRICT COMPARISON AT THE BOUNDARY INSTANT.
 //
 // std.scoped_authorization grant_not_expired_at uses `<=`, which INCLUDES the expiry instant. That
@@ -384,7 +419,11 @@ fn verify_capability(
       } else {
         verify_authenticated_claims(claims: c, expectation: expectation, observed_at: observed_at)
       }
-    _ => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMismatch { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyUnknown { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyRetired { key_id: _, retired_at: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacSuiteMismatch { expected: _, key_suite: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
   }
 }
 

@@ -1,0 +1,224 @@
+module v2.test.claim.namespace_xl0.value_read_refusal
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY VALUE POSITION REFUSES AT THE VALUE, UNDER THE VALUE'S OWN CAUSE, WHEN IT CANNOT BE LOWERED.
+//
+// The subject is v2.compiler.body_lowering_fold body_lower_value_read, the one reader every value
+// position asks: record-literal field initializer, if condition, if arm, let value, block statement,
+// match-arm body. Before it, an unlowerable value took one of two wrong answers. A field initializer
+// or if condition was CARRIED as its shell under the head-grain advisory
+// body_lowering_reason_value_carried_unlowered and the file Accepted, so the shell reached resolve and
+// refused there at the wrong atom (gunbc.recurring_failure_mode
+// carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom). A match-arm
+// body or if arm fell back to an operand reader whose Absent was reported as the enclosing form's
+// NAVIGATION refusal -- match_arm_navigation_refused, if_navigation_refused -- located at the whole
+// arm, which is how an unlowered fn literal inside an arm body read as a malformed arm.
+//
+// THE SPECIMENS ARE NOW POSITIVE ROUTE CONTROLS; NO AUTHORED SOURCE REACHES value_unlowered. This file
+// first used a plain fn literal, then (gunbc#12210) a function value whose body is a function value
+// (`fn(y) { fn(z) { y } }`, `l => m => leaf(l)`). gunbc#12283 gave that shape a lowered form
+// (v2.std.node ArrowBodyForm FunctionValueBody), and a probe of seventeen candidate values in let
+// position through this file's real route (fierce-gull-556, on #12283's head) found NONE that reaches a
+// value-owned refusal: each either lowers (function values, `"a" + 1`, `VrrRecord {}`, `!!v`) or is
+// refused before body lowering (tuples, ranges, `?`, tuple fields, unit, `|y| y`, record update,
+// `where`, a bare `as`), and `v[0]` parses as a following statement. So a source-driven refusal at the
+// value is unauthorable on this route (DESIGN section 4b), and re-pointing to another specimen would
+// be a decoration. The same specimens are kept, and each claim now asserts their ROUTE: a
+// function-valued value in every value position -- match-arm body, if arm, if condition, let value,
+// field initializer, a fold's lambda argument, a block arm -- lowers whole and the module Accepts,
+// which is the capability the old refusal was standing in for. The refusal wall at the value keeps
+// its one interface in v2.test.claim.namespace_xl0.value_read_direct, which supplies the reader an
+// unlowerable node directly.
+//
+// WHAT IS NOT CLAIMED HERE, AND WHY. The brief asked for a control that an arm missing `=>` still
+// refuses as match_arm_navigation_refused. That source does not reach lowering: the parser refuses
+// it (parse_grammar_choice_overlap_residue), so no source text can drive the navigation arm from
+// this route, and a control that cannot go red on this route would be a decoration (DESIGN section
+// 4b). The navigation refusal survives only for a parse tree whose arm has no pattern or no `=>`.
+data vrr_header: String = "module mq.vrr\n\nimport std.types { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
+
+data vrr_arm_body_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  match v {\n    true => fn(y) { fn(z) { y } }\n    false => v\n  }\n}\n"
+
+data vrr_if_arm_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  if v { fn(y) { fn(z) { y } } } else { v }\n}\n"
+
+data vrr_if_condition_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  if fn(y) { fn(z) { y } } { v } else { v }\n}\n"
+
+data vrr_let_value_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  let g = fn(y) { fn(z) { y } }\n  v\n}\n"
+
+data vrr_swallowed_fold_refusal_source: String = vrr_header + "fn leaf(v: Bool) -> Bool = v\n\nfn p(s: List<Bool>) -> Bool {\n  let folded = fold(map(s, l => m => leaf(l)), init: true, f: fn(acc, e) {\n    let y = leaf(e)\n    y\n  })\n  folded\n}\n"
+
+data vrr_block_arm_lambda_source: String = vrr_header + "fn leaf(v: Bool) -> Bool = v\n\nfn p(v: Bool, s: List<Bool>) -> Bool {\n  match v {\n    true => v\n    false => {\n      let o = leaf(v)\n      all(s, a => b => leaf(a))\n    }\n  }\n}\n"
+
+data vrr_field_initializer_source: String = vrr_header + "fn p(v: Bool) -> VrrRecord {\n  VrrRecord { f: fn(y) { fn(z) { y } } }\n}\n"
+
+// THE FRONT END RUNS ONCE, OVER ALL SEVEN SPECIMENS, AND EACH CLAIM READS ITS OWN ROW. Every claim
+// here asks what the REAL tokenize -> parse -> normalize route answers for one specimen, and each
+// full run costs ~150k-390k eval steps -- over the new-witness per-claim budget, measured by the
+// required floor's adjudication on this PR's first run. The same shape as
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes: vrr_outcomes is a
+// nullary pure producer over inline sources, enrolled WARM in v2.workflow.floor_pure_producer_share,
+// so the stage still EXECUTES -- once, in preparation -- and each row records what that execution
+// observed. The row is reduced to symbols and booleans (fatal reason, and what the refusal's locus
+// holds) so it reifies without carrying a Node, and the claims below assert exactly what they
+// asserted when each ran the front end itself.
+type VrrObserved
+  = VrrAccepted
+  | VrrRefusedAt {
+      reason: Symbol
+      locus_holds_fn_literal: Bool
+      locus_holds_arrow_lambda: Bool
+      locus_holds_enclosing_token: Bool
+    }
+
+type VrrOutcomes {
+  arm_body: VrrObserved
+  if_arm: VrrObserved
+  if_condition: VrrObserved
+  let_value: VrrObserved
+  field_initializer: VrrObserved
+  swallowed_fold_refusal: VrrObserved
+  block_arm_lambda: VrrObserved
+}
+
+fn vrr_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: false,
+    cons: fn(acc, n) {
+      acc || (match parse_production_emitted_identity_optional(node: n) {
+        Present { value: e } => e == emitted
+        Absent => false
+      })
+    }
+  )
+}
+
+fn vrr_subtree_has_token(root: Node, token: Symbol) -> Bool {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: false,
+    cons: fn(acc, n) {
+      acc || (match node_atom_identity_optional(node: n) {
+        Present { value: id } => id == token
+        Absent => false
+      })
+    }
+  )
+}
+
+fn vrr_observe_refusal(d: Diagnostic) -> VrrObserved {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      VrrRefusedAt {
+        reason: d.reason,
+        locus_holds_fn_literal: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_fn_literal),
+        locus_holds_arrow_lambda: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda),
+        locus_holds_enclosing_token: vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_match) || vrr_subtree_has_token(root: a.at, token: ^dag_token_fat_arrow) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_if) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_let)
+      }
+    _ =>
+      VrrRefusedAt {
+        reason: d.reason,
+        locus_holds_fn_literal: false,
+        locus_holds_arrow_lambda: false,
+        locus_holds_enclosing_token: false
+      }
+  }
+}
+
+fn vrr_observe(source: String) -> VrrObserved {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
+        Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Accepted { value: _, diagnostics: _ } => VrrAccepted
+                Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+              }
+          }
+      }
+  }
+}
+
+fn vrr_outcomes() -> VrrOutcomes {
+  VrrOutcomes {
+    arm_body: vrr_observe(source: vrr_arm_body_source),
+    if_arm: vrr_observe(source: vrr_if_arm_source),
+    if_condition: vrr_observe(source: vrr_if_condition_source),
+    let_value: vrr_observe(source: vrr_let_value_source),
+    field_initializer: vrr_observe(source: vrr_field_initializer_source),
+    swallowed_fold_refusal: vrr_observe(source: vrr_swallowed_fold_refusal_source),
+    block_arm_lambda: vrr_observe(source: vrr_block_arm_lambda_source)
+  }
+}
+
+// The specimen lowers whole: the front end Accepts the module, so the value in its position was read
+// by the value reader and lowered, never carried, relabelled or narrowed to an inner subtree.
+fn vrr_lowered_whole(o: VrrObserved) -> Bool {
+  match o {
+    VrrAccepted => true
+    VrrRefusedAt { reason: _, locus_holds_fn_literal: _, locus_holds_arrow_lambda: _, locus_holds_enclosing_token: _ } => false
+  }
+}
+
+// THE RELABEL, ASKED DIRECTLY: an unlowerable arm body is the arm body's refusal, not the arm's.
+test fn a_function_valued_match_arm_body_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().arm_body)
+}
+
+test fn a_function_valued_if_arm_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().if_arm)
+}
+
+test fn a_function_valued_if_condition_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().if_condition)
+}
+
+test fn a_function_valued_let_value_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().let_value)
+}
+
+// THE CARRY'S FORMER POSITION: this specimen Accepted under the value_carried_unlowered advisory and
+// refused later, at resolve, at the wrong atom.
+test fn a_function_valued_field_initializer_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().field_initializer)
+}
+
+// THE FOLD SPECIMEN LOWERS WHOLE. It was written for the swallow: body_lower_value_lowered once handed a
+// value whose bottom-up fold refused to the top-down walker, which bound `folded` to the first
+// lowerable SUBTREE (the `let y = leaf(e); y` body of the `f:` literal), so the fold call and its
+// lambda argument were gone and the module Accepted (nine corpus files, dag/extdeps/linux/
+// proc_mountinfo.dag among them). The curried lambda argument `l => m => leaf(l)` now has a lowered
+// form (v2.std.node ArrowBodyForm FunctionValueBody), so the claim asserts the whole value lowers --
+// fold call, curried argument and `f:` literal together -- and the module Accepts.
+test fn a_curried_fold_argument_inside_a_let_value_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().swallowed_fold_refusal)
+}
+
+// A BLOCK ARM WHOSE CONTENT REFUSES KEEPS ITS CONTENT'S REFUSAL. The arm position is read twice --
+// as an arm, then as a repeat element around one -- and the second reading used to run whenever the
+// first refused for ANY reason, so a lambda call argument inside a block arm body (call_argument_unread)
+// was reported as match_arm_navigation_refused at a locus holding no source at all
+// (dag/extdeps/vllm/engram_layout.dag vllm_engram_is_prime). The retry is now owed only to a shape
+// miss, and the arm's own refusal stands, located at the lambda.
+test fn a_curried_lambda_inside_a_block_arm_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().block_arm_lambda)
+}

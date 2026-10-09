@@ -2,7 +2,7 @@ module gunbc.superseded_run_starvation_census
 
 import std.types { Bool, Int, String, Timestamp, NonEmptyStr }
 import std.measure { Second, second, seconds_per_day }
-import std.algebra { trim }
+import std.algebra { Cons, Empty, trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs {
   github.WorkflowRuns,
@@ -28,6 +28,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.clock { Clock, clock_timestamp_to_unix_secs, ClockTimestampRead, ClockTimestampObserved, ClockTimestampRefused }
 import extdeps.github.pagination {
   github_first_page_cursor,
@@ -36,11 +37,15 @@ import extdeps.github.pagination {
 import std.page_fold {
   page_fold_begin,
   page_fold_observe,
-  page_fold_pump,
+  page_fold_demand,
+  page_fold_finish,
+  PageFoldState,
+  DemandPage,
+  DemandNone,
   page_fold_refusal_key,
   PageBound,
   PageCursor,
-  OffsetPage,
+  OffsetPage, OpaqueToken, LinkNext,
   PageFoldSubject,
   PageContinuation,
   ContinuationClosed,
@@ -125,10 +130,12 @@ type RefreshedPair {
 type RefreshResult
   = RefreshComplete { pair: RefreshedPair }
   | JobListTruncated { run_id: Int, total_jobs: Int, returned_jobs: Int }
+  | RefreshReadRefused { cause: NonEmptyStr }
 
 type RefreshPairsResult
   = AllPairsRefreshed { pairs: List<RefreshedPair> }
   | SomePairsTruncated { pairs: List<RefreshedPair>, truncated: List<JobListTruncated> }
+  | PairRefreshRefused { cause: NonEmptyStr }
 
 type StartStandingRow {
   standing: DeadHeadStartStanding
@@ -155,6 +162,7 @@ type RunCollectionOutcome
   = CollectionComplete { runs: List<WorkflowRun> }
   | PageLimitExceeded { collected: List<WorkflowRun>, reached_page: Int, max_pages: Int }
   | FoldProtocolRefused { cause: NonEmptyStr }
+  | RunListingRefused { cause: NonEmptyStr }
 
 type CensusResult
   = CensusComplete {
@@ -181,8 +189,26 @@ type CensusResult
       window: CensusWindow
       cause: NonEmptyStr
     }
+  | CensusReadRefused {
+      window: CensusWindow
+      cause: NonEmptyStr
+    }
 
 data census_subject: NonEmptyStr = "gunbc.superseded_run_starvation_census"
+
+// A REFUSED GITHUB READ ENDS THE CENSUS AS A NAMED REFUSAL. Every read here yields a RestResult, and
+// a census assembled around a page or a job list that was never read would report a measurement of
+// runs it did not observe, so the refusal is carried to CensusReadRefused with the operation named.
+fn census_read_refusal_cause(operation: String, refusal: RestRefusal) -> NonEmptyStr {
+  match refusal {
+    RestStatusRefused { status, body } =>
+      join([operation, " answered HTTP ", to_string(status), ": ", body], "") as NonEmptyStr
+    RestTransportRefused { cause } =>
+      join([operation, " never reached GitHub: ", cause as String], "") as NonEmptyStr
+    RestBodyUndecodable { status, cause } =>
+      join([operation, " answered HTTP ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+  }
+}
 
 fn collect_runs_in_window(
   auth_token: String,
@@ -193,7 +219,7 @@ fn collect_runs_in_window(
   created_range: String,
   max_run_pages: Int,
 ) -> RunCollectionOutcome {
-  let first = github.WorkflowRuns.ListWorkflowRuns(
+  match github.WorkflowRuns.ListWorkflowRuns(
     auth_token: auth_token,
     owner: owner,
     repo: repo,
@@ -202,14 +228,40 @@ fn collect_runs_in_window(
     created_range: created_range,
     per_page: max_per_page,
     page: 1,
-  )
-  let total = first.result.total_count
+  ) {
+    RestRefused { refusal } =>
+      RunListingRefused { cause: census_read_refusal_cause(operation: "github.WorkflowRuns.ListWorkflowRuns page 1", refusal: refusal) }
+    RestAnswered { answer } =>
+      collect_runs_after_first_page(
+        first: answer.result,
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        workflow_name: workflow_name,
+        event: event,
+        created_range: created_range,
+        max_run_pages: max_run_pages,
+      )
+  }
+}
+
+fn collect_runs_after_first_page(
+  first: WorkflowRunList,
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  event: String,
+  created_range: String,
+  max_run_pages: Int,
+) -> RunCollectionOutcome {
+  let total = first.total_count
   let data_pages = (total + max_per_page - 1) / max_per_page
   if data_pages == 0 {
-    CollectionComplete { runs: first.result.workflow_runs }
+    CollectionComplete { runs: first.workflow_runs }
   } else if data_pages > max_run_pages {
     PageLimitExceeded {
-      collected: first.result.workflow_runs,
+      collected: first.workflow_runs,
       reached_page: max_run_pages + 1,
       max_pages: max_run_pages,
     }
@@ -217,31 +269,9 @@ fn collect_runs_in_window(
     let subject = github_listing_subject(
       operation: census_subject
     )
-    let fetch = fn(c) {
-      let page_num = match c {
-        OffsetPage { page: n } => n
-        _ => 1
-      }
-      let response = github.WorkflowRuns.ListWorkflowRuns(
-        auth_token: auth_token,
-        owner: owner,
-        repo: repo,
-        workflow_name: workflow_name,
-        event: event,
-        created_range: created_range,
-        per_page: max_per_page,
-        page: page_num,
-      )
-      let continuation = match response.result.workflow_runs {
-        Empty {} => ContinuationClosed
-        Cons { head: _, tail: _ } =>
-          ContinuationNext { cursor: OffsetPage { page: page_num + 1 } }
-      }
-      PageObservation { items: response.result.workflow_runs, continuation: continuation }
-    }
     let first_obs = PageObservation {
-      items: first.result.workflow_runs,
-      continuation: match first.result.workflow_runs {
+      items: first.workflow_runs,
+      continuation: match first.workflow_runs {
         Empty {} => ContinuationClosed
         Cons { head: _, tail: _ } =>
           ContinuationNext { cursor: OffsetPage { page: 2 } }
@@ -253,17 +283,95 @@ fn collect_runs_in_window(
       first: github_first_page_cursor,
     )
     let observed = page_fold_observe(state: state, page: first_obs)
-    match page_fold_pump(state: observed, fetch: fetch) {
-      PagesClosed { items: runs } =>
-        CollectionComplete { runs: runs }
-      PagesRefused { refusal: PageBudgetExhausted { subject: _, max_pages: _, pages_read: _, stopped_at: _ } } =>
-        PageLimitExceeded {
-          collected: first.result.workflow_runs,
-          reached_page: max_run_pages + 2,
-          max_pages: max_run_pages,
-        }
-      PagesRefused { refusal: other } =>
-        FoldProtocolRefused { cause: page_fold_refusal_key(other) }
+    pump_run_pages(
+      state: observed,
+      first_page_runs: first.workflow_runs,
+      auth_token: auth_token,
+      owner: owner,
+      repo: repo,
+      workflow_name: workflow_name,
+      event: event,
+      created_range: created_range,
+      max_run_pages: max_run_pages,
+    )
+  }
+}
+
+// THE LIVE LOOP OVER std.page_fold, WRITTEN HERE BECAUSE A PAGE READ CAN REFUSE. page_fold_pump takes
+// a fetch that must answer a PageObservation, which leaves a refused read nothing honest to return;
+// this drives the same page_fold_demand / page_fold_observe / page_fold_finish steps and ends on a
+// refused page with RunListingRefused instead of observing a page that was never read.
+fn pump_run_pages(
+  state: PageFoldState<WorkflowRun>,
+  first_page_runs: List<WorkflowRun>,
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  event: String,
+  created_range: String,
+  max_run_pages: Int,
+) -> RunCollectionOutcome {
+  match page_fold_demand(state: state) {
+    DemandNone =>
+      match page_fold_finish(state: state) {
+        PagesClosed { items: runs } =>
+          CollectionComplete { runs: runs }
+        PagesRefused { refusal: PageBudgetExhausted { subject: _, max_pages: _, pages_read: _, stopped_at: _ } } =>
+          PageLimitExceeded {
+            collected: first_page_runs,
+            reached_page: max_run_pages + 2,
+            max_pages: max_run_pages,
+          }
+        PagesRefused { refusal: other } =>
+          FoldProtocolRefused { cause: page_fold_refusal_key(other) }
+      }
+    DemandPage { cursor: c } => {
+      let page_num = match c {
+        OffsetPage { page: n } => n
+        OpaqueToken { token: _ } => 1
+        LinkNext { target: _ } => 1
+      }
+      match github.WorkflowRuns.ListWorkflowRuns(
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        workflow_name: workflow_name,
+        event: event,
+        created_range: created_range,
+        per_page: max_per_page,
+        page: page_num,
+      ) {
+        RestRefused { refusal } =>
+          RunListingRefused {
+            cause: census_read_refusal_cause(
+              operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page_num)], ""),
+              refusal: refusal,
+            )
+          }
+        RestAnswered { answer } =>
+          pump_run_pages(
+            state: page_fold_observe(
+              state: state,
+              page: PageObservation {
+                items: answer.result.workflow_runs,
+                continuation: match answer.result.workflow_runs {
+                  Empty {} => ContinuationClosed
+                  Cons { head: _, tail: _ } =>
+                    ContinuationNext { cursor: OffsetPage { page: page_num + 1 } }
+                },
+              },
+            ),
+            first_page_runs: first_page_runs,
+            auth_token: auth_token,
+            owner: owner,
+            repo: repo,
+            workflow_name: workflow_name,
+            event: event,
+            created_range: created_range,
+            max_run_pages: max_run_pages,
+          )
+      }
     }
   }
 }
@@ -426,7 +534,11 @@ fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated
           timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
         Absent => DurationInsufficientData
       }
-    _ => DurationInsufficientData
+    Queued => DurationInsufficientData
+    InProgress => DurationInsufficientData
+    Waiting => DurationInsufficientData
+    Requested => DurationInsufficientData
+    Pending => DurationInsufficientData
   }
 }
 
@@ -436,37 +548,77 @@ fn refresh_pair(
   repo: String,
   pair: SupersededRunPair,
 ) -> RefreshResult {
-  let dead_run_detail = github.WorkflowRuns.GetRun(
+  match github.WorkflowRuns.GetRun(
     auth_token: auth_token,
     owner: owner,
     repo: repo,
     run_id: pair.superseded_run as String,
-  )
-  let dead_jobs = github.WorkflowRuns.ListJobs(
-    auth_token: auth_token,
-    owner: owner,
-    repo: repo,
-    run_id: pair.superseded_run as String,
-  )
-  let live_jobs = github.WorkflowRuns.ListJobs(
-    auth_token: auth_token,
-    owner: owner,
-    repo: repo,
-    run_id: pair.live_head_run as String,
-  )
-  let dead_jobs_returned = count_jobs(jobs: dead_jobs.result.jobs)
-  if dead_jobs_returned < dead_jobs.result.total_count {
-    JobListTruncated { run_id: pair.superseded_run, total_jobs: dead_jobs.result.total_count, returned_jobs: dead_jobs_returned }
+  ) {
+    RestRefused { refusal } =>
+      RefreshReadRefused {
+        cause: census_read_refusal_cause(
+          operation: join(["github.WorkflowRuns.GetRun for run ", pair.superseded_run as String], ""),
+          refusal: refusal,
+        )
+      }
+    RestAnswered { answer: dead_run_detail } =>
+      match github.WorkflowRuns.ListJobs(
+        auth_token: auth_token,
+        owner: owner,
+        repo: repo,
+        run_id: pair.superseded_run as String,
+      ) {
+        RestRefused { refusal } =>
+          RefreshReadRefused {
+            cause: census_read_refusal_cause(
+              operation: join(["github.WorkflowRuns.ListJobs for run ", pair.superseded_run as String], ""),
+              refusal: refusal,
+            )
+          }
+        RestAnswered { answer: dead_jobs_read } =>
+          match github.WorkflowRuns.ListJobs(
+            auth_token: auth_token,
+            owner: owner,
+            repo: repo,
+            run_id: pair.live_head_run as String,
+          ) {
+            RestRefused { refusal } =>
+              RefreshReadRefused {
+                cause: census_read_refusal_cause(
+                  operation: join(["github.WorkflowRuns.ListJobs for run ", pair.live_head_run as String], ""),
+                  refusal: refusal,
+                )
+              }
+            RestAnswered { answer: live_jobs_read } =>
+              refreshed_pair_from_reads(
+                pair: pair,
+                dead_run: dead_run_detail.run,
+                dead_jobs: dead_jobs_read.result,
+                live_jobs: live_jobs_read.result,
+              )
+          }
+      }
+  }
+}
+
+fn refreshed_pair_from_reads(
+  pair: SupersededRunPair,
+  dead_run: WorkflowRun,
+  dead_jobs: WorkflowJobRunList,
+  live_jobs: WorkflowJobRunList,
+) -> RefreshResult {
+  let dead_jobs_returned = count_jobs(jobs: dead_jobs.jobs)
+  if dead_jobs_returned < dead_jobs.total_count {
+    JobListTruncated { run_id: pair.superseded_run, total_jobs: dead_jobs.total_count, returned_jobs: dead_jobs_returned }
   } else {
-    let live_jobs_returned = count_jobs(jobs: live_jobs.result.jobs)
-    if live_jobs_returned < live_jobs.result.total_count {
-      JobListTruncated { run_id: pair.live_head_run, total_jobs: live_jobs.result.total_count, returned_jobs: live_jobs_returned }
+    let live_jobs_returned = count_jobs(jobs: live_jobs.jobs)
+    if live_jobs_returned < live_jobs.total_count {
+      JobListTruncated { run_id: pair.live_head_run, total_jobs: live_jobs.total_count, returned_jobs: live_jobs_returned }
     } else {
-      let dead_run = dead_run_detail.run
-      let dead_started = earliest_started_at(jobs: dead_jobs.result.jobs)
-      let live_created = earliest_created_at(jobs: live_jobs.result.jobs)
-      let last_job = last_completed_job(jobs: dead_jobs.result.jobs)
-      let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.result.jobs)
+      let dead_started = earliest_started_at(jobs: dead_jobs.jobs)
+      let live_created = earliest_created_at(jobs: live_jobs.jobs)
+      let last_job = last_completed_job(jobs: dead_jobs.jobs)
+      let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.jobs)
       RefreshComplete {
         pair: RefreshedPair {
           pair: pair,
@@ -478,9 +630,9 @@ fn refresh_pair(
           live_job_count: live_jobs_returned,
           dead_first_job_started_at: dead_started,
           live_first_job_created_at: live_created,
-          cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Cancelled),
-          failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Failure),
-          queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: Queued),
+          cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.jobs, conclusion: Cancelled),
+          failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.jobs, conclusion: Failure),
+          queued_jobs: count_jobs_with_status(jobs: dead_jobs.jobs, status: Queued),
           terminal_laggard_started_at: match last_job {
             Present { value: j } => j.started_at
             Absent => none
@@ -756,6 +908,11 @@ fn superseded_run_starvation_census(
             truncated: ts,
             pair_count: pair_count,
           }
+        PairRefreshRefused { cause: c } =>
+          CensusReadRefused {
+            window: CensusWindow { from: from, through: through, observed_at: observed_at },
+            cause: c,
+          }
       }
     }
     PageLimitExceeded { collected: _, reached_page: p, max_pages: m } =>
@@ -767,6 +924,11 @@ fn superseded_run_starvation_census(
       }
     FoldProtocolRefused { cause: c } =>
       CensusFoldRefused {
+        window: CensusWindow { from: from, through: through, observed_at: observed_at },
+        cause: c,
+      }
+    RunListingRefused { cause: c } =>
+      CensusReadRefused {
         window: CensusWindow { from: from, through: through, observed_at: observed_at },
         cause: c,
       }
@@ -803,6 +965,7 @@ fn refresh_pairs(
               AllPairsRefreshed { pairs: [rp] |> concat(remaining) }
             SomePairsTruncated { pairs: remaining, truncated: ts } =>
               SomePairsTruncated { pairs: [rp] |> concat(remaining), truncated: ts }
+            PairRefreshRefused { cause: c } => PairRefreshRefused { cause: c }
           }
         JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r } =>
           match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest) {
@@ -816,7 +979,9 @@ fn refresh_pairs(
                 pairs: remaining,
                 truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }] |> concat(ts),
               }
+            PairRefreshRefused { cause: c } => PairRefreshRefused { cause: c }
           }
+        RefreshReadRefused { cause: c } => PairRefreshRefused { cause: c }
       }
   }
 }

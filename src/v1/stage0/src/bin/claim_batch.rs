@@ -407,7 +407,7 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
-        ClaimOutcome::RuntimeError { cause, message } => {
+        ClaimOutcome::RuntimeError { cause, message, .. } => {
             println!(
                 "FAIL {} (runtime error [{}]: {})",
                 function,
@@ -642,7 +642,50 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
     groups
 }
 
-fn run() -> Result<ExitCode, ExitCode> {
+/// Contiguous wall checkpoints from process start: each mark closes the span since the previous
+/// one, so the rows partition the process wall with no gap between them by construction.
+struct ProcessPartition {
+    started: Instant,
+    last: Instant,
+    spans: Vec<(&'static str, u128)>,
+}
+
+impl ProcessPartition {
+    fn new(started: Instant) -> Self {
+        Self {
+            started,
+            last: started,
+            spans: Vec::new(),
+        }
+    }
+
+    fn mark(&mut self, name: &'static str) {
+        let now = Instant::now();
+        self.spans
+            .push((name, now.duration_since(self.last).as_millis()));
+        self.last = now;
+    }
+
+    fn render(&self, timings: &ResolveTimings) -> String {
+        let mut line = format!(
+            "[process-partition] total_ms={}",
+            self.last.duration_since(self.started).as_millis()
+        );
+        for (name, ms) in &self.spans {
+            line.push_str(&format!(" {name}_ms={ms}"));
+        }
+        // `entries` is the resolve-and-evaluate loop; these two are its already-reported parts.
+        line.push_str(&format!(
+            " entries_resolve_ms={} entries_witness_ms={}",
+            timings.resolve_ms, timings.witness_ms
+        ));
+        line
+    }
+}
+
+fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
+    let mut partition = ProcessPartition::new(process_started);
+    partition.mark("pre_run");
     let invocation_started = Instant::now();
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
@@ -719,6 +762,12 @@ fn run() -> Result<ExitCode, ExitCode> {
     // bare-reference warm, output-policy resolution, module-index construction, or entry resolve.
     // Discovery-produced rows are validated by their producer and join later in this function.
     validate_explicit_functions(&parsed.entry_groups)?;
+    partition.mark("args");
+
+    // The harness's real subject. Built here, ahead of the preparation that first reads it, so its
+    // cost is its own row rather than part of whichever consumer touched it first.
+    let index = process_shared_index(&source_roots);
+    partition.mark("index_build");
 
     // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
     // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
@@ -741,22 +790,50 @@ fn run() -> Result<ExitCode, ExitCode> {
     // index. So the ordering against it is no longer load-bearing, and this comment does not claim
     // it is. The warm stays HERE because the invariant is "before any consumer", not "before that
     // one" — and because the next accidental first toucher will not announce itself either.
-    let edge_index_warm =
-        v1_compiler::cli_run::warm_bare_reference_edge_index(&process_shared_index(&source_roots))
-            .map_err(|e| {
-                eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
-                ExitCode::from(1)
-            })?;
+    //
+    // THE SUBJECT DECIDES THE SCOPE. A discovery roster's subject is the scanned tree, and its
+    // entries are not known until discovery (itself a consumer) has run, so it keeps the
+    // whole-pool demand. A run over explicitly named entries consumes only the rows their closures
+    // reach, so it demands exactly those: the rows of every other pool file were produced for no
+    // consumer.
+    let warm_failed = |e: String| {
+        eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
+        ExitCode::from(1)
+    };
+    let (edge_index_warm, warm_scope) = if parsed.discovery.is_some() {
+        let warm =
+            v1_compiler::cli_run::warm_bare_reference_edge_index(&index).map_err(warm_failed)?;
+        let scope = format!("whole-pool pool_files={}", warm.source_files);
+        (warm, scope)
+    } else {
+        let entries: Vec<String> = parsed
+            .entry_groups
+            .iter()
+            .map(|g| g.entry.clone())
+            .collect();
+        let warm =
+            v1_compiler::cli_run::warm_bare_reference_edge_index_for_entries(&index, &entries)
+                .map_err(warm_failed)?;
+        (
+            warm.observation,
+            format!(
+                "entry-closure-union entries={} entries_refused={} pool_files={}",
+                warm.entries, warm.entries_refused, warm.pool_files
+            ),
+        )
+    };
     eprintln!(
         "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms={} wall_ms={} \
-         rss_growth_bytes={} source_files={} bare_eligible={} provenance={}",
+         rss_growth_bytes={} source_files={} bare_eligible={} provenance={} scope={}",
         edge_index_warm.cpu_ms,
         edge_index_warm.wall_ms,
         edge_index_warm.rss_growth_bytes,
         edge_index_warm.source_files,
         edge_index_warm.bare_eligible,
         edge_index_warm.provenance.render(),
+        warm_scope,
     );
+    partition.mark("edge_index_warm");
 
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
     if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
@@ -767,6 +844,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
     // phases — a 20-minute silent resolve is uninterpretable.
     let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
+    partition.mark("output_policy");
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         let excludes = witness_exclusion_substrings();
@@ -800,12 +878,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
             return Err(ExitCode::from(2));
         }
-        // P4 advisory-first: predict the memory-packed width per witness from its
-        // derived space bound, logged for offline comparison against the run's peak
-        // RSS. Gated (opt-in); no scheduling change.
-        if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
-            v1_compiler::cli_run::emit_realize_advisory_for_rows(&source_roots, &rows);
-        }
         rows.sort_by(|a, b| {
             a.entry
                 .cmp(&b.entry)
@@ -815,6 +887,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         (parsed.entry_groups, None)
     };
+
+    partition.mark("roster");
 
     if entry_groups.is_empty() {
         eprintln!("claim_batch: --entry <file.dag> is required");
@@ -832,17 +906,36 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let total_witnesses: usize = entry_groups.iter().map(|g| g.functions.len()).sum();
     eprintln!(
-        "claim_batch: {} entry group(s), {} witness(es) total; building module index...",
+        "claim_batch: {} entry group(s), {} witness(es) total",
         entry_groups.len(),
         total_witnesses,
     );
 
-    // ONE index per (thread, roots), not one per holder. The output-policy installer above
-    // resolves only that policy's import closure; it deliberately does not enter or warm this
-    // process-shared corpus index. This is therefore the first place the harness constructs its
-    // real subject, and any cold edge-index build observed after this line belongs to an actual
-    // consumer rather than to policy installation order.
-    let index = process_shared_index(&source_roots);
+    // THE ENTRY ROUTE'S HALF OF THE UNIMPORTED-BARE-PROVIDER RULE, the same judgment the floor
+    // applies to a touched file (`v2.workflow.floor_unimported_bare_provider_debt`): a file that
+    // declares imports and bare-references a declaration outside its import closure refuses HERE,
+    // at the file and naming the import to add, rather than later as a registry-row error at every
+    // call site. Rostered debt is admitted on both routes alike.
+    let entry_paths: Vec<String> = entry_groups.iter().map(|g| g.entry.clone()).collect();
+    match v1_compiler::cli_run::unimported_bare_provider_entry_refusals(
+        &index,
+        &source_roots,
+        &entry_paths,
+    ) {
+        Ok(refusals) if refusals.is_empty() => {}
+        Ok(refusals) => {
+            for r in &refusals {
+                eprintln!("claim_batch: {r}");
+            }
+            return Err(ExitCode::from(1));
+        }
+        Err(e) => {
+            eprintln!("claim_batch: unimported-bare-provider check failed: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
+
+    partition.mark("unimported_bare_provider_check");
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
@@ -877,6 +970,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+
+    partition.mark("published_mock_precompute");
 
     let flatten_baseline = v1_compiler::v1_interpreter::flatten_counters_snapshot();
     let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
@@ -956,6 +1051,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
+    partition.mark("entries");
+
     eprintln!(
         "[resolve-summary] {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
@@ -1000,7 +1097,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.ownership),
         );
         eprintln!(
-            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_import_str={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
+            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
             ms(st.assembly_schedule),
             ms(st.assembly_probe),
             ms(st.assembly_graph),
@@ -1015,7 +1112,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.assembly_registry),
             ms(st.assembly_services),
             ms(st.assembly_rewire_type_env),
-            ms(st.assembly_rewire_import_str),
             ms(st.assembly_rewire_func_env),
             ms(st.assembly_emit_info),
             ms(st.reconcile_assembly),
@@ -1080,6 +1176,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         );
     }
 
+    // Where the process wall went, including everything outside the resolve spans. The
+    // `[pre-entry]` rows are the same thread's tree-scale and closure-scale phase receipts
+    // (`cli_run::pre_entry_phase`), which overlap the partition rows above and say which part of
+    // each scales with the pool.
+    partition.mark("reporting");
+    eprintln!("{}", partition.render(&timings));
+    for line in v1_compiler::cli_run::pre_entry_phase::take_lines() {
+        eprintln!("{line}");
+    }
+
     if timings.any_failed {
         return Ok(ExitCode::from(1));
     }
@@ -1092,6 +1198,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 }
 
 fn main() -> ExitCode {
+    let process_started = Instant::now();
     // THE SAME BIND claim_executor performs, and it is here because the validation of that
     // change found this binary refusing where the other one would have proceeded: claim_batch
     // asked for its budget on a remote action bound by nothing, took the correct
@@ -1113,11 +1220,21 @@ fn main() -> ExitCode {
     // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
     // subject.
     v1_compiler::coproduct_reflection::register_decl_census_memo();
-    let code = match run() {
+    let code = match run(process_started) {
         Ok(code) => code,
         Err(code) => code,
     };
+    let run_returned = Instant::now();
     v1_compiler::coproduct_reflection::clear_decl_census_memo();
+    // The partition's last mark is inside `run`; what follows it there is the release of `run`'s
+    // own holders. Thread-local state (the process-shared index among it) is released after `main`
+    // returns, where no line can be printed, so that span is the caller's process wall minus
+    // `main_end_ms`.
+    eprintln!(
+        "[process-partition-exit] run_returned_ms={} main_end_ms={}",
+        run_returned.duration_since(process_started).as_millis(),
+        process_started.elapsed().as_millis()
+    );
     code
 }
 

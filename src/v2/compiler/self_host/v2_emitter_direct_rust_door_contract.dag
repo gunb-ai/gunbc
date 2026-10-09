@@ -1,5 +1,6 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
@@ -24,33 +25,29 @@ import v2.compiler.self_host.emitter_producer_provenance {
   emission_qualifications_list_contains,
   SourceProduced
 }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_diagnostic_reason_from_symbol,
-  TargetBundleMalformed,
-}
+import v2.compiler.translate { translate_diagnostic_reason_from_symbol }
+import v2.compiler.target_serialize { target_serialize_source_from_model, TargetBundleMalformed }
 import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,
 }
 import v2.std.algebra { any }
-import v2.std.collection { empty_map, List }
+import v2.std.collection { empty_map}
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Node,
   Symbol,
   TypeNode,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 // THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door.
@@ -119,7 +116,7 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
     Accepted { value: _, diagnostics: _ } =>
       refused(failure: MissingRuleAcceptedDespiteGap)
     Rejected { diagnostics: r } =>
-      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+      match translate_diagnostic_reason_from_symbol(sym: diagnostics_fatal_reason(d: r)) {
         Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
         Present { value: _ } => refused(failure: MissingRuleWrongDiagnostic)
         Absent => refused(failure: MissingRuleDiagnosticAbsent)

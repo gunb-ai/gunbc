@@ -1,0 +1,16 @@
+module test.fixture.heads_after_data_provider_test
+
+// THE SHAPE UNDER TEST, and every line is load-bearing: a test-marked item whose declaration
+// directly follows a top-level data value. The heads reading ended a data value only at a
+// hand-written item-keyword list that lacked the test marker, so `heads_after_data_marked_probe`
+// was swallowed into the value above it and vanished from every pool census built on that
+// reading. `heads_before_data_marked_probe` precedes the data value, so the old reading already
+// kept it: it is the row that separates a repaired reading from one that answers for any name.
+// Read by `cli_run` `heads_reading_differential` (its declaration-name population, over the whole
+// pool this file sits in) and by `census_heads` `heads_reading_item_boundary_tests`.
+
+test data heads_before_data_marked_probe: Bool = true
+
+data heads_after_data_seed: Int = 1
+
+test data heads_after_data_marked_probe: Bool = true

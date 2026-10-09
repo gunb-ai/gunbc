@@ -1,0 +1,50 @@
+module test.claim.spark.pair_incumbent_identity_wet_witness
+
+import std.logic { Bool }
+import std.types { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// REAL EXECUTION HERE, on the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule): declared_pair_realization renders Group A's four units from the
+// production declaration and digests each through extdeps.tools.sha256sum Sha256.DigestStdin, which
+// has no mock_response, so no hermetic row can express this. The hermetic rows over supplied values
+// live in test.claim.spark.pair_incumbent_identity_witness; this file is the inhabitance half of
+// DESIGN section 3's pairing obligation for the DECLARED boundary, and the split is the same one
+// test.claim.spark.spark_pair_head_unit_digest_witness makes for the head digest alone.
+
+fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
+  match compare_content_hash(left: l, right: r) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// This is the one claim that runs the real declared route: it renders Group A's four units from
+// gunbc.spark.pair_serving_realization and digests them. It asserts the ROUTE -- Keyed, one head,
+// three workers, and a key that is stable across two derivations -- not merely the shape. Deleting
+// the integration (say, declared_pair_realization returning Unavailable for a realized group) fails
+// it. Group B has no pair realization and must say so rather than key an empty pair.
+test fn the_production_declaration_keys_group_a_and_refuses_group_b() -> Bool {
+  match declared_pair_realization(group: FabricGroupA) {
+    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => false
+    DeclaredPairRealizationKeyed { declared: d } =>
+      length(d.workers) == 3
+        && (d.head.unit_name as String) == (spark_pair_head_unit_name as String)
+        && all(d.workers, w => (w.unit_name as String) == (spark_pair_worker_unit_name as String))
+        && (match declared_pair_realization(group: FabricGroupA) {
+              DeclaredPairRealizationKeyed { declared: again } => hashes_equal(l: again.key, r: d.key)
+              DeclaredPairRealizationUnavailable { group: _, obligation: _ } => false
+            })
+        && (match declared_pair_realization(group: FabricGroupB) {
+              DeclaredPairRealizationUnavailable { group: _, obligation: _ } => true
+              DeclaredPairRealizationKeyed { declared: _ } => false
+            })
+  }
+}

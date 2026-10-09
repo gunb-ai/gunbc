@@ -27,10 +27,7 @@ fn type_atom(sym: Symbol) -> Node {
 }
 
 fn field_edge(field: Symbol, type_sym: Symbol) -> Edge {
-  Edge {
-    label: Named { name: field },
-    target: type_atom(sym: type_sym)
-  }
+  binder_edge(name: field, type_node: type_atom(sym: type_sym))
 }
 
 fn record_type(fields: List<Edge>) -> Node {

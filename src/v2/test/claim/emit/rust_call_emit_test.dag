@@ -1,7 +1,8 @@
 module v2.test.emit.rust_call_emit
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
+import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust_test {
@@ -26,14 +27,13 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -41,10 +41,13 @@ import v2.std.node {
   TypeNode,
   Value,
   node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.witness { Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -60,51 +63,50 @@ fn rust_call_type_atom(id: Symbol) -> Node {
 }
 
 fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn rust_call_positional(target: Node) -> Edge {
   Edge { label: Positional, target: target }
 }
 
-fn rust_call_add_domain_conj() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_call_named_edge(
+fn rust_call_add_signature() -> DeclaredSignatureEdges {
+  declared_signature(
+    params: [
+      binder_edge(
         name: ^dag_binding_param_x,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       ),
-      rust_call_named_edge(
+      binder_edge(
         name: ^dag_binding_param_y,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       )
-    ]
+    ],
+    source: rust_call_type_atom(id: ^dag_binding_type_int)
   )
 }
 
 fn rust_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+  let signature = declared_signature(
+    params: [
+      binder_edge(
+        name: ^rust_call_closure_acc,
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
+      ),
+      binder_edge(
+        name: ^rust_call_closure_h,
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
+      )
+    ],
+    source: rust_call_type_atom(id: ^dag_binding_type_int)
+  )
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      rust_call_positional(
-        target: node_synthetic(
-          kind: TypeNode { connective: Conj },
-          children: [
-            rust_call_named_edge(
-              name: ^rust_call_closure_acc,
-              target: rust_call_type_atom(id: ^dag_binding_type_int)
-            ),
-            rust_call_named_edge(
-              name: ^rust_call_closure_h,
-              target: rust_call_type_atom(id: ^dag_binding_type_int)
-            )
-          ]
-        )
-      ),
+      signature.domain,
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -131,14 +133,15 @@ fn rust_call_fold_body(closure: Node) -> Node {
 }
 
 fn rust_call_fold_arrow(closure: Node) -> Node {
+  let signature = rust_call_add_signature()
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      rust_call_positional(target: rust_call_add_domain_conj()),
+      signature.domain,
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
         target: rust_call_fold_body(closure: closure)
       )
     ]
@@ -175,14 +178,15 @@ fn rust_call_helper_body() -> Node {
 }
 
 fn rust_call_helper_arrow() -> Node {
+  let signature = rust_call_add_signature()
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      rust_call_positional(target: rust_call_add_domain_conj()),
+      signature.domain,
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
         target: rust_call_helper_body()
       )
     ]

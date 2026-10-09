@@ -2,7 +2,7 @@ module test.claim.runner_capacity_plan_witness
 
 import std.logic { Bool }
 import std.nat { Nat, nat_range_inclusive }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
   parse_positive_width,
   desired_github_identities,
@@ -11,9 +11,15 @@ import gunbc.runner_capacity_plan {
   SlotPopulationReconciled,
   SlotPopulationRefused,
 }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { committed_slot_identities, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  committed_slot_identities,
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  fabric_second_slot_index,
+}
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
@@ -27,14 +33,15 @@ import gunbc.runner_capacity_plan {
   PlanRefused,
 }
 import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
+  incident_2026_08_06_roster_fixture,
+  incident_2026_08_06_managed_roster_fixture,
   RosterReadUnavailable,
   RosterObserved,
   OrganizationRunnerRosterEvidence,
 }
 import std.types { String, NonEmptyStr, Int, List }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
 import gunbc.runner_capacity_plan {
   plan_runner_capacity_host,
@@ -73,11 +80,52 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Retyping 7 as 22 puts the same landmine one width further out. Asking for committed + 1 keeps the
 // request above the ceiling by construction, so this stays a check on the refusal arm rather than
 // on whatever number the fleet happened to commit the day it was written.
+//
+// THE ROSTER IS THE MANAGED-PAIR SLICE, SUPPLIED AT THE INTERFACE, AND IT USED TO BE THE WHOLE ORG.
+// This row went red on 2026-09-15 (#11204) without the ceiling arm changing: that change deleted
+// srv2's held width, so the whole-org corpus's srv2-01/02/05 stopped resolving to a committed slot
+// and the planner refused the plan before admission was ever consulted -- correctly, and
+// the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations now asserts exactly
+// that. This row's subject is the admission ceiling on srv3 and srv4; srv2's standing is not in it,
+// and consuming the org corpus here gave the row the union of every host's subject (DESIGN 3, a
+// witness discriminates at one interface). The slice is the same corpus rows projected, not a copy.
+fn committed_width_of(host: HostIdentity) -> Int {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+    RunnerWidthDerived { slots: n } => n
+  }
+}
+
+fn committed_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationDerived { members: m } => m
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+  }
+}
+
+// THE REQUESTED WIDTH IS READ FROM THE CARVE, FOR THE SAME REASON THE ROW ABOVE READS IT FROM THE
+// CEILING. Four rows in this file asked for a literal SIX, which was the committed width on
+// 2026-08-17 and has not been since; it is 17 on both managed hosts today. A literal that was once
+// a derived number is the landmine a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled
+// already had removed from its own end of the range -- "retyping 7 as 22 puts the same landmine one
+// width further out" -- and these rows kept it.
+//
+// WHAT THESE ROWS ACTUALLY NEED IS NOT THE COMMITTED WIDTH AT ALL. Their subject is that the
+// enumeration steps OVER the fabric members rather than counting through them, so the request must
+// reach the first GitHub slot on the far side of the carve. That is one above the last fabric index,
+// and gunbc.runner_slot_allocation fabric_second_slot_index is its authority -- so if the carve
+// moves, this width moves with it, and no number here needs editing. If the committed width ever
+// falls BELOW the carve, admission refuses and every row consuming this goes red naming the width,
+// which is the loud direction.
+fn first_width_above_the_fabric_carve() -> Int {
+  fabric_second_slot_index + 1
+}
+
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
-    srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
-    roster: organization_runner_roster_evidence()
+    srv3_width: committed_width_of(host: operator_host_srv3) + 1,
+    srv4_width: committed_width_of(host: operator_host_srv4) + 1,
+    roster: incident_2026_08_06_managed_roster_fixture()
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -87,12 +135,15 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
   }
 }
 
-// AT THE COMMITTED WIDTH THE TWO HOSTS DISAGREE, AND THAT IS THE PURPOSE MODEL SHOWING THROUGH.
-// Both are six wide and both requests are admitted. srv4 has no fabric slot, so its GitHub
-// population is all 6 and one addition is planned: slot 06. srv3 carries the one compute-fabric
-// slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
-// slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
-// different populations.
+// ADDED SLOTS ARE REPORTED AS IDENTITIES, WHICH IS WHAT LETS THE ROWS BELOW SEPARATE PURPOSE FROM
+// COUNT. A count cannot tell a plan that steps over the fabric members from one that enumerates
+// through them when both happen to propose the same number of actions, and on a fleet where the
+// carve sits mid-range they routinely do.
+//
+// AN EARLIER FORM OF THIS NOTE EXPLAINED THE POINT WITH A CONTRAST BETWEEN srv3 AND srv4, both six
+// wide, one carved and one not. Neither half of that sentence survives: gunbc#11625 carved srv4 as
+// well, and the committed width of both is 17. The proposition was never about those numbers, so it
+// is stated here without them and the rows below read the carve from its authority.
 fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
   fold(
     actions,
@@ -109,42 +160,101 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 
 // THIS ROW ASSERTS WHICH SLOTS ARE ADDED, AND IT USED TO ASSERT HOW MANY. The change is not
 // cosmetic: against the roster the planner consumes, the COUNTS are identical before and after the
-// repair this commit makes to addition_actions -- srv3 plans one either way, srv4 plans two -- while
-// the identities are completely different. The count-shaped version of this row passed the broken
-// planner and would have passed the fixed one, flickering at neither.
+// repair that made addition_actions a set difference -- while the identities are completely
+// different. The count-shaped version of this row passed the broken planner and would have passed
+// the fixed one, flickering at neither.
 //
 // WHAT THE BROKEN PLANNER ACTUALLY PROPOSED, measured: srv3 add 05, which is ALREADY REGISTERED,
 // while 03, the slot genuinely missing from the roster, was never planned at any width. That is the
 // dense-prefix comparison surviving in the subtraction after both populations had become sets, and
 // decoding the observation is what made it harmful -- a real roster has holes and a count cannot see
-// them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
-// its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
+// them.
+//
+// THE PAIR THIS ROW USED TO DISCRIMINATE WITH NO LONGER EXISTS, AND SAYING SO IS THE REPAIR RATHER
+// THAN RETYPING THE EXPECTATION. It asserted srv3 [3] against srv4 [3, 6] and explained the
+// difference as "srv4 must additionally add 06 because it has no fabric member". gunbc#11625 gave
+// the fabric a SECOND EXECUTION HOST: fabric_execution_slot_identities now carries srv3-06, srv3-07,
+// srv4-06 and srv4-07, so the two managed hosts are symmetric and no request can make them differ.
+// That change re-derived the allocation, provision and retirement witnesses and did not reach this
+// file, which is why this row and five beside it were asserting a fleet that had stopped existing.
+//
+// THE NAMED PROPOSITION SURVIVES INTACT AND NOW FIRES ON BOTH HOSTS AT ONCE, which is a stronger
+// check than the asymmetry it replaces. Asking for the first width above the carve, the planner must
+// STEP OVER both fabric members to reach 08: the desired GitHub set is {01..05, 08}, the roster holds
+// {01,02,04,05}, so the additions are exactly [3, 8]. A count-keyed planner at the same request would
+// propose [3, 6, 7, 8] -- it would enumerate straight through the carve -- so the row still separates
+// purpose from count, and it does so on the production path rather than on a helper.
+//
+// SAME ROSTER MOVE AS THE ROW ABOVE: the managed-pair slice of the 2026-08-06 corpus, which carries
+// the holes this row is about ({01,02,04,05} on both hosts) and nothing about srv2.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
-  let plan = runner_capacity_plan(
-    srv3_width: 6,
-    srv4_width: 6,
-    roster: organization_runner_roster_evidence()
-  )
+  let roster = incident_2026_08_06_managed_roster_fixture()
+  let width = first_width_above_the_fabric_carve()
+  let plan = runner_capacity_plan(srv3_width: width, srv4_width: width, roster: roster)
   match plan {
     PlanReady { hosts: _ } =>
       added_indices(actions: addition_actions(
-        host: operator_host_srv3, requested_width: 6,
-        observed: observed_prefix_from_roster(host: operator_host_srv3)
-      )) == [3]
+        members: committed_members_of(host: operator_host_srv3), requested_width: width,
+        observed: observed_prefix_from_roster(host: operator_host_srv3, roster: roster)
+      )) == [3, width]
         && added_indices(actions: addition_actions(
-             host: operator_host_srv4, requested_width: 6,
-             observed: observed_prefix_from_roster(host: operator_host_srv4)
-           )) == [3, 6]
+             members: committed_members_of(host: operator_host_srv4), requested_width: width,
+             observed: observed_prefix_from_roster(host: operator_host_srv4, roster: roster)
+           )) == [3, width]
     PlanRefused { reason: _ } => false
   }
 }
 
-fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
-  match observed_github_slot_identities(host: host, roster: organization_runner_roster_evidence()) {
+// THE WHOLE 2026-08-06 CORPUS, AND WHAT IT ESTABLISHES IS A REFUSAL -- BUT NOT THE ONE THIS ROW
+// USED TO ASSERT. incident_2026_08_06_roster_fixture was what gunbc.apply and
+// gunbc.runner_capacity_realize handed the planner until they moved to the live read
+// (gunbc.fleet.organization_runner_roster_read). Against the fleet as committed today the planner
+// still REFUSES this corpus and still names srv2-01, and the refusal is still correct -- what
+// changed is WHY, and the why is the whole subject of this row.
+//
+// WHAT IT ASSERTED AND WHY THAT WAS WRONG. It required the refusal to read "resolves to no
+// committed fleet slot": the decoder found srv2-01 in no host's committed population and called it
+// a registration this fleet never provisioned. srv2's population was not small, it was
+// UNDERIVABLE -- its session reservation is unestablished, so its width does not resolve and it
+// contributes no members to compare against. The old sentence turned that missing denominator into
+// a positive claim about a registration that is very probably ours, and the previous revision of
+// this comment called those registrations "unaccounted", which is the same claim in prose.
+//
+// WHAT IT ASSERTS NOW. The refusal must name the HOST and the CAUSE, and must NOT call the
+// registration surplus. RED in both directions: a planner that went back to calling srv2-01
+// foreign fails the second conjunct, and a planner that stopped refusing at all fails the first.
+//
+// WHEN srv2'S COMMITMENT IS RE-ESTABLISHED THIS ROW GOES RED, AND THAT IS STILL ITS JOB: the corpus
+// then resolves and the row is re-derived by the change that re-establishes srv2, not by editing the
+// 2026-08-06 rows to fit the fleet of the day.
+test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() -> Bool {
+  match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
+    PlanReady { hosts: _ } => false
+    PlanRefused { reason: r } =>
+      string_contains(s: r, pattern: "srv2-01")
+        && string_contains(s: r, pattern: "a host whose committed width does not resolve")
+        && string_contains(s: r, pattern: "is UNRESOLVED, not zero")
+        && string_contains(s: r, pattern: srv2_reservation_policy_cause_fragment)
+        && !string_contains(s: r, pattern: "resolves to no committed fleet slot")
+  }
+}
+
+// THE POLICY'S OWN SENTENCE MUST SURVIVE THE WHOLE ROUTE, and without this conjunct it need not.
+// A renderer that dropped the cause suffix while keeping "is UNRESOLVED, not zero" satisfies every
+// other conjunct above -- the refusal would still read as a typed refusal and would no longer say
+// WHY, which is the half an operator acts on. This fragment is authored in
+// gunbc.session_reservation_policy srv2_session_reservation_sizing and is quoted rather than
+// re-derived deliberately: a witness that computed it from the policy would agree with the policy
+// by construction and could not see the renderer dropping it.
+data srv2_reservation_policy_cause_fragment: String = "the managed-slice peak cannot be read as a whole-host aggregate"
+
+fn observed_prefix_from_roster(host: HostIdentity, roster: OrganizationRunnerRosterEvidence) -> List<RunnerSlotIdentity> {
+  match observed_github_slot_identities(host: host, roster: roster) {
     GitHubSlotPopulationObserved { identities: ids } => ids
     GitHubSlotPopulationUnreadable { reason: _ } => []
     GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
     GitHubSlotPopulationForeignRegistration { registration_name: _ } => []
+    GitHubSlotPopulationHostWidthUnresolved { registration_name: _, host: _, cause: _ } => []
   }
 }
 
@@ -170,50 +280,78 @@ fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // one. What was wrong was the PLANNER deriving that shape from a width instead of reading it.
 fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    committed_members_of(host: host),
     init: [],
     f: (acc, id) => if id.slot_index > n { acc } else { concat(acc, [id]) }
   )
 }
 
+// THE ADDITION-RUN CASES MOVED FROM srv4 TO srv1, BECAUSE srv4 STOPPED BEING A HOST THAT CAN
+// ANSWER THIS QUESTION. The three transitions below are about the RUN -- does the enumeration span
+// every width, including from zero, and does a converged host produce nothing -- so they need a host
+// whose GitHub population is its whole committed population. srv4 was that host when these lines
+// were written; gunbc#11625 made it an execution host carrying srv4-06 and srv4-07, so a request of
+// six now yields five and the counts below stopped measuring the run at all.
+//
+// srv1 IS UNCARVED BY A DECISION AND NOT BY ACCIDENT, which is what makes it the right substitute
+// rather than a host that happens to be convenient today. gunbc.runner_slot_allocation holds it out
+// of fabric_execution_slot_identities so the control plane has a host it can still land on -- a
+// relation between two placements, recorded there with the reason to revisit it. If srv1 is ever
+// carved, these counts go red and the row beside them is where the purpose difference is asserted.
 test fn the_additions_run_is_general_across_transitions() -> Bool {
   nat_range_inclusive(lo: 6, hi: 6) == [6]
     && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
     && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
     && nat_range_inclusive(lo: 6, hi: 5) == []
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 6
-    && addition_actions(host: operator_host_srv4, requested_width: 3, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 3
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 6)).length() == 0
+    && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 0)).length() == 6
+    && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 3, observed: observed_prefix(host: operator_host_srv1, n: 0)).length() == 3
+    && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 6)).length() == 0
 }
 
-// THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
-// count-and-dense-prefix form could not express. srv3 commits 6 with srv3-06 carved out, so its
-// desired GitHub identities are exactly {01..05} -- five members out of a six-wide host, with the
-// gap at the top today. srv4 has no carve and desires all six. If a fabric member ever lands
-// mid-range this row is what refuses to enumerate through it.
-test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
-  desired_github_identities(host: operator_host_srv3, requested_width: 6).length() == 5
-    && desired_github_identities(host: operator_host_srv4, requested_width: 6).length() == 6
-    && desired_github_identities(host: operator_host_srv3, requested_width: 5).length() == 5
-    && desired_github_identities(host: operator_host_srv1, requested_width: 5).length() == 5
-}
-
-// THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. srv4 at 5-to-6 is the
-// measurement that FLIPPED: before this change it planned zero additions because the enumerator
-// could not spell a width of six, and it plans one now. It goes red again the moment a planner
-// stops being able to express a transition.
+// THE DESIRED GitHub SET SKIPS THE FABRIC MEMBERS WHEREVER THEY SIT, which is the assumption the
+// count-and-dense-prefix form could not express. THERE ARE TWO OF THEM PER EXECUTION HOST NOW, not
+// one: gunbc#11625 widened the canary from a single slot on a single host to srv3-06, srv3-07,
+// srv4-06 and srv4-07, and this row still described the one-slot fleet -- it asserted that srv4
+// "has no carve and desires all six", which is the sentence that made it red.
 //
-// srv3 AT THE SAME TRANSITION DID NOT FLIP, AND THAT IS WHY IT IS ENROLLED. It planned zero
-// additions before this change and plans zero after -- first because the bucket could not spell 6,
-// now because srv3-06 is the fabric member and is not in the desired GitHub set. Same value, same
-// transition, same index, entirely different mechanism. Enrolled alone it would have stayed green
-// straight through the defect AND the fix while silently changing meaning, which is the shape that
-// let this class survive four days on a declared provisioning target. It is only a check when read
-// against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
-// that discriminates.
-test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
-  addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 5)).length() == 1
-    && addition_actions(host: operator_host_srv3, requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
+// THE FOUR CASES ARE CHOSEN SO THAT EACH ONE FAILS FOR ITS OWN REASON. A request that spans the
+// whole carve loses exactly two members on an execution host (17 committed, 8 requested, 6 desired);
+// the SAME request on the uncarved host loses none, so a version of desired_github_identities that
+// ignored purpose would pass the first pair and fail the third; and a request that stops BELOW the
+// carve loses nothing even on a carved host, so a version that subtracted a fixed count rather than
+// testing membership would pass the first three and fail the fourth. The width is read from the
+// carve rather than written down, for the reason first_width_above_the_fabric_carve records.
+test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
+  desired_github_identities(members: committed_members_of(host: operator_host_srv3), requested_width: first_width_above_the_fabric_carve()).length() == 6
+    && desired_github_identities(members: committed_members_of(host: operator_host_srv4), requested_width: first_width_above_the_fabric_carve()).length() == 6
+    && desired_github_identities(members: committed_members_of(host: operator_host_srv1), requested_width: first_width_above_the_fabric_carve()).length() == 8
+    && desired_github_identities(members: committed_members_of(host: operator_host_srv3), requested_width: 5).length() == 5
+}
+
+// THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. One host at the 5-to-6
+// widening plans ONE addition -- slot 06 is an ordinary GitHub slot there, so the transition is
+// expressible and is expressed. It goes red the moment a planner stops being able to spell a
+// transition, which is the defect this row was enrolled for.
+//
+// THE OTHER HOST AT THE SAME TRANSITION PLANS ZERO, AND THAT IS WHY IT IS ENROLLED. Zero is the
+// answer both a working planner and a broken one give, for entirely different reasons: the broken
+// bucket could not spell 6, and the working planner withholds 06 because it is a fabric member and
+// is not in the desired GitHub set. Same value, same transition, same index, different mechanism.
+// Enrolled alone it would have stayed green straight through the defect AND the fix while silently
+// changing meaning. It is only a check when read against the flip row beside it, and a future reader
+// who deletes it as redundant removes the half that discriminates.
+//
+// THE PAIR IS srv1-AGAINST-srv3 AND IT USED TO BE srv4-AGAINST-srv3. It was named for "two six-wide
+// hosts" and rested on srv4 having no carve; gunbc#11625 gave the fabric a second execution host, so
+// srv4 now carries srv4-06 and srv4-07 and answers ZERO at this transition exactly as srv3 does.
+// Two hosts that agree cannot discriminate anything, so the row could not be repaired by moving a
+// number -- the contrast had to be re-derived. srv1 is the host that still differs, and it differs
+// BY A DECISION: gunbc.runner_slot_allocation holds it out of the execution population so the
+// control plane keeps a host it can land on. The name moves with the subject rather than keeping a
+// width in it that was never what the row was about.
+test fn the_same_widening_differs_by_purpose_across_a_carved_and_an_uncarved_host() -> Bool {
+  addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 5)).length() == 1
+    && addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
@@ -228,8 +366,8 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
 }
 
 test fn satisfied_observed_width_plans_zero_additions() -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
-    && addition_actions(host: operator_host_srv3, requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
+  addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
+    && addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
 }
 
 fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
@@ -308,7 +446,7 @@ test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() 
     ))
     && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
-      observed: [srv1_slot(i: 1), srv1_slot(i: gunbc_runner_slots_per_host(host: operator_host_srv1) + 1)],
+      observed: [srv1_slot(i: 1), srv1_slot(i: committed_width_of(host: operator_host_srv1) + 1)],
     ))
 }
 
@@ -356,12 +494,12 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
 // THE NUMBERS BELOW ARE ABOUT A FIXTURE AND NOT ABOUT THE FLEET, AND AN EARLIER REVISION OF THIS
 // BLOCK SAID OTHERWISE. Measured by execution against what the production path currently supplies:
 // srv1 synthesized 5 / decoded 5, srv2 5 / 3, srv3 5 / 4, srv4 5 / 4, twenty against sixteen. What
-// it supplies is organization_runner_roster_evidence, a declared Scaffold returning the pinned
-// 2026-08-06 incident corpus, so this decodes a sixteen-day-old constant. The earlier revision also
+// it supplied was the pinned 2026-08-06 incident corpus, now the dated witness fixture
+// incident_2026_08_06_roster_fixture, so this decodes a constant. The earlier revision also
 // called the incident note's fifteen-offline-of-sixteen line an INDEPENDENT corroboration; it is the
 // prose describing the same fixture, so the two agreements are one source agreeing with itself.
 // That makes this a consistency check on the decoder, which is worth having, and it is not evidence
-// about today's fleet -- nothing on the production path has read GitHub since the pin.
+// about today's fleet -- the production path now reads gunbc.fleet.organization_runner_roster_read instead.
 //
 // WHAT IS TRUE AGAINST ANY ROSTER, AND IS THE HALF THAT MATTERS: the category error is a fact about
 // the wiring rather than the data, and the direction of the error is fixed -- addition_actions
@@ -374,8 +512,8 @@ fn one_registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration
     name: name as NonEmptyStr,
     status: GitHubRunnerOnline,
     busy: false,
-    ephemeral: true,
-    version: "2.334.0" as NonEmptyStr,
+    ephemeral: Present { value: true },
+    version: Present { value: "2.334.0" as NonEmptyStr },
     os: "Linux" as NonEmptyStr,
     labels: [],
   }
@@ -444,6 +582,7 @@ test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
     GitHubSlotPopulationUnreadable { reason: _ } => false
     GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
     GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
+    GitHubSlotPopulationHostWidthUnresolved { registration_name: _, host: _, cause: _ } => false
   }
 }
 

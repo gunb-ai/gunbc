@@ -1,0 +1,60 @@
+module test.claim.spark.launch_admission_runtime_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { token_count, basis_point }
+import std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted, IndexerKvDtypeOmitted,
+  VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted,
+}
+import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm8d09804, Vllm1967a5627 }
+import gunbc.spark.serving_arm { glm53_native_launch_policy, ServingLaunchProfile, serving_launch_profile, ServingRuntimeRow, serving_runtime_row, GunbcGlm53DerivedKvplanV2Gb10 }
+import gunbc.spark.serving_arm_launch { scheduler_admission_runtime_refusal }
+
+// THE SUBJECT IS THE LAUNCH WALL'S RUNTIME RESOLUTION OF THE ADMISSION CONTROLS: a control the launch
+// states must resolve at the runtime's own claimed vLLM revision. The runtime row is the real Group B row
+// with only its claimed revision replaced, so the claim is about the resolution and nothing else.
+fn w_profile(ceiling: Nat, admission: VllmSchedulerAdmissionRequest) -> ServingLaunchProfile {
+  serving_launch_profile(
+    policy: glm53_native_launch_policy,
+    max_model_len: token_count(count: 262144), max_num_batched_tokens: token_count(count: 2048),
+    max_num_seqs: ceiling, guaranteed_cold_seqs: 8,
+    decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000, served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    scheduler_admission: admission)
+}
+
+fn w_gate() -> VllmSchedulerAdmissionRequest {
+  VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionExplicit { enabled: true }, kv_watermark: KvWatermarkExplicit { fraction: basis_point(count: 0) } }
+}
+
+fn w_refuses(rev: ModelledVllmDefaultsRevision?, p: ServingLaunchProfile) -> Bool {
+  match serving_runtime_row(r: GunbcGlm53DerivedKvplanV2Gb10) {
+    Absent => false
+    Present { value: r } => {
+      let row = ServingRuntimeRow {
+        runtime: r.runtime, artifact: r.artifact, hub_cli_path: r.hub_cli_path, vllm_version: r.vllm_version,
+        registry_reading: r.registry_reading, reasoning_projection: r.reasoning_projection, provenance: r.provenance,
+        claimed_defaults_revision: rev,
+      }
+      match scheduler_admission_runtime_refusal(profile: p, rrow: row) { Present { value: _ } => true  Absent => false }
+    }
+  }
+}
+
+test fn w_the_gate_resolves_on_a_revision_that_has_it() -> Bool {
+  !w_refuses(rev: Present { value: Vllm8d09804 }, p: w_profile(ceiling: 14, admission: w_gate()))
+}
+
+test fn w_a_watermark_on_a_revision_without_the_field_refuses_at_the_wall() -> Bool {
+  w_refuses(rev: Present { value: Vllm1967a5627 }, p: w_profile(ceiling: 14, admission: w_gate()))
+}
+
+test fn w_a_stated_control_on_an_unmodelled_revision_refuses_at_the_wall() -> Bool {
+  w_refuses(rev: Absent, p: w_profile(ceiling: 14, admission: w_gate()))
+}
+
+// THE FLOOR WITH NOTHING STATED NEEDS NO RUNTIME RESOLUTION -- the converged 8/8 launch is unchanged.
+test fn w_the_floor_with_no_controls_is_not_refused_on_an_unmodelled_revision() -> Bool {
+  !w_refuses(rev: Absent, p: w_profile(ceiling: 8, admission: vllm_scheduler_admission_omitted))
+}

@@ -1,7 +1,8 @@
 module test.claim.self_host_logic_seed_unavailable_witness
 
+import v2.std.subject_evidence { subject_evidence_establishes }
 import tools.self_host_logic_seed_unavailable_transport {
-  slbu_seed_unavailable_receipt_holds
+  slbu_seed_unavailable_receipt
 }
 
 // Seed-unavailable self-host behavioral receipt for dag/std/logic.dag (Control (b)):
@@ -32,5 +33,5 @@ import tools.self_host_logic_seed_unavailable_transport {
 // mock_response.
 
 test fn self_host_logic_seed_unavailable_receipt_holds() -> Bool {
-  slbu_seed_unavailable_receipt_holds()
+  subject_evidence_establishes(evidence: slbu_seed_unavailable_receipt(), licenses: fn(held) { held })
 }

@@ -2,7 +2,7 @@ module gunbc.roadmap_dispatch_actuator
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.content_hash { content_hash_atom }
 import std.upsert_decision {
   ObservationVerdict,
@@ -20,20 +20,21 @@ import std.upsert_decision {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapNodeId,
-  Intricacy,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  Volume,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  NodeSizing,
-  Sized,
-  Unsized,
+  NotDispatchable,
+  Dispatchable,
+  node_sizing_derivation,
 }
-import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
-import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
+import gunbc.roadmap_spawner { dispatch_brief_template }
+import gunbc.roadmap_status { node_title }
+import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
+}
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
+  alignment_resolve, alignment_base_cadence_state, alignment_chain_fingerprint,
+}
+import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -47,11 +48,21 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
-import extdeps.systemd { SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
-import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
+import extdeps.systemd {
+  systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
+  MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
+  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
+  RemainAfterExitProperty,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd.systemd_run {
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_user_transient_command, systemd_run_command_argument_words,
+}
+import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -100,7 +111,24 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
+import gunbc.claude_code_credential {
+  claude_code_custody_path, claude_code_oauth_env_wrapped_command,
+  ClaudeCodeEnvWrapping, ClaudeCodeEnvWrapped, ClaudeCodeEnvWrapRefused,
+  claude_code_harness_credential_label, claude_code_standing_trip_prompt,
+}
+import gunbc.claude_code_limit_standing { claude_code_standing_from_trip, ClaudeCodeStandingRead, ClaudeCodeStandingUnreadable }
+import extdeps.llm.claude_code_stream_json { claude_code_stream_json_print_args }
+import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved, ToolEnvironmentReady, provider_standing_from_observed_bundle }
+import std.claim_evidence { RecordedFactId }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
+import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.command_runner { run_shell_command_observe }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShRemoveFileAfterRead }
 import gunbc.dispatch_selection {
+  ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
+  claude_dispatch_credential, inventory_with_observed_standing, claude_offer_for_instance,
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
@@ -108,6 +136,10 @@ import gunbc.dispatch_selection {
   DispatchExecutionReceipt,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
+  SizingProfileExpectation,
+  NoDerivedSizingExpectation,
+  DerivedSizingExpectation,
+  sizing_profile_expectation,
   default_provider_selection_request,
   provider_selection_request_for_kind,
   dispatch_selection_for_instance,
@@ -342,15 +374,21 @@ fn dispatch_harness_selection() -> DispatchActuatorSelection {
   }
 }
 
-fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+// WHAT THESE SELECTORS TAKE IS AN EXPECTATION, NOT A SIZE. The parameter used to be a hand-authored
+// NodeSizing read off the roadmap node; it is now gunbc.dispatch_selection
+// SizingProfileExpectation, which a caller with a task derives from that task and a caller without
+// one (a harness probe) states as absent. The harness arm ignores it for the same reason it always
+// did -- there is one harness and nothing to choose -- and says so here rather than leaving a silent
+// unused parameter.
+fn dispatch_actuator_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
   dispatch_harness_selection()
 }
 
-fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -359,7 +397,7 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
 }
@@ -371,7 +409,22 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
 // path instead.
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  dispatch_actuator_selection_for_provider_on(
+    instance: srv1_live_dashboard_instance(),
+    provider: provider,
+    sizing_expectation: sizing_expectation,
+  )
+}
+
+// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). The
+// srv1-pinned form above survives only for callers that carry no instance; a dispatch that has one
+// passes it here, so a srv2 request sees srv2's offers rather than refusing against srv1's.
+fn dispatch_actuator_selection_for_provider_on(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
@@ -383,11 +436,11 @@ fn dispatch_actuator_selection_for_provider(
       }
     DispatchProviderKindIs { kind: vendor_kind } =>
   match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: instance,
     request: provider_selection_request_for_kind(
       kind: vendor_kind,
     ),
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -396,9 +449,245 @@ fn dispatch_actuator_selection_for_provider(
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
+  }
+}
+
+// THE OPERATOR NAMES THE EXECUTOR, OR THE DEFAULT STANDS (operator ruling via swift-ibex-601,
+// 2026-10-05). Belt dispatch selects the harness unconditionally (dispatch_actuator_selection);
+// the vendor selector above had no production caller, so no dispatched attempt could reach a vendor
+// CLI. An explicit request is the smallest honest door: it names one vendor, routes through the
+// SAME dispatch_actuator_selection_for_provider every vendor arm already answers through, and
+// inherits its refusals -- an offer that is absent, or whose standing (credential, entitlement,
+// per-window usage limits) does not admit the draw, refuses typed, and is never replaced by the
+// harness. Absence of a request is ExecutorDefault, never a vendor.
+//
+// DECLARED FRONTIER, NOT CODE: automatic selection between the harness and a vendor is a std.decision
+// select_realization over funded axes (cost, usage-window headroom, latency, quality). Its trigger is
+// a grounded funded-axis policy once limit, latency and quality readings exist for at least two
+// providers; until then nothing here chooses on the operator's behalf.
+type DispatchExecutorRequest
+  = ExecutorDefault
+  | ExecutorVendor { provider: DispatchCliProvider }
+
+type DispatchExecutorRequestDecode
+  = DispatchExecutorRequestDecoded { request: DispatchExecutorRequest }
+  | DispatchExecutorRequestUnknown { word: String, known: List<String> }
+
+data dispatch_vendor_executor_roster: List<DispatchCliProvider> = [ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider]
+
+// The wire word is dispatch_provider_label, the label the belt already reports a provider under, so
+// a request and a report spell one provider one way. The empty word is no request. The harness label
+// is the default executor named explicitly, not a vendor. Any other word is a typed refusal naming
+// the accepted set -- never the default, which would run a turn somewhere the operator did not ask.
+fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDecode {
+  if word == "" || word == dispatch_provider_label(provider: GunbcHarnessProvider) {
+    DispatchExecutorRequestDecoded { request: ExecutorDefault }
+  } else {
+    fold(
+      dispatch_vendor_executor_roster,
+      init: DispatchExecutorRequestUnknown {
+        word: word,
+        known: concat(
+          [dispatch_provider_label(provider: GunbcHarnessProvider)],
+          map(dispatch_vendor_executor_roster, p => dispatch_provider_label(provider: p)),
+        ),
+      },
+      f: (acc, p) =>
+        if dispatch_provider_label(provider: p) == word {
+          DispatchExecutorRequestDecoded { request: ExecutorVendor { provider: p } }
+        } else {
+          acc
+        },
+    )
+  }
+}
+
+// ONE CREDENTIAL SNAPSHOT PER ATTEMPT, FROM ADMISSION TO CHILD LOAD (side-chat finding, 2026-10-05).
+// The custody file is mutable: a custody converge can replace version A with B at any moment. If the
+// standing trip read the custody file and the spawn read it again, a replacement between the two
+// would run B under A's admission. So the attempt copies the custody bytes ONCE, owner-only, to a path
+// derived from the attempt identity (instance, node, attempt key, provider); the standing trip reads
+// that snapshot and keeps it, and the spawned child reads the SAME snapshot and the shell removes it
+// before exec. A replacement after the copy cannot reach the child, and a missing snapshot exits 78
+// before the provider starts -- the launch refuses; it never falls back to the custody file. The path
+// is a function of the attempt identity, so the binding is carried by construction: selection and
+// spawn derive the same path and no field can carry a different one.
+fn dispatch_credential_snapshot_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> NonEmptyStr {
+  join([
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
+    "/", node_id as String, "-a", attempt_key, ".", dispatch_provider_label(provider: provider), "-credential",
+  ], "") as NonEmptyStr
+}
+
+type DispatchCredentialSnapshot
+  = CredentialSnapshotTaken { path: NonEmptyStr }
+  | CredentialSnapshotRefused { reason: NonEmptyStr }
+
+fn dispatch_credential_snapshot_take(source: NonEmptyStr, snapshot: NonEmptyStr) -> DispatchCredentialSnapshot {
+  let read = Filesystem.Read(path: source as String)
+  if !read.success {
+    CredentialSnapshotRefused { reason: join(["the credential custody file ", source as String, " is unreadable on this host: ", read.error], "") as NonEmptyStr }
+  } else {
+    if trim(s: read.content) == "" {
+      CredentialSnapshotRefused { reason: join(["the credential custody file ", source as String, " is empty"], "") as NonEmptyStr }
+    } else {
+      let write = Filesystem.WriteOwnerOnly(path: snapshot as String, content: read.content)
+      if !write.success {
+        CredentialSnapshotRefused { reason: join(["the credential snapshot ", snapshot as String, " could not be written owner-only: ", write.error], "") as NonEmptyStr }
+      } else {
+        CredentialSnapshotTaken { path: snapshot }
+      }
+    }
+  }
+}
+
+fn dispatch_credential_snapshot_discard(snapshot: NonEmptyStr) -> Bool {
+  shell.Remove.FileForce(path: snapshot as FilePath).success
+}
+
+// THE EXPLICIT CLAUDE DRAW OBSERVES BEFORE IT SELECTS. The declared Claude row's standing admits no
+// draw, so selection over it would always refuse; this snapshots the credential, runs the standing
+// trip under that snapshot, projects the CLI's own report (gunbc.claude_code_limit_standing),
+// substitutes it into the declared row of THIS instance's inventory, and selects. An exhausted usage
+// window, a rejected token or an unreadable trip refuses the dispatch typed, naming why -- it never
+// falls back to the harness, never spawns a turn that would fail for a reason already known, and
+// discards the snapshot it took. The trip runs only here, on an operator's explicit request.
+//
+// The tool environment is supplied as Ready because this is reached only after the spawn's
+// environment admission (belt_actuate_spawn_for_instance EnvironmentAdmitted); the trip itself does
+// not observe the worktree.
+data claude_code_standing_trip_fact_id: RecordedFactId = "claude-code-standing-trip" as RecordedFactId
+
+fn claude_standing_trip_command(path: NonEmptyStr) -> ClaudeCodeEnvWrapping {
+  claude_code_oauth_env_wrapped_command(
+    token_path: path,
+    argv: concat(
+      [claude_cli_program],
+      concat(claude_code_stream_json_print_args, ["--max-turns", "1", claude_code_standing_trip_prompt]),
+    ),
+    disposition: PosixShKeepFile,
+  )
+}
+
+fn claude_observed_standing_from_snapshot(instance: HostDashboardInstance, snapshot: NonEmptyStr) -> ProviderStanding {
+  match claude_standing_trip_command(path: snapshot) {
+    ClaudeCodeEnvWrapRefused { reason } => ProviderStandingUnobserved { reason: reason }
+    ClaudeCodeEnvWrapped { command } => {
+      let run = run_shell_command_observe(command: command, transport: LocalExec)
+      if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+        ProviderStandingUnobserved {
+          reason: join(["the claude credential snapshot ", snapshot as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
+        }
+      } else {
+        match claude_code_standing_from_trip(
+          credential_label: claude_code_harness_credential_label,
+          stdout: run.stdout,
+          tool_environment: ToolEnvironmentReady,
+        ) {
+          ClaudeCodeStandingUnreadable { line_index, gap: _ } =>
+            ProviderStandingUnobserved {
+              reason: join(["the claude standing trip wrote an unreadable stream-json line at index ", to_string(value: line_index)], "") as NonEmptyStr,
+            }
+          ClaudeCodeStandingRead { bundle } =>
+            provider_standing_from_observed_bundle(
+              fact_id: claude_code_standing_trip_fact_id,
+              provider: claude_offer_for_instance(instance: instance).instance,
+              bundle: bundle,
+            )
+        }
+      }
+    }
+  }
+}
+
+fn claude_credential_custody_source() -> DispatchCredentialSnapshot {
+  match claude_dispatch_credential() {
+    ClaudeOAuthTokenSecretRef { secret_ref } =>
+      match claude_code_custody_path(secret_ref: secret_ref) {
+        Present { value: path } => CredentialSnapshotTaken { path: path }
+        Absent =>
+          CredentialSnapshotRefused {
+            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody"], "") as NonEmptyStr,
+          }
+      }
+    ClaudeApiKeySecretRef { secret_ref: _ } =>
+      CredentialSnapshotRefused { reason: "an API-key Claude credential has no dispatch spawn binding" as NonEmptyStr }
+    ClaudeStateRootRef { root: _ } =>
+      CredentialSnapshotRefused { reason: "a Claude state root is a profile tree, not a credential the spawn can bind" as NonEmptyStr }
+  }
+}
+
+fn dispatch_actuator_claude_selection_observed(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  let snapshot_path = dispatch_credential_snapshot_path_for_instance(
+    instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+  )
+  match claude_credential_custody_source() {
+    CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+    CredentialSnapshotTaken { path: custody } =>
+      match dispatch_credential_snapshot_take(source: custody, snapshot: snapshot_path) {
+        CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+        CredentialSnapshotTaken { path: snapshot } =>
+          match resolve_dispatch_selection(
+            inventory: inventory_with_observed_standing(
+              inventory: provider_inventory_for_instance(instance: instance),
+              kind: ClaudeCliProvider,
+              standing: claude_observed_standing_from_snapshot(instance: instance, snapshot: snapshot),
+            ),
+            request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+            sizing_expectation: sizing_expectation,
+          ) {
+            DispatchSelectionResolved { receipt } =>
+              DispatchActuatorSelectionOk {
+                provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+                effort: receipt.applied_effort,
+                model: resolved_model_selection(resolved: receipt.resolved_selection),
+                process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+              }
+            DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+              if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+                DispatchActuatorSelectionRefused { reason: reason }
+              } else {
+                DispatchActuatorSelectionRefused {
+                  reason: join([reason as String, "; and the credential snapshot ", snapshot as String, " could not be removed"], "") as NonEmptyStr,
+                }
+              }
+          }
+      }
+  }
+}
+
+fn dispatch_actuator_selection_for_request(
+  instance: HostDashboardInstance,
+  request: DispatchExecutorRequest,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  match request {
+    ExecutorDefault => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
+    ExecutorVendor { provider } =>
+      match provider {
+        ClaudeCodeProvider =>
+          dispatch_actuator_claude_selection_observed(
+            instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
+        CodexDispatchProvider => dispatch_actuator_selection_for_provider_on(instance: instance, provider: provider, sizing_expectation: sizing_expectation)
+        CursorDispatchProvider => dispatch_actuator_selection_for_provider_on(instance: instance, provider: provider, sizing_expectation: sizing_expectation)
+        GunbcHarnessProvider => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
+      }
   }
 }
 
@@ -603,7 +892,7 @@ fn dispatch_provider_instance_for_kind(
 // The alternative was to invent one so the shape stayed populated, which would put a fabricated
 // vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       match dispatch_cli_to_provider_kind(provider: provider) {
         DispatchProviderKindIs { kind: k } =>
@@ -638,7 +927,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
 }
 
 fn dispatch_applied_effort() -> ReasoningEffort? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
@@ -648,7 +937,7 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
   match dispatch_actuator_selection_for_provider(
     provider: provider,
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present { value: process_fingerprint }
@@ -786,6 +1075,21 @@ fn dispatch_attempt_events_path_for_instance(
   ], "")
 }
 
+// THE WIRE LOG DIRECTORY (harness-conversation-log-forking): per-round request/response bytes
+// persist beside the provider events file under "<events>.wire/"; provisioning it here is what
+// makes the harness's round writes land instead of degrading to turn.wire_log_unwritable.
+fn dispatch_attempt_wire_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([dispatch_attempt_events_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  ), ".wire/"], "")
+}
+
 fn dispatch_attempt_key_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -799,6 +1103,48 @@ fn dispatch_attempt_key_path_for_instance(
     ),
     "/attempt-key",
   ], "")
+}
+
+// THE PROCESS FINGERPRINT THE SPAWN'S SELECTION CHOSE, written at state initialization beside the
+// attempt key. Live-session observation and stop judge a tmux session against what THIS attempt
+// spawned, read here, rather than against whatever the default selection would choose now: once an
+// operator can name a vendor executor (DispatchExecutorRequest), a Claude attempt's pane is not the
+// harness's, and re-selecting at observation time would also hide a live session the moment its
+// provider's standing stopped admitting new draws. An attempt with no such file predates the record
+// and keeps the default-selection scope it was always observed under.
+fn dispatch_attempt_process_fingerprint_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/process-fingerprint",
+  ], "")
+}
+
+fn dispatch_current_attempt_process_fingerprint_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/process-fingerprint",
+  ], "")
+}
+
+fn dispatch_actuator_selection_process_fingerprint(selection: DispatchActuatorSelection) -> NonEmptyStr? {
+  match selection {
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } => Present { value: process_fingerprint }
+    DispatchActuatorSelectionRefused { reason: _ } => Absent
+  }
 }
 
 // THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
@@ -820,6 +1166,26 @@ fn dispatch_attempt_continuation_turn_path_for_instance(
 }
 
 data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
+
+// THE ALIGNMENT BINDING PATH: the resolved chain's fingerprint, written at state initialization
+// beside the attempt key and turn (gunbc.roadmap.roadmap_alignment owns the binding's shape; this
+// module only names its address in the attempt state directory).
+fn dispatch_attempt_alignment_binding_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/alignment-binding.json",
+  ], "")
+}
+
+data dispatch_attempt_alignment_binding_basename: String = "alignment-binding.json"
 
 fn dispatch_attempt_admission_path_for_instance(
   instance: HostDashboardInstance,
@@ -1116,8 +1482,16 @@ fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: Str
   join([head_sha, ".", criterion_key, ".json"], "")
 }
 
-fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".provider-events.jsonl"], "")
+fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
+  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
 }
 
 fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
@@ -1144,17 +1518,17 @@ fn dispatch_review_unit_properties(
   working_directory: String,
   log_path: String,
   review_dir: String,
-) -> List<String> {
+) -> List<SystemdRunProperty> {
   [
-    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max))),
-    systemd_run_property(name: "WorkingDirectory", value: working_directory),
-    systemd_run_property(name: "StandardOutput", value: join(["append:", log_path], "")),
-    systemd_run_property(name: "StandardError", value: join(["append:", log_path], "")),
-    systemd_run_property(name: "ProtectSystem", value: "strict"),
-    systemd_run_property(name: "ProtectHome", value: "read-only"),
-    systemd_run_property(name: "PrivateTmp", value: "yes"),
-    systemd_run_property(name: "ReadWritePaths", value: review_dir),
-    systemd_run_property(name: "RemainAfterExit", value: "yes"),
+    SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+    SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+    SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+    SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+    SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
+    SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
   ]
 }
 
@@ -1170,6 +1544,7 @@ fn gunbc_harness_review_argv(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1185,11 +1560,26 @@ fn gunbc_harness_review_argv(
     "--arg", join(["events_path=", events_path], ""),
     "--arg", join(["verdict_dir=", verdict_dir], ""),
     "--arg", join(["verdict_name=", verdict_name], ""),
+    "--arg", join(["attempt_identity=", attempt_identity], ""),
   ]
 }
 
-fn dispatch_review_unit_argv(
-  systemd_run_program: FilePath,
+// THE REVIEWER'S ATTEMPT IDENTITY IS MINTED HERE, as the worker's and auditor's are, with the
+// criterion key appended: fourteen reviewer lanes share one node id and attempt key, and each
+// lane's identity must stay distinct. Every piece is a safe path segment by construction, which the
+// fleet ssh context's safe-segment law (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity)
+// demands of the attempt identity it consumes as a path segment -- the pre-fix reviewer built it
+// from the absolute verdict path and every lane's seat bind refused before any ssh leg.
+// THE BELT LAYER RUNS THE RESOLVED PROGRAM, not the spelling: the instance toolchain declares where
+// systemd-run lives, and that declaration is the only thing the invoking host is allowed to assert
+// about an unobserved host's program location (extdeps.exec.command
+// program_spelling_is_an_observation_claim). The option and command words are untouched -- they are
+// the one projection's; only the head is substituted.
+fn dispatch_unit_exec_argv(command: ArgvCommand, resolved_program: FilePath) -> HostExecArgv {
+  host_exec_argv(program: resolved_program as String, args: systemd_run_command_argument_words(command: command))
+}
+
+fn dispatch_review_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
@@ -1197,29 +1587,27 @@ fn dispatch_review_unit_argv(
   brief: String,
   head_sha: String,
   criterion_key: String,
-) -> HostExecArgv {
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
-      properties: dispatch_review_unit_properties(
-        instance: instance,
-        working_directory: instance.repo_root as String,
-        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      ),
-      setenv_bindings: [],
-      command_argv: gunbc_harness_review_argv(
-        gunbc_program: instance.serve_binary as String,
-        repo_root: instance.repo_root as String,
-        worktree_path: worktree_path,
-        brief: brief,
-        timeout_program: instance.toolchain.timeout as String,
-        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-        verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
-      ),
+) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(
+    unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+      review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    ),
+    setenv_bindings: [],
+    command_argv: gunbc_harness_review_argv(
+      gunbc_program: instance.serve_binary as String,
+      repo_root: instance.repo_root as String,
+      worktree_path: worktree_path,
+      brief: brief,
+      timeout_program: instance.toolchain.timeout as String,
+      request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+      events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
+      verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+      attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
     ),
   )
 }
@@ -1246,43 +1634,108 @@ fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr
 
 data gunbc_harness_auditor_function: String = "harness_auditor_cli"
 
-fn dispatch_audit_unit_argv(
-  systemd_run_program: FilePath,
+// Each launch writes its events to its OWN per-launch path (head-hash for the auditor, turn for
+// the supervisor): a path shared across launches let a later launch rewrite an earlier one's
+// stream, which erased that launch's token usage from the per-attempt metering — the metering
+// reader opens exactly these per-launch paths (roadmap_attempt_metering), so the writer and the
+// reader must name the same path expression, which the actuator witness pins on both sides.
+fn dispatch_audit_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   worktree_path: String,
   brief: String,
   head_sha: String,
-) -> HostExecArgv {
+) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
-      properties: dispatch_review_unit_properties(
-        instance: instance,
-        working_directory: instance.repo_root as String,
-        log_path: join([dir, "/auditor-stdout.log"], ""),
-        review_dir: dir,
-      ),
-      setenv_bindings: [],
-      command_argv: [
-        instance.serve_binary as String,
-        "run",
-        "--source-root", join([instance.repo_root as String, "/dag"], ""),
-        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
-        "--function", gunbc_harness_auditor_function,
-        "--arg", join(["worktree=", worktree_path], ""),
-        "--arg", join(["brief=", brief], ""),
-        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
-        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
-        "--arg", join(["verdict_dir=", dir], ""),
-        "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
-      ],
+  systemd_run_user_transient_command(
+    unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: join([dir, "/auditor-stdout.log"], ""),
+      review_dir: dir,
     ),
+    setenv_bindings: [],
+    command_argv: [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+      "--function", gunbc_harness_auditor_function,
+      "--arg", join(["worktree=", worktree_path], ""),
+      "--arg", join(["brief=", brief], ""),
+      "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+      "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+      "--arg", join(["verdict_dir=", dir], ""),
+      "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
+      "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
+    ],
+  )
+}
+
+// THE SUPERVISOR DIRECTORY, the supervisor session's only writable path, beside review/ and
+// audit/. One supervisor per escalation record (node, attempt, turn): its verdict, event stream,
+// scratch and log are addressed together, and the belt's continuation decision reads the verdict
+// at this same address (belt_supervisor_verdict_observe), so writer and reader cannot disagree
+// about where an adjudication lands.
+data supervisor_directory_segment: String = "supervisor"
+
+fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", supervisor_directory_segment], "")
+}
+
+fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
+  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
+}
+
+fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {
+  join(["supervisor:", node_id, "-", attempt_key, "-t", to_string(value: turn)], "")
+}
+
+data gunbc_harness_supervisor_function: String = "harness_supervisor_cli"
+
+// THE SUPERVISOR'S UNIT: the auditor's shape (one session per subject, not per criterion) with the
+// escalation's turn in the unit name and the attempt identity, which is what makes one escalation
+// record convene at most one session -- a second convene over the same record names the same unit,
+// and the belt's liveness gate reads that. The worktree stays read-only to the session, as the
+// reviewer's is: the supervisor adjudicates the checkpoint; it does not edit it.
+fn dispatch_supervisor_unit_command(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  turn: Int,
+  worktree_path: String,
+  brief: String,
+) -> SystemdRunCommandReading {
+  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  systemd_run_user_transient_command(
+    unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: join([dir, "/supervisor-stdout.log"], ""),
+      review_dir: dir,
+    ),
+    setenv_bindings: [],
+    command_argv: [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+      "--function", gunbc_harness_supervisor_function,
+      "--arg", join(["worktree=", worktree_path], ""),
+      "--arg", join(["brief=", brief], ""),
+      "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+      "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
+      "--arg", join(["verdict_dir=", dir], ""),
+      "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
+      "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
+    ],
   )
 }
 
@@ -1437,21 +1890,29 @@ fn dispatch_current_attempt_events_path_for_instance(
   ], "")
 }
 
-fn dispatch_current_attempt_events_projection_argv_for_instance(
+// THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
+// through the node's current pointer; a reader of a named attempt names it by the attempt's own key.
+// One argv, two addressings.
+fn dispatch_events_projection_argv_at(
   instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  events_path: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: ProviderEventProjectionCapability,
     ),
-    args: codex_provider_event_projection_args(
-      path: dispatch_current_attempt_events_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ) as FilePath,
-    ),
+    args: codex_provider_event_projection_args(path: events_path as FilePath),
+  )
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  dispatch_events_projection_argv_at(
+    instance: instance,
+    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
   )
 }
 
@@ -1567,8 +2028,8 @@ fn dispatch_brief_fields_for_environment(
     contract: node.execution,
     environment: environment,
   )
-  match node.sizing {
-  Sized { intricacy, volume, repo, acceptance: _ } => {
+  match node.dispatch {
+  Dispatchable { repo, acceptance: _ } => {
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
       node_id: f.node_id,
@@ -1583,7 +2044,7 @@ fn dispatch_brief_fields_for_environment(
       expected_artifact: "implementation diff plus receipts from the declared validation operations",
     }
   }
-  Unsized => {
+  NotDispatchable => {
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
       node_id: f.node_id,
@@ -1624,10 +2085,61 @@ fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String 
 }
 
 fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
-  fill_dispatch_brief(
-    template: dispatch_brief_template,
+  dispatch_brief_with_centering(
+    node: node,
     fields: dispatch_brief_fields(node: node),
   )
+}
+
+// EVERY DISPATCHED BRIEF CARRIES THE SHARED PREAMBLE EXACTLY ONCE AND THE NODE'S CENTERING PLAN
+// (operator ruling 2026-09-19: centering is a dispatch prerequisite, supplied up front, never
+// re-derived per attempt). The preamble and the plan are read from their single authority
+// (gunbc.roadmap.roadmap_centering) at the one join site per brief assembly -- this function and
+// the continuation spawn path below -- so "exactly once" is construction, and the centering
+// witness counts occurrences rather than trusting it. A node with no declared plan renders the
+// roster's loud marker here, but such a brief never dispatches: the launch admission's centering
+// gate refuses it first.
+fn dispatch_brief_with_centering(node: RoadmapNode, fields: DispatchBriefFields) -> String {
+  join([
+    dispatch_centering_preamble,
+    "\n\nCentering plan for this node:\n",
+    node_centering_plan_text(node: node),
+    "\n\n",
+    fill_dispatch_brief(template: dispatch_brief_template, fields: fields),
+  ], "")
+}
+
+// THE CONTINUATION BRIEF RE-ALIGNS BEFORE IT RE-BRIEFS (docs/plans/harness-work-lifecycle.md,
+// alignment ladder: the continuation turn is a cadence point, and the answer rides in the
+// submission's explanation). The preamble sits between the verdict prefix and the ordinary brief,
+// exists only on continuation origins -- the initial brief is byte-identical to the pre-preamble
+// assembly -- and EVERY level of the chain renders, node to root, because the preamble IS the
+// resolution's rendered_prompt: gunbc.roadmap.roadmap_alignment is the one authority over the
+// alignment answer (chain, due levels, render), and this module only concatenates. A continuation
+// whose resolution is Unresolved renders a loud refusal marker here -- and never dispatches,
+// because the spawn fold below gates on the same resolution value before any command exists.
+fn dispatch_brief_for_origin(node: RoadmapNode, fields: DispatchBriefFields, origin: AttemptOrigin, resolution: AlignmentResolution) -> String {
+  join([
+    continuation_brief_prefix(origin: origin),
+    match origin {
+      FreshFromBase => ""
+      ContinueFromAttempt { parent_attempt_key: _, branch: _, turn: _, verdict_detail: _ } =>
+        dispatch_continuation_alignment_preamble(resolution: resolution)
+    },
+    dispatch_brief_with_centering(node: node, fields: fields),
+  ], "")
+}
+
+fn dispatch_continuation_alignment_preamble(resolution: AlignmentResolution) -> String {
+  match resolution {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } => rendered_prompt
+    AlignmentUnresolved { cause } =>
+      join([
+        "\nAlignment UNRESOLVED -- this continuation does not dispatch: ",
+        alignment_refusal_reason(cause: cause),
+        "\n\n",
+      ], "")
+  }
 }
 
 fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
@@ -1725,6 +2237,7 @@ type DispatchProviderInnerArgv
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: NonEmptyStr }
   | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
+  | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
 
@@ -1744,6 +2257,33 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // edit. So the entry and source roots are absolute paths under the instance's repo_root -- the
 // controller's own checkout, fixed for the process's life -- while the worktree reaches the worker
 // as the argument that sets its tools' working directory. Tool and subject, named separately.
+// THE WORKER ATTEMPT IDENTITY, minted here from the safe pieces the spawner already holds — the
+// spawn argv and the alignment binding (gunbc.roadmap.roadmap_belt_actuate) both name it, so the
+// mint is one function: the unit's --arg and the attempt state's binding file cannot drift apart.
+// node id plus attempt key is the same uniqueness (the key hashes the id and the spawn instant) in
+// a form that is a safe path segment by construction.
+// Length-prefixed identity parts (main #13208): each part becomes "<len>.<part>" so a part
+// carrying a separator still yields a safe path segment.
+fn dispatch_launch_identity(kind: String, parts: List<String>) -> String {
+  join([kind, ":", join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")], "")
+}
+
+fn dispatch_reviewer_attempt_identity(node_id: String, attempt_key: String, criterion_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "reviewer", parts: [node_id, attempt_key, criterion_key, head_sha])
+}
+
+fn dispatch_auditor_attempt_identity(node_id: String, attempt_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "auditor", parts: [node_id, attempt_key, head_sha])
+}
+
+fn dispatch_worker_attempt_identity(node_id: String, attempt_key: String) -> String {
+  join(["worker:", node_id, "-", attempt_key], "")
+}
+
+// attempt_identity IS MINTED HERE FROM THE SAFE PIECES THE SPAWNER ALREADY HOLDS. The worker and
+// auditor used to build it from the worktree, events and verdict paths -- all absolute, all
+// rejected by the fleet ssh context's safe-segment law, so every seat bind on a host needing that
+// context refused before any ssh leg (measured 2026-09-16 on srv2).
 fn gunbc_harness_spawn_argv(
   gunbc_program: String,
   repo_root: String,
@@ -1752,6 +2292,8 @@ fn gunbc_harness_spawn_argv(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
+  attempt_identity: String,
+  alignment_chain_fingerprint: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1767,6 +2309,8 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["events_path=", events_path], ""),
     "--arg", join(["repo_root=", repo_root], ""),
     "--arg", join(["gunbc_program=", gunbc_program], ""),
+    "--arg", join(["attempt_identity=", attempt_identity], ""),
+    "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
   ]
 }
 
@@ -1787,7 +2331,7 @@ fn dispatch_provider_inner_argv(
     ClaudeCodeProvider =>
       DispatchProviderInnerArgvReady {
         argv: concat(
-          [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
+          [env_path_resolved_program().invocation as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
             model: model,
@@ -1813,6 +2357,37 @@ fn dispatch_provider_inner_argv(
   }
 }
 
+// THE CLAUDE PROCESS RECEIVES THE CREDENTIAL THE SELECTION JUDGED: the attempt's snapshot
+// (dispatch_credential_snapshot_path_for_instance), read into the child's environment by the
+// grammar-emitted wrapper of gunbc.claude_code_credential and removed before exec -- never argv, which
+// the process table exposes, and never the mutable custody file. A credential the roster names no
+// custody for, and an API-key or profile-tree credential, refuse typed rather than falling back to the
+// ambient ~/.claude profile, which is a profile on disk and not the authority to act.
+fn claude_inner_argv_for_credential(
+  credential: ClaudeCredentialRef,
+  snapshot: NonEmptyStr,
+  argv: List<String>,
+) -> DispatchProviderInnerArgv {
+  match credential {
+    ClaudeOAuthTokenSecretRef { secret_ref } =>
+      match claude_code_custody_path(secret_ref: secret_ref) {
+        Present { value: _ } =>
+          match claude_code_oauth_env_wrapped_command(token_path: snapshot, argv: argv, disposition: PosixShRemoveFileAfterRead) {
+            ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
+            ClaudeCodeEnvWrapRefused { reason } => ClaudeProviderCredentialUnbound { reason: reason }
+          }
+        Absent =>
+          ClaudeProviderCredentialUnbound {
+            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody in gunbc.claude_code_credential"], "") as NonEmptyStr,
+          }
+      }
+    ClaudeApiKeySecretRef { secret_ref: _ } =>
+      ClaudeProviderCredentialUnbound { reason: "an API-key Claude credential has no dispatch spawn binding" as NonEmptyStr }
+    ClaudeStateRootRef { root: _ } =>
+      ClaudeProviderCredentialUnbound { reason: "a Claude state root is a profile tree, not a credential the spawn can bind" as NonEmptyStr }
+  }
+}
+
 fn dispatch_provider_inner_argv_for_instance(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
@@ -1823,10 +2398,15 @@ fn dispatch_provider_inner_argv_for_instance(
   attempt_key: String,
   worktree_path: String,
   brief: String,
+  alignment_chain_fingerprint: String,
 ) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      DispatchProviderInnerArgvReady {
+      claude_inner_argv_for_credential(
+        credential: claude_dispatch_credential(),
+        snapshot: dispatch_credential_snapshot_path_for_instance(
+          instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+        ),
         argv: concat(
           [
             dispatch_capability_program(
@@ -1843,7 +2423,7 @@ fn dispatch_provider_inner_argv_for_instance(
             brief: brief,
           ),
         ),
-      }
+      )
     CodexDispatchProvider =>
       match dashboard_instance_provider_executable(instance: instance) {
         Absent =>
@@ -1887,6 +2467,8 @@ fn dispatch_provider_inner_argv_for_instance(
             node_id: node_id,
             attempt_key: attempt_key,
           ),
+          attempt_identity: dispatch_worker_attempt_identity(node_id: node_id as String, attempt_key: attempt_key),
+          alignment_chain_fingerprint: alignment_chain_fingerprint,
         ),
       }
   }
@@ -1927,7 +2509,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   tmux_spawn_inner_argv(
     session_name: session_name,
     worktree_path: worktree_path,
-    inner_argv: concat([env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    inner_argv: concat([env_path_resolved_program().invocation as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
   )
 }
 
@@ -2000,6 +2582,11 @@ fn attempt_state_prepare_argv_for_instance(
         node_id: node_id,
         attempt_key: attempt_key,
       ),
+      dispatch_attempt_wire_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
     ],
   )
 }
@@ -2059,7 +2646,10 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
 // not express or had to fabricate. MemoryMax is the enforceable cgroup bound `gunbc run` requires
 // before it will size its typed-module cache -- without it the worker refuses, which is exactly the
-// failure this container replaces. WorkingDirectory is the controller checkout for the reason
+// failure this container replaces. It is the session's PLACEMENT GRANT (gunbc.roadmap_session_placement),
+// applied through the same grant-to-unit fold the compute provider uses
+// (gunbc.compute.unit_bounds compute_grant_unit_properties), so the memory the ledger counts and the
+// memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
 // dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
 // a terminal multiplexer.
@@ -2067,21 +2657,21 @@ fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   worker_log_path: String,
-) -> List<String> {
-  [
-    systemd_run_property(
-      name: "MemoryMax",
-      value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)),
-    ),
-    systemd_run_property(name: "WorkingDirectory", value: working_directory),
-    systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
-    systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
-    systemd_run_property(name: "ProtectSystem", value: "strict"),
-    systemd_run_property(name: "ProtectHome", value: "read-only"),
-    systemd_run_property(name: "PrivateTmp", value: "yes"),
-    systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
-    systemd_run_property(name: "RemainAfterExit", value: "yes"),
-  ]
+  granted: Kibibyte,
+  process_bounds: UnitProcessBounds,
+) -> List<SystemdRunProperty> {
+  concat(
+    compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+    [
+      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+      SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+      SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
+      SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
+    ],
+  )
 }
 
 // THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
@@ -2106,27 +2696,36 @@ fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
   ], "")
 }
 
-fn dispatch_worker_unit_argv(
-  systemd_run_program: FilePath,
-  instance: HostDashboardInstance,
-  node_id: String,
-  attempt_key: String,
-  working_directory: String,
-  worker_log_path: String,
-  inner_argv: List<String>,
-) -> HostExecArgv {
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-      properties: dispatch_worker_unit_properties(
-        instance: instance,
-        working_directory: working_directory,
-        worker_log_path: worker_log_path,
-      ),
-      setenv_bindings: [],
-      command_argv: inner_argv,
-    ),
+// THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit
+// that the spawn plan knows -- program, name, directories, the provider's argv -- is fixed here; the
+// memory bound is the placement grant, which exists only once the belt has acquired it immediately
+// before spawn. So there is no argv to run until a grant is supplied: dispatch_worker_unit_run takes
+// the granted amount as an argument, and a plan cannot be started at the instance ceiling by
+// omission.
+type DispatchWorkerUnitPlan {
+  systemd_run_program: FilePath
+  unit: NonEmptyStr
+  working_directory: String
+  worker_log_path: String
+  inner_argv: List<String>
+}
+
+fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
+  dispatch_worker_unit_properties(
+    instance: instance,
+    working_directory: plan.working_directory,
+    worker_log_path: plan.worker_log_path,
+    granted: granted,
+    process_bounds: process_bounds,
+  )
+}
+
+fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(
+    unit: plan.unit,
+    properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
+    setenv_bindings: [],
+    command_argv: plan.inner_argv,
   )
 }
 
@@ -2171,15 +2770,13 @@ fn dispatch_session_container_for_provider(
         Present { value: program } =>
           DispatchSessionContainerReady {
             container: SystemdUnitContainer {
-              run: dispatch_worker_unit_argv(
+              plan: DispatchWorkerUnitPlan {
                 systemd_run_program: program,
-                instance: instance,
-                node_id: node_id,
-                attempt_key: attempt_key,
+                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
                 working_directory: pane_working_directory,
                 worker_log_path: worker_log_path,
                 inner_argv: provider_inner,
-              ),
+              },
             },
           }
       }
@@ -2446,7 +3043,7 @@ type DispatchSessionContainer
       event_pipe: HostExecArgv
       provider_start: HostExecArgv
     }
-  | SystemdUnitContainer { run: HostExecArgv }
+  | SystemdUnitContainer { plan: DispatchWorkerUnitPlan }
 
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
@@ -2460,6 +3057,7 @@ fn dispatch_spawn_commands_for_provider(
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
@@ -2477,6 +3075,7 @@ fn dispatch_spawn_commands_for_provider(
         session_uuid: session_uuid,
         attempt_key: attempt_key,
         request: provider_selection_request_for_kind(kind: vendor_kind),
+        resolution: resolution,
       )
   }
 }
@@ -2488,13 +3087,14 @@ fn dispatch_spawn_commands_for_inventory(
   session_uuid: String,
   attempt_key: String,
   request: ProviderSelectionRequest,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match resolve_dispatch_selection(
     inventory: inventory,
     request: request,
-    node_sizing: node.sizing,
+    sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
@@ -2509,7 +3109,7 @@ fn dispatch_spawn_commands_for_inventory(
             step: "cursor-provider-spawn" as NonEmptyStr,
             detail: "cursor dispatch spawn is not yet wired on this actuator path",
           }
-        _ =>
+        ClaudeCodeProvider =>
           dispatch_spawn_commands_for_resolved_instance(
             instance: instance,
             node: node,
@@ -2519,6 +3119,31 @@ fn dispatch_spawn_commands_for_inventory(
             effort: effort,
             model: model,
             origin: FreshFromBase,
+            resolution: resolution,
+          )
+        CodexDispatchProvider =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+            model: model,
+            origin: FreshFromBase,
+            resolution: resolution,
+          )
+        GunbcHarnessProvider =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+            model: model,
+            origin: FreshFromBase,
+            resolution: resolution,
           )
       }
     }
@@ -2531,6 +3156,7 @@ fn dispatch_spawn_commands_for_instance(
   session_uuid: String,
   attempt_key: String,
   request: ProviderSelectionRequest,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_inventory(
     instance: instance,
@@ -2539,6 +3165,7 @@ fn dispatch_spawn_commands_for_instance(
     session_uuid: session_uuid,
     attempt_key: attempt_key,
     request: request,
+    resolution: resolution,
   )
 }
 
@@ -2547,6 +3174,12 @@ fn dispatch_spawn_commands_for_instance(
 // continuation branches from the prior attempt's branch, so the committed work is already in the
 // tree, and puts the verdict ahead of the brief. Nothing else about the spawn changes -- same
 // harness, same confinement, same state layout -- which is what makes the second turn ordinary.
+// THE ALIGNMENT GATE IS THE FIRST GATE, before destination, brief, or any command: the spawn
+// fold consumes the ONE resolution the caller derived from gunbc.roadmap.roadmap_alignment, and an
+// Unresolved chain refuses with zero commands — no worktree, no state, no session. The review
+// finding this closes (2026-09-26): ambiguity and undeclared rows used to render prose telling
+// the worker to "mention the drift" while execution proceeded; now the typed refusal IS the
+// spawn answer, and the refusal reason names the fork or the row.
 fn dispatch_spawn_commands_for_resolved_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2556,7 +3189,15 @@ fn dispatch_spawn_commands_for_resolved_instance(
   effort: ReasoningEffort,
   model: ProviderModelSelection,
   origin: AttemptOrigin,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
+  match resolution {
+    AlignmentUnresolved { cause } =>
+      DispatchSpawnRefused {
+        step: "alignment" as NonEmptyStr,
+        detail: alignment_refusal_reason(cause: cause),
+      }
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
       DispatchSpawnRefused {
@@ -2574,10 +3215,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = join([
-    continuation_brief_prefix(origin: origin),
-    fill_dispatch_brief(template: dispatch_brief_template, fields: fields),
-  ], "")
+  let brief = dispatch_brief_for_origin(node: node, fields: fields, origin: origin, resolution: resolution)
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -2595,6 +3233,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     attempt_key: attempt_key,
     worktree_path: worktree_path,
     brief: brief,
+    alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
   ) {
     CursorProviderSpawnUnwired { reason } =>
       DispatchSpawnRefused {
@@ -2609,6 +3248,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     GunbcHarnessSpawnNeedsInstance { reason } =>
       DispatchSpawnRefused {
         step: "harness-controller-checkout" as NonEmptyStr,
+        detail: reason as String,
+      }
+    ClaudeProviderCredentialUnbound { reason } =>
+      DispatchSpawnRefused {
+        step: "claude-credential-binding" as NonEmptyStr,
         detail: reason as String,
       }
     DispatchProviderInnerArgvReady { argv: provider_inner } => {
@@ -2690,6 +3334,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   }
       }
   }
+  }
 }
 
 fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
@@ -2699,6 +3344,7 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     session_uuid: session_uuid,
     attempt_key: attempt_key,
     request: default_provider_selection_request(),
+    resolution: alignment_resolve(node_id: node.node as String, turns_elapsed: 1, state: alignment_base_cadence_state()),
   )
 }
 
@@ -2712,14 +3358,13 @@ fn tmux_session_observation_for_scope(
 ) -> TmuxSessionObservation {
   let scoped_name = scope.session_name as String
   let matched = entries |> filter(e => e.session_name == scoped_name)
-  if count(matched) == 0 {
-    SessionAbsent
-  } else {
-    let e = matched.first()
-    SessionNameObserved {
-      session_name: scope.session_name,
-      windows: e.windows,
-    }
+  match matched.first() {
+    Absent => SessionAbsent
+    Present { value: e } =>
+      SessionNameObserved {
+        session_name: scope.session_name,
+        windows: e.windows,
+      }
   }
 }
 
@@ -3006,7 +3651,8 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
               },
             ),
           }
-        _ => none
+        WorkerProcessUnobserved { reason: _ } => none
+        WorkerProcessAbsent => none
       }
     ClaudeCliProvider =>
       Present {
@@ -3197,14 +3843,17 @@ type TmuxPaneEntry {
 
 fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
   let segs = split(s: line, delimiter: " ")
-  if count(segs) >= 2 && segs.first() != "" {
-    let name = segs.first()
-    Present { value: TmuxPaneEntry {
-      session_name: name,
-      command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
-    } }
-  } else {
-    none
+  match segs.first() {
+    Absent => none
+    Present { value: name } =>
+      if count(segs) >= 2 && name != "" {
+        Present { value: TmuxPaneEntry {
+          session_name: name,
+          command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
+        } }
+      } else {
+        none
+      }
   }
 }
 
@@ -3324,7 +3973,7 @@ type AttemptUnitObservation
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: property)
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   if read.success {
     AttemptUnitFinished { exit_status: trim(read.value) }
   } else {
@@ -3469,15 +4118,38 @@ fn live_session_row_with_process(
   }
 }
 
+// A node whose current attempt recorded the fingerprint its spawn selected (see
+// dispatch_attempt_process_fingerprint_path_for_instance) is judged against that record; a node
+// with no record falls back to the default selection's scope, exactly as before the record existed.
+type RecordedAttemptFingerprint {
+  node_id: String
+  fingerprint: NonEmptyStr
+}
+
+fn dispatch_tmux_session_scope_for_recorded(
+  node_id: RoadmapNodeId,
+  recorded: List<RecordedAttemptFingerprint>,
+  selection: DispatchActuatorSelection,
+) -> TmuxSessionScope? {
+  match (recorded |> filter(r => r.node_id == node_id as String)).first() {
+    Present { value: r } =>
+      Present {
+        value: dispatch_tmux_session_scope_for_process_fingerprint(node_id: node_id, process_fingerprint: r.fingerprint),
+      }
+    Absent => dispatch_tmux_session_scope(node_id: node_id, selection: selection)
+  }
+}
+
 fn append_present_live_session_with_process(
   acc: List<DispatchLiveSession>,
   entry: TmuxLsEntry,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
   selection: DispatchActuatorSelection,
+  recorded: List<RecordedAttemptFingerprint>,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
+  match dispatch_tmux_session_scope_for_recorded(node_id: node_id as RoadmapNodeId, recorded: recorded, selection: selection) {
     Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
@@ -3500,6 +4172,7 @@ fn dispatch_live_sessions_with_process(
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
   selection: DispatchActuatorSelection,
+  recorded: List<RecordedAttemptFingerprint>,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
@@ -3511,6 +4184,7 @@ fn dispatch_live_sessions_with_process(
         panes: panes,
         pane_observation_refusal: pane_observation_refusal,
         selection: selection,
+        recorded: recorded,
       )
     },
   )
@@ -3615,7 +4289,10 @@ fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
   match session.lease_verdict {
     Converged => true
     Drifted => true
-    _ => false
+    Absent => false
+    Conflict => false
+    Inaccessible => false
+    UnknownRefused => false
   }
 }
 

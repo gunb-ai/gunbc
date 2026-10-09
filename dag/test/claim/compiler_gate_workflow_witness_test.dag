@@ -1,0 +1,245 @@
+module test.claim.compiler_gate_workflow_witness_test
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import v2.std.algebra { fold_list }
+import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, RunsOnExpression }
+import gunbc.compiler_gate_workflow {
+  compiler_gate_emit_build_native_cache_root_bound_step, compiler_gate_native_cache_condition,
+  compiler_gate_native_cache_root_script, compiler_gate_native_read_condition, compiler_gate_native_write_condition, compiler_gate_native_save_command,
+  compiler_gate_floor_job, compiler_gate_generated_job, compiler_gate_drift_step_id,
+  compiler_gate_stage0_regen_step_id, compiler_gate_lint_step_id,
+  compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
+  compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids,
+  compiler_gate_floor_job_id, compiler_gate_generated_job_id, compiler_gate_aggregate_job_id
+}
+
+// ── THE RECEIPT'S PRODUCER IS BOUND WITH ITS CONSUMER, IN THAT ORDER ─────────────────────────
+//
+// The floor's run step passes --measurement-receipt, and under that flag claim_executor returns
+// success for a completed measurement CARRYING BLOCKERS: the blockers go into the receipt, and the
+// verdict is whoever reads the receipt back. A producer bound without that reader is a required
+// lane that cannot go red -- measured on PR #11821 run 35497139573, where the step log read
+// 'floor refused ... phases_run=2 phases_failed=2', no claim ran, and the lane concluded success.
+//
+// So this claim is over POSITIONS in the emitted job, not over the presence of a string: the step
+// whose run carries --adjudicate-measurement-receipt must exist, and it must come AFTER the step
+// whose run carries --measurement-receipt. Removing the adjudicator, or binding it ahead of the
+// producer it reads, reds this; a run step that stopped passing --measurement-receipt (the
+// alternative repair, refused because it fuses a refused floor with a killed runner) reds the
+// producer half.
+//
+// The RED was authorable and was the state of main when this file was written: the gate's floor
+// job bound the producer and nothing else.
+//
+// WHY THERE IS NO SECOND CLAIM OVER THE EMITTED YML, and it was written and then deleted rather
+// than never considered. Asserting the same fact on the committed bytes re-renders the whole
+// workflow to read two substrings out of it: measured at 97132 eval steps against the 72300 the
+// new-witness budget allows, while this claim over the job costs 55109. The overrun is the tell,
+// not the rule broken -- the cheap way to keep it was a 4b(3) drop, and buying reach with a debt
+// row is what DESIGN section 3 forbids. It is also redundant (section 2): the drift gate already
+// establishes that the committed yml IS the projection of this authority, and this claim
+// establishes that the authority carries the adjudicator after its producer, so the bytes carry
+// it by composition. Two facts, each with one home, rather than one fact asserted twice.
+
+type StepPositions {
+  next: Int
+  producer: Int
+  adjudicator: Int
+}
+
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn floor_step_positions(job: Job) -> StepPositions {
+  fold_list(
+    xs: job.steps,
+    empty: StepPositions { next: 0, producer: -1, adjudicator: -1 },
+    cons: fn(acc, step) {
+      let run = step_run_text(step: step)
+      let is_adjudicator = string_contains(s: run, pattern: "--adjudicate-measurement-receipt")
+      let is_producer = !is_adjudicator && string_contains(s: run, pattern: "--measurement-receipt")
+      StepPositions {
+        next: acc.next + 1,
+        producer: if is_producer && acc.producer < 0 { acc.next } else { acc.producer },
+        adjudicator: if is_adjudicator && acc.adjudicator < 0 { acc.next } else { acc.adjudicator },
+      }
+    }
+  )
+}
+
+test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
+  let p = floor_step_positions(job: compiler_gate_floor_job())
+  p.producer >= 0 && p.adjudicator >= 0 && p.producer < p.adjudicator
+}
+
+// ── THE STAGE0 MIRRORS ARE ADJUDICATED ON EVERY EVENT, BESIDE THE FLOOR ──────────────────────
+//
+// operator decision msg_6e36a6a2 (2026-09-23, superseding msg_4a9045fc and msg_f1ade7cf) put the
+// build lane over the compile_stage0 mirrors, both generations, on merge_group; operator ruling
+// 2026-09-27 moved it off the floor job onto the generated-artifact job beside it; operator ruling
+// 2026-09-28 runs it on every event, because a pull request that failed it still entered the queue
+// and failed every group stacked on it (#12412, #12539). This claim reads the generated job: exactly
+// one step runs `--required-lane` with no measurement receipt (the build lane's command; the
+// witnesses lane is the one carrying a receipt), its condition carries the status function and
+// names NO event, and the drift step -- now the repair's discriminator -- stays off the queue, reads
+// the lane's failure, and comes after it. Deleting the lane step, re-gating it to one event (the
+// queue-only placement the ruling retired), binding it twice, letting the drift step run on the
+// queue, or binding the drift step before the lane whose outcome it reads (where that outcome is
+// empty, so the repair chain can never fire) reds this. Whether the lane's own refusal discriminates
+// is not this claim's subject: that is the binary's, and the planted-drift control on the PR that
+// added the step is its execution receipt.
+type GeneratedLanePlacement {
+  next: Int
+  stage0_steps: Int
+  stage0_position: Int
+  stage0_ungated: Bool
+  drift_position: Int
+  drift_reads_the_lane: Bool
+}
+
+fn step_if_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c {
+      Present { value: v } => v
+      Absent => ""
+    }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn step_id_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: v } => v
+      Absent => ""
+    }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: v } => v
+      Absent => ""
+    }
+  }
+}
+
+test fn w_RED_the_stage0_mirrors_are_adjudicated_on_every_event_beside_the_floor() -> Bool {
+  let p = fold_list(
+    xs: compiler_gate_generated_job().steps,
+    empty: GeneratedLanePlacement { next: 0, stage0_steps: 0, stage0_position: -1, stage0_ungated: true, drift_position: -1, drift_reads_the_lane: false },
+    cons: fn(acc, step) {
+      let run = step_run_text(step: step)
+      let cond = step_if_text(step: step)
+      let is_stage0 = string_contains(s: run, pattern: "--required-lane")
+        && !string_contains(s: run, pattern: "--measurement-receipt")
+      let is_drift = step_id_text(step: step) == compiler_gate_drift_step_id
+      GeneratedLanePlacement {
+        next: acc.next + 1,
+        stage0_steps: if is_stage0 { acc.stage0_steps + 1 } else { acc.stage0_steps },
+        stage0_position: if is_stage0 && acc.stage0_position < 0 { acc.next } else { acc.stage0_position },
+        stage0_ungated: if is_stage0 {
+          acc.stage0_ungated
+            && string_contains(s: cond, pattern: "!cancelled()")
+            && !string_contains(s: cond, pattern: "github.event_name")
+        } else { acc.stage0_ungated },
+        drift_position: if is_drift { acc.next } else { acc.drift_position },
+        drift_reads_the_lane: if is_drift {
+          string_contains(s: cond, pattern: "github.event_name != 'merge_group'")
+            && string_contains(s: cond, pattern: join(["steps.", compiler_gate_stage0_regen_step_id, ".outcome == 'failure'"], ""))
+        } else { acc.drift_reads_the_lane },
+      }
+    }
+  )
+  p.stage0_steps == 1 && p.stage0_ungated && p.drift_reads_the_lane
+    && p.stage0_position >= 0 && p.stage0_position < p.drift_position
+}
+
+// ── THE LINT IS A STEP ON THE GENERATED LANE, UNDER THE STATUS GUARD ALONE ──────────────────────
+//
+// operator ruling 2026-09-28 deleted the hosted `clippy` job and made the lint a step on `generated`.
+// What the separate job bought was that one red could not hide the other; the step keeps that only
+// if its condition is `!cancelled()` and nothing more -- a default success() would let a red build
+// step skip the lint, and a condition naming the build outcome would do the same. So this reads the
+// generated job for the step by id, and asserts it runs the clippy command under exactly that
+// guard. Deleting the step, moving it off the job, or narrowing its condition reds this.
+test fn w_RED_the_lint_runs_on_the_generated_lane_under_the_status_guard_alone() -> Bool {
+  fold_list(
+    xs: compiler_gate_generated_job().steps,
+    empty: false,
+    cons: fn(found, step) {
+      found || (
+        step_id_text(step: step) == compiler_gate_lint_step_id
+          && string_contains(s: step_run_text(step: step), pattern: "cargo clippy --all-targets")
+          && step_if_text(step: step) == "!cancelled()"
+      )
+    }
+  )
+}
+
+// ── THE MERGE PATH RUNS ON THE FLEET ──────────────────────────────────────────────────────────
+//
+// operator ruling 2026-09-28: no lane the required context reads, and not the aggregate, runs on a
+// hosted runner. compiler_gate_merge_path_runs_on_the_fleet is an emission conjunct, so a workflow
+// that breaks the ruling is refused rather than emitted; these claims establish that the predicate
+// discriminates (a supplied merge path that meets the hosted set refuses, one that does not is
+// admitted), that a runner decided at dispatch counts as hosted, and that the live merge path both
+// holds and is not vacuous -- it names the two fleet lanes and the aggregate.
+test fn w_RED_a_hosted_job_on_the_merge_path_refuses() -> Bool {
+  compiler_gate_no_merge_path_job_is_hosted(
+    merge_path: ["floor", "generated", "witnesses"],
+    hosted: ["rust-unit-tests", "emit-build", "witnesses"]
+  ) == false
+}
+
+test fn a_merge_path_disjoint_from_the_hosted_jobs_is_admitted() -> Bool {
+  compiler_gate_no_merge_path_job_is_hosted(
+    merge_path: ["floor", "generated", "witnesses"],
+    hosted: ["rust-unit-tests", "emit-build"]
+  )
+}
+
+test fn w_RED_a_runner_decided_at_dispatch_counts_as_hosted() -> Bool {
+  compiler_gate_runner_is_hosted(runner: RunsOnExpression { expression: "${{ inputs.runner }}" })
+    && (compiler_gate_runner_is_hosted(runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] }) == false)
+}
+
+test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
+  let path = compiler_gate_merge_path_job_ids()
+  compiler_gate_merge_path_runs_on_the_fleet()
+    && any(path, id => id == compiler_gate_floor_job_id)
+    && any(path, id => id == compiler_gate_generated_job_id)
+    && any(path, id => id == compiler_gate_aggregate_job_id)
+}
+
+// THE NATIVE PRODUCT STORE IS BOUND ON PULL REQUESTS AND THE MERGE QUEUE, NEVER ELSEWHERE: the root is
+// job-private (under RUNNER_TEMP, empty at job start), so a pull request's job cannot seed the compiler
+// the queue judges; the queue also restores from the shared store and publishes only admitted entries.
+// Narrowing the condition off merge_group, or widening it to other events, makes this refuse.
+test fn the_native_cache_root_step_runs_on_pull_requests_and_the_merge_queue_only() -> Bool {
+  let condition = step_if_text(step: compiler_gate_emit_build_native_cache_root_bound_step().step)
+  condition == compiler_gate_native_cache_condition()
+    && string_contains(s: condition, pattern: "pull_request")
+    && string_contains(s: condition, pattern: "merge_group")
+}
+
+// THE STORE ROOT IS JOB-PRIVATE: a shared host directory (RUNNER_TOOL_CACHE) is writable by any job's
+// code, so an entry planted there would be served as a HIT. Restoring the shared-tool-cache root makes
+// this refuse.
+test fn the_native_cache_root_is_job_private_and_never_the_shared_tool_cache() -> Bool {
+  string_contains(s: compiler_gate_native_cache_root_script, pattern: "$RUNNER_TEMP/")
+    && !string_contains(s: compiler_gate_native_cache_root_script, pattern: "RUNNER_TOOL_CACHE")
+}
+
+// The credentialed store transfer is wired: the read identity is gated to same-repository pull
+// requests (a fork is issued no token), the write identity and the save to the merge queue alone, and
+// only the emit-build job may mint an id-token.
+test fn the_native_store_transfer_is_wired_by_event() -> Bool {
+  string_contains(s: compiler_gate_native_read_condition(), pattern: "head.repo.full_name == github.repository")
+    && string_contains(s: compiler_gate_native_read_condition(), pattern: "github.event_name == 'merge_group'")
+    && !string_contains(s: compiler_gate_native_write_condition(), pattern: "pull_request")
+    && compiler_gate_native_write_condition() == "github.event_name == 'merge_group'"
+    && string_contains(s: compiler_gate_native_save_command(), pattern: "native_product_save_wet")
+    && !string_contains(s: compiler_gate_native_save_command(), pattern: "pull_request")
+}

@@ -1,11 +1,14 @@
 module extdeps.tools.gcloud
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_google_cloud_cli }
+import extdeps.apt { apt_bin_dir, package_google_cloud_cli }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -16,8 +19,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data gcloud_pinned_version: VersionConstraint = ">= 470.0.0"
 
+fn gcloud_program() -> ProgramIdentity = cataloged_program(invocation: "gcloud")
+
 data gcloud_cli_tool: CliTool = CliTool {
-  name: "gcloud",
+  program: gcloud_program(),
   min_version: Present { value: gcloud_pinned_version },
-  installable_via: [SourceApt { package: package_google_cloud_cli }],
+  installable_via: [SourceApt { package: package_google_cloud_cli, bin_dir: apt_bin_dir }],
+}
+
+// gcloud auth list --format=value(account): one credentialed account per line, empty when the
+// SDK holds none. The --format flag is what keeps the answer parseable (the default table
+// format prints a banner first); value(account) projects the account column only. This is the
+// typed carrier for the ADC probe the fleet identity module used to compose with
+// `command -v gcloud >/dev/null && gcloud auth list ... 2>&1` inside a shell.
+fn gcloud_auth_list_accounts_command() -> ArgvCommand {
+  argv_command(program: gcloud_program(), arguments: ["auth", "list", "--format=value(account)"])
 }

@@ -1,0 +1,64 @@
+module gunbc.primitive_runtime_body_gate
+
+import std.primitive_identity {
+  PrimitiveRuntimeBodyCheck, PrimitiveRuntimeBodyCensus,
+  PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
+  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
+}
+import extdeps.languages.rust.emit { RuntimeFunction }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String, List }
+
+fn runtime_body_check_exit(check: PrimitiveRuntimeBodyCheck) -> ProcessExit {
+  match check {
+    PrimitiveRuntimeBodiesComplete => ExitSuccess
+    PrimitiveRuntimeBodiesMissing { violations: rows } => ExitFailure {
+      code: 1,
+      reason: concat("emitted runtime bodies missing: ", rows
+        |> map(row => concat(row.authored_symbol, " -> v1_rt::", row.bridge_name))
+        |> join(separator: ", "))
+    }
+    PrimitiveRuntimeBodiesUnreadable { line: line, detail: detail } => ExitFailure {
+      code: 1, reason: concat("emitted runtime census refused at line ", to_string(line), ": ", detail)
+    }
+  }
+}
+
+// Permanent discrimination on the required path, not a historical probe. Keep a real builtin's
+// operation and calling convention, change only its bridge, and demand that the SAME checker
+// refuse exactly that missing body. A constant-green checker cannot pass this phase.
+fn runtime_body_required_check_in(registry: List<RuntimeFunction>, source: String) -> ProcessExit {
+  let census = primitive_runtime_body_census_in(registry: registry, source: source)
+  runtime_body_required_check_census_in(registry: registry, census: census)
+}
+
+fn runtime_body_required_check_census_in(registry: List<RuntimeFunction>, census: PrimitiveRuntimeBodyCensus) -> ProcessExit {
+  let standing = primitive_runtime_body_check_in(registry: registry, census: census)
+  match standing {
+    PrimitiveRuntimeBodiesComplete => {
+      let control_rows = registry |> filter(row => row.name == "map_insert")
+      if count(control_rows) != 1 {
+        ExitFailure { code: 1, reason: "runtime-body control requires exactly one live map_insert bridge" }
+      } else {
+        let mutated = registry |> map(row => if row.name == "map_insert" {
+          RuntimeFunction {
+            name: row.name, bridge_name: "runtime_body_missing_control",
+            passes_by_ref: row.passes_by_ref, wraps_result: row.wraps_result
+          }
+        } else { row })
+        match primitive_runtime_body_check_in(registry: mutated, census: census) {
+          PrimitiveRuntimeBodiesMissing { violations: rows } =>
+            if count(rows) == 1 && (rows |> all(row =>
+              row.authored_symbol == "map_insert" && row.bridge_name == "runtime_body_missing_control"
+            )) { ExitSuccess } else {
+              ExitFailure { code: 1, reason: "runtime-body mutation control refused the wrong bridge population" }
+            }
+          PrimitiveRuntimeBodiesComplete => ExitFailure { code: 1, reason: "runtime-body mutation control did not refuse the missing map_insert body" }
+          PrimitiveRuntimeBodiesUnreadable { line: _, detail: _ } => ExitFailure { code: 1, reason: "runtime-body mutation control did not refuse the missing map_insert body" }
+        }
+      }
+    }
+    PrimitiveRuntimeBodiesMissing { violations: _ } => runtime_body_check_exit(check: standing)
+    PrimitiveRuntimeBodiesUnreadable { line: _, detail: _ } => runtime_body_check_exit(check: standing)
+  }
+}

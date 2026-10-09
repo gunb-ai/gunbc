@@ -1,12 +1,14 @@
 module extdeps.git
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
-import std.string_type { String }
 import v2.std.algebra { length, skip }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -210,7 +212,9 @@ fn git_diff_name_status_parse(raw: String) -> GitDiffNameStatusParseOutcome {
   let state = git_diff_name_status_parse_state(raw: raw)
   match state.pending {
     AwaitingStatusToken => GitDiffNameStatusComplete { entries: state.entries }
-    _ => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingSinglePath { status: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingOldPath { status: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingNewPath { status: _, old_path: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
   }
 }
 
@@ -233,7 +237,13 @@ fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
   match entry.status {
     DiffDeletedStatus => Present { value: entry.path }
     DiffRenamedStatus { similarity: _ } => entry.old_path
-    _ => Absent
+    DiffAddedStatus => Absent
+    DiffCopiedStatus { similarity: _ } => Absent
+    DiffModifiedStatus => Absent
+    DiffPairingBrokenStatus => Absent
+    DiffTypeChangedStatus => Absent
+    DiffUnmergedStatus => Absent
+    DiffUnknownGitStatus { raw: _ } => Absent
   }
 }
 
@@ -320,7 +330,7 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 // encoding -- so git's ordering here is bytewise, not a collation.
 //
 // THE CONSUMER'S COMPARATOR IS NOT BYTEWISE, AND THE TWO AGREE FOR A REASON THAT IS NOT OBVIOUS.
-// extdeps.git.enumeration validates this order with std.string_type string_is_lexicographically_before,
+// extdeps.git.enumeration validates this order with host String `<`,
 // which compares CODE POINTS. Bytewise and code-point-wise orderings coincide over well-formed UTF-8,
 // because UTF-8 is order-preserving by construction: a code point's encoding sorts, byte for byte, in
 // the same relation as the code point itself. That is a property of the encoding rather than of either
@@ -624,11 +634,17 @@ type GitRemoteRefParts {
   ref_name: String
 }
 
-fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts? {
   let parts = split(s: ref as String, delimiter: "/")
-  GitRemoteRefParts {
-    remote: parts.first(),
-    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  match parts.first() {
+    Present { value: remote } =>
+      Present {
+        value: GitRemoteRefParts {
+          remote: remote,
+          ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+        }
+      }
+    Absent => none
   }
 }
 
@@ -715,6 +731,13 @@ fn git_pathspec_exclude(path: String) -> String {
   concat(":(exclude)", path)
 }
 
+// The long-form magic word `literal` (gitglossary(7) 'pathspec'): the rest of the word is matched as
+// the exact path, with no glob character carrying its wildcard meaning, so a pathspec built from a
+// file path names that file and nothing a pattern reading of it would also select.
+fn git_pathspec_literal(path: String) -> String {
+  concat(":(literal)", path)
+}
+
 // Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
 fn git_argv_of_args(args: List<String>) -> List<String> {
   concat(["git"], args)
@@ -752,7 +775,7 @@ fn shape_git_add_argv() -> List<String> {
   ["git", "add"]
 }
 
-data git_binary_name: NonEmptyStr = "git"
+fn git_program() -> ProgramIdentity = uncataloged_program(invocation: "git")
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   ["git", "commit", "--no-verify", "--no-edit"]
@@ -775,11 +798,11 @@ fn git_config_local_set_args(key: String, value: String) -> List<String> {
 }
 
 fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
-  append([git_binary_name as String], items: git_config_local_set_args(key: key, value: value))
+  append([git_program().invocation as String], items: git_config_local_set_args(key: key, value: value))
 }
 
 fn git_config_local_set_command(key: String, value: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_config_local_set_args(key: key, value: value))
+  argv_command(program: git_program(), arguments: git_config_local_set_args(key: key, value: value))
 }
 
 // ── MATERIALIZING A THIRD-PARTY TREE AT AN EXACT COMMIT ────────────────────────────────────────
@@ -799,7 +822,7 @@ fn git_clone_shallow_args(repository: String, destination: String) -> List<Strin
 }
 
 fn git_clone_shallow_command(repository: String, destination: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_clone_shallow_args(repository: repository, destination: destination))
+  argv_command(program: git_program(), arguments: git_clone_shallow_args(repository: repository, destination: destination))
 }
 
 // `-C <dir>` is git's own way to name the repository a command acts on, and it is what lets these
@@ -810,7 +833,7 @@ fn git_fetch_shallow_revision_args(repository_dir: String, remote: String, revis
 }
 
 fn git_fetch_shallow_revision_command(repository_dir: String, remote: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_fetch_shallow_revision_args(repository_dir: repository_dir, remote: remote, revision: revision))
+  argv_command(program: git_program(), arguments: git_fetch_shallow_revision_args(repository_dir: repository_dir, remote: remote, revision: revision))
 }
 
 fn git_checkout_revision_args(repository_dir: String, revision: String) -> List<String> {
@@ -818,7 +841,7 @@ fn git_checkout_revision_args(repository_dir: String, revision: String) -> List<
 }
 
 fn git_checkout_revision_command(repository_dir: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
+  argv_command(program: git_program(), arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
 }
 
 // THE READBACK. A checkout that reported success is not the same fact as a working tree whose HEAD
@@ -829,7 +852,7 @@ fn git_rev_parse_head_args(repository_dir: String) -> List<String> {
 }
 
 fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_rev_parse_head_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_rev_parse_head_args(repository_dir: repository_dir))
 }
 
 // HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
@@ -850,7 +873,7 @@ fn git_status_porcelain_args(repository_dir: String) -> List<String> {
 }
 
 fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_status_porcelain_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_status_porcelain_args(repository_dir: repository_dir))
 }
 
 // APPLY IS AN UPSTREAM OPERATION, not a shell script. `git apply --check` / `--reverse --check`
@@ -863,7 +886,7 @@ fn git_apply_check_args(repository_dir: String, patch_path: String) -> List<Stri
 }
 
 fn git_apply_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_check_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_check_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
 fn git_apply_reverse_check_args(repository_dir: String, patch_path: String) -> List<String> {
@@ -871,7 +894,7 @@ fn git_apply_reverse_check_args(repository_dir: String, patch_path: String) -> L
 }
 
 fn git_apply_reverse_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_reverse_check_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_reverse_check_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
 fn git_apply_args(repository_dir: String, patch_path: String) -> List<String> {
@@ -879,7 +902,33 @@ fn git_apply_args(repository_dir: String, patch_path: String) -> List<String> {
 }
 
 fn git_apply_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
+}
+
+// git-reset(1) --hard <commit>: resets index AND working tree to <commit>; paths that were only in the
+// index (a create-file patch applied with --index) are removed. Untracked paths are NOT touched --
+// a caller that must not destroy files it did not create relies on exactly that.
+fn git_reset_hard_args(repository_dir: String, revision: String) -> List<String> {
+  ["-C", repository_dir, "reset", "--hard", revision]
+}
+
+fn git_reset_hard_command(repository_dir: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
+}
+
+// git-worktree(1): a second, disposable checkout of the same repository at <revision>, so a tree
+// can be derived without touching the primary working tree. remove --force discards it; prune
+// forgets an entry whose directory is already gone.
+fn git_worktree_add_detached_command(repository_dir: String, path: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "add", "--detach", path, revision])
+}
+
+fn git_worktree_remove_force_command(repository_dir: String, path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "remove", "--force", path])
+}
+
+fn git_worktree_prune_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "prune"])
 }
 
 fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
@@ -887,7 +936,7 @@ fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
 }
 
 fn git_diff_binary_head_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_diff_binary_head_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_diff_binary_head_args(repository_dir: repository_dir))
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {
@@ -896,6 +945,72 @@ fn shape_git_config_get_argv(key: String) -> List<String> {
 
 fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
+}
+
+// git-config(1) safe.directory: the configuration git consults before operating in a repository its
+// caller does not own ("detected dubious ownership"). It is protected configuration, honoured from
+// the command line as well as from global config, and `-c` scopes it to ONE invocation: nothing is
+// written, nothing outlives the command, and no other git call by the same principal is widened.
+//
+// ONE SAFE.DIRECTORY TRUST, carried by one shape for every call that needs it: the exact repository
+// path. It names no principal because an invocation-scoped trust is held by whoever runs that
+// invocation and by no one else -- a principal field here would be a claim nothing checks.
+type SafeDirectoryGrant {
+  path: NonEmptyStr
+}
+
+data git_safe_directory_key: String = "safe.directory"
+
+fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
+  ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
+}
+
+// A CALL INTO A REPOSITORY TRUSTS EXACTLY THAT REPOSITORY. The grant is derived from the same path
+// `-C` names, so a caller cannot trust one directory while operating in another, and cannot pass the
+// wildcard: the narrowest grant is the only one this shape can spell.
+fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
+  append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
+}
+
+// gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
+// root of its working tree.
+data git_non_bare_git_dir_name: String = ".git"
+
+fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
+  join([worktree as String, "/", git_non_bare_git_dir_name], "") as NonEmptyStr
+}
+
+// A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns
+// git-upload-pack(1) on <path>, and upload-pack enters the repository through enter_repo() (git
+// path.c), which probes `<path>/.git` before `<path>` and -- with the CVE-2024-32004 fix, present in srv1's
+// packaged git 1:2.43.0-1ubuntu7.3 (an Ubuntu security backport, so no upstream version number
+// bounds it) -- checks ownership with die_upon_dubious_ownership() against the directory it ENTERED. For a
+// non-bare source that is the git dir, so a safe.directory naming the worktree is never the path
+// compared (srv1 journal 2026-09-25 02:07:36: "detected dubious ownership in repository at
+// <checkout>/.git" under `-c safe.directory=<checkout>`). The worktree form is NOT added beside it:
+// upload-pack consults no working tree, and the fetching repository (`-C`) is the caller's own, so
+// a second trusted path would widen trust for nothing. The source this is derived for is a non-bare
+// checkout; a bare source would refuse loudly with the same typed cause, never pass silently.
+fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
+  SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
+}
+
+// THE SOURCE TRUST RIDES INSIDE --upload-pack, BECAUSE A `-c` ON THE FETCH NEVER REACHES UPLOAD-PACK.
+// For a local-path remote git connect.c git_connect() (PROTO_LOCAL) spawns the upload-pack command
+// with `local_repo_env` (environment.c) pushed as variables to UNSET, and that list carries
+// GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT -- the channel through which `git -c` reaches child
+// processes. So `git -c safe.directory=<S>/.git fetch <S>` configures the fetch and not the process
+// that checks ownership. Measured on srv1 (git 1:2.43.0-1ubuntu7.3, service user fetching from the
+// runner-owned srv1-12 checkout into a scratch repository, 2026-09-25, proud-deer-538):
+// (A) `git -c safe.directory=<S>/.git -C <T> fetch <S> HEAD` REFUSED with dubious ownership;
+// (B) `git -C <T> fetch --upload-pack="git -c safe.directory=<S>/.git upload-pack" <S> HEAD`
+// SUCCEEDED and fetched c107839e. The `-c` inside the command is parsed BY the upload-pack process
+// itself, after the scrub. The same connect.c branch sets use_shell, so git hands this string to
+// `sh -c` (appending the quoted repository path): the grant path is therefore QUOTED, never
+// spliced -- the whole `safe.directory=<path>` word goes through extdeps.exec.command shell_quote
+// (POSIX single quoting), which is total, so no path is refused and no metacharacter is live.
+fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
+  join(["git", "-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"], " ")
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
@@ -981,8 +1096,17 @@ fn git_observe_meta_shell_fragment() -> String {
 // They are two operations rather than one with a flag because they model two different upstream
 // behaviours -- git's rename-detecting diff and its path-literal diff -- and a caller must choose
 // which question it is asking. `DiffNameOnly` remains correct for the destination-only view.
+// git.Core LogPathCommits is git-log(1) --format=%H -- <path>: every commit reachable from HEAD
+// that changed <path>, newest first. It needs history: on a shallow clone it answers only the
+// commits present.
+// git.Core RestoreBlobTo is git-restore(1) --source=<ref> --worktree -- <path> under --work-tree=<dir>: writes the blob
+// at <ref>:<path> to <dir>/<path> BYTE-EXACTLY and leaves the index untouched. This is the
+// byte-exact counterpart of Show: Show's content arrives through the shell stdout channel, whose
+// retained text is trailing-whitespace trimmed, so it cannot carry a blob whose meaning ends in
+// whitespace (a patch ending in blank context lines). Read <dir>/<path> with Filesystem.Read.
 service git.Core {
   operation CurrentBranch {
+    requires none
     input {}
     output { branch: String from "stdout" }
     readonly
@@ -994,6 +1118,7 @@ service git.Core {
   }
 
   operation RemoteBranches {
+    requires none
     input {}
     output { branches: List<String> from "stdout_lines" }
     readonly
@@ -1005,6 +1130,7 @@ service git.Core {
   }
 
   operation LsRemoteHeads {
+    requires opaque
     input { remote: String }
     output {
       advertised: List<String> from "stdout_lines"
@@ -1016,6 +1142,7 @@ service git.Core {
   }
 
   operation RemoteUrlIn {
+    requires none
     input { repository_path: String, remote: String }
     output {
       url: String from "stdout"
@@ -1027,6 +1154,7 @@ service git.Core {
   }
 
   operation ForEachRefIn {
+    requires none
     input { repository_path: String }
     output {
       raw: String from "stdout"
@@ -1044,6 +1172,7 @@ service git.Core {
   }
 
   operation WorktreeListIn {
+    requires none
     input { repository_path: String }
     output {
       raw: String from "stdout"
@@ -1057,6 +1186,7 @@ service git.Core {
   }
 
   operation WriteTreeInRepo {
+    requires opaque
     input { repository_path: String }
     output {
       tree: String from "stdout"
@@ -1068,6 +1198,7 @@ service git.Core {
   }
 
   operation CommitTreeInRepo {
+    requires opaque
     input { repository_path: String, commit: GitRef }
     output {
       tree: String from "stdout"
@@ -1079,6 +1210,7 @@ service git.Core {
   }
 
   operation TrackedWorktreeDiffFromInRepo {
+    requires opaque
     input { repository_path: String, treeish: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -1090,6 +1222,7 @@ service git.Core {
   }
 
   operation LsFiles {
+    requires opaque
     input {}
     output { files: List<FilePath> from "stdout_lines" }
     readonly
@@ -1101,6 +1234,7 @@ service git.Core {
   }
 
   operation Diff {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String from "stdout" }
     readonly
@@ -1112,6 +1246,7 @@ service git.Core {
   }
 
   operation DiffNameOnly {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1126,6 +1261,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyNoRenames {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1141,6 +1277,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyMerge {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1155,6 +1292,7 @@ service git.Core {
   }
 
   operation DiffUnified0 {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       diff: String from "stdout"
@@ -1169,6 +1307,7 @@ service git.Core {
   }
 
   operation DiffNameStatus {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       raw: String from "stdout"
@@ -1183,6 +1322,7 @@ service git.Core {
   }
 
   operation RevList {
+    requires opaque
     input { since: String }
     output { commits: List<CommitSha> from "stdout_lines" }
     readonly
@@ -1193,7 +1333,20 @@ service git.Core {
     }
   }
 
+  operation LogPathCommits {
+    requires Network
+    input { path: FilePath }
+    output { commits: List<CommitSha> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "log", "--format=%H", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid path or not a git repository"
+    }
+  }
+
   operation RevListBefore {
+    requires none
     input { before: String }
     output { base_ref: CommitSha from "stdout" }
     readonly
@@ -1205,6 +1358,7 @@ service git.Core {
   }
 
   operation Show {
+    requires opaque
     input { ref: GitRef, path: FilePath }
     output {
       content: String from "stdout"
@@ -1219,7 +1373,22 @@ service git.Core {
     }
   }
 
+  operation RestoreBlobTo {
+    requires opaque
+    input { ref: GitRef, path: FilePath, work_tree: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "--work-tree={work_tree}", "restore", "--source={ref}", "--worktree", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Path absent at ref, invalid ref, or not a git repository"
+    }
+  }
+
   operation FetchNoTags {
+    requires opaque
     input { remote: String, ref: String, stall_deadline_seconds: Seconds }
     output {
       success: Bool from "exit_success"
@@ -1234,6 +1403,7 @@ service git.Core {
   }
 
   operation FetchPrune {
+    requires opaque
     input { remote: String }
     output {
       success: Bool from "exit_success"
@@ -1248,6 +1418,7 @@ service git.Core {
   }
 
   operation HeadCommitShort {
+    requires none
     input {}
     output {
       sha: String from "stdout"
@@ -1262,6 +1433,7 @@ service git.Core {
   }
 
   operation ConfigLocalGet {
+    requires none
     input { key: String }
     output {
       success: Bool from "exit_success"
@@ -1278,6 +1450,7 @@ service git.Core {
   }
 
   operation ConfigLocalSet {
+    requires none
     input { key: String, value: String }
     output {
       success: Bool from "exit_success"
@@ -1291,6 +1464,7 @@ service git.Core {
   }
 
   operation ConfigLocalGetInRepo {
+    requires none
     input { repo: FilePath, key: String }
     output {
       success: Bool from "exit_success"
@@ -1307,6 +1481,7 @@ service git.Core {
   }
 
   operation ConfigLocalSetInRepo {
+    requires none
     input { repo: FilePath, key: String, value: String }
     output {
       success: Bool from "exit_success"
@@ -1320,6 +1495,7 @@ service git.Core {
   }
 
   operation InitInRepo {
+    requires none
     input { repo: FilePath }
     output {
       success: Bool from "exit_success"
@@ -1333,6 +1509,7 @@ service git.Core {
   }
 
   operation AddAllInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -1342,6 +1519,7 @@ service git.Core {
   }
 
   operation CommitInRepo {
+    requires opaque
     input { repo: FilePath, message: String }
     output {
       exit_code: Int from "exit_code"
@@ -1351,6 +1529,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1360,6 +1539,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchAtInRepo {
+    requires opaque
     input { repo: FilePath, branch: String, start_point: GitRef }
     output {
       exit_code: Int from "exit_code"
@@ -1369,6 +1549,7 @@ service git.Core {
   }
 
   operation CheckoutBranchInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1378,6 +1559,7 @@ service git.Core {
   }
 
   operation MergeNoEditInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1388,6 +1570,7 @@ service git.Core {
   }
 
   operation LsFilesUnmergedInRepo {
+    requires opaque
     input { repo: FilePath, path: String }
     output {
       entries: List<String> from "stdout_lines"
@@ -1398,7 +1581,24 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
   }
 
+  operation LsFilesStageZPathspecInRepo {
+    requires opaque
+    input { repo: FilePath, pathspec: String }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-z", "--stage", "--", "{pathspec}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
   operation LsFilesStageZInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       raw: String from "stdout"
@@ -1413,6 +1613,7 @@ service git.Core {
   }
 
   operation LsRemoteRefInRepo {
+    requires opaque
     input { repo: FilePath, remote: String, ref_name: String }
     output {
       advertised: String from "stdout"
@@ -1424,6 +1625,7 @@ service git.Core {
   }
 
   operation RevParseInRepo {
+    requires opaque
     input { repo: FilePath, target: GitRef }
     output {
       revision: String from "stdout"
@@ -1435,6 +1637,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepo {
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1444,7 +1647,19 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
   }
 
+  operation FetchForcedRefInRepoTrustingSource {
+    requires opaque
+    input { repo: FilePath, remote: String, refspec: String, upload_pack: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "--upload-pack={upload_pack}", "{remote}", "{refspec}"] }
+  }
+
   operation PushForcedRefInRepo {
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1455,6 +1670,7 @@ service git.Core {
   }
 
   operation PushRefInRepo {
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1464,6 +1680,7 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
   }
   operation PushRefWithLeaseInRepo {
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String, lease: String }
     output {
       exit_code: Int from "exit_code"
@@ -1474,6 +1691,7 @@ service git.Core {
   }
 
   operation CatFileBlobInRepo {
+    requires opaque
     input { repo: FilePath, oid: String }
     output {
       content: String from "stdout"
@@ -1488,6 +1706,7 @@ service git.Core {
   }
 
   operation UpdateRefCompareAndSwapInRepo {
+    requires opaque
     input { repo: FilePath, ref: String, new_value: String, expected_old: String }
     output {
       exit_code: Int from "exit_code"
@@ -1500,6 +1719,7 @@ service git.Core {
   }
 
   operation ReflogInRepo {
+    requires opaque
     input { repo: FilePath, ref: String }
     output {
       exit_code: Int from "exit_code"
@@ -1513,6 +1733,7 @@ service git.Core {
   }
 
   operation ListUntrackedInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -1526,6 +1747,7 @@ service git.Core {
   }
 
   operation ResetHardInRepo {
+    requires opaque
     input { repo: FilePath, target: String }
     output {
       exit_code: Int from "exit_code"
@@ -1644,6 +1866,7 @@ fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
 
 service git.Worktree {
   operation Add {
+    requires opaque
     input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
     output {
       success: Bool from "exit_success"

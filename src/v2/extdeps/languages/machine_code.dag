@@ -1,5 +1,6 @@
 module v2.extdeps.languages.machine_code
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.grammar {
   StampClass,
@@ -19,7 +20,7 @@ import v2.std.compilers.lexing {
 }
 import std.algebra { Empty }
 import v2.std.algebra { list_map }
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
+import v2.std.collection { Absent, Map, Present, empty_map, map_insert }
 import v2.std.machine { Byte }
 import v2.std.text { String }
 import v2.std.model_core {
@@ -33,7 +34,7 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 
 type Isa
   = X86_64Isa { revision: Symbol }
@@ -344,27 +345,27 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: mc_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
         target: mc_int_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: mc_int_width_node(width: facts.width)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
         target: mc_overflow_node(overflow: facts.overflow_release)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: mc_inhabitant_atom(id: ^mc_repr_twos_complement)
       },
       Edge {
-        label: Named { name: ^mc_facts_field_std_projection },
+        label: Authored { name: ^mc_facts_field_std_projection },
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -431,8 +432,9 @@ fn machine_code_lex(token_class: Symbol, spelling: String) -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        machine_code_lex_token(token_class: token_class, pattern: LiteralPattern { text: spelling })
-      ]
+        machine_code_lex_token(token_class: token_class, pattern: LiteralPattern { text: chars(s: spelling) })
+      ],
+      modes: []
     }
   }
 }

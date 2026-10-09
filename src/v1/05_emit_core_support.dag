@@ -3,13 +3,14 @@ module v1.compiler.emit_core_support
 import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
-  make_error_node, ModuleFilenameCollision,
+  make_error_node, ModuleFilenameCollision, EmittedSymbolCollision,
   Connective, NoConnective,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
 }
 
 import v1.compiler.artifact { RenderTarget }
+import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
 
@@ -24,9 +25,12 @@ import v1.compiler.languages {
   language_spec_for_target, test_conventions_for_target
 }
 
+// emitted_edges are the Rust realization edges (gunbc.rust_emitted_edge) of the published modules;
+// every other target, and every refused emission, carries none.
 type EmitResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
+  emitted_edges: List<EmittedEdge>
 }
 
 type TestProjection {
@@ -45,10 +49,6 @@ fn escape_json_string(s: String) -> String {
     |> split(delimiter: "\"") |> join(separator: "\\\"")
     |> split(delimiter: "\n") |> join(separator: "\\n")
     |> split(delimiter: "\t") |> join(separator: "\\t")
-}
-
-fn module_to_filename(name: String) -> String {
-  name |> split(delimiter: ".") |> join(separator: "_")
 }
 
 type ModuleFilenameOwners {
@@ -178,27 +178,24 @@ fn to_upper_char(ch: Int) -> String {
 fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
-  pascal_parts |> join(separator: "")
+  pascal_parts |> join(separator: "__")
 }
 
-// THE PROJECTION IS NOT INJECTIVE, AND NOTHING HERE REFUSES ON THE COLLISION YET.
+// THE SEGMENT BOUNDARY SURVIVES THE PROJECTION. A dotted service's segments are joined with `__`,
+// so every dotted service symbol carries a `__` -- an element no authored type name in the corpus
+// carries -- and `type GitWorktree` beside `service git.Worktree` emits `GitWorktree` and
+// `Git__Worktree`, two symbols. Joining with nothing erased the boundary, which is what made the
+// projection many-to-one against the type namespace
+// (gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective).
 //
-// sanitize_service_name splits the authored name on "." and joins the capitalized segments with
-// nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
-// distinct service identities that project to one symbol. Observed, not argued: two services so
-// named in one module emitted two `pub struct CollisionProbe` definitions and bound one parameter
-// for both, with zero blocking diagnostics. service_var_name is the second channel, since to_snake
-// of one symbol is one symbol. All three targets share this projection, so the collision is a fact
-// about the shared allocation rather than about any one emitter.
-//
-// THE WALL IS NOT IN THIS BRANCH AND THIS COMMENT IS NOT ONE. The refusal would need its own
-// CompilerDiagnostic variant, and that coproduct's seed projection is the receipt row this same PR
-// declares FROZEN -- so landing it here would have one commit declare a freeze and breach it. The
-// class is recorded at gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective
-// rather than in this comment, because no Accepted program can read a comment (DESIGN.md 4c) and a
-// deferral that lives only in prose is an unstated divergence (3b). Its retiring trigger is a
-// CAPABILITY and not a merge: a typed CompilerDiagnostic receipt carrier existing, so a new
-// diagnostic variant no longer edits a frozen hand-maintained figure.
+// WHAT REMAINS NON-INJECTIVE IS AUTHORED, NOT PROJECTED, AND IS REFUSED RATHER THAN RENAMED.
+// Type names range over the whole identifier alphabet, so no spelling can be injective against
+// every POSSIBLE type name. The residue: an undotted service with a type's exact name, a type
+// authored with a `__` into the dotted-service space, two dotted services differing only in a
+// segment's first-letter case, or a segment beginning or ending with `_` (`a_.b` and `a._b` both
+// render `A___B`). Every one reaches emitted_symbol_collision_diagnostics, which refuses it typed
+// and located, called from every target emitter. The emitted crate root admits the `__` spelling
+// through its `non_camel_case_types` allowance.
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
@@ -215,8 +212,14 @@ fn capitalize_first(s: String) -> String {
   }
 }
 
+// THE PARAMETER NAME KEEPS THE BOUNDARY-FREE SPELLING. `to_snake` of `Git__Worktree` is
+// `git___worktree`, which rustc's `non_snake_case` refuses under `-D warnings` at every function
+// that takes the service. A parameter lives in a function's own scope, beside other parameters
+// and never beside a type, so the type-namespace collision the struct symbol had cannot reach it.
+// Its residue -- one function demanding two services whose boundary-free spellings coincide -- is
+// rustc's duplicate-parameter refusal, loud and located at the function, not a silent overwrite.
 fn service_var_name(service_name: String) -> String {
-  to_snake(name: sanitize_service_name(name: service_name))
+  to_snake(name: sanitize_service_name(name: service_name) |> split(delimiter: "__") |> join(separator: ""))
 }
 
 fn to_pascal(name: String) -> String {
@@ -414,4 +417,65 @@ fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> B
   (is_leaf_type_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
   || (item.module_item_kind == ModuleItemTypeDeclaration
       && item.params |> count > 0 && item.body == none && item.children |> count == 0)
+}
+
+type EmittedSymbolBinding {
+  symbol: String
+  identity: String
+}
+
+type EmittedSymbolOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
+}
+
+fn emitted_symbol_bindings_for_item(item: Node, source_indices: Map<String, NewlineIndex>) -> List<EmittedSymbolBinding> {
+  let name = authored_name_at(source_indices: source_indices, node: item)
+  if item.module_item_kind == ModuleItemService {
+    [EmittedSymbolBinding { symbol: sanitize_service_name(name: name), identity: concat("service ", name) }]
+  } else if is_type_def_item(item: item)
+    || is_type_alias_item(item: item, source_indices: source_indices)
+    || is_type_decl_item(item: item, source_indices: source_indices) {
+    [EmittedSymbolBinding { symbol: name, identity: concat("type ", name) }]
+  } else {
+    []
+  }
+}
+
+// sanitize_service_name is MANY-TO-ONE across kinds: `type GitWorktree` and `service git.Worktree`
+// both render the emitted type `GitWorktree`. DuplicateDeclaration does not fire — the authored
+// names differ — so rustc reports E0428 after a silent emit. The mapping cannot be made injective
+// without renaming every emitted service, so the residue is refused (DESIGN.md section 5). Every
+// target emitter calls this over the module population before it emits.
+fn emitted_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm => {
+    let source_indices = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+    let result = tm.items |> fold(init: EmittedSymbolOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, item) {
+      emitted_symbol_bindings_for_item(item: item, source_indices: source_indices) |> fold(init: acc, f: fn(inner, binding) {
+        match map_get(inner.owners, binding.symbol) {
+          Present { value: owner } =>
+            if owner == binding.identity {
+              inner
+            } else {
+              EmittedSymbolOwners {
+                owners: inner.owners,
+                diagnostics: list_push(inner.diagnostics, make_error_node(
+                  diagnostic: EmittedSymbolCollision {
+                    symbol: binding.symbol,
+                    identities: [owner, binding.identity],
+                    span: item.span
+                  },
+                  module_name: module_name))
+              }
+            }
+          Absent => EmittedSymbolOwners {
+            owners: map_insert(inner.owners, binding.symbol, binding.identity),
+            diagnostics: inner.diagnostics
+          }
+        }
+      })
+    })
+    result.diagnostics
+  })
 }

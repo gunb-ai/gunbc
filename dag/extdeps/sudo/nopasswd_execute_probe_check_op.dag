@@ -1,7 +1,6 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
 import std.types { NonEmptyStr, Bool, Int, List, Unit }
-import std.string_type { String }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   SudoNopasswdGrantListProbeShape,
@@ -9,6 +8,12 @@ import extdeps.sudo.nopasswd_execute_probe {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { any, length }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_lits,
+  bash_build_pipe,
+  bash_build_with_redir
+}
+import v2.std.node { Node }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // Typed argv transport for sudo.NopasswdExecuteProbe.Check and sudo.NopasswdGrantList.Read —
-// program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828
+// program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 typed-argv
 // slice). Grant-list authorization is not inferred from exit zero: sudoers listpw may permit a
 // noninteractive list query because some other entry is NOPASSWD. The typed observation must also
 // contain an exact NOPASSWD row for the requested command path.
@@ -39,7 +44,10 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
   if length(xs: parts) != 2 {
     false
   } else {
-    parts.skip(n: 1).first().trim() == probe as String
+    match parts.skip(n: 1).first() {
+      Present { value: second } => second.trim() == probe as String
+      Absent => false
+    }
   }
 }
 
@@ -55,8 +63,56 @@ fn sudo_nopasswd_grant_list_admits_probe(
   )
 }
 
+// THE SAME TWO READINGS, BOUND TO A POSIX SHELL CONDITION rather than to a typed observation --
+// one probe shape with two handlers, both homed here so neither is a re-authoring of the other.
+// A deploy script that must decide a grant INSIDE the script (after it installs the drop-in that
+// grants it, gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell) renders its
+// condition from these, never spells its own.
+//
+// Both are v2.extdeps.languages.bash_build statement nodes, so the words are grammar-quoted by the
+// one bash serializer (v2.workflow.bash_emit) rather than spelled here.
+//
+// Execute: the argv of sudo_nopasswd_execute_probe_argv; exit zero only when sudo ran the command
+// without a password.
+fn sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape) -> Node {
+  bash_build_with_redir(
+    inner: bash_build_command_from_lits(lits: sudo_nopasswd_execute_probe_argv(probe: probe)),
+    redir: ^bash_production_fold_redir_stdout_and_stderr_null
+  )
+}
+
+// Grant list: the listing of sudo_nopasswd_grant_list_argv, admitted exactly as
+// sudo_nopasswd_grant_list_line_admits_probe admits a line. That reading refuses a line that does
+// not split on the tag into exactly two parts, so a line carrying the tag twice is dropped FIRST;
+// only then is the text after the tag trimmed and compared for whole-line equality with the path.
+// The order is the point: stripping to the last tag without that drop would admit a line the typed
+// reading refuses. No `-l <command>` form is used, because sudo resolves that command's path and a
+// binary not yet installed would read as a grant miss (the reason this probe kind exists).
+data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
+
+fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
+  let tag = sudo_nopasswd_grant_list_tag
+  bash_build_pipe(
+    left: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: sudo_nopasswd_grant_list_argv()),
+      redir: ^bash_production_fold_redir_stderr_null
+    ),
+    right: bash_build_pipe(
+      left: bash_build_command_from_lits(lits: ["grep", "-v", "--", concat(concat(tag, ".*"), tag)]),
+      right: bash_build_pipe(
+        left: bash_build_command_from_lits(lits: ["sed", "-n", concat(concat("s/^.*", tag), "//p")]),
+        right: bash_build_pipe(
+          left: bash_build_command_from_lits(lits: ["sed", "s/^[[:space:]]*//;s/[[:space:]]*$//"]),
+          right: bash_build_command_from_lits(lits: ["grep", "-Fqx", "--", probe as String])
+        )
+      )
+    )
+  )
+}
+
 service sudo.NopasswdExecuteProbe {
   operation Check {
+    requires opaque
     input { probe: SudoNopasswdExecuteProbeShape }
     output { success: Bool from "exit_success" }
     readonly
@@ -76,6 +132,7 @@ service sudo.NopasswdExecuteProbe {
 
 service sudo.NopasswdGrantList {
   operation Read {
+    requires none
     input {}
     output {
       exit_code: Int from "exit_code"

@@ -1,0 +1,19 @@
+module test.fixture.data_handling_map_fixture
+
+import std.decl_ref { decl_ref }
+import product.data_class { DataHandlingMap, public_fabric_map }
+
+// A caller-SEALED fixture builder for test.probe.self_authored_map_probe, which must show that a
+// module outside a builder's admit_callers list cannot reach it (ConstructorCallAdmissionRefused).
+// It lives in an ordinary fixture module because a probe may not import a test module; the sealed
+// DataHandlingMap mint itself stays admitted only to its policy authorities, so this builder hands
+// back the public (empty) map and adds no second admitted route to a caller-authored policy.
+fn sealed_fixture_map() -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "test.fixture.data_handling_map_fixture", decl_name: "admitted_fixture_map_call"),
+  ]
+  = public_fabric_map()
+
+fn admitted_fixture_map_call() -> DataHandlingMap {
+  sealed_fixture_map()
+}

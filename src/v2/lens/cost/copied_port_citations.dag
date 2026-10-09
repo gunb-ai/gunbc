@@ -1,6 +1,9 @@
 module v2.lens.cost.copied_port_citations
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node_query { binder_edge }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
@@ -10,10 +13,8 @@ import v2.lens.cost.copied_port_derivation {
   copied_port_index_from_registry
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import v2.std.collection { optional_absent, optional_present }
+import std.optional {
   Absent,
   Optional,
   Present
@@ -26,12 +27,15 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
 
 // Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner
@@ -147,7 +151,7 @@ fn citation_loop_body_linear_in(measure: Node) -> Node {
           occurrence_id: OccurrenceSynthetic
         }
       },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -160,20 +164,14 @@ fn citation_arrow_two_param_loop(
 ) -> Node {
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
+  let signature = declared_signature(
+    params: [binder_edge(name: left_sym, type_node: left), binder_edge(name: right_sym, type_node: right)],
+    source: left
+  )
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge { label: Named { name: left_sym }, target: left },
-            Edge { label: Named { name: right_sym }, target: right }
-          ],
-          occurrence_id: OccurrenceSynthetic
-        }
-      },
+      signature.domain,
       Edge {
         label: Positional,
         target: Node {
@@ -182,8 +180,9 @@ fn citation_arrow_two_param_loop(
           occurrence_id: OccurrenceSynthetic
         }
       },
+      signature.order,
       Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: citation_loop_body_linear_in(measure: measure)
       }
     ],
@@ -193,24 +192,27 @@ fn citation_arrow_two_param_loop(
 
 data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_append,
+  declaration: optional_present(value: "std.algebra.list_append"),
   arrow: citation_arrow_two_param_loop(
-    left_sym: ^copied_port_citation_list_append_left,
-    right_sym: ^copied_port_citation_list_append_right,
-    measure: citation_param_ref(sym: ^copied_port_citation_list_append_right)
+    left_sym: ^left,
+    right_sym: ^right,
+    measure: citation_param_ref(sym: ^right)
   )
 }
 
 data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_snoc_item,
+  declaration: optional_present(value: "std.algebra.list_snoc_item"),
   arrow: citation_arrow_two_param_loop(
-    left_sym: ^copied_port_citation_list_snoc_left,
-    right_sym: ^copied_port_citation_list_snoc_right,
-    measure: citation_param_ref(sym: ^copied_port_citation_list_snoc_left)
+    left_sym: ^xs,
+    right_sym: ^item,
+    measure: citation_param_ref(sym: ^xs)
   )
 }
 
 data copied_port_citation_map_merge: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^map_merge,
+  declaration: optional_absent(),
   arrow: citation_arrow_two_param_loop(
     left_sym: ^copied_port_citation_map_merge_base,
     right_sym: ^copied_port_citation_map_merge_overlay,
@@ -236,6 +238,44 @@ fn copied_port_derived_registry_rows() -> List<CopiedPortFact> {
       match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
         Absent => acc
         Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
+      }
+    }
+  )
+}
+
+// THE CITED ARROW OF A COMBINER, the declared signature a call to it binds against. Its parameter labels
+// are the real declaration's (std.algebra list_append(left, right), list_snoc_item(xs, item)), so a named
+// actual binds to the parameter it names through v2.std.arrow_signature application_binding_plan.
+// map_merge has no .dag declaration to take names from; its citation keeps its own labels, so a NAMED
+// call to it binds no parameter and refuses rather than binding a guessed one.
+fn copied_port_citation_arrow_of(combiner: Symbol) -> Optional<Node> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if cite.combiner == combiner { optional_present(value: cite.arrow) } else { acc }
+      }
+    }
+  )
+}
+
+// THE CITED COMBINER A QUALIFIED CALLEE DENOTES, BY DECLARATION IDENTITY: Present only when the
+// callee's dotted path IS a citation's declaration. A callee that merely shares a cited leaf answers
+// Absent, so it is never priced by another declaration's contract.
+fn copied_port_citation_combiner_for_declaration(dotted: String) -> Optional<Symbol> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match cite.declaration {
+            Present { value: d } => if d == dotted { optional_present(value: cite.combiner) } else { acc }
+            Absent => acc
+          }
       }
     }
   )

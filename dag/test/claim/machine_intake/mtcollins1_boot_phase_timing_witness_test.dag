@@ -1,0 +1,310 @@
+module test.claim.machine_intake.mtcollins1_boot_phase_timing_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.realization_measurement { time_measure_list_total }
+import v2.std.algebra { skip }
+import std.optional { Present, Absent }
+import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
+import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
+import extdeps.ampere.smpro_register { smpro_bootstage_reg }
+import gunbc.managed_host_boot_phase_timing {
+  BootPhaseTiming, BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
+  PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
+  PhaseHandoff,
+  boot_phase_spans, boot_route_sol_refused, boot_phase_timing_of,
+  boot_phase_duration, PhaseElapsed, PhaseClockUnread, PhaseClockSteppedBack,
+  boot_smpro_pass_result,
+  boot_start_of, boot_phase_timing_text, boot_phase_timing_not_taken,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED ROUTES, not a boot: the subject is the phase record's assembly and rendering, so each
+// route's steps are constructed here (#12423 comment 5858637192; side-chat review 5332054527: the
+// completed, attach-refused, handoff-refused, terminal-refused and SOL-refused routes, each asserting
+// adjacency AND total coverage). The production caller is mtcollins1_boot_actuate, which builds the
+// same BootRoute in the branches that perform each phase; the real clock route is
+// the_real_uptime_clock_reads_and_does_not_go_back below.
+fn at(ms: Nat) -> ProcUptimeRead {
+  UptimeObserved { uptime: millisecond(count: ms) }
+}
+
+fn ran(end: Nat) -> BootPhaseStep {
+  PhaseStepRan { result: PhaseVerified, end: at(ms: end) }
+}
+
+fn refused(end: Nat, cause: String) -> BootPhaseStep {
+  PhaseStepRan { result: PhaseRefused { cause: cause }, end: at(ms: end) }
+}
+
+fn skipped(reason: NonEmptyStr) -> BootPhaseStep {
+  PhaseStepSkipped { reason: reason }
+}
+
+data hold_ms: Nat = 1000
+
+fn completed() -> BootRoute {
+  BootRoute {
+    sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000), handoff: ran(end: 21000),
+    smpro_power_on: ran(end: 23000), terminal_watch: ran(end: 500000), param5_after: ran(end: 501000),
+    power_after: ran(end: 506000), sol_release: ran(end: 507000),
+  }
+}
+
+// ON A REFUSED ROUTE THE SKIPPED PHASES TAKE NO READING, so the next ran phase's reading follows the
+// last one taken: the fixture's times are what the actuation would read, not a completed route's.
+fn attach_refused() -> BootRoute {
+  BootRoute {
+    sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: refused(end: 9000, cause: "fixture: virtual media readback did not match"),
+    handoff: skipped(reason: "the media attach did not verify"),
+    smpro_power_on: skipped(reason: "power on was never verified"), terminal_watch: skipped(reason: "power on was never verified"),
+    param5_after: ran(end: 10000), power_after: ran(end: 15000), sol_release: ran(end: 16000),
+  }
+}
+
+fn handoff_refused() -> BootRoute {
+  BootRoute {
+    sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000),
+    handoff: refused(end: 70000, cause: "fixture: chassis power did not transition"),
+    smpro_power_on: skipped(reason: "power on was never verified"), terminal_watch: skipped(reason: "power on was never verified"),
+    param5_after: ran(end: 71000), power_after: ran(end: 76000), sol_release: ran(end: 77000),
+  }
+}
+
+fn terminal_refused() -> BootRoute {
+  BootRoute {
+    sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000), handoff: ran(end: 21000),
+    smpro_power_on: ran(end: 23000), terminal_watch: refused(end: 503000, cause: "fixture: deadline reached without a host-capture terminal"),
+    param5_after: ran(end: 504000), power_after: ran(end: 534000), sol_release: ran(end: 535000),
+  }
+}
+
+fn sol_refused() -> BootRoute {
+  boot_route_sol_refused(refused_at: at(ms: 3500), cause: "fixture: activate refused")
+}
+
+fn text_of(route: BootRoute) -> String {
+  boot_phase_timing_text(t: boot_phase_timing_of(hold: at(ms: hold_ms), start: BootStartCold, route: route))
+}
+
+// ADJACENCY: every ran span begins exactly where the previous ran span ended (the first at the hold),
+// measured with the instrument's own duration rather than by comparing counts by hand.
+fn gap_is_zero(a: ProcUptimeRead, b: ProcUptimeRead) -> Bool {
+  match boot_phase_duration(from: a, to: b) {
+    PhaseElapsed { elapsed: e } => millisecond_count(m: e) == 0
+    PhaseClockUnread { detail: _ } => false
+    PhaseClockSteppedBack { begin: _, end: _ } => false
+  }
+}
+
+fn ran_bounds(spans: List<BootPhaseSpan>) -> List<List<ProcUptimeRead>> {
+  flat_map(spans, s => match s {
+    PhaseRan { phase: _, result: _, begin: b, end: e } => [[b, e]]
+    PhaseNotRan { phase: _, reason: _ } => []
+  })
+}
+
+fn adjacent_from(prev: ProcUptimeRead, bounds: List<List<ProcUptimeRead>>) -> Bool {
+  match bounds.first() {
+    Absent => true
+    Present { value: pair } =>
+      match pair.first() {
+        Absent => false
+        Present { value: b } =>
+          match pair.skip(n: 1).first() {
+            Absent => false
+            Present { value: e } => gap_is_zero(a: prev, b: b) && adjacent_from(prev: e, bounds: bounds.skip(n: 1))
+          }
+      }
+  }
+}
+
+// COVERAGE: the ran spans' durations sum to the whole interval from the hold to the last ran phase's
+// end, so no time is outside a phase and none is counted twice.
+fn span_elapsed(s: BootPhaseSpan) -> List<Millisecond> {
+  match s {
+    PhaseRan { phase: _, result: _, begin: b, end: e } =>
+      match boot_phase_duration(from: b, to: e) {
+        PhaseElapsed { elapsed: x } => [x]
+        PhaseClockUnread { detail: _ } => []
+        PhaseClockSteppedBack { begin: _, end: _ } => []
+      }
+    PhaseNotRan { phase: _, reason: _ } => []
+  }
+}
+
+fn last_end(prev: ProcUptimeRead, bounds: List<List<ProcUptimeRead>>) -> ProcUptimeRead {
+  match bounds.first() {
+    Absent => prev
+    Present { value: pair } =>
+      match pair.skip(n: 1).first() {
+        Absent => prev
+        Present { value: e } => last_end(prev: e, bounds: bounds.skip(n: 1))
+      }
+  }
+}
+
+fn covers(route: BootRoute) -> Bool {
+  let hold = at(ms: hold_ms)
+  let spans = boot_phase_spans(hold: hold, route: route)
+  let total = time_measure_list_total(times: flat_map(spans, s => span_elapsed(s: s)))
+  let bounds = ran_bounds(spans: spans)
+  adjacent_from(prev: hold, bounds: bounds)
+    && (match boot_phase_duration(from: hold, to: last_end(prev: hold, bounds: bounds)) {
+      PhaseElapsed { elapsed: whole } => millisecond_count(m: whole) == millisecond_count(m: total)
+      PhaseClockUnread { detail: _ } => false
+      PhaseClockSteppedBack { begin: _, end: _ } => false
+    })
+}
+
+test fn every_route_is_adjacent_and_covers_hold_to_its_last_phase() -> Bool {
+  covers(route: completed())
+    && covers(route: attach_refused())
+    && covers(route: handoff_refused())
+    && covers(route: terminal_refused())
+    && covers(route: sol_refused())
+}
+
+test fn a_completed_route_reports_offset_and_span_per_phase() -> Bool {
+  let t = text_of(route: completed())
+  contains(t, "phase sol_acquire: first_action=+0ms verified_after=2400ms")
+    && contains(t, "phase handoff: first_action=+8000ms verified_after=12000ms")
+    && contains(t, "phase smpro_power_on: first_action=+20000ms verified_after=2000ms")
+    && contains(t, "phase terminal_watch: first_action=+22000ms verified_after=477000ms")
+    && contains(t, "phase sol_release: first_action=+505000ms verified_after=1000ms")
+}
+
+// THE ATTACH-REFUSED ROUTE: the attach prints REFUSED with its cause and never "verified"; the
+// handoff, SMpro pass and terminal watch print not reached with no number; param5_after begins where
+// the attach ended.
+test fn a_refused_attach_marks_later_phases_not_reached_and_the_next_phase_follows_it() -> Bool {
+  let t = text_of(route: attach_refused())
+  contains(t, "phase media_attach: first_action=+3000ms REFUSED_after=5000ms (fixture: virtual media readback did not match)")
+    && !contains(t, "phase media_attach: first_action=+3000ms verified_after")
+    && contains(t, "phase handoff: not reached (the media attach did not verify)")
+    && contains(t, "phase smpro_power_on: not reached (power on was never verified)")
+    && contains(t, "phase terminal_watch: not reached (power on was never verified)")
+    && contains(t, "phase param5_after: first_action=+8000ms verified_after=1000ms")
+    && contains(t, "phase sol_release: first_action=+14000ms verified_after=1000ms")
+}
+
+test fn a_refused_handoff_skips_the_watch_and_the_next_phase_follows_it() -> Bool {
+  let t = text_of(route: handoff_refused())
+  contains(t, "phase handoff: first_action=+8000ms REFUSED_after=61000ms (fixture: chassis power did not transition)")
+    && contains(t, "phase terminal_watch: not reached (power on was never verified)")
+    && contains(t, "phase param5_after: first_action=+69000ms verified_after=1000ms")
+}
+
+test fn a_refused_terminal_watch_keeps_its_time_and_its_cause() -> Bool {
+  let t = text_of(route: terminal_refused())
+  contains(t, "phase terminal_watch: first_action=+22000ms REFUSED_after=480000ms (fixture: deadline reached without a host-capture terminal)")
+    && contains(t, "phase power_after: first_action=+503000ms verified_after=30000ms")
+}
+
+test fn a_refused_sol_acquire_holds_nothing_after_it() -> Bool {
+  let t = text_of(route: sol_refused())
+  contains(t, "phase sol_acquire: first_action=+0ms REFUSED_after=2500ms (fixture: activate refused)")
+    && contains(t, "phase media_attach: not reached (the SOL lease was not acquired, so nothing was written)")
+    && contains(t, "phase sol_release: not reached (the SOL lease was not acquired, so nothing was written)")
+}
+
+test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> Bool {
+  let t = boot_phase_timing_text(t: BootPhaseTiming {
+    hold_acquired: at(ms: 5000),
+    start: BootStartCold,
+    spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(ms: 5000), end: at(ms: 4000) }],
+  })
+  contains(t, "verified_after=REFUSED: clock went back from 5000 to 4000 ms") && !contains(t, "-1000ms")
+}
+
+test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
+  let t = boot_phase_timing_text(t: BootPhaseTiming {
+    hold_acquired: at(ms: 5000),
+    start: BootStartCold,
+    spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(ms: 5000), end: UptimeRefused { detail: "fixture: /proc/uptime read failed" } }],
+  })
+  contains(t, "verified_after=unread (fixture: /proc/uptime read failed)")
+}
+
+test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool {
+  (match boot_start_of(transition: PoweredOn) { BootStartCold => true  _ => false })
+    && (match boot_start_of(transition: PowerCycled) { BootStartWarm => true  _ => false })
+}
+
+test fn an_attempt_that_never_held_says_so() -> Bool {
+  let t = boot_phase_timing_text(t: boot_phase_timing_not_taken(reason: "the unit hold was refused"))
+  contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
+}
+
+// /proc/uptime's RECORD AND FIELD GRAMMAR (fs/proc/uptime.c `%lu.%02lu %lu.%02lu\n`): exactly one
+// line of exactly two unsigned digits.two-digits fields. Each malformed form refuses, keeping the text.
+fn uptime_refused(text: String) -> Bool {
+  match proc_uptime_parse(text: text) {
+    UptimeRefused { detail: d } => contains(d, "/proc/uptime")
+    UptimeObserved { uptime: _ } => false
+  }
+}
+
+test fn proc_uptime_accepts_exactly_the_kernel_record() -> Bool {
+  (match proc_uptime_parse(text: "350735.47 234388.90\n") { UptimeObserved { uptime: u } => millisecond_count(m: u) == 350735470  UptimeRefused { detail: _ } => false })
+    && (match proc_uptime_parse(text: "0.00 0.00\n") { UptimeObserved { uptime: u } => millisecond_count(m: u) == 0  UptimeRefused { detail: _ } => false })
+}
+
+test fn proc_uptime_refuses_bad_framing() -> Bool {
+  uptime_refused(text: "")
+    && uptime_refused(text: "350735.47 234388.90")
+    && uptime_refused(text: "350735.47\n")
+    && uptime_refused(text: "350735.47 234388.90 extra\n")
+    && uptime_refused(text: "350735.47 234388.90\n350736.00 234389.00\n")
+    && uptime_refused(text: " 350735.47 234388.90\n")
+    && uptime_refused(text: "350735.47  234388.90\n")
+}
+
+test fn proc_uptime_refuses_malformed_and_signed_fields() -> Bool {
+  uptime_refused(text: "350735.47 not-a-number\n")
+    && uptime_refused(text: "350735 234388.90\n")
+    && uptime_refused(text: "350735.4 234388.90\n")
+    && uptime_refused(text: "350735.470 234388.90\n")
+    && uptime_refused(text: ".47 234388.90\n")
+    && uptime_refused(text: "-1.00 0.00\n")
+    && uptime_refused(text: "+1.00 0.00\n")
+    && uptime_refused(text: "1.-5 0.00\n")
+    && uptime_refused(text: "1.+5 0.00\n")
+    && uptime_refused(text: "1.00 -0.00\n")
+}
+
+// THE REAL CLOCK ROUTE: two readings of this machine's /proc/uptime through the procfs transport
+// the actuation uses. Both are observations and the second is not below the first.
+test fn the_real_uptime_clock_reads_and_does_not_go_back() -> Bool {
+  let a = proc_uptime_read()
+  let b = proc_uptime_read()
+  match a {
+    UptimeObserved { uptime: x } => match b { UptimeObserved { uptime: y } => match measure_sub(a: y, b: x) { MeasureDifference { value: _ } => true  MeasureSubtrahendExceedsMinuend => false }  UptimeRefused { detail: _ } => false }
+    UptimeRefused { detail: _ } => false
+  }
+}
+
+// AN SMpro PASS WHOSE READS WERE ALL TAKEN AND NONE ANSWERED IS REFUSED. Supplied raw probe results
+// go through the real per-read decision (smpro_probe_outcome): a completion-code NAK and a
+// transport timeout with no completion code. Returning PhaseVerified for a pass that merely ran
+// turns this red; one word read among refusals makes it verified; an empty pass is refused.
+fn smpro_raw(socket: Int, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
+  SmproProbeRaw { sequence: 0, socket: socket, register: smpro_bootstage_reg.name, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-27T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+test fn an_smpro_pass_is_verified_only_when_a_register_answered() -> Bool {
+  let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
+  let timeout = smpro_probe_outcome(raw: smpro_raw(socket: 1, exit_code: 124, stdout: "", stderr: ""))
+  let word = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 0, stdout: "09 02", stderr: ""))
+  let all_refused = boot_smpro_pass_result(outcomes: [nak, timeout])
+  (match all_refused {
+    PhaseRefused { cause: c } => contains(c, "no SMpro register returned a word (2 reads")
+    PhaseVerified => false
+  })
+    && (match boot_smpro_pass_result(outcomes: [nak, word, timeout]) { PhaseVerified => true  PhaseRefused { cause: _ } => false })
+    && (match boot_smpro_pass_result(outcomes: []) { PhaseRefused { cause: c } => contains(c, "(0 reads")  PhaseVerified => false })
+}

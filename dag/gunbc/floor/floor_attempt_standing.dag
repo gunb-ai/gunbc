@@ -1,7 +1,6 @@
 module gunbc.floor_attempt_standing
 
 import std.types { String }
-import v2.std.logic { Bool }
 import gunbc.ci_failure_class {
   FloorOutcome,
   NoFailure,
@@ -666,7 +665,7 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 //
 // THE SHAPE IS NOT NET-NEW, ONLY ITS ACQUISITION HERE IS. `extdeps.github.pulls` declares
 // `github.Pulls.Get` over a rest transport returning `PullRequest`, whose `head` carries `sha`,
-// and it has executing consumers in `gunbc.tools.review` and `gunbc.tools.review_codex`. What is
+// and it has an executing consumer in `gunbc.tools.review`. What is
 // missing is a step inside the required run that calls it, and the permission grant that would
 // let it.
 //

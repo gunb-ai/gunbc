@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int }
 import gunbc.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import gunbc.clock_read { clock_now_probed_at }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge {
@@ -12,7 +12,7 @@ import gunbc.host_converge {
   ConvergeVerdict,
   VerdictConverged,
   Drifted,
-  Absent,
+  VerdictAbsent,
   converge_verdict,
 }
 import gunbc.host_runner_memory_provision {
@@ -24,6 +24,7 @@ import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.runner_unit_live_read {
@@ -78,7 +79,7 @@ fn runner_memory_cap_verify_tally_knob(
         drifted: acc.drifted + 1,
         absent: acc.absent,
       }
-    Present { value: Absent } =>
+    Present { value: VerdictAbsent } =>
       RunnerMemoryCapVerifyTally {
         converged: acc.converged,
         drifted: acc.drifted,
@@ -114,11 +115,11 @@ fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally
   if tally.drifted > 0 {
     Drifted
   } else { if tally.absent > 0 {
-    Absent
+    VerdictAbsent
   } else { if tally.converged == knob_count && knob_count > 0 {
     VerdictConverged
   } else {
-    Absent
+    VerdictAbsent
   } } }
 }
 
@@ -167,10 +168,13 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
                       }
                     )
                   }
+                SystemdPropertyBlank => none
                 SystemdPropertyCaptureRefused { reason: _ } => none
               }
+            SystemdPropertyBlank => none
             SystemdPropertyCaptureRefused { reason: _ } => none
           }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none

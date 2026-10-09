@@ -1,13 +1,12 @@
 module v2.extdeps.languages.bash
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_flat_map, list_map }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   grammar_formal_production,
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -27,7 +26,7 @@ import v2.std.compilers.target_model {
   EmitSpellingQuote,
   EmitSpellingWrap,
   TokenClassEmitTransform,
-  apply_emit_spelling_transform,
+  apply_emit_spelling_quote,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -38,7 +37,7 @@ import v2.std.compilers.target_model {
   target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -50,7 +49,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -114,19 +113,7 @@ fn bash_lhs_exact_relation_row_witness(
 ) -> Witness<Node> {
   let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
-        production: selected,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn bash_empty_translation_rules_node() -> Node {
@@ -250,13 +237,8 @@ data bash_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: bash_concrete_tokens()
 )
 
-fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-
-  concrete_syntax_token_to_node(token: token)
-}
-
 fn bash_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn bash_translation_rules_node() -> Node {
@@ -717,21 +699,23 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
 // extdeps.posix.shell_command_language and this transform row derives from them rather than
 // re-spelling the encoding here.
 
+fn bash_posix_single_quote_escapes() -> List<EmitSpellingEscape> {
+  [EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }]
+}
+
 fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {
   EmitSpellingQuote {
     prefix: prefix,
     open: posix_single_quote_delimiter,
     close: posix_single_quote_delimiter,
-    escapes: [
-      EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }
-    ]
+    escapes: bash_posix_single_quote_escapes()
   }
 }
 
 // Derived from the same transform row the emit map carries, so the directive text builders and
 // the token-class rendering cannot disagree on the encoding.
 fn bash_single_quote_spaced(spelling: String) -> String {
-  apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: " "), spelling: spelling)
+  apply_emit_spelling_quote(prefix: " ", open: posix_single_quote_delimiter, close: posix_single_quote_delimiter, escapes: bash_posix_single_quote_escapes(), spelling: spelling)
 }
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
@@ -739,95 +723,35 @@ fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
   map_insert(m1, ^bash_token_var_ref, EmitSpellingWrap { prefix: "\"$", suffix: "\"" })
 }
+data bash_token_class_emit_transforms_carried: Map<Symbol, TokenClassEmitTransform> = bash_token_class_emit_transforms()
 
-fn bash_serialize_source_node(
-  source_text_binding: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: bash_word_atom(id: source_text_binding)
-      ),
-      bash_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: bash_word_atom(id: production_binding)
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
 
-fn bash_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+fn bash_target_model_bundle(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: ^target_model_edge_translation_rules,
         target: rules
-      ),
-      bash_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: serialize_source
       )
     ],
     occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn bash_add_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_source_literal,
-    production_binding: ^bash_production_command,
-    tokens: bash_concrete_tokens()
-  )
-}
-
-fn bash_bound_words_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_bound_words_source_literal,
-    production_binding: ^bash_production_bound_words,
-    tokens: bash_bound_words_concrete_tokens()
-  )
-}
-
-fn bash_embedded_quote_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_embedded_quote_source_literal,
-    production_binding: ^bash_production_embedded_quote_lit,
-    tokens: bash_embedded_quote_concrete_tokens()
-  )
-}
-
 fn bash_add_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_translation_rules_node(),
-    serialize_source: bash_add_serialize_source_node()
-  )
+    rules: bash_translation_rules_node())
 }
 
 fn bash_bound_words_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_bound_words_translation_rules_node(),
-    serialize_source: bash_bound_words_serialize_source_node()
-  )
+    rules: bash_bound_words_translation_rules_node())
 }
 
 fn bash_embedded_quote_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_embedded_quote_translation_rules_node(),
-    serialize_source: bash_embedded_quote_serialize_source_node()
-  )
+    rules: bash_embedded_quote_translation_rules_node())
 }
 
 fn bash_lex() -> LexRules {
@@ -850,7 +774,7 @@ fn bash_bound_words_target_model() -> TargetModel {
     bundle: bash_bound_words_target_model_bundle(),
     lex: bash_lex(),
     binding_spellings: bash_binding_spellings(),
-    token_class_emit_transforms: bash_token_class_emit_transforms(),
+    token_class_emit_transforms: bash_token_class_emit_transforms_carried,
     authority_source_text: bash_bound_words_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
@@ -861,25 +785,15 @@ fn bash_embedded_quote_target_model() -> TargetModel {
     bundle: bash_embedded_quote_target_model_bundle(),
     lex: bash_lex(),
     binding_spellings: bash_binding_spellings(),
-    token_class_emit_transforms: bash_token_class_emit_transforms(),
+    token_class_emit_transforms: bash_token_class_emit_transforms_carried,
     authority_source_text: bash_embedded_quote_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
 }
 
-fn bash_source_root_ingest_gate_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_source_root_ingest_gate_source_literal,
-    production_binding: ^bash_production_source_root_ingest_gate,
-    tokens: bash_source_root_ingest_gate_concrete_tokens()
-  )
-}
-
 fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_source_root_ingest_gate_translation_rules_node(),
-    serialize_source: bash_source_root_ingest_gate_serialize_source_node()
-  )
+    rules: bash_source_root_ingest_gate_translation_rules_node())
 }
 
 fn bash_source_root_ingest_gate_lex() -> LexRules {
@@ -907,13 +821,7 @@ fn bash_make_fixed_tokens_target_model(
 ) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
-      rules: rules,
-      serialize_source: bash_serialize_source_node(
-        source_text_binding: source_literal,
-        production_binding: production_name,
-        tokens: tokens
-      )
-    ),
+      rules: rules),
     lex: lex,
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -933,16 +841,10 @@ fn bash_make_bound_tokens_target_model(
 ) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
-      rules: rules,
-      serialize_source: bash_serialize_source_node(
-        source_text_binding: source_literal,
-        production_binding: production_name,
-        tokens: tokens
-      )
-    ),
+      rules: rules),
     lex: lex,
     binding_spellings: binding_spellings,
-    token_class_emit_transforms: bash_token_class_emit_transforms(),
+    token_class_emit_transforms: bash_token_class_emit_transforms_carried,
     authority_source_text: source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
@@ -1191,9 +1093,11 @@ fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
   ]
 }
+data orch_seq2_tokens_carried: List<ConcreteSyntaxToken> = orch_seq2_tokens()
+
 
 data orch_seq2_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_seq2_tokens()
+  tokens: orch_seq2_tokens_carried
 )
 
 fn orch_seq2_source_text(left: String, right: String) -> String {
@@ -1205,15 +1109,19 @@ fn orch_seq2_lex() -> LexRules {
     span(text: "\n", class: ^bash_token_orch_seq_newline)
   ]))
 }
+data orch_seq2_lex_carried: LexRules = orch_seq2_lex()
+
 
 fn orch_seq2_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_seq2,
     lhs: ^bash_production_orch_seq2,
-    tokens: orch_seq2_tokens(),
+    tokens: orch_seq2_tokens_carried,
     emitted: orch_seq2_emitted_command
   )
 }
+data orch_seq2_translation_rules_node_carried: Node = orch_seq2_translation_rules_node()
+
 
 fn orch_seq2_binding_spellings(left: String, right: String) -> Map<Symbol, String> {
   map_insert(
@@ -1224,12 +1132,12 @@ fn orch_seq2_binding_spellings(left: String, right: String) -> Map<Symbol, Strin
 
 fn orch_seq2_target_model(left: String, right: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: orch_seq2_translation_rules_node(),
+    rules: orch_seq2_translation_rules_node_carried,
     source_literal: ^bash_orch_seq2_source_literal,
     production_name: ^bash_production_orch_seq2,
-    tokens: orch_seq2_tokens(),
+    tokens: orch_seq2_tokens_carried,
     source_text: orch_seq2_source_text(left: left, right: right),
-    lex: orch_seq2_lex(),
+    lex: orch_seq2_lex_carried,
     binding_spellings: orch_seq2_binding_spellings(left: left, right: right)
   )
 }
@@ -1259,9 +1167,11 @@ fn orch_retry_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_retry_seg_h4 }
   ]
 }
+data orch_retry_tokens_carried: List<ConcreteSyntaxToken> = orch_retry_tokens()
+
 
 data orch_retry_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_retry_tokens()
+  tokens: orch_retry_tokens_carried
 )
 
 fn orch_retry_source_text(
@@ -1301,10 +1211,12 @@ fn orch_retry_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_retry,
     lhs: ^bash_production_orch_retry,
-    tokens: orch_retry_tokens(),
+    tokens: orch_retry_tokens_carried,
     emitted: orch_retry_emitted_command
   )
 }
+data orch_retry_translation_rules_node_carried: Node = orch_retry_translation_rules_node()
+
 
 fn orch_retry_binding_spellings(
   occ1: String,
@@ -1344,10 +1256,10 @@ fn orch_retry_target_model(
   exhausted: String
 ) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: orch_retry_translation_rules_node(),
+    rules: orch_retry_translation_rules_node_carried,
     source_literal: ^bash_orch_retry_source_literal,
     production_name: ^bash_production_orch_retry,
-    tokens: orch_retry_tokens(),
+    tokens: orch_retry_tokens_carried,
     source_text: orch_retry_source_text(
       occ1: occ1,
       occ2: occ2,
@@ -1399,9 +1311,11 @@ fn orch_retry_1level_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_retry_1level_seg_f }
   ]
 }
+data orch_retry_1level_tokens_carried: List<ConcreteSyntaxToken> = orch_retry_1level_tokens()
+
 
 data orch_retry_1level_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_retry_1level_tokens()
+  tokens: orch_retry_1level_tokens_carried
 )
 
 fn orch_retry_1level_source_text(
@@ -1434,15 +1348,19 @@ fn orch_retry_1level_lex() -> LexRules {
     span(text: orch_retry_1level_seg_f(), class: ^bash_token_retry_1level_seg_f)
   ]))
 }
+data orch_retry_1level_lex_carried: LexRules = orch_retry_1level_lex()
+
 
 fn orch_retry_1level_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_retry_1level,
     lhs: ^bash_production_orch_retry_1level,
-    tokens: orch_retry_1level_tokens(),
+    tokens: orch_retry_1level_tokens_carried,
     emitted: orch_retry_1level_emitted_command
   )
 }
+data orch_retry_1level_translation_rules_node_carried: Node = orch_retry_1level_translation_rules_node()
+
 
 fn orch_retry_1level_binding_spellings(
   occ1: String,
@@ -1470,10 +1388,10 @@ fn orch_retry_1level_target_model(
   exhausted: String
 ) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: orch_retry_1level_translation_rules_node(),
+    rules: orch_retry_1level_translation_rules_node_carried,
     source_literal: ^bash_orch_retry_1level_source_literal,
     production_name: ^bash_production_orch_retry_1level,
-    tokens: orch_retry_1level_tokens(),
+    tokens: orch_retry_1level_tokens_carried,
     source_text: orch_retry_1level_source_text(
       occ1: occ1,
       occ2: occ2,
@@ -1481,7 +1399,7 @@ fn orch_retry_1level_target_model(
       warn1: warn1,
       exhausted: exhausted
     ),
-    lex: orch_retry_1level_lex(),
+    lex: orch_retry_1level_lex_carried,
     binding_spellings: orch_retry_1level_binding_spellings(
       occ1: occ1,
       occ2: occ2,
@@ -1503,9 +1421,11 @@ fn orch_retry_escalation_final_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_exhausted }
   ]
 }
+data orch_retry_escalation_final_tokens_carried: List<ConcreteSyntaxToken> = orch_retry_escalation_final_tokens()
+
 
 data orch_retry_escalation_final_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_retry_escalation_final_tokens()
+  tokens: orch_retry_escalation_final_tokens_carried
 )
 
 fn orch_retry_escalation_final_source_text(occ: String, exhausted: String) -> String {
@@ -1517,15 +1437,19 @@ fn orch_retry_escalation_final_lex() -> LexRules {
     span(text: orch_retry_escalation_final_seg_or(), class: ^bash_token_retry_escalation_final_or)
   ]))
 }
+data orch_retry_escalation_final_lex_carried: LexRules = orch_retry_escalation_final_lex()
+
 
 fn orch_retry_escalation_final_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_retry_escalation_final,
     lhs: ^bash_production_orch_retry_escalation_final,
-    tokens: orch_retry_escalation_final_tokens(),
+    tokens: orch_retry_escalation_final_tokens_carried,
     emitted: orch_retry_escalation_final_emitted_command
   )
 }
+data orch_retry_escalation_final_translation_rules_node_carried: Node = orch_retry_escalation_final_translation_rules_node()
+
 
 fn orch_retry_escalation_final_binding_spellings(
   occ: String,
@@ -1539,12 +1463,12 @@ fn orch_retry_escalation_final_binding_spellings(
 
 fn orch_retry_escalation_final_target_model(occ: String, exhausted: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: orch_retry_escalation_final_translation_rules_node(),
+    rules: orch_retry_escalation_final_translation_rules_node_carried,
     source_literal: ^bash_orch_retry_escalation_final_source_literal,
     production_name: ^bash_production_orch_retry_escalation_final,
-    tokens: orch_retry_escalation_final_tokens(),
+    tokens: orch_retry_escalation_final_tokens_carried,
     source_text: orch_retry_escalation_final_source_text(occ: occ, exhausted: exhausted),
-    lex: orch_retry_escalation_final_lex(),
+    lex: orch_retry_escalation_final_lex_carried,
     binding_spellings: orch_retry_escalation_final_binding_spellings(occ: occ, exhausted: exhausted)
   )
 }
@@ -1593,9 +1517,11 @@ fn orch_retry_escalation_step_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_retry_escalation_step_seg_g }
   ]
 }
+data orch_retry_escalation_step_tokens_carried: List<ConcreteSyntaxToken> = orch_retry_escalation_step_tokens()
+
 
 data orch_retry_escalation_step_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_retry_escalation_step_tokens()
+  tokens: orch_retry_escalation_step_tokens_carried
 )
 
 fn orch_retry_escalation_step_source_text(
@@ -1630,15 +1556,19 @@ fn orch_retry_escalation_step_lex() -> LexRules {
     span(text: orch_retry_escalation_step_seg_g(), class: ^bash_token_retry_escalation_step_seg_g)
   ]))
 }
+data orch_retry_escalation_step_lex_carried: LexRules = orch_retry_escalation_step_lex()
+
 
 fn orch_retry_escalation_step_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_retry_escalation_step,
     lhs: ^bash_production_orch_retry_escalation_step,
-    tokens: orch_retry_escalation_step_tokens(),
+    tokens: orch_retry_escalation_step_tokens_carried,
     emitted: orch_retry_escalation_step_emitted_command
   )
 }
+data orch_retry_escalation_step_translation_rules_node_carried: Node = orch_retry_escalation_step_translation_rules_node()
+
 
 fn orch_retry_escalation_step_binding_spellings(
   occ: String,
@@ -1666,10 +1596,10 @@ fn orch_retry_escalation_step_target_model(
   exhausted: String
 ) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: orch_retry_escalation_step_translation_rules_node(),
+    rules: orch_retry_escalation_step_translation_rules_node_carried,
     source_literal: ^bash_orch_retry_escalation_step_source_literal,
     production_name: ^bash_production_orch_retry_escalation_step,
-    tokens: orch_retry_escalation_step_tokens(),
+    tokens: orch_retry_escalation_step_tokens_carried,
     source_text: orch_retry_escalation_step_source_text(
       occ: occ,
       pattern: pattern,
@@ -1677,7 +1607,7 @@ fn orch_retry_escalation_step_target_model(
       inner: inner,
       exhausted: exhausted
     ),
-    lex: orch_retry_escalation_step_lex(),
+    lex: orch_retry_escalation_step_lex_carried,
     binding_spellings: orch_retry_escalation_step_binding_spellings(
       occ: occ,
       pattern: pattern,
@@ -1693,9 +1623,11 @@ fn bash_word_pass_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
   ]
 }
+data bash_word_pass_tokens_carried: List<ConcreteSyntaxToken> = bash_word_pass_tokens()
+
 
 data bash_word_pass_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_word_pass_tokens()
+  tokens: bash_word_pass_tokens_carried
 )
 
 fn bash_word_pass_lex(spelling: String) -> LexRules {
@@ -1708,10 +1640,12 @@ fn bash_word_pass_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_word_pass,
     lhs: ^bash_production_word_pass,
-    tokens: bash_word_pass_tokens(),
+    tokens: bash_word_pass_tokens_carried,
     emitted: bash_word_pass_emitted
   )
 }
+data bash_word_pass_translation_rules_node_carried: Node = bash_word_pass_translation_rules_node()
+
 
 fn bash_word_pass_binding_spellings(spelling: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_word_pass_spelling, spelling)
@@ -1719,10 +1653,10 @@ fn bash_word_pass_binding_spellings(spelling: String) -> Map<Symbol, String> {
 
 fn bash_word_pass_target_model(spelling: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_word_pass_translation_rules_node(),
+    rules: bash_word_pass_translation_rules_node_carried,
     source_literal: ^bash_word_pass_source_literal,
     production_name: ^bash_production_word_pass,
-    tokens: bash_word_pass_tokens(),
+    tokens: bash_word_pass_tokens_carried,
     source_text: spelling,
     lex: bash_word_pass_lex(spelling: spelling),
     binding_spellings: bash_word_pass_binding_spellings(spelling: spelling)
@@ -1736,9 +1670,11 @@ fn bash_word_cmdsubst_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_cmdsubst_close }
   ]
 }
+data bash_word_cmdsubst_tokens_carried: List<ConcreteSyntaxToken> = bash_word_cmdsubst_tokens()
+
 
 data bash_word_cmdsubst_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_word_cmdsubst_tokens()
+  tokens: bash_word_cmdsubst_tokens_carried
 )
 
 fn bash_word_cmdsubst_source_text(body: String) -> String {
@@ -1751,15 +1687,19 @@ fn bash_word_cmdsubst_lex() -> LexRules {
     span(text: ")", class: ^bash_token_cmdsubst_close)
   ]))
 }
+data bash_word_cmdsubst_lex_carried: LexRules = bash_word_cmdsubst_lex()
+
 
 fn bash_word_cmdsubst_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_word_cmdsubst,
     lhs: ^bash_production_word_cmdsubst,
-    tokens: bash_word_cmdsubst_tokens(),
+    tokens: bash_word_cmdsubst_tokens_carried,
     emitted: bash_word_cmdsubst_emitted
   )
 }
+data bash_word_cmdsubst_translation_rules_node_carried: Node = bash_word_cmdsubst_translation_rules_node()
+
 
 fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_word_cmdsubst_body, body)
@@ -1767,12 +1707,12 @@ fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<Symbol, String> {
 
 fn bash_word_cmdsubst_target_model(body: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_word_cmdsubst_translation_rules_node(),
+    rules: bash_word_cmdsubst_translation_rules_node_carried,
     source_literal: ^bash_word_cmdsubst_source_literal,
     production_name: ^bash_production_word_cmdsubst,
-    tokens: bash_word_cmdsubst_tokens(),
+    tokens: bash_word_cmdsubst_tokens_carried,
     source_text: bash_word_cmdsubst_source_text(body: body),
-    lex: bash_word_cmdsubst_lex(),
+    lex: bash_word_cmdsubst_lex_carried,
     binding_spellings: bash_word_cmdsubst_binding_spellings(body: body)
   )
 }
@@ -1926,9 +1866,11 @@ fn bash_stmt_assign_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_value }
   ]
 }
+data bash_stmt_assign_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_assign_tokens()
+
 
 data bash_stmt_assign_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_assign_tokens()
+  tokens: bash_stmt_assign_tokens_carried
 )
 
 fn bash_stmt_assign_source_text(name: String, value: String) -> String {
@@ -1947,10 +1889,12 @@ fn bash_stmt_assign_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_assign,
     lhs: ^bash_production_stmt_assign,
-    tokens: bash_stmt_assign_tokens(),
+    tokens: bash_stmt_assign_tokens_carried,
     emitted: bash_stmt_assign_emitted
   )
 }
+data bash_stmt_assign_translation_rules_node_carried: Node = bash_stmt_assign_translation_rules_node()
+
 
 fn bash_stmt_assign_binding_spellings(name: String, value: String) -> Map<Symbol, String> {
   map_insert(
@@ -1961,10 +1905,10 @@ fn bash_stmt_assign_binding_spellings(name: String, value: String) -> Map<Symbol
 
 fn bash_stmt_assign_target_model(name: String, value: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_stmt_assign_translation_rules_node(),
+    rules: bash_stmt_assign_translation_rules_node_carried,
     source_literal: ^bash_stmt_assign_source_literal,
     production_name: ^bash_production_stmt_assign,
-    tokens: bash_stmt_assign_tokens(),
+    tokens: bash_stmt_assign_tokens_carried,
     source_text: bash_stmt_assign_source_text(name: name, value: value),
     lex: bash_stmt_assign_lex(name: name, value: value),
     binding_spellings: bash_stmt_assign_binding_spellings(name: name, value: value)
@@ -2084,9 +2028,11 @@ fn bash_stmt_with_redir_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_redir }
   ]
 }
+data bash_stmt_with_redir_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_with_redir_tokens()
+
 
 data bash_stmt_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_with_redir_tokens()
+  tokens: bash_stmt_with_redir_tokens_carried
 )
 
 fn bash_stmt_with_redir_source_text(stmt: String, redir: String) -> String {
@@ -2098,15 +2044,19 @@ fn bash_stmt_with_redir_lex() -> LexRules {
     span(text: " ", class: ^bash_token_with_redir_sp)
   ]))
 }
+data bash_stmt_with_redir_lex_carried: LexRules = bash_stmt_with_redir_lex()
+
 
 fn bash_stmt_with_redir_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_with_redir,
     lhs: ^bash_production_stmt_with_redir,
-    tokens: bash_stmt_with_redir_tokens(),
+    tokens: bash_stmt_with_redir_tokens_carried,
     emitted: bash_stmt_with_redir_emitted
   )
 }
+data bash_stmt_with_redir_translation_rules_node_carried: Node = bash_stmt_with_redir_translation_rules_node()
+
 
 fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> Map<Symbol, String> {
   map_insert(
@@ -2117,12 +2067,12 @@ fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> Map<Sy
 
 fn bash_stmt_with_redir_target_model(stmt: String, redir: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_stmt_with_redir_translation_rules_node(),
+    rules: bash_stmt_with_redir_translation_rules_node_carried,
     source_literal: ^bash_stmt_with_redir_source_literal,
     production_name: ^bash_production_stmt_with_redir,
-    tokens: bash_stmt_with_redir_tokens(),
+    tokens: bash_stmt_with_redir_tokens_carried,
     source_text: bash_stmt_with_redir_source_text(stmt: stmt, redir: redir),
-    lex: bash_stmt_with_redir_lex(),
+    lex: bash_stmt_with_redir_lex_carried,
     binding_spellings: bash_stmt_with_redir_binding_spellings(stmt: stmt, redir: redir)
   )
 }
@@ -2136,9 +2086,11 @@ fn bash_stmt_env_prefixed_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_command }
   ]
 }
+data bash_stmt_env_prefixed_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_env_prefixed_tokens()
+
 
 data bash_stmt_env_prefixed_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_env_prefixed_tokens()
+  tokens: bash_stmt_env_prefixed_tokens_carried
 )
 
 fn bash_stmt_env_prefixed_source_text(name: String, value: String, command: String) -> String {
@@ -2151,15 +2103,19 @@ fn bash_stmt_env_prefixed_lex() -> LexRules {
     span(text: " ", class: ^bash_token_envp_sp)
   ]))
 }
+data bash_stmt_env_prefixed_lex_carried: LexRules = bash_stmt_env_prefixed_lex()
+
 
 fn bash_stmt_env_prefixed_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_env_prefixed,
     lhs: ^bash_production_stmt_env_prefixed,
-    tokens: bash_stmt_env_prefixed_tokens(),
+    tokens: bash_stmt_env_prefixed_tokens_carried,
     emitted: bash_stmt_env_prefixed_emitted
   )
 }
+data bash_stmt_env_prefixed_translation_rules_node_carried: Node = bash_stmt_env_prefixed_translation_rules_node()
+
 
 fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> Map<Symbol, String> {
   map_insert(
@@ -2173,12 +2129,12 @@ fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command
 
 fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_stmt_env_prefixed_translation_rules_node(),
+    rules: bash_stmt_env_prefixed_translation_rules_node_carried,
     source_literal: ^bash_stmt_env_prefixed_source_literal,
     production_name: ^bash_production_stmt_env_prefixed,
-    tokens: bash_stmt_env_prefixed_tokens(),
+    tokens: bash_stmt_env_prefixed_tokens_carried,
     source_text: bash_stmt_env_prefixed_source_text(name: name, value: value, command: command),
-    lex: bash_stmt_env_prefixed_lex(),
+    lex: bash_stmt_env_prefixed_lex_carried,
     binding_spellings: bash_stmt_env_prefixed_binding_spellings(name: name, value: value, command: command)
   )
 }
@@ -2191,9 +2147,11 @@ fn bash_stmt_env_unset_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_command }
   ]
 }
+data bash_stmt_env_unset_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_env_unset_tokens()
+
 
 data bash_stmt_env_unset_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_env_unset_tokens()
+  tokens: bash_stmt_env_unset_tokens_carried
 )
 
 fn bash_stmt_env_unset_source_text(name: String, command: String) -> String {
@@ -2206,15 +2164,19 @@ fn bash_stmt_env_unset_lex() -> LexRules {
     span(text: " ", class: ^bash_token_env_unset_sp)
   ]))
 }
+data bash_stmt_env_unset_lex_carried: LexRules = bash_stmt_env_unset_lex()
+
 
 fn bash_stmt_env_unset_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_env_unset,
     lhs: ^bash_production_stmt_env_unset,
-    tokens: bash_stmt_env_unset_tokens(),
+    tokens: bash_stmt_env_unset_tokens_carried,
     emitted: bash_stmt_env_unset_emitted
   )
 }
+data bash_stmt_env_unset_translation_rules_node_carried: Node = bash_stmt_env_unset_translation_rules_node()
+
 
 fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> Map<Symbol, String> {
   map_insert(
@@ -2225,12 +2187,12 @@ fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> Map<S
 
 fn bash_stmt_env_unset_target_model(name: String, command: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_stmt_env_unset_translation_rules_node(),
+    rules: bash_stmt_env_unset_translation_rules_node_carried,
     source_literal: ^bash_stmt_env_unset_source_literal,
     production_name: ^bash_production_stmt_env_unset,
-    tokens: bash_stmt_env_unset_tokens(),
+    tokens: bash_stmt_env_unset_tokens_carried,
     source_text: bash_stmt_env_unset_source_text(name: name, command: command),
-    lex: bash_stmt_env_unset_lex(),
+    lex: bash_stmt_env_unset_lex_carried,
     binding_spellings: bash_stmt_env_unset_binding_spellings(name: name, command: command)
   )
 }
@@ -2244,9 +2206,11 @@ fn bash_stmt_if_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_if_fi }
   ]
 }
+data bash_stmt_if_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_if_tokens()
+
 
 data bash_stmt_if_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_if_tokens()
+  tokens: bash_stmt_if_tokens_carried
 )
 
 fn bash_stmt_if_lex() -> LexRules {
@@ -2256,15 +2220,19 @@ fn bash_stmt_if_lex() -> LexRules {
     span(text: "; fi", class: ^bash_token_if_fi)
   ]))
 }
+data bash_stmt_if_lex_carried: LexRules = bash_stmt_if_lex()
+
 
 fn bash_stmt_if_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if,
     lhs: ^bash_production_stmt_if,
-    tokens: bash_stmt_if_tokens(),
+    tokens: bash_stmt_if_tokens_carried,
     emitted: bash_stmt_if_emitted
   )
 }
+data bash_stmt_if_translation_rules_node_carried: Node = bash_stmt_if_translation_rules_node()
+
 
 fn bash_stmt_if_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
   map_insert(
@@ -2276,19 +2244,19 @@ fn bash_stmt_if_binding_spellings(cond: String, body: String) -> Map<Symbol, Str
 fn bash_stmt_if_target_model(cond: String, body: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_if_tokens(),
-      lex: bash_stmt_if_lex(),
+      tokens: bash_stmt_if_tokens_carried,
+      lex: bash_stmt_if_lex_carried,
       binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_if_translation_rules_node(),
+          rules: bash_stmt_if_translation_rules_node_carried,
           source_literal: ^bash_stmt_if_source_literal,
           production_name: ^bash_production_stmt_if,
-          tokens: bash_stmt_if_tokens(),
+          tokens: bash_stmt_if_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_if_lex(),
+          lex: bash_stmt_if_lex_carried,
           binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
         )
       )
@@ -2314,9 +2282,11 @@ fn bash_stmt_if_block_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_if_fi_block }
   ]
 }
+data bash_stmt_if_block_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_if_block_tokens()
+
 
 data bash_stmt_if_block_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_if_block_tokens()
+  tokens: bash_stmt_if_block_tokens_carried
 )
 
 fn bash_stmt_if_block_lex() -> LexRules {
@@ -2326,32 +2296,36 @@ fn bash_stmt_if_block_lex() -> LexRules {
     span(text: "\nfi", class: ^bash_token_if_fi_block)
   ]))
 }
+data bash_stmt_if_block_lex_carried: LexRules = bash_stmt_if_block_lex()
+
 
 fn bash_stmt_if_block_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if_block,
     lhs: ^bash_production_stmt_if_block,
-    tokens: bash_stmt_if_block_tokens(),
+    tokens: bash_stmt_if_block_tokens_carried,
     emitted: bash_stmt_if_block_emitted
   )
 }
+data bash_stmt_if_block_translation_rules_node_carried: Node = bash_stmt_if_block_translation_rules_node()
+
 
 fn bash_stmt_if_block_target_model(cond: String, body: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_if_block_tokens(),
-      lex: bash_stmt_if_block_lex(),
+      tokens: bash_stmt_if_block_tokens_carried,
+      lex: bash_stmt_if_block_lex_carried,
       binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_if_block_translation_rules_node(),
+          rules: bash_stmt_if_block_translation_rules_node_carried,
           source_literal: ^bash_stmt_if_block_source_literal,
           production_name: ^bash_production_stmt_if_block,
-          tokens: bash_stmt_if_block_tokens(),
+          tokens: bash_stmt_if_block_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_if_block_lex(),
+          lex: bash_stmt_if_block_lex_carried,
           binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
         )
       )
@@ -2477,9 +2451,11 @@ fn bash_stmt_negation_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
   ]
 }
+data bash_stmt_negation_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_negation_tokens()
+
 
 data bash_stmt_negation_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_negation_tokens()
+  tokens: bash_stmt_negation_tokens_carried
 )
 
 fn bash_stmt_negation_source_text(inner: String) -> String {
@@ -2491,15 +2467,19 @@ fn bash_stmt_negation_lex() -> LexRules {
     span(text: "! ", class: ^bash_token_negation_kw)
   ]))
 }
+data bash_stmt_negation_lex_carried: LexRules = bash_stmt_negation_lex()
+
 
 fn bash_stmt_negation_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_negation,
     lhs: ^bash_production_stmt_negation,
-    tokens: bash_stmt_negation_tokens(),
+    tokens: bash_stmt_negation_tokens_carried,
     emitted: bash_stmt_negation_emitted
   )
 }
+data bash_stmt_negation_translation_rules_node_carried: Node = bash_stmt_negation_translation_rules_node()
+
 
 fn bash_stmt_negation_binding_spellings(inner: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_stmt_negation_inner, inner)
@@ -2507,12 +2487,12 @@ fn bash_stmt_negation_binding_spellings(inner: String) -> Map<Symbol, String> {
 
 fn bash_stmt_negation_target_model(inner: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_stmt_negation_translation_rules_node(),
+    rules: bash_stmt_negation_translation_rules_node_carried,
     source_literal: ^bash_stmt_negation_source_literal,
     production_name: ^bash_production_stmt_negation,
-    tokens: bash_stmt_negation_tokens(),
+    tokens: bash_stmt_negation_tokens_carried,
     source_text: bash_stmt_negation_source_text(inner: inner),
-    lex: bash_stmt_negation_lex(),
+    lex: bash_stmt_negation_lex_carried,
     binding_spellings: bash_stmt_negation_binding_spellings(inner: inner)
   )
 }
@@ -2526,9 +2506,11 @@ fn bash_redir_stderr_null_phrase() -> LexicalPhrase {
 fn bash_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_redir_stderr_null_phrase())
 }
+data bash_redir_stderr_null_concrete_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_stderr_null_concrete_tokens()
+
 
 data bash_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_redir_stderr_null_concrete_tokens()
+  tokens: bash_redir_stderr_null_concrete_tokens_carried
 )
 
 data bash_redir_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stderr_null_phrase())
@@ -2537,23 +2519,27 @@ fn bash_redir_stderr_null_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_redir_stderr_null,
     lhs: ^bash_production_redir_stderr_null,
-    tokens: bash_redir_stderr_null_concrete_tokens(),
+    tokens: bash_redir_stderr_null_concrete_tokens_carried,
     emitted: bash_redir_stderr_null_emitted
   )
 }
+data bash_redir_stderr_null_translation_rules_node_carried: Node = bash_redir_stderr_null_translation_rules_node()
+
 
 fn bash_redir_stderr_null_lex() -> LexRules {
   phrase_to_lex_rules(p: bash_redir_stderr_null_phrase())
 }
+data bash_redir_stderr_null_lex_carried: LexRules = bash_redir_stderr_null_lex()
+
 
 fn bash_redir_stderr_null_target_model() -> TargetModel {
   bash_make_fixed_tokens_target_model(
-    rules: bash_redir_stderr_null_translation_rules_node(),
+    rules: bash_redir_stderr_null_translation_rules_node_carried,
     source_literal: ^bash_redir_stderr_null_source_literal,
     production_name: ^bash_production_redir_stderr_null,
-    tokens: bash_redir_stderr_null_concrete_tokens(),
+    tokens: bash_redir_stderr_null_concrete_tokens_carried,
     source_text: bash_redir_stderr_null_source_text,
-    lex: bash_redir_stderr_null_lex()
+    lex: bash_redir_stderr_null_lex_carried
   )
 }
 
@@ -2566,9 +2552,11 @@ fn bash_redir_stdout_null_phrase() -> LexicalPhrase {
 fn bash_redir_stdout_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_null_phrase())
 }
+data bash_redir_stdout_null_concrete_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_stdout_null_concrete_tokens()
+
 
 data bash_redir_stdout_null_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_redir_stdout_null_concrete_tokens()
+  tokens: bash_redir_stdout_null_concrete_tokens_carried
 )
 
 data bash_redir_stdout_null_source_text: String = phrase_to_source_text(p: bash_redir_stdout_null_phrase())
@@ -2577,23 +2565,27 @@ fn bash_redir_stdout_null_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_redir_stdout_null,
     lhs: ^bash_production_redir_stdout_null,
-    tokens: bash_redir_stdout_null_concrete_tokens(),
+    tokens: bash_redir_stdout_null_concrete_tokens_carried,
     emitted: bash_redir_stdout_null_emitted
   )
 }
+data bash_redir_stdout_null_translation_rules_node_carried: Node = bash_redir_stdout_null_translation_rules_node()
+
 
 fn bash_redir_stdout_null_lex() -> LexRules {
   phrase_to_lex_rules(p: bash_redir_stdout_null_phrase())
 }
+data bash_redir_stdout_null_lex_carried: LexRules = bash_redir_stdout_null_lex()
+
 
 fn bash_redir_stdout_null_target_model() -> TargetModel {
   bash_make_fixed_tokens_target_model(
-    rules: bash_redir_stdout_null_translation_rules_node(),
+    rules: bash_redir_stdout_null_translation_rules_node_carried,
     source_literal: ^bash_redir_stdout_null_source_literal,
     production_name: ^bash_production_redir_stdout_null,
-    tokens: bash_redir_stdout_null_concrete_tokens(),
+    tokens: bash_redir_stdout_null_concrete_tokens_carried,
     source_text: bash_redir_stdout_null_source_text,
-    lex: bash_redir_stdout_null_lex()
+    lex: bash_redir_stdout_null_lex_carried
   )
 }
 
@@ -2606,9 +2598,11 @@ fn bash_redir_stdout_and_stderr_null_phrase() -> LexicalPhrase {
 fn bash_redir_stdout_and_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_and_stderr_null_phrase())
 }
+data bash_redir_stdout_and_stderr_null_concrete_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_stdout_and_stderr_null_concrete_tokens()
+
 
 data bash_redir_stdout_and_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_redir_stdout_and_stderr_null_concrete_tokens()
+  tokens: bash_redir_stdout_and_stderr_null_concrete_tokens_carried
 )
 
 data bash_redir_stdout_and_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stdout_and_stderr_null_phrase())
@@ -2617,23 +2611,27 @@ fn bash_redir_stdout_and_stderr_null_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_redir_stdout_and_stderr_null,
     lhs: ^bash_production_redir_stdout_and_stderr_null,
-    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens_carried,
     emitted: bash_redir_stdout_and_stderr_null_emitted
   )
 }
+data bash_redir_stdout_and_stderr_null_translation_rules_node_carried: Node = bash_redir_stdout_and_stderr_null_translation_rules_node()
+
 
 fn bash_redir_stdout_and_stderr_null_lex() -> LexRules {
   phrase_to_lex_rules(p: bash_redir_stdout_and_stderr_null_phrase())
 }
+data bash_redir_stdout_and_stderr_null_lex_carried: LexRules = bash_redir_stdout_and_stderr_null_lex()
+
 
 fn bash_redir_stdout_and_stderr_null_target_model() -> TargetModel {
   bash_make_fixed_tokens_target_model(
-    rules: bash_redir_stdout_and_stderr_null_translation_rules_node(),
+    rules: bash_redir_stdout_and_stderr_null_translation_rules_node_carried,
     source_literal: ^bash_redir_stdout_and_stderr_null_source_literal,
     production_name: ^bash_production_redir_stdout_and_stderr_null,
-    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens_carried,
     source_text: bash_redir_stdout_and_stderr_null_source_text,
-    lex: bash_redir_stdout_and_stderr_null_lex()
+    lex: bash_redir_stdout_and_stderr_null_lex_carried
   )
 }
 
@@ -2646,9 +2644,11 @@ fn bash_redir_stdout_to_stderr_phrase() -> LexicalPhrase {
 fn bash_redir_stdout_to_stderr_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_to_stderr_phrase())
 }
+data bash_redir_stdout_to_stderr_concrete_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_stdout_to_stderr_concrete_tokens()
+
 
 data bash_redir_stdout_to_stderr_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_redir_stdout_to_stderr_concrete_tokens()
+  tokens: bash_redir_stdout_to_stderr_concrete_tokens_carried
 )
 
 data bash_redir_stdout_to_stderr_source_text: String = phrase_to_source_text(p: bash_redir_stdout_to_stderr_phrase())
@@ -2657,23 +2657,27 @@ fn bash_redir_stdout_to_stderr_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_redir_stdout_to_stderr,
     lhs: ^bash_production_redir_stdout_to_stderr,
-    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens_carried,
     emitted: bash_redir_stdout_to_stderr_emitted
   )
 }
+data bash_redir_stdout_to_stderr_translation_rules_node_carried: Node = bash_redir_stdout_to_stderr_translation_rules_node()
+
 
 fn bash_redir_stdout_to_stderr_lex() -> LexRules {
   phrase_to_lex_rules(p: bash_redir_stdout_to_stderr_phrase())
 }
+data bash_redir_stdout_to_stderr_lex_carried: LexRules = bash_redir_stdout_to_stderr_lex()
+
 
 fn bash_redir_stdout_to_stderr_target_model() -> TargetModel {
   bash_make_fixed_tokens_target_model(
-    rules: bash_redir_stdout_to_stderr_translation_rules_node(),
+    rules: bash_redir_stdout_to_stderr_translation_rules_node_carried,
     source_literal: ^bash_redir_stdout_to_stderr_source_literal,
     production_name: ^bash_production_redir_stdout_to_stderr,
-    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens_carried,
     source_text: bash_redir_stdout_to_stderr_source_text,
-    lex: bash_redir_stdout_to_stderr_lex()
+    lex: bash_redir_stdout_to_stderr_lex_carried
   )
 }
 
@@ -2683,9 +2687,11 @@ fn bash_redir_to_file_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
   ]
 }
+data bash_redir_to_file_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_to_file_tokens()
+
 
 data bash_redir_to_file_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_redir_to_file_tokens()
+  tokens: bash_redir_to_file_tokens_carried
 )
 
 fn bash_redir_to_file_source_text(path: String) -> String {
@@ -2697,15 +2703,19 @@ fn bash_redir_to_file_lex() -> LexRules {
     span(text: "> ", class: ^bash_token_redir_to_file_prefix)
   ]))
 }
+data bash_redir_to_file_lex_carried: LexRules = bash_redir_to_file_lex()
+
 
 fn bash_redir_to_file_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_redir_to_file,
     lhs: ^bash_production_redir_to_file,
-    tokens: bash_redir_to_file_tokens(),
+    tokens: bash_redir_to_file_tokens_carried,
     emitted: bash_redir_to_file_emitted
   )
 }
+data bash_redir_to_file_translation_rules_node_carried: Node = bash_redir_to_file_translation_rules_node()
+
 
 fn bash_redir_to_file_binding_spellings(path: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_redir_to_file_path, path)
@@ -2713,12 +2723,18 @@ fn bash_redir_to_file_binding_spellings(path: String) -> Map<Symbol, String> {
 
 fn bash_redir_to_file_target_model(path: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_redir_to_file_translation_rules_node(),
+    rules: bash_redir_to_file_translation_rules_node_carried,
     source_literal: ^bash_redir_to_file_source_literal,
     production_name: ^bash_production_redir_to_file,
-    tokens: bash_redir_to_file_tokens(),
+    tokens: bash_redir_to_file_tokens_carried,
     source_text: bash_redir_to_file_source_text(path: path),
-    lex: bash_redir_to_file_lex(),
+    lex: bash_redir_to_file_lex_carried,
     binding_spellings: bash_redir_to_file_binding_spellings(path: path)
   )
+}
+
+// The serializer's spelling of a stderr-to-file redirect. Only the spelling has a consumer
+// (v2.workflow.bash_command_fold_serialize), so only the spelling is declared.
+fn bash_redir_stderr_to_file_source_text(path: String) -> String {
+  concat("2> ", path)
 }

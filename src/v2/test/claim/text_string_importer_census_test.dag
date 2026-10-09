@@ -1,0 +1,1761 @@
+module v2.test.claim.text_string_importer_census
+
+import v2.lens.text_string_importer_census {
+  ImporterVerdict, HostUsing, StructuralUsing, Mixed, ImportUnused, Unclassified,
+  NotEstablished, NoOperationEvidence, UndecidedCrossings, UndecidedAtFixpoint,
+  Rosters, Walk, Site, CalleeModule, WalkEstablished,
+  StructuralCall, ResultAtOtherPosition, ResultAtCallArgument,
+  HostPlusConcatenation, HostMethodCall, HostLiteralAtStringAnnotation, HostPrimitiveCall,
+  RostersStanding, RostersEstablished, RostersRefused,
+  RawTreeEstablished, RawTreeNotEstablished,
+  CrossingVerdict, CrossingHost, CrossingStructural, CrossingUndecided,
+  UndecidedCrossingCause, ParameterIsImportedStringHere, ParameterIsImportedStringIn, PositionalArgument,
+  CalleeNotImportedByName, CalleeModuleNotInPool, CalleeModuleNotParsed, NoSuchParameter, ParameterSpelledOther,
+  DecodedAs, Undecodable,
+  VerdictStanding, LensHypothesis, ExecutionCorroborated, ExecutionContradicted, standing_token, standing_of_token,
+  HostLiteralArgument, BinderArgument, StructuralLiteralArgument, NoTextResult,
+  FixpointComputed, FixpointInputRefused, FixpointReached, FixpointBoundExceeded,
+  member, walk_atoms, tree_atoms, raw_tree_of_text, rosters_of_walk, empty_rosters,
+  crossings_of, verdict_with_crossings,
+  verdict_token, verdict_of_token, crossing_tokens, crossing_of_tokens,
+  fixpoint_over_lines, fixpoint_verdict,
+  literal_lines, walk_tree, CalleeModule, WalkEstablished, WalkNotEstablished
+}
+import v2.lens.common.source_analysis_standing { SourceParseRejected, SourceUnreadable }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import std.decl_ref { decl_ref }
+import std.types { List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.algebra { any, fold_list, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CLASSIFIER'S INTERFACE IS THE PRE-ORDER ATOM STREAM, AND THESE ROWS SUPPLY IT (DESIGN 3: a
+// witness discriminates at one interface). Each `atoms_*` row is the stream the real raw parse
+// produced for the same-named file under test/fixture_roots/text_string_importer_census, captured
+// once; the rosters are supplied too. Parsing a module or v2.std.text per row cost more than a
+// whole row's floor budget, and re-ran production these rows are not about. THE PAIRING
+// OBLIGATION is kept by tsic_real_raw_parse_route_reaches_the_classifier at the bottom: the real
+// raw parse of one small real importer, through tree_atoms, into the classifier. The parse is
+// paid once by a nullary pure producer the derived cross-claim share admits
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share): grammar validation alone measured about 1M eval steps,
+// a fixed product independent of the module read.
+//
+// Each row asserts the EXACT arm its input exists for, never "not" another arm.
+
+data rosters_supplied: Rosters = Rosters {
+  population_module: "v2.std.text",
+  kernel: Cons { head: "concat", tail: Cons { head: "join", tail: Empty } },
+  host: Cons { head: "string_length", tail: Cons { head: "split", tail: Cons { head: "char_at", tail: Empty } } },
+  structural: Cons { head: "string_is_empty", tail: Cons { head: "string_head", tail: Cons { head: "string_join", tail: Empty } } },
+  structural_text_result: Cons { head: "string_join", tail: Empty }
+}
+
+fn walk_of(atoms: List<String>) -> Walk {
+  walk_atoms(atoms: atoms, r: rosters_supplied)
+}
+
+fn callee_modules_supplied() -> FreeMonoid<CalleeModule> {
+  Cons { head: CalleeModule { module: "fixture.text_string_importer_census.kernel_callee", standing: WalkEstablished { walk: walk_of(atoms: atoms_kernel_callee) } },
+    tail: Cons { head: CalleeModule { module: "fixture.text_string_importer_census.importing_callee", standing: WalkEstablished { walk: walk_of(atoms: atoms_importing_callee) } }, tail: Empty } }
+}
+
+// Each row walks its stream ONCE and reads both the verdict and the sites from that walk.
+type Classified {
+  verdict: ImporterVerdict
+  sites: FreeMonoid<Site>
+}
+
+// Only the crossing rows supply callee modules: building them walks two more streams, which every
+// other row would pay for nothing.
+fn classified_with(atoms: List<String>, callees: FreeMonoid<CalleeModule>) -> Classified {
+  let w = walk_of(atoms: atoms)
+  let sites = list_reverse(xs: w.sites)
+  Classified { verdict: verdict_with_crossings(sites: sites, crossings: crossings_of(own: w, callees: callees)), sites: sites }
+}
+
+fn classified(atoms: List<String>) -> Classified {
+  classified_with(atoms: atoms, callees: Empty)
+}
+
+fn verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
+  classified(atoms: atoms).verdict
+}
+
+fn crossing_verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
+  classified_with(atoms: atoms, callees: callee_modules_supplied()).verdict
+}
+
+fn is_host(v: ImporterVerdict) -> Bool {
+  match v {
+    HostUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
+  let c = classified(atoms: atoms_host_literal)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
+      match s.kind {
+        HostLiteralAtStringAnnotation => true
+        _ => false
+      }
+    })
+}
+
+test fn tsic_host_primitive_call_is_host() -> Bool {
+  let c = classified(atoms: atoms_host_primitive)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
+      match s.kind {
+        HostPrimitiveCall { name: n } => n == "string_length"
+        _ => false
+      }
+    })
+}
+
+test fn tsic_host_method_call_is_host() -> Bool {
+  let c = classified(atoms: atoms_host_method)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
+      match s.kind {
+        HostMethodCall { name: n } => n == "split"
+        _ => false
+      }
+    })
+}
+
+// `+` over two binders annotated bare `String` is host concatenation; the same `+` over Int is
+// not, which is why the route is asserted and not only the verdict.
+test fn tsic_plus_over_string_binders_is_host() -> Bool {
+  let c = classified(atoms: atoms_host_plus)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
+      match s.kind {
+        HostPlusConcatenation => true
+        _ => false
+      }
+    })
+}
+
+test fn tsic_structural_only_is_structural() -> Bool {
+  match verdict_of_atoms(atoms: atoms_structural) {
+    StructuralUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_host_and_structural_is_mixed_with_the_other_site_at_the_let() -> Bool {
+  let c = classified(atoms: atoms_mixed)
+  let mixed = match c.verdict {
+    Mixed => true
+    _ => false
+  }
+  mixed && any(xs: c.sites, predicate: fn(s) {
+    match s.kind {
+      StructuralCall { name: n, result: ResultAtOtherPosition } => (n == "string_join") && (s.decl == "joined")
+      _ => false
+    }
+  })
+}
+
+// A text-carrier result that is itself an argument of another structural call is CALL-ARGUMENT,
+// not OTHER: the route the MIXED split depends on.
+test fn tsic_structural_result_at_a_structural_argument_is_call_argument() -> Bool {
+  let c = classified(atoms: atoms_nested_structural)
+  let structural = match c.verdict {
+    StructuralUsing => true
+    _ => false
+  }
+  structural && any(xs: c.sites, predicate: fn(s) {
+    match s.kind {
+      StructuralCall { name: n, result: ResultAtCallArgument } => (n == "string_join") && (s.decl == "joined_is_empty")
+      _ => false
+    }
+  })
+}
+
+test fn tsic_import_without_a_bare_spelling_is_import_unused() -> Bool {
+  match verdict_of_atoms(atoms: atoms_import_unused) {
+    ImportUnused => true
+    _ => false
+  }
+}
+
+test fn tsic_bare_spelling_without_operations_is_unclassified_no_evidence() -> Bool {
+  match verdict_of_atoms(atoms: atoms_no_evidence) {
+    Unclassified { cause: NoOperationEvidence } => true
+    _ => false
+  }
+}
+
+test fn tsic_import_without_string_member_is_outside_the_population() -> Bool {
+  !walk_of(atoms: atoms_not_a_member).imports_text_string && walk_of(atoms: atoms_structural).imports_text_string
+}
+
+// CROSSINGS: one call shape, three callee declarations, so each row can only be green through the
+// declared-parameter read.
+// The crossing and roster rows each walk several streams; with the census's literal-site fields
+// that exceeded a floor row's budget, so warm pure producers (v2.workflow.floor_pure_producer_share)
+// compute them once and the claims read the results.
+type TsicCrossingOutcome {
+  kernel_parameter: ImporterVerdict
+  free_monoid_parameter: ImporterVerdict
+  imported_string_parameter: ImporterVerdict
+}
+
+fn tsic_crossing_outcome() -> TsicCrossingOutcome {
+  TsicCrossingOutcome {
+    kernel_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_host),
+    free_monoid_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_structural),
+    imported_string_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_ambiguous)
+  }
+}
+
+test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool {
+  is_host(v: tsic_crossing_outcome().kernel_parameter)
+}
+
+test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool {
+  match tsic_crossing_outcome().free_monoid_parameter {
+    StructuralUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool {
+  match tsic_crossing_outcome().imported_string_parameter {
+    Unclassified { cause: UndecidedCrossings } => true
+    _ => false
+  }
+}
+
+// THE ROSTER DERIVATION over a v2.std.text-shaped walk: every declared fn is structural, only a
+// text-carrier return makes a text result, and a fn-typed FIELD inside a `type` names no return.
+fn tsic_roster_outcome() -> Bool {
+  match rosters_of_walk(w: walk_atoms(atoms: atoms_mini_text, r: empty_rosters()), population_module: "fixture.text_string_importer_census.mini_text") {
+    RostersRefused { reason: _ } => false
+    RostersEstablished { rosters: r } =>
+      member(xs: r.structural, x: "text_join")
+        && member(xs: r.structural, x: "text_is_empty")
+        && !member(xs: r.structural, x: "Folder")
+        && member(xs: r.structural_text_result, x: "text_join")
+        && !member(xs: r.structural_text_result, x: "text_is_empty")
+        && member(xs: r.host, x: "string_length")
+  }
+}
+
+test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
+  tsic_roster_outcome()
+}
+
+// THE WIRE FORMAT: every verdict and every crossing cause decodes back to itself, so the fixpoint
+// reads the census's own rows by arm and never by spelling.
+data every_verdict: List<ImporterVerdict> = [
+  HostUsing, StructuralUsing, Mixed, ImportUnused,
+  Unclassified { cause: NoOperationEvidence }, Unclassified { cause: UndecidedCrossings }, Unclassified { cause: UndecidedAtFixpoint },
+  Unclassified { cause: NotEstablished { cause: SourceParseRejected } }, Unclassified { cause: NotEstablished { cause: SourceUnreadable } }
+]
+
+test fn tsic_every_verdict_token_decodes_to_its_arm() -> Bool {
+  !any(xs: every_verdict, predicate: fn(v) {
+    match verdict_of_token(token: verdict_token(v: v)) {
+      DecodedAs { value: back } => !(verdict_token(v: back) == verdict_token(v: v))
+      Undecodable { token: _ } => true
+    }
+  })
+}
+
+data every_crossing: List<CrossingVerdict> = [
+  CrossingHost, CrossingStructural,
+  CrossingUndecided { cause: ParameterIsImportedStringHere { at: "f.t" } },
+  CrossingUndecided { cause: ParameterIsImportedStringIn { module: "m.x", at: "f.t" } },
+  CrossingUndecided { cause: PositionalArgument { callee: "concat" } },
+  CrossingUndecided { cause: CalleeNotImportedByName { callee: "g" } },
+  CrossingUndecided { cause: CalleeModuleNotInPool { module: "m.y" } },
+  CrossingUndecided { cause: CalleeModuleNotParsed { module: "m.z", cause: SourceParseRejected } },
+  CrossingUndecided { cause: NoSuchParameter { at: "f.u" } },
+  CrossingUndecided { cause: ParameterSpelledOther { at: "f.v", spelling: "NonEmptyStr" } }
+]
+
+fn decoded_crossing_tokens(c: CrossingVerdict) -> String {
+  let f = split(s: crossing_tokens(v: c), delimiter: "\t")
+  let pick = fn(i) { fold_list(xs: f, empty: Cursor { index: 0, value: "" }, cons: fn(acc, x) { Cursor { index: acc.index + 1, value: if acc.index == i { x } else { acc.value } } }).value }
+  match crossing_of_tokens(verdict: pick(0), tag: pick(1), first: pick(2), second: pick(3)) {
+    DecodedAs { value: back } => crossing_tokens(v: back)
+    Undecodable { token: tk } => concat("undecodable ", tk)
+  }
+}
+
+type Cursor {
+  index: Int
+  value: String
+}
+
+test fn tsic_every_crossing_cause_decodes_to_its_arm() -> Bool {
+  !any(xs: every_crossing, predicate: fn(c) { !(decoded_crossing_tokens(c: c) == crossing_tokens(v: c)) })
+}
+
+// THE FIXPOINT over SUPPLIED census rows (its interface is rows plus module declarations; the real
+// route is the census run). X rows carry the typed cause, so the edge is read by arm.
+data fixpoint_decls: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.caller", path: "caller.dag" },
+  ModuleDeclarationFact { module: "m.host", path: "host.dag" },
+  ModuleDeclarationFact { module: "m.loop", path: "loop.dag" },
+  ModuleDeclarationFact { module: "m.mixed_drops", path: "mixed_drops.dag" },
+  ModuleDeclarationFact { module: "m.mixed_keeps", path: "mixed_keeps.dag" },
+  ModuleDeclarationFact { module: "m.host_caller", path: "host_caller.dag" },
+  ModuleDeclarationFact { module: "m.keep_caller", path: "keep_caller.dag" }
+]
+
+data fixpoint_lines: List<String> = [
+  "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\thost.dag\tHOST\t1\t0\t0\t1\t0\tHYPOTHESIS",
+  "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\tmixed_drops.dag\tMIXED\t1\t1\t0\t1\t0\tHYPOTHESIS",
+  "M\tmixed_keeps.dag\tMIXED\t1\t1\t1\t1\t0\tHYPOTHESIS",
+  "M\thost_caller.dag\tHOST\t1\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\tkeep_caller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
+  "S\tcaller.dag\tf\tbare_string\t",
+  "X\tcaller.dag\tf\tbinder_argument\ttake\tt\tm.host\tUNDECIDED\timported_string_in\tm.host\ttake.t",
+  "X\tloop.dag\tping\tbinder_argument\tpong\tt\t\tUNDECIDED\timported_string_here\tpong.t\t",
+  "X\thost_caller.dag\tf\tbinder_argument\tg\tt\tm.mixed_drops\tUNDECIDED\timported_string_in\tm.mixed_drops\tg.t",
+  "X\tkeep_caller.dag\tf\tbinder_argument\tg\tt\tm.mixed_keeps\tUNDECIDED\timported_string_in\tm.mixed_keeps\tg.t",
+  "N\toutside.dag",
+  ""
+]
+
+fn fixpoint_verdict_for(lines: List<String>, path: String) -> String {
+  match fixpoint_over_lines(lines: lines, decls: fixpoint_decls) {
+    FixpointInputRefused { line: _, reason: _ } => "refused"
+    FixpointComputed { outcome: o } => match o {
+      FixpointBoundExceeded { rounds: _ } => "bound exceeded"
+      FixpointReached { nodes: nodes, rounds: _ } => fold_list(xs: nodes, empty: "absent", cons: fn(acc, n) { if n.path == path { verdict_token(v: fixpoint_verdict(n: n)) } else { acc } })
+    }
+  }
+}
+
+test fn tsic_fixpoint_decides_a_crossing_into_a_host_module() -> Bool {
+  fixpoint_verdict_for(lines: fixpoint_lines, path: "caller.dag") == "HOST"
+}
+
+test fn tsic_fixpoint_leaves_a_self_cycle_undecided() -> Bool {
+  fixpoint_verdict_for(lines: fixpoint_lines, path: "loop.dag") == "UNCLASSIFIED:UndecidedAtFixpoint"
+}
+
+// The regression the real rows exposed: inheriting a MIXED callee's flags turned HOST modules
+// MIXED although both ends drop the import.
+test fn tsic_fixpoint_crossing_into_a_dropping_mixed_callee_stays_host() -> Bool {
+  fixpoint_verdict_for(lines: fixpoint_lines, path: "host_caller.dag") == "HOST"
+}
+
+test fn tsic_fixpoint_crossing_into_a_keeping_callee_is_structural() -> Bool {
+  fixpoint_verdict_for(lines: fixpoint_lines, path: "keep_caller.dag") == "STRUCTURAL"
+}
+
+// A row the reader cannot decode REFUSES the fixpoint, located; it is never skipped.
+test fn tsic_fixpoint_refuses_an_unknown_row_kind() -> Bool {
+  match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0\tHYPOTHESIS", "Q\twhat"], decls: fixpoint_decls) {
+    FixpointInputRefused { line: l, reason: _ } => l == "Q\twhat"
+    FixpointComputed { outcome: _ } => false
+  }
+}
+
+test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool {
+  match fixpoint_over_lines(lines: ["M\thost.dag\tHOSTISH\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
+    FixpointInputRefused { line: _, reason: _ } => true
+    FixpointComputed { outcome: _ } => false
+  }
+}
+
+// THE REAL ROUTE: one small REAL importer (5 lines; the census classified it HOST through one
+// literal at a bare-`String` annotation) raw-parsed by the census's own route. The claim
+// asserts the ROUTE, not only the verdict: the parse saw the `String` import, the host site is the
+// literal at that declaration, and the verdict follows. Deleting the parse integration reds it.
+data real_route_subject: String = "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
+
+// The subject's bytes, supplied: a warm producer must be pure (the floor refuses one that reaches
+// the world), so it parses this value, and tsic_real_route_subject_is_the_committed_file pins the
+// value to the committed file so the claim cannot drift from the importer it names.
+data real_route_source: String = "module direct_rust_door_ingest_fixture\n\nimport v2.std.text { String }\n\ndata direct_rust_door_ingest_fixture_note: String = \"Lane B ingest anchor file for direct_rust_door_fixture DagSourceReadWitness provenance; the add_probe module source is carried inline in direct_rust_door_fixture.\"\n"
+
+type TsicRealRoute {
+  established: Bool
+  imports_text_string: Bool
+  host_site_at_the_note: Bool
+  verdict_is_host: Bool
+}
+
+fn tsic_real_route_outcome() -> TsicRealRoute {
+  match raw_tree_of_text(text: real_route_source) {
+    RawTreeNotEstablished { cause: _ } => TsicRealRoute { established: false, imports_text_string: false, host_site_at_the_note: false, verdict_is_host: false }
+    RawTreeEstablished { root: root, spans: _, text: _ } => {
+      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
+      let sites = list_reverse(xs: w.sites)
+      TsicRealRoute {
+        established: true,
+        imports_text_string: w.imports_text_string,
+        host_site_at_the_note: any(xs: sites, predicate: fn(s) {
+          match s.kind {
+            HostLiteralAtStringAnnotation => s.decl == "direct_rust_door_ingest_fixture_note"
+            _ => false
+          }
+        }),
+        verdict_is_host: is_host(v: verdict_with_crossings(sites: sites, crossings: Empty))
+      }
+    }
+  }
+}
+
+test fn tsic_real_route_subject_is_the_committed_file() -> Bool {
+  let read = Filesystem.Read(path: real_route_subject)
+  read.success && (read.content == real_route_source)
+}
+
+test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
+  let o = tsic_real_route_outcome()
+  o.established && o.imports_text_string && o.host_site_at_the_note && o.verdict_is_host
+}
+
+
+// EVERY VERDICT STANDING round-trips, and an M row without one refuses the fixpoint: the standing
+// is what keeps a hypothesis from being read downstream as a decided classification (DESIGN 4d).
+data every_standing: List<VerdictStanding> = [
+  LensHypothesis,
+  ExecutionCorroborated { receipt: decl_ref(module_path: "gunbc.self_host_compile_phase_frontier" as NonEmptyStr, decl_name: "receipt_4_e0d0e01e_receipt" as NonEmptyStr) },
+  ExecutionContradicted { receipt: decl_ref(module_path: "gunbc.self_host_compile_phase_frontier" as NonEmptyStr, decl_name: "receipt_4_e0d0e01e_receipt" as NonEmptyStr) }
+]
+
+test fn tsic_every_verdict_standing_decodes_to_its_arm() -> Bool {
+  !any(xs: every_standing, predicate: fn(s) {
+    match standing_of_token(token: standing_token(s: s)) {
+      DecodedAs { value: back } => !(standing_token(s: back) == standing_token(s: s))
+      Undecodable { token: _ } => true
+    }
+  })
+}
+
+test fn tsic_fixpoint_refuses_a_row_without_a_standing() -> Bool {
+  match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
+    FixpointInputRefused { line: _, reason: _ } => true
+    FixpointComputed { outcome: _ } => false
+  }
+}
+
+// THE WINDOW DRIFT GUARD (review 73517). Every HOST and STRUCTURAL site is recognised by the
+// production markers adjacent to it in the raw parse's pre-order stream. If the grammar wraps or
+// reorders those productions, a predicate stops matching and its sites vanish, which reads a
+// module STRUCTURAL with no error. This producer raw-parses ONE source exercising every window
+// predicate and the claim requires every site kind to appear, so grammar drift reds the floor
+// instead of thinning the census. This makes the class MECHANICALLY PREVENTABLE (DESIGN 4b rung 2),
+// not structural: the next rung is a classifier that folds over the production structure itself.
+data window_coverage_source: String = "module window_probe\nimport v2.std.text { String, string_join, string_is_empty }\ndata d: String = \"lit\"\nfn f(s: String, xs: List<String>) -> Bool {\n  let t: String = \"x\"\n  let u = s + \"y\"\n  let v = \"z\" + s\n  let w = s + t\n  let n = string_length(s: s)\n  let p = s.split(\",\")\n  let q = g(k: s)\n  let j = string_join(fields: xs, separator: s)\n  let e = string_is_empty(s: \"lit\")\n  string_is_empty(s: string_join(fields: xs, separator: s))\n}\n"
+
+type WindowCoverage {
+  established: Bool
+  text_import_read: Bool
+  literal_at_annotation: Bool
+  plus_concatenation: Bool
+  primitive_call: Bool
+  method_call: Bool
+  literal_argument: Bool
+  binder_argument: Bool
+  structural_other: Bool
+  structural_call_argument: Bool
+  structural_literal_argument: Bool
+}
+
+fn tsic_window_coverage_outcome() -> WindowCoverage {
+  match raw_tree_of_text(text: window_coverage_source) {
+    RawTreeNotEstablished { cause: _ } => WindowCoverage { established: false, text_import_read: false, literal_at_annotation: false, plus_concatenation: false, primitive_call: false, method_call: false, literal_argument: false, binder_argument: false, structural_other: false, structural_call_argument: false, structural_literal_argument: false }
+    RawTreeEstablished { root: root, spans: _, text: _ } => {
+      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
+      let has = fn(pred) { any(xs: w.sites, predicate: pred) }
+      WindowCoverage {
+        established: true,
+        text_import_read: w.imports_text_string,
+        literal_at_annotation: has(fn(s) { match s.kind { HostLiteralAtStringAnnotation => true _ => false } }),
+        plus_concatenation: has(fn(s) { match s.kind { HostPlusConcatenation => true _ => false } }),
+        primitive_call: has(fn(s) { match s.kind { HostPrimitiveCall { name: n } => n == "string_length" _ => false } }),
+        method_call: has(fn(s) { match s.kind { HostMethodCall { name: n } => n == "split" _ => false } }),
+        literal_argument: has(fn(s) { match s.kind { HostLiteralArgument { callee: _ } => true _ => false } }),
+        binder_argument: has(fn(s) { match s.kind { BinderArgument { callee: c, param: p, module: _ } => (c == "g") && (p == "k") _ => false } }),
+        structural_other: has(fn(s) { match s.kind { StructuralCall { name: n, result: ResultAtOtherPosition } => n == "string_join" _ => false } }),
+        structural_call_argument: has(fn(s) { match s.kind { StructuralCall { name: n, result: ResultAtCallArgument } => n == "string_join" _ => false } }),
+        structural_literal_argument: has(fn(s) { match s.kind { StructuralLiteralArgument { callee: c } => c == "string_is_empty" _ => false } })
+      }
+    }
+  }
+}
+
+test fn tsic_every_window_predicate_matches_the_real_parse() -> Bool {
+  let c = tsic_window_coverage_outcome()
+  c.established && c.text_import_read && c.literal_at_annotation && c.plus_concatenation
+    && c.primitive_call && c.method_call && c.literal_argument && c.binder_argument
+    && c.structural_other && c.structural_call_argument && c.structural_literal_argument
+}
+
+
+// THE LITERAL-AT-STRUCTURAL SITES (the gate on #12760), over the REAL route: each fixture source
+// (supplied as a value, pinned to its committed file below) is raw-parsed, walked with positions,
+// resolved against the callee module's own declarations, and rendered as the entry's rows. A
+// pure warm producer pays the parses once (v2.workflow.floor_pure_producer_share); the claims read
+// its rows. Every expected row is asserted with its line:col, so a position, kind or resolution
+// regression reds a claim.
+data literal_module_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_module.dag"
+data literal_callee_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_callee.dag"
+data literal_string_type_subject: String = "test/fixture_roots/text_string_importer_census_literals/string_type_importer.dag"
+data literal_module_source: String = "module fixture.tsil.lit_module\nimport v2.std.text { String, string_is_empty }\nimport fixture.tsil.lit_callee { take, take_s, Box }\ntype Rec {\n  name: String\n  n: Int\n}\ndata a: String = \"a\"\ndata q: v2.std.text.String = \"q\"\nfn ret() -> String {\n  \"r\"\n}\nfn arm(b: Bool) -> String {\n  match b {\n    true => \"t\"\n    false => \"f\"\n  }\n}\nfn rec() -> Rec {\n  Rec { name: \"n\", n: 1 }\n}\nfn boxed() -> Box {\n  Box { label: \"b\" }\n}\nfn arg() -> Int {\n  take(t: \"k\")\n}\nfn arg2() -> Int {\n  take_s(t: \"s\")\n}\nfn pos() -> Int {\n  take(\"p\")\n}\nfn str_op() -> Bool {\n  string_is_empty(s: \"e\")\n}\n"
+data literal_callee_source: String = "module fixture.tsil.lit_callee\ntype Box {\n  label: String\n}\nfn take(t: String) -> Int {\n  1\n}\nfn take_s(t: FreeMonoid<Char>) -> Int {\n  1\n}\n"
+data literal_string_type_source: String = "module fixture.tsil.string_type_importer\nimport std.string_type { String }\ndata s: String = \"x\"\n"
+
+fn literal_rows_for(source: String, path: String, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
+  literal_lines(path: path, standing: raw_tree_of_text(text: source), r: r, callees: callees, declined: Empty)
+}
+
+fn tsil_literal_rows_outcome() -> FreeMonoid<String> {
+  let callee = match raw_tree_of_text(text: literal_callee_source) {
+    RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: rosters_supplied) }
+  }
+  literal_rows_for(source: literal_module_source, path: "lit_module.dag", r: rosters_supplied, callees: Cons { head: CalleeModule { module: "fixture.tsil.lit_callee", standing: callee }, tail: Empty })
+}
+
+fn has_row(rows: FreeMonoid<String>, row: String) -> Bool {
+  any(xs: rows, predicate: fn(x) { x == concat(row, "\n") })
+}
+
+test fn tsil_literal_subjects_are_the_committed_files() -> Bool {
+  let m = Filesystem.Read(path: literal_module_subject)
+  let c = Filesystem.Read(path: literal_callee_subject)
+  let s = Filesystem.Read(path: literal_string_type_subject)
+  m.success && c.success && s.success && (m.content == literal_module_source) && (c.content == literal_callee_source) && (s.content == literal_string_type_source)
+}
+
+// The module's count row partitions its literal positions: 8 structural, 1 unresolved, 2 host.
+test fn tsil_counts_partition_the_literal_positions() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "C\tlit_module.dag\t8\t1\t2\t0")
+}
+
+test fn tsil_annotation_literals_bare_and_qualified_are_structural() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\ta\t8:18\tannotation\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tq\t9:30\tannotation\tSTRUCTURAL:v2.std.text.String")
+}
+
+test fn tsil_return_literals_at_tail_and_arms_are_structural() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\tret\t11:3\treturn\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t15:13\treturn\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t16:14\treturn\tSTRUCTURAL:String")
+}
+
+test fn tsil_field_literal_resolves_through_the_local_record() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\trec\t20:15\tfield\tRec.name\tSTRUCTURAL:String")
+}
+
+// The callee's declared parameter decides: FreeMonoid is structural; kernel String (in a module
+// that does not import v2.std.text) is host and is counted, not listed.
+test fn tsil_argument_literal_resolves_through_the_callee_declaration() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tSTRUCTURAL:FreeMonoid")
+    && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\targ\t") })
+    && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\tboxed\t") })
+}
+
+test fn tsil_positional_literal_is_listed_unresolved_never_dropped() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tpos\t32:8\targument\ttake.\tUNRESOLVED:positional_argument:take")
+}
+
+test fn tsil_literal_to_a_population_function_is_structural() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tstr_op\t35:22\tstructural_argument\tstring_is_empty\tSTRUCTURAL:v2.std.text.string_is_empty")
+}
+
+// THE POPULATION IS A PARAMETER: the same bare-String literal is structural under the population
+// its module imports (std.string_type) and host under another (v2.std.text).
+type TsilPopulationOutcome {
+  under_string_type: FreeMonoid<String>
+  under_text: FreeMonoid<String>
+}
+
+fn tsil_population_outcome() -> TsilPopulationOutcome {
+  let st = Rosters { population_module: "std.string_type", kernel: rosters_supplied.kernel, host: rosters_supplied.host, structural: Empty, structural_text_result: Empty }
+  TsilPopulationOutcome {
+    under_string_type: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: st, callees: Empty),
+    under_text: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: rosters_supplied, callees: Empty)
+  }
+}
+
+// ALIASES are chased to the module that declares them: an importer's own `type Name = String`
+// is structural, an alias declared in a module that does not import the population is host, and a
+// literal passed to a kernel primitive (here positional) is a host position, counted not listed.
+data literal_alias_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_alias.dag"
+data literal_refined_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_refined.dag"
+data literal_alias_source: String = "module fixture.tsil.lit_alias\nimport v2.std.text { String }\nimport fixture.tsil.lit_refined { take_refined }\ntype Name = String where non_empty\nfn take_name(n: Name) -> Int {\n  1\n}\nfn a() -> Int {\n  take_name(n: \"x\")\n}\nfn b() -> Int {\n  take_refined(r: \"y\")\n}\nfn c() -> Int {\n  let joined = concat(\"p\", \"q\")\n  1\n}\n"
+data literal_refined_source: String = "module fixture.tsil.lit_refined\ntype Refined = String where non_empty\nfn take_refined(r: Refined) -> Int {\n  1\n}\n"
+
+fn tsil_alias_rows_outcome() -> FreeMonoid<String> {
+  let refined = match raw_tree_of_text(text: literal_refined_source) {
+    RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: rosters_supplied) }
+  }
+  literal_rows_for(source: literal_alias_source, path: "lit_alias.dag", r: rosters_supplied, callees: Cons { head: CalleeModule { module: "fixture.tsil.lit_refined", standing: refined }, tail: Empty })
+}
+
+test fn tsil_alias_subjects_are_the_committed_files() -> Bool {
+  let a = Filesystem.Read(path: literal_alias_subject)
+  let r = Filesystem.Read(path: literal_refined_subject)
+  a.success && r.success && (a.content == literal_alias_source) && (r.content == literal_refined_source)
+}
+
+test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool {
+  let rows = tsil_alias_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_alias.dag\ta\t9:16\targument\ttake_name.n\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3\t0")
+}
+
+// A module the caller DECLINES to load is a counted, named gap: every site that needed it is
+// UNRESOLVED as callee_module_declined, never read as host or as not-in-pool.
+fn tsil_declined_rows_outcome() -> FreeMonoid<String> {
+  literal_lines(path: "lit_module.dag", standing: raw_tree_of_text(text: literal_module_source), r: rosters_supplied, callees: Empty, declined: Cons { head: "fixture.tsil.lit_callee", tail: Empty })
+}
+
+test fn tsil_a_declined_module_is_a_named_unresolved_gap() -> Bool {
+  let rows = tsil_declined_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tboxed\t23:16\tfield\tBox.label\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
+}
+
+test fn tsil_population_module_decides_the_bare_string() -> Bool {
+  let o = tsil_population_outcome()
+  has_row(rows: o.under_string_type, row: "L\tst.dag\ts\t3:18\tannotation\tSTRUCTURAL:String")
+    && has_row(rows: o.under_text, row: "C\tst.dag\t0\t0\t1\t0")
+}
+
+
+data atoms_host_literal: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "host_literal",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_data_decl",
+  "dag_token_kw_data",
+  "greeting",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_eq",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_string_literal",
+  "hello"
+]
+
+data atoms_host_primitive: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "host_primitive",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "width",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_length",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "s",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_host_method: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "host_method",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "fields",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "List",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_gt",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_dot",
+  "split",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_string_literal",
+  ",",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_host_plus: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "host_plus",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "suffixed",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "a",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_comma",
+  "b",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "a",
+  "dag_token_plus",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "b",
+  "dag_token_rbrace"
+]
+
+data atoms_structural: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "structural",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_comma",
+  "string_is_empty",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "blank",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Bool",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_is_empty",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "s",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_mixed: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "mixed",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_comma",
+  "string_join",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "joined",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "xs",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "List",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_gt",
+  "dag_token_comma",
+  "sep",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_let_expr",
+  "dag_token_kw_let",
+  "j",
+  "dag_token_eq",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_join",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "fields",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "xs",
+  "dag_token_comma",
+  "dag_surface_arg",
+  "separator",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "sep",
+  "dag_token_rparen",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_length",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "s",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "sep",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_nested_structural: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "nested_structural",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_comma",
+  "string_join",
+  "dag_token_comma",
+  "string_is_empty",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "joined_is_empty",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "xs",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "List",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_gt",
+  "dag_token_comma",
+  "sep",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Bool",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_is_empty",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "s",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_join",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "fields",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "xs",
+  "dag_token_comma",
+  "dag_surface_arg",
+  "separator",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "sep",
+  "dag_token_rparen",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_import_unused: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "import_unused",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "one",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_int_literal",
+  "integer_tag_digit_1",
+  "dag_token_rbrace"
+]
+
+data atoms_no_evidence: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "no_evidence",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "same",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rbrace"
+]
+
+data atoms_not_a_member: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "not_a_member",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "string_head",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "f",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_int_literal",
+  "integer_tag_digit_1",
+  "dag_token_rbrace"
+]
+
+data atoms_crossing_host: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "crossing_host",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "kernel_callee",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "take_host",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "f",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "take_host",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "t",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_crossing_structural: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "crossing_structural",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "kernel_callee",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "take_structural",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "f",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "take_structural",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "t",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_crossing_ambiguous: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "crossing_ambiguous",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "importing_callee",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "take_ambiguous",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "f",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "take_ambiguous",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "t",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "s",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_kernel_callee: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "kernel_callee",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "take_host",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "t",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_int_literal",
+  "integer_tag_digit_1",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "take_structural",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "t",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "FreeMonoid",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Char",
+  "dag_token_gt",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_int_literal",
+  "integer_tag_digit_1",
+  "dag_token_rbrace"
+]
+
+data atoms_importing_callee: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "importing_callee",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "take_ambiguous",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "t",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Int",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_int_literal",
+  "integer_tag_digit_1",
+  "dag_token_rbrace"
+]
+
+data atoms_mini_text: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "mini_text",
+  "dag_surface_top_level_item",
+  "dag_surface_type_decl",
+  "dag_token_kw_type",
+  "String",
+  "dag_token_eq",
+  "dag_surface_type_alias_rhs_lead",
+  "dag_surface_type_alias_rhs",
+  "dag_surface_type_variant",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "FreeMonoid",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Char",
+  "dag_token_gt",
+  "dag_surface_top_level_item",
+  "dag_surface_type_decl",
+  "dag_token_kw_type",
+  "Folder",
+  "dag_surface_field_decl_block",
+  "dag_token_lbrace",
+  "step",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_fn_type",
+  "dag_token_kw_fn",
+  "dag_token_lparen",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Char",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "text_join",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "fields",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "FreeMonoid",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_gt",
+  "dag_token_comma",
+  "separator",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "separator",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "text_is_empty",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "s",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Bool",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_token_kw_true",
+  "dag_token_rbrace"
+]

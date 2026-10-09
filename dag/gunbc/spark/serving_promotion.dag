@@ -1,0 +1,427 @@
+module gunbc.spark.serving_promotion
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { BasisPoint, basis_point, basis_point_count, Second, second_count }
+import v2.std.algebra { length }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_subject_key, ServingSubjectKey, serving_subject_key_equal,
+  serving_subject_axis_value, AxisMaxNumSeqs,
+}
+import std.content_hash { ContentHash, content_hash_equal }
+import extdeps.nvidia.nccl { NcclRealizedTransport }
+import gunbc.spark.serving_compatibility { CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing }
+import gunbc.spark.arm_memory_fit {
+  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
+}
+
+// ── ONE PROMOTION STEP FOR EVERY SERVING SUBJECT ─────────────────────────────────────────────────
+//
+// WHAT IT REPLACES. GLM's normal serving was admitted by an execution-compatibility receipt plus a
+// proved memory fit; DeepSeek V4.1's production admission was its own fold over a capacity report
+// (gunbc.spark.v41_capacity_measurement, now deleted). Neither asked for quality, and neither bound
+// its evidence to the exact subject, so a measurement on one checkpoint, quantization or ceiling could
+// stand for another. Here one fold answers for any subject -- including a checkpoint that does not exist
+// yet -- from five receipts, each of which must name THIS subject's key (serving_subject_key):
+//   1. execution compatibility   (gunbc.spark.serving_compatibility)
+//   2. all-rank memory fit       (gunbc.spark.arm_memory_fit ArmMemoryFitVerdict, proved)
+//   3. resolved-layout cache fit (gunbc.spark.arm_memory_fit CacheFitVerdict, bound to the subject and
+//                                  the allocation plan it was read from)
+//   4. quality                   on the agentic acceptance set, against the incumbent
+//   5. workload calibration      on the real trace, against the incumbent
+// Anything missing admits a BOUNDED MEASUREMENT SERVE only, and the standing names every missing or
+// failing receipt at once. Nothing here launches anything: the launch wall consumes the standing.
+//
+// RELATIVE TO THE INCUMBENT, NOT ABSOLUTE. A quality or goodput figure means something only beside the
+// configuration it would replace, measured on the same inputs; so both receipts compare against the
+// incumbent's receipt on the same set or trace, and a comparison across different sets refuses.
+
+// THE THRESHOLDS ARE ONE POLICY ROW -- the operator's ruling of 2026-10-02 for the FIRST production
+// promotion: 200 basis points quality non-inferiority on the same exact versioned acceptance manifest, no
+// higher tool-call parse-failure rate, accepted turns per hour at least the incumbent's, and zero
+// preemptions, OOM events, engine restarts and forward-progress stalls or lost requests in the promotion
+// trace. The calibration must also have sustained the ceiling being promoted. The zero-preemption rule
+// is to be replaced by a bounded waste ratio once receipts carry recomputed input (deforking cut 6).
+type ServingPromotionPolicy {
+  quality_non_inferiority_margin: BasisPoint
+  allow_more_tool_parse_failures: Bool
+  require_goodput_at_least_incumbent: Bool
+  require_zero_preemptions: Bool
+}
+
+data serving_promotion_policy: ServingPromotionPolicy = ServingPromotionPolicy {
+  quality_non_inferiority_margin: basis_point(count: 200),
+  allow_more_tool_parse_failures: false,
+  require_goodput_at_least_incumbent: true,
+  require_zero_preemptions: true,
+}
+
+// ── WHO PRODUCES THE RECEIPTS: A DECLARED FRONTIER, NOT A CLAIM (review 74125) ───────────────────
+//
+// In this change the fold and the launch wall CONSUME the receipts; nothing PRODUCES a quality or a
+// calibration receipt yet, so every caller passes no_promotion_receipts and every subject's standing is
+// a measurement serve. That costs no admission that existed before -- no production path plans
+// ArmNormalServing through the memory wall (Group B renders and relaunches as ArmBoundedExperiment,
+// V4.1 plans as one), and every subject's memory fit is unestablished, which already refused normal
+// serving at the memory gate -- but it means normal serving is restored for a subject only by these
+// producers, named here with what each must be sufficient for.
+data serving_promotion_quality_producer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: an agentic acceptance-set run against a launched subject that records each attempt as gunbc.econ.llm_attempt_receipt LlmAttemptReceipt and folds them into a QualityReceipt whose subject_key is gunbc.spark.serving_performance_subject serving_subject_key of the subject that served them, together with the incumbent's QualityReceipt on the same acceptance manifest digest. SUFFICIENT FOR: a launch's promotion_receipts carries a quality receipt that names that subject, so serving_promotion_standing can judge quality against the incumbent rather than report it missing." as NonEmptyStr)
+
+data serving_promotion_calibration_producer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a trace-replay run through gunbc.spark.serving_load_runner (deforking cut 6, the shared runner and workload subject) against a launched subject, reading preemptions, engine restarts, OOM events and accepted turns per hour from the engine and the harness, and folding them into a WorkloadCalibrationReceipt keyed by that subject's serving_subject_key and the trace digest; for DeepSeek V4.1 the Group A wet staircase's V41CapacityReport projected through gunbc.spark.v41_capacity_measurement v41_calibration_receipt is the same receipt, reached when that launch passes it as its promotion_receipts. SUFFICIENT FOR: a launch's promotion_receipts carries a calibration receipt that names that subject and the incumbent's on the same trace, so serving_promotion_standing can judge goodput and stability rather than report them missing." as NonEmptyStr)
+
+// ── THE SUBJECT-BOUND RECEIPTS ────────────────────────────────────────────────────────────────────
+//
+// EVERY RECEIPT NAMES ITS SUBJECT BY gunbc.spark.serving_performance_subject ServingSubjectKey, compared by
+// exact preimage. Quality names the exact acceptance manifest by content digest, not by a name. A
+// calibration receipt names the realized collective transport it ran on (a launch cannot know it in
+// advance), its forward-progress stalls and lost requests, and the concurrency it actually sustained.
+// THE ACCEPTANCE MANIFEST IS ITS DIGEST AND ITS POPULATION (side-chat review): a receipt proves the manifest
+// only when it attempted every case the manifest names, so the case count travels with the digest and two
+// manifests are equal only when both agree.
+type AcceptanceManifest {
+  digest: ContentHash
+  cases: Nat
+}
+
+fn acceptance_manifest_equal(a: AcceptanceManifest, b: AcceptanceManifest) -> Bool {
+  content_hash_equal(left: a.digest, right: b.digest) && a.cases == b.cases
+}
+
+type QualityReceipt {
+  subject_key: ServingSubjectKey
+  acceptance_manifest: AcceptanceManifest
+  attempts: Nat
+  accepted: Nat
+  tool_parse_failures: Nat
+  evidence: NonEmptyStr
+}
+
+type WorkloadCalibrationReceipt {
+  subject_key: ServingSubjectKey
+  trace_digest: ContentHash
+  run_id: NonEmptyStr
+  accepted_turns: Nat?
+  observation_window: Second?
+  sustained_concurrency: Nat
+  realized_transport: NcclRealizedTransport?
+  preemptions: Nat?
+  engine_restarts: Nat?
+  out_of_memory_events: Nat?
+  stalls_or_lost_requests: Nat?
+  evidence: NonEmptyStr
+}
+
+// THE CACHE FIT IS EVIDENCE ABOUT ONE SUBJECT'S OWN ALLOCATION PLAN (review on #12984): a verdict computed
+// for another checkpoint's or ceiling's plan cannot be borrowed, because the receipt names the subject and
+// the plan it was read from.
+type SubjectBoundCacheFit {
+  subject_key: ServingSubjectKey
+  allocation_plan: ContentHash
+  verdict: CacheFitVerdict
+}
+
+// AN UNOBSERVED COUNT IS NOT ZERO, AND THE TYPE KEEPS IT THAT WAY: the four counts are matched together and
+// read only in the arm where every one is Present.
+type CalibrationCounts
+  = CalibrationCountsObserved { preemptions: Nat, engine_restarts: Nat, out_of_memory_events: Nat, stalls: Nat }
+  | CalibrationCountsMissing { missing: List<NonEmptyStr> }
+
+fn count_missing(name: String, n: Nat?) -> List<NonEmptyStr> {
+  match n {
+    Absent => [join(["workload calibration: ", name, " was not observed in this run"], "") as NonEmptyStr]
+    Present { value: _ } => []
+  }
+}
+
+fn calibration_counts(r: WorkloadCalibrationReceipt) -> CalibrationCounts {
+  match r.preemptions {
+    Absent => CalibrationCountsMissing { missing: calibration_all_missing(r: r) }
+    Present { value: p } => match r.engine_restarts {
+      Absent => CalibrationCountsMissing { missing: calibration_all_missing(r: r) }
+      Present { value: e } => match r.out_of_memory_events {
+        Absent => CalibrationCountsMissing { missing: calibration_all_missing(r: r) }
+        Present { value: o } => match r.stalls_or_lost_requests {
+          Absent => CalibrationCountsMissing { missing: calibration_all_missing(r: r) }
+          Present { value: st } => CalibrationCountsObserved { preemptions: p, engine_restarts: e, out_of_memory_events: o, stalls: st }
+        }
+      }
+    }
+  }
+}
+
+fn calibration_all_missing(r: WorkloadCalibrationReceipt) -> List<NonEmptyStr> {
+  concat(count_missing(name: "preemptions", n: r.preemptions),
+    concat(count_missing(name: "engine restarts", n: r.engine_restarts),
+      concat(count_missing(name: "OOM events", n: r.out_of_memory_events),
+        count_missing(name: "forward-progress stalls or lost requests", n: r.stalls_or_lost_requests))))
+}
+
+type ServingPromotionEvidence {
+  compatibility: CompatibilityAdmission
+  memory: ArmMemoryFitVerdict?
+  cache: SubjectBoundCacheFit?
+  quality: QualityReceipt?
+  calibration: WorkloadCalibrationReceipt?
+  incumbent_subject_key: ServingSubjectKey?
+  incumbent_quality: QualityReceipt?
+  incumbent_calibration: WorkloadCalibrationReceipt?
+  resolved_allocation_plan: ContentHash?
+}
+
+// THE RECEIPTS A CALLER HOLDS, separate from the two verdicts the launch wall computes itself
+// (compatibility and the all-rank memory fit), so no caller can supply a verdict the wall would
+// compute differently.
+type ServingPromotionReceipts {
+  cache: SubjectBoundCacheFit?
+  quality: QualityReceipt?
+  calibration: WorkloadCalibrationReceipt?
+  incumbent_subject_key: ServingSubjectKey?
+  incumbent_quality: QualityReceipt?
+  incumbent_calibration: WorkloadCalibrationReceipt?
+  resolved_allocation_plan: ContentHash?
+}
+
+// NO RECEIPT HAS BEEN PRODUCED, stated as such: a subject with these receipts is a measurement serve.
+data no_promotion_receipts: ServingPromotionReceipts = ServingPromotionReceipts {
+  cache: none, quality: none, calibration: none, incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none,
+  resolved_allocation_plan: none,
+}
+
+fn promotion_evidence(compatibility: CompatibilityAdmission, memory: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> ServingPromotionEvidence {
+  ServingPromotionEvidence {
+    compatibility: compatibility, memory: Present { value: memory }, cache: receipts.cache,
+    quality: receipts.quality, calibration: receipts.calibration,
+    incumbent_subject_key: receipts.incumbent_subject_key,
+    incumbent_quality: receipts.incumbent_quality, incumbent_calibration: receipts.incumbent_calibration,
+    resolved_allocation_plan: receipts.resolved_allocation_plan,
+  }
+}
+
+fn promotion_standing_text(st: ServingPromotionStanding) -> String {
+  match st {
+    PromotionAdmitsNormalServing => "admits normal serving"
+    PromotionRefused { cause: c } => join(["refused: ", c as String], "")
+    PromotionMeasurementServeOnly { missing: ms } => join(["normal serving needs this subject's own receipts; missing: ", join(map(ms, m => m as String), "; ")], "")
+  }
+}
+
+type ServingPromotionStanding
+  = PromotionAdmitsNormalServing
+  | PromotionMeasurementServeOnly { missing: List<NonEmptyStr> }
+  | PromotionRefused { cause: NonEmptyStr }
+
+// ── THE FOLD ─────────────────────────────────────────────────────────────────────────────────────
+fn serving_promotion_standing(subject: ServingPerformanceSubject, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy) -> ServingPromotionStanding {
+  let key = serving_subject_key(s: subject)
+  let ceiling = parse_int(s: serving_subject_axis_value(s: subject, a: AxisMaxNumSeqs) as String)
+  match evidence.compatibility {
+    AdmitsNothing { because: b } => PromotionRefused { cause: b }
+    AdmitsBoundedExperimentOnly => promotion_fold(key: key, ceiling: ceiling, evidence: evidence, policy: policy, compatibility_missing: ["execution compatibility: this subject has no execution receipt" as NonEmptyStr])
+    AdmitsNormalServing => promotion_fold(key: key, ceiling: ceiling, evidence: evidence, policy: policy, compatibility_missing: [])
+  }
+}
+
+fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy, compatibility_missing: List<NonEmptyStr>) -> ServingPromotionStanding {
+  match memory_refusal(m: evidence.memory) {
+    Present { value: c } => PromotionRefused { cause: c }
+    Absent =>
+      match cache_refusal(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan) {
+        Present { value: c } => PromotionRefused { cause: c }
+        Absent => {
+          let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan),
+            concat(quality_missing(key: key, q: evidence.quality, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_quality, policy: policy),
+              calibration_missing(key: key, ceiling: ceiling, c: evidence.calibration, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_calibration, policy: policy)))))
+          if length(missing) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: missing } }
+        }
+      }
+  }
+}
+
+// A REFUSED FIT IS NOT A MISSING RECEIPT: a shape that cannot fit is refused outright, not measured.
+fn memory_refusal(m: ArmMemoryFitVerdict?) -> NonEmptyStr? {
+  match m {
+    Absent => none
+    Present { value: v } => match v {
+      ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => Present { value: c }
+      ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => none
+      ArmMemoryFitUnestablished { obligations: _ } => none
+    }
+  }
+}
+
+fn memory_missing(m: ArmMemoryFitVerdict?) -> List<NonEmptyStr> {
+  match m {
+    Absent => ["all-rank memory fit: no verdict for this subject" as NonEmptyStr]
+    Present { value: v } => match v {
+      ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => []
+      ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => []
+      ArmMemoryFitUnestablished { obligations: os } => [join(["all-rank memory fit is unestablished: ", join(map(os, o => o as String), "; ")], "") as NonEmptyStr]
+    }
+  }
+}
+
+// A CACHE VERDICT FOR ANOTHER SUBJECT IS NEITHER A REFUSAL NOR A PROOF FOR THIS ONE: it is missing.
+fn cache_bound_to_resolved_plan(b: SubjectBoundCacheFit, resolved: ContentHash?) -> Bool {
+  match resolved {
+    Absent => false
+    Present { value: r } => content_hash_equal(left: b.allocation_plan, right: r)
+  }
+}
+
+fn cache_refusal(key: ServingSubjectKey, c: SubjectBoundCacheFit?, resolved: ContentHash?) -> NonEmptyStr? {
+  match c {
+    Absent => none
+    Present { value: b } =>
+      if !serving_subject_key_equal(a: b.subject_key, b: key) || !cache_bound_to_resolved_plan(b: b, resolved: resolved) { none }
+      else {
+        match b.verdict {
+          CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: cause } => Present { value: cause }
+          CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => none
+          CacheFitUnestablished { obligations: _ } => none
+        }
+      }
+  }
+}
+
+// THE VERDICT MUST BE ABOUT THE PLAN THIS SUBJECT ACTUALLY RESOLVED (side-chat review): the receipt names the
+// plan it read by content digest, and promotion compares it with the plan identity read off the candidate's
+// own launch. A verdict about any other plan -- or with no resolved plan observed -- is missing, not proof.
+fn cache_missing(key: ServingSubjectKey, c: SubjectBoundCacheFit?, resolved: ContentHash?) -> List<NonEmptyStr> {
+  match c {
+    Absent => ["resolved-layout cache fit: no allocation plan has been read from this subject's own launch" as NonEmptyStr]
+    Present { value: b } =>
+      if !serving_subject_key_equal(a: b.subject_key, b: key) {
+        ["resolved-layout cache fit: the verdict names another subject" as NonEmptyStr]
+      } else if !cache_bound_to_resolved_plan(b: b, resolved: resolved) {
+        ["resolved-layout cache fit: the verdict is not about the allocation plan this subject resolved (no resolved plan observed, or a different plan digest)" as NonEmptyStr]
+      } else {
+        match b.verdict {
+          CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => []
+          CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: _ } => []
+          CacheFitUnestablished { obligations: os } => [join(["resolved-layout cache fit is unestablished: ", join(map(os, o => o as String), "; ")], "") as NonEmptyStr]
+        }
+      }
+  }
+}
+
+// THE INCUMBENT IS A NAMED SUBJECT: its receipts must carry the incumbent's key, and that key must not be
+// the candidate's -- otherwise a caller could pass the candidate's own receipt as the baseline.
+fn incumbent_defect(key: ServingSubjectKey, incumbent_key: ServingSubjectKey?, receipt_key: ServingSubjectKey, what: String) -> NonEmptyStr? {
+  match incumbent_key {
+    Absent => Present { value: join([what, ": no incumbent subject is named, so there is nothing to compare against"], "") as NonEmptyStr }
+    Present { value: ik } =>
+      if serving_subject_key_equal(a: ik, b: key) { Present { value: join([what, ": the named incumbent is the candidate itself"], "") as NonEmptyStr } }
+      else if !serving_subject_key_equal(a: receipt_key, b: ik) { Present { value: join([what, ": the incumbent receipt names a subject other than the named incumbent"], "") as NonEmptyStr } }
+      else { none }
+  }
+}
+
+// A COUNT IS A SUBSET OF ATTEMPTS: a receipt claiming more accepted turns or parse failures than attempts
+// proves nothing and is refused as malformed.
+fn quality_counts_possible(r: QualityReceipt) -> Bool {
+  r.accepted <= r.attempts && r.tool_parse_failures <= r.attempts
+}
+
+// QUALITY: present, about this subject, on the incumbent's exact acceptance manifest, within the margin.
+fn quality_missing(key: ServingSubjectKey, q: QualityReceipt?, incumbent_key: ServingSubjectKey?, incumbent: QualityReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+  match q {
+    Absent => ["quality: no acceptance-set receipt for this subject" as NonEmptyStr]
+    Present { value: r } =>
+      if !serving_subject_key_equal(a: r.subject_key, b: key) { ["quality: the receipt names another subject" as NonEmptyStr] }
+      else if r.attempts == 0 { ["quality: the receipt carries zero attempts" as NonEmptyStr] }
+      else if !quality_counts_possible(r: r) { ["quality: the receipt's counts are impossible (accepted or tool-parse failures exceed attempts)" as NonEmptyStr] }
+      else if r.attempts != r.acceptance_manifest.cases { [join(["quality: ", to_string(r.attempts), " attempts do not exercise the manifest's ", to_string(r.acceptance_manifest.cases), " cases"], "") as NonEmptyStr] }
+      else {
+        match incumbent {
+          Absent => ["quality: no incumbent receipt on the same acceptance manifest to compare against" as NonEmptyStr]
+          Present { value: i } =>
+            match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "quality") {
+              Present { value: d } => [d]
+              Absent =>
+                if !acceptance_manifest_equal(a: i.acceptance_manifest, b: r.acceptance_manifest) {
+                  ["quality: the incumbent was measured on a different acceptance manifest" as NonEmptyStr]
+                } else if i.attempts == 0 {
+                  ["quality: the incumbent receipt carries zero attempts" as NonEmptyStr]
+                } else if !quality_counts_possible(r: i) || i.attempts != i.acceptance_manifest.cases {
+                  ["quality: the incumbent receipt's counts are impossible or do not exercise the whole manifest" as NonEmptyStr]
+                } else if r.accepted * 10000 * i.attempts + basis_point_count(bp: policy.quality_non_inferiority_margin) * r.attempts * i.attempts < i.accepted * 10000 * r.attempts {
+                  [join(["quality: accepted ", to_string(r.accepted), "/", to_string(r.attempts), " is more than the margin below the incumbent's ", to_string(i.accepted), "/", to_string(i.attempts)], "") as NonEmptyStr]
+                } else if !policy.allow_more_tool_parse_failures && r.tool_parse_failures * i.attempts > i.tool_parse_failures * r.attempts {
+                  [join(["quality: tool-call parse failures rose (", to_string(r.tool_parse_failures), "/", to_string(r.attempts), " against the incumbent's ", to_string(i.tool_parse_failures), "/", to_string(i.attempts), ")"], "") as NonEmptyStr]
+                } else { [] }
+            }
+        }
+      }
+  }
+}
+
+// CALIBRATION: about this subject, on its realized transport, with every count observed and zero
+// where the policy requires, at the ceiling being promoted, and at least the incumbent's goodput on the
+// same trace.
+fn calibration_missing(key: ServingSubjectKey, ceiling: Int?, c: WorkloadCalibrationReceipt?, incumbent_key: ServingSubjectKey?, incumbent: WorkloadCalibrationReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+  match c {
+    Absent => ["workload calibration: no receipt on the real trace for this subject" as NonEmptyStr]
+    Present { value: r } =>
+      if !serving_subject_key_equal(a: r.subject_key, b: key) { ["workload calibration: the receipt names another subject" as NonEmptyStr] }
+      else {
+        match r.realized_transport {
+          Absent => ["workload calibration: the collective transport the run realized was not read" as NonEmptyStr]
+          Present { value: _ } =>
+            match calibration_counts(r: r) {
+              CalibrationCountsMissing { missing: ms } => ms
+              CalibrationCountsObserved { preemptions: pre, engine_restarts: restarts, out_of_memory_events: ooms, stalls: st } =>
+                if ooms > 0 || restarts > 0 || st > 0 {
+                  [join(["workload calibration: ", to_string(ooms), " OOM event(s), ", to_string(restarts), " engine restart(s) and ", to_string(st), " stall(s) or lost request(s) in run ", r.run_id as String], "") as NonEmptyStr]
+                } else if policy.require_zero_preemptions && pre > 0 {
+                  [join(["workload calibration: ", to_string(pre), " preemption(s) in run ", r.run_id as String], "") as NonEmptyStr]
+                } else {
+                  match ceiling {
+                    Absent => ["workload calibration: the subject's sequence ceiling is unread, so whether the run exercised it cannot be judged" as NonEmptyStr]
+                    Present { value: cap } =>
+                      if r.sustained_concurrency < cap {
+                        [join(["workload calibration: the run sustained ", to_string(r.sustained_concurrency), " concurrent sequences, below the ceiling of ", to_string(cap), " being promoted"], "") as NonEmptyStr]
+                      } else { calibration_against_incumbent(key: key, r: r, incumbent_key: incumbent_key, incumbent: incumbent, policy: policy) }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn calibration_against_incumbent(key: ServingSubjectKey, r: WorkloadCalibrationReceipt, incumbent_key: ServingSubjectKey?, incumbent: WorkloadCalibrationReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+  match incumbent {
+    Absent => ["workload calibration: no incumbent receipt on the same trace to compare against" as NonEmptyStr]
+    Present { value: i } =>
+      match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "workload calibration") {
+        Present { value: d } => [d]
+        Absent =>
+          if !content_hash_equal(left: i.trace_digest, right: r.trace_digest) {
+            ["workload calibration: the incumbent was measured on a different trace" as NonEmptyStr]
+          } else if !policy.require_goodput_at_least_incumbent { [] }
+          else {
+            match r.accepted_turns {
+              Absent => ["workload calibration: this subject's accepted turns were not counted" as NonEmptyStr]
+              Present { value: mine } => match i.accepted_turns {
+                Absent => ["workload calibration: the incumbent's accepted turns were not counted" as NonEmptyStr]
+                Present { value: theirs } => match r.observation_window {
+                  Absent => ["workload calibration: this subject's observation window was not recorded" as NonEmptyStr]
+                  Present { value: wm } => match i.observation_window {
+                    Absent => ["workload calibration: the incumbent's observation window was not recorded" as NonEmptyStr]
+                    Present { value: wt } =>
+                      if second_count(s: wm) == 0 || second_count(s: wt) == 0 {
+                        ["workload calibration: a zero-length observation window carries no rate" as NonEmptyStr]
+                      } else if mine * second_count(s: wt) < theirs * second_count(s: wm) {
+                        [join(["workload calibration: ", to_string(mine), " accepted turns in ", to_string(second_count(s: wm)), "s is a lower rate than the incumbent's ", to_string(theirs), " in ", to_string(second_count(s: wt)), "s"], "") as NonEmptyStr]
+                      } else { [] }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}

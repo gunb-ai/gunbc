@@ -1,0 +1,192 @@
+module gunbc.megarac_media_model
+
+import std.types { Bool, Int, List, String }
+import std.measure { Second, second, second_count }
+import std.algebra { list_snoc_item }
+
+// THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X, firmware 0.32): the same controller as
+// gunbc.bmc_model, held as its own record because its state -- web sessions, the NFS share binding,
+// the image listing and the presented CD -- moves independently of power and IPMI. Pure transitions
+// with time as an input; the wire shapes are extdeps.bmc.megarac and extdeps.bmc.megarac_observed_output.
+//
+// SESSIONS. POST /api/session opens a session the client holds through its cookie jar and a CSRF
+// token; every other route needs both. DELETE /api/session closes it, after which the same cookie and
+// token are refused with 401 -- the property the production release check re-observes.
+type MegaRacSession {
+  cookie_jar: String
+  csrf_token: String
+  open: Bool
+}
+
+type MegaRacShare {
+  server: String
+  source_path: String
+  share_type: String
+}
+
+// THE PRESENTED CD, as one configurations row. redirection_status on this firmware: 0 stopped, 100
+// connecting, 1 started (extdeps.bmc.megarac). A start moves the row to connecting and, after the
+// readiness delay, to started with a bound session index; session index 255 means no session.
+// ready_at is when a connecting row becomes started.
+type MegaRacCdRow {
+  image_name: String
+  redirection_status: Int
+  media_index: Int
+  session_index: Int
+  ready_at: Second?
+}
+
+type MegaRacImage {
+  image_name: String
+  image_index: Int
+}
+
+// ready_after is the controller's connecting interval. Observed 2026-09-27 (gunbc.machine_intake_megarac_media_attach
+// readiness notes): status 100 at +6s, then 1 with session index 0 from +12s.
+type MegaRacMediaWorld {
+  sessions: List<MegaRacSession>
+  next_session: Int
+  share: MegaRacShare
+  mount_cd: Int
+  cd_error_code: Int
+  images: List<MegaRacImage>
+  cd: MegaRacCdRow
+  ready_after: Second
+  withdraw_at: Second?
+  withdraw_after_ready: Second?
+  error_after_ready: Int?
+  error_clears_on_stop: Bool
+  stop_at_ready: Int?
+}
+
+fn megarac_cleared_cd() -> MegaRacCdRow {
+  MegaRacCdRow { image_name: "", redirection_status: 0, media_index: 0, session_index: 255, ready_at: none }
+}
+
+fn megarac_session_valid(world: MegaRacMediaWorld, cookie_jar: String, csrf_token: String) -> Bool {
+  !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar && s.csrf_token == csrf_token))
+}
+
+fn megarac_session_by_jar(world: MegaRacMediaWorld, cookie_jar: String) -> Bool {
+  !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar))
+}
+
+fn megarac_with_sessions(world: MegaRacMediaWorld, sessions: List<MegaRacSession>, next_session: Int) -> MegaRacMediaWorld {
+  MegaRacMediaWorld { sessions: sessions, next_session: next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+}
+
+fn megarac_with_cd(world: MegaRacMediaWorld, cd: MegaRacCdRow) -> MegaRacMediaWorld {
+  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+}
+
+type MegaRacOpened {
+  world: MegaRacMediaWorld
+  racsession_id: Int
+  csrf_token: String
+}
+
+fn megarac_open_session(world: MegaRacMediaWorld, cookie_jar: String) -> MegaRacOpened {
+  let id = world.next_session
+  let token = concat("modeled-csrf-", to_string(id))
+  MegaRacOpened {
+    world: megarac_with_sessions(world: world, sessions: list_snoc_item(xs: world.sessions, item: MegaRacSession { cookie_jar: cookie_jar, csrf_token: token, open: true }), next_session: id + 1),
+    racsession_id: id,
+    csrf_token: token,
+  }
+}
+
+fn megarac_close_session(world: MegaRacMediaWorld, cookie_jar: String, csrf_token: String) -> MegaRacMediaWorld {
+  megarac_with_sessions(
+    world: world,
+    sessions: map(world.sessions, s => if s.cookie_jar == cookie_jar && s.csrf_token == csrf_token { MegaRacSession { cookie_jar: s.cookie_jar, csrf_token: s.csrf_token, open: false } } else { s }),
+    next_session: world.next_session,
+  )
+}
+
+fn megarac_image_index(world: MegaRacMediaWorld, image_name: String) -> Int? {
+  fold(world.images, init: none, f: fn(acc, i) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if i.image_name == image_name { Present { value: i.image_index } } else { none }
+    }
+  })
+}
+
+// A start names an image and its listing index. The row connects, and becomes started after the
+// connecting interval. A start naming an image the listing does not hold changes nothing; whether the
+// firmware answers such a start with an error body is not observed, so the adapter reports the write as
+// accepted and readiness -- which the production code waits on -- never arrives.
+fn megarac_start_media(world: MegaRacMediaWorld, image_name: String, image_index: Int, now: Second) -> MegaRacMediaWorld {
+  match megarac_image_index(world: world, image_name: image_name) {
+    Present { value: idx } =>
+      if idx == image_index {
+        megarac_with_cd(world: world, cd: MegaRacCdRow {
+          image_name: image_name, redirection_status: 100, media_index: 0, session_index: 255,
+          ready_at: Present { value: second(count: second_count(s: now) + second_count(s: world.ready_after)) },
+        })
+      } else { world }
+    Absent => world
+  }
+}
+
+// WHETHER A STOP CLEARS THE CD ERROR CODE IS NOT OBSERVED ON THIS FIRMWARE: the 2026-09-27 receipts show
+// cd_error_code 16 standing with nothing presented, and no read after a stop was retained. The model
+// takes it as a scenario parameter rather than electing an answer, so the matrix runs both.
+fn megarac_stop_media(world: MegaRacMediaWorld) -> MegaRacMediaWorld {
+  let stopped = megarac_with_cd(world: world, cd: megarac_cleared_cd())
+  if world.error_clears_on_stop { megarac_with_error(world: stopped, code: 0) } else { stopped }
+}
+
+fn megarac_with_error(world: MegaRacMediaWorld, code: Int) -> MegaRacMediaWorld {
+  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+}
+
+// A PRESENTATION CAN BE LOST AFTER IT WAS READY: withdraw_at, when set, is the instant the controller
+// drops the presented CD on its own (the NFS export going away, the firmware's retry giving up), after
+// which the row reads cleared. The production code re-observes the presentation before the handoff for
+// exactly this.
+fn megarac_media_advance(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWorld {
+  let readied = megarac_media_ready(world: world, now: now)
+  match readied.withdraw_at {
+    Absent => readied
+    Present { value: at } =>
+      if second_count(s: at) <= second_count(s: now) {
+        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready, error_after_ready: readied.error_after_ready, error_clears_on_stop: readied.error_clears_on_stop, stop_at_ready: readied.stop_at_ready }
+      } else { readied }
+  }
+}
+
+// A START THE CONTROLLER ACCEPTS AND THEN DROPS: stop_at_ready, when set, is the code the row falls back
+// to Stopped with at the instant it would have become Started -- the vendor UI's "Stopped - <name>"
+// (extdeps.bmc.megarac megarac_rmedia_status_0_32), e.g. 11 Mount Error for an image the share serves
+// but the controller cannot mount. The row reads cleared and cd_error_code carries the code.
+fn megarac_media_ready(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWorld {
+  match world.cd.ready_at {
+    Absent => world
+    Present { value: at } =>
+      if second_count(s: at) <= second_count(s: now) {
+        match world.stop_at_ready {
+          Present { value: code } => megarac_with_error(world: megarac_with_cd(world: world, cd: megarac_cleared_cd()), code: code)
+          Absent => megarac_withdrawal_armed(world: megarac_with_cd(world: world, cd: MegaRacCdRow { image_name: world.cd.image_name, redirection_status: 1, media_index: world.cd.media_index, session_index: 0, ready_at: none }), ready: at)
+        }
+      } else { world }
+  }
+}
+
+// A scenario may ask for the presentation to be lost a fixed interval after it became ready; the
+// instant is armed when readiness arrives, so the loss follows the route rather than a guessed clock.
+fn megarac_withdrawal_armed(world: MegaRacMediaWorld, ready: Second) -> MegaRacMediaWorld {
+  let errored = match world.error_after_ready { Absent => world Present { value: code } => megarac_with_error(world: world, code: code) }
+  megarac_withdrawal_armed_after_error(world: errored, ready: ready)
+}
+
+// A CD error code a scenario sets to appear with readiness: the presentation reports Started while the
+// general route carries a nonzero cd_error_code, the combination the production pre-handoff recheck
+// refuses.
+fn megarac_withdrawal_armed_after_error(world: MegaRacMediaWorld, ready: Second) -> MegaRacMediaWorld {
+  match world.withdraw_after_ready {
+    Absent => world
+    Present { value: after } =>
+      MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: Present { value: second(count: second_count(s: ready) + second_count(s: after)) }, withdraw_after_ready: none, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+  }
+}

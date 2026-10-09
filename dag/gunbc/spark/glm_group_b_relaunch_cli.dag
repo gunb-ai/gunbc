@@ -1,0 +1,602 @@
+module gunbc.spark.glm_group_b_relaunch_cli
+
+import std.types { Bool, List, NonEmptyStr, String, Secret }
+import std.nat { Nat }
+import std.measure { token_count_value }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import extdeps.docker.cli { DockerCreateSpec }
+import extdeps.docker.container_inspect { ContainerInspect }
+import gunbc.spark.collective_memory_path_standing {
+  CollectiveMemoryPathStanding, collective_memory_path_standing, memory_path_standing_text,
+  MemoryPathDefectStanding, memory_path_defect_standing, DefectEstablished, NoDefectEstablished, DefectStandingUnread, EvidenceContradicts,
+  DesiredCollectiveMemoryPath, DirectRegistrationWhereDevicePermits,
+}
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt,
+  RankNcclReceiptReading, RankNcclReceiptBuilt, RankNcclReceiptLogUnread, RankNcclReceiptLogFromAnotherSubject,
+  ObservedRankIncarnation, observed_rank_incarnation, incarnation_leg_subject, observed_rank_incarnations_agree,
+  observed_rank_incarnation_text, rank_gpu_direct_capability, rank_nccl_memory_path_reading, rank_nccl_gpu_direct_devices,
+}
+import extdeps.nvidia.nccl {
+  NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
+  nccl_realized_transport_wire,
+}
+import extdeps.vllm.log_lines { VllmNumberReading, VllmNumberRead, VllmNumberNotThisLineClass, VllmNumberUnreadable }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity,
+  materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of, FleetOpenSshTrustPolicy,
+}
+import gunbc.spark.fabric_reach {
+  ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, SparkReachPath,
+}
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SnapshotAcquisitionExecutor, HostCli,
+}
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment }
+import gunbc.spark.glm_group_b_launch { glm_group_b_group, glm_group_b_launch_plan }
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
+  arm_rail_gid_selection, glm_native_container_name,
+}
+import gunbc.spark.serving_rank_observe {
+  ObservedRankSubject, observed_rank_subject, observed_rank_subject_text,
+  RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
+  RankTransportObservation, RankTransportObserved, RankTransportRefused,
+  observe_rank_transport, rank_transport_verdict_text,
+  RankStartupObservation, RankStartupObserved, RankStartupRefused, RankTransportVerdict,
+  RankLogCapture, RankLogCaptured, RankLogRefused, capture_rank_log,
+  rank_transport_from_log, rank_startup_from_log,
+  RankRevisionReading, RankRevisionRead, RankRevisionRefused, observe_rank_vllm_revision,
+  observe_rank_gpu_direct_capability,
+  RankVerbsShape, observed_verbs_shape, verbs_shape_is_complete, verbs_shape_text,
+  RankObservationRefusal, rank_observation_refusal_text,
+}
+import gunbc.spark.serving_relaunch_transaction {
+  RankPlan, rank_plan, ArmRelaunchOutcome, ArmCommitted, ArmRefusedBeforeActuation, ArmRolledBack,
+  relaunch_arm, arm_relaunch_outcome_text,
+}
+
+// ── THE TWO ROUTES AN OPERATOR CAN ACTUALLY RUN ───────────────────────────────────────────────
+//
+// WHY THERE ARE TWO AND NOT ONE. Reading the arm and relaunching it are different operations with
+// different authority: the first touches nothing and answers the question this whole vertical exists
+// for -- what transport is each rank ACTUALLY on -- while the second stops a serving engine on four
+// hosts. Folding them into one entry with a flag would put the destructive one behind a boolean
+// somebody can pass by accident, and would make the safe one unrunnable while the arm is in a state
+// nobody wants changed.
+//
+// THE OBSERVATION ROUTE IS THE ONE THAT DISCHARGES THE GAP. Before it, every carrier under
+// extdeps.docker.container_inspect, extdeps.nvidia.nccl and extdeps.vllm.log_lines was fed by a
+// supplied value; this is the executing route that reads all three off a live rank.
+//
+// NEITHER IS REGISTERED AS A CI JOB, AND THAT IS DELIBERATE. gunbc.witness_floor_workflow's job
+// roster is closed to growth without operator sign-off, and a route that SSHes into four serving
+// hosts is not a thing to run on every pull request. Both are invoked by hand:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/glm_group_b_relaunch_cli.dag --function glm_group_b_observe_wet
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/glm_group_b_relaunch_cli.dag --function glm_group_b_relaunch_wet
+//
+// Both argv lines are written out because an entry whose invocation lives only in a reviewer's memory
+// is an entry nobody runs, and the second one is the one an operator must be able to find WITHOUT
+// reconstructing it under pressure.
+//
+// ── THE SUBJECT ROSTER IS DERIVED FROM THE GROUP, NOT SPELLED ─────────────────────────────────
+//
+// THE HOSTS COME FROM gunbc.spark.fabric_switch_observed and the container name from the launch
+// planner, so this module names neither. A host list written here would be a second authority for
+// the membership of Group B, and a container name written here would be a second authority for what
+// the planner creates -- and the relaunch's whole job is to make those two agree.
+fn glm_group_b_subjects() -> List<ObservedRankSubject> {
+  map(fabric_group_hosts(g: glm_group_b_group), h =>
+    observed_rank_subject(host: h, container: glm_native_container_name))
+}
+
+// ── ONE CONTEXT PER HOST, SHARING ONE MATERIALIZED CREDENTIAL ─────────────────────────────────
+//
+// THE EXECUTOR SLOT IS `HostCli` AND IT IS NOT USED BY THIS ROUTE. `SparkMaterializeContext` carries
+// the acquisition executor because acquisition needs one; `spark_remote_run` reads only the host, the
+// reach path, the trust policy and the credential. It is supplied rather than widened because
+// narrowing that type is a change to the acquisition module's own interface, and this lane is not the
+// place to make it -- the honest statement is that this field is inert here.
+fn rank_context(
+  host: HostIdentity,
+  trust: FleetOpenSshTrustPolicy,
+  path: SparkReachPath,
+  administrator: Secret,
+  credential_file: NonEmptyStr,
+) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: host,
+    trust: trust,
+    path: path,
+    admin_credential: administrator,
+    admin_credential_file: credential_file,
+    executor: HostCli,
+  }
+}
+
+// ── THE READ-ONLY ROUTE ───────────────────────────────────────────────────────────────────────
+//
+// EVERY RANK IS READ AND NONE IS INFERRED FROM ANOTHER. A four-rank collective in which one rank fell
+// back to sockets runs every collective touching that rank over TCP while rank zero's own log still
+// says IB, so reading the leader and reporting the arm is the single-source reading this replaces.
+type RankFacet sole_constructor {
+  lines: List<String>
+  complete: Bool
+}
+
+type RankTransportFacet sole_constructor {
+  lines: List<String>
+  standing: RankStanding
+}
+
+// THE CONTAINER SHAPE AND THE TRANSPORT ARE JOINED, NOT CONFLATED. A rank is on verbs only if BOTH
+// its container carries the verbs shape AND NCCL announced IB; either alone is the half-state this
+// fleet was found in, and a rank that could not be fully read is neither.
+fn joined_standing(shape: RankFacet, transport: RankTransportFacet) -> RankStanding {
+  if !shape.complete {
+    RankNotFullyRead { what: "the container does not carry the verbs shape, so its transport reading cannot be read as a converged one" as NonEmptyStr }
+  } else {
+    transport.standing
+  }
+}
+
+fn transport_standing(v: RankTransportVerdict) -> RankStanding {
+  match v.reading.transport {
+    NcclTransportIbVerbs { read_from: _ } => RankReadAndOnVerbs
+    NcclTransportSocket { read_from: _ } => RankReadOnAnotherTransport {
+      transport: nccl_realized_transport_wire(t: v.reading.transport),
+    }
+  }
+}
+
+// ── "READ" AND "ON VERBS" ARE TWO QUESTIONS AND THIS REPORT ANSWERS BOTH SEPARATELY ───────────
+//
+// A SINGLE `complete` FLAG ANSWERED NEITHER. It was set true for any READABLE transport verdict --
+// including Socket -- so this route exited zero for an arm running every collective over TCP, while
+// its own failure sentence said the nonzero path meant "is not on the verbs transport". That is the
+// silent fallback this entire vertical was built to make visible, in the route built to make it
+// visible, and the string that described it was true of neither branch.
+//
+// IT MISFIRED BOTH WAYS. A rank whose device, capability and memlock were all present but whose NCCL
+// announcement was Socket passed; a rank missing its device but announcing IB failed as "not on the
+// verbs transport". The two facts are independent -- the container's SHAPE and the transport NCCL
+// actually BUILT -- and the gap between them is the whole subject.
+type RankStanding
+  = RankReadAndOnVerbs
+  | RankReadOnAnotherTransport { transport: NonEmptyStr }
+  | RankNotFullyRead { what: NonEmptyStr }
+
+// THE MEMORY PATH IS A TYPED FACET OF THE REPORT, NOT ONLY A SENTENCE IN ITS LINES. An earlier
+// revision rendered DEFECT / CONTRADICTION / unread into text and derived the report's standing from
+// the network transport alone, so the typed answer existed only as prose. It is carried here so a
+// qualification that consumes rank reports can act on it; it does not yet gate the observe route's
+// exit, which reports rather than qualifies. Absent when the log that carries the GDR lines could not
+// be captured or the transport itself was unread.
+type RankMemoryPathFacet sole_constructor {
+  from: ObservedRankIncarnation
+  standing: CollectiveMemoryPathStanding
+  defect: MemoryPathDefectStanding
+}
+
+// A CAPABILITY AND AN NCCL READING THAT DO NOT DESCRIBE THE SAME DEVICE ARE NOT A STANDING. The join
+// refuses by name when the two receipts' incarnations differ (host, container id or node rank), when
+// the NCCL lines were emitted by a local device other than the one the CUDA probe asked about, or when
+// the log was captured from a subject other than the incarnation -- rather than stamping one side's
+// identity onto a result built partly from the other.
+type RankMemoryPathReading
+  = RankMemoryPathRead { facet: RankMemoryPathFacet }
+  | RankMemoryPathProvenanceMismatch { capability_from: ObservedRankIncarnation, nccl_from: ObservedRankIncarnation }
+  | RankMemoryPathDeviceMismatch { probed: Int, announced: List<Nat> }
+  | RankMemoryPathLogNotFromIncarnation { log_from: ObservedRankSubject }
+
+type RankReport sole_constructor {
+  subject: ObservedRankSubject
+  lines: List<String>
+  standing: RankStanding
+  memory_path: RankMemoryPathReading?
+}
+
+fn rank_standing_is_read(s: RankStanding) -> Bool {
+  match s {
+    RankReadAndOnVerbs => true
+    RankReadOnAnotherTransport { transport: _ } => true
+    RankNotFullyRead { what: _ } => false
+  }
+}
+
+fn rank_standing_is_on_verbs(s: RankStanding) -> Bool {
+  match s {
+    RankReadAndOnVerbs => true
+    RankReadOnAnotherTransport { transport: _ } => false
+    RankNotFullyRead { what: _ } => false
+  }
+}
+
+fn rank_standing_text(s: RankStanding) -> String {
+  match s {
+    RankReadAndOnVerbs => "read, and on the verbs transport"
+    RankReadOnAnotherTransport { transport: t } =>
+      join(["read, and running its collectives over ", t as String, " rather than verbs"], "")
+    RankNotFullyRead { what: w } => join(["NOT fully read: ", w as String], "")
+  }
+}
+
+// ONE LOG TRANSFER PER RANK, SHARED BY BOTH READERS. The transport announcement and the KV residuals
+// are two facts in one stream; fetching it once per fact would move the whole log twice per rank, of a
+// stream whose size grows with the engine's uptime.
+data glm_group_b_log_step: NonEmptyStr = "container-log-readback" as NonEmptyStr
+
+fn rank_startup_facet(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  container: ContainerInspect,
+  log: RankLogCapture,
+) -> RankStartupObservation
+{
+  match log {
+    RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
+    RankLogCaptured { from: _, text: t } =>
+      match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
+        RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
+        RankRevisionRead { revision: rev } =>
+          rank_startup_from_log(subject: subject, container: container, revision: rev, captured: t)
+      }
+  }
+}
+
+// THE STARTUP FACET IS COMPLETE EVEN WHEN THE KV LINES ARE ABSENT, and that asymmetry with the other
+// two is deliberate: an engine still capturing CUDA graphs has not printed them yet, which is a state
+// of the engine and not a failure of the reading. The transport facet has no such state -- a running
+// rank has announced a network or this route could not read it.
+// ── WHICH NETWORK IS NOT WHICH MEMORY PATH, AND THE OBSERVATION REPORTS BOTH ───────────────────
+//
+// The transport verdict above says the communicator built IB verbs. It does not say whether the NIC
+// reaches the buffers directly or stages them through host memory, and on GB10 the answer is the
+// platform's supported state rather than a defect -- which a reader cannot know from the transport
+// line alone. This is the consumer of gunbc.spark.collective_memory_path_standing: the same captured
+// text the transport verdict was read from is read for the GDR lines, joined against the device
+// capability reading, and the resulting sentence goes in the rank's report beside the transport one.
+//
+// IT REPORTS RATHER THAN GATES, and that is deliberate. A staged path on an incapable platform is
+// not an action item, so it must not fail an observation; a staged path on a CAPABLE platform is a
+// defect, and the standing says which of those a reader is looking at instead of leaving them to
+// infer it from a log line that reads the same either way.
+// GROUP B'S MEMORY-PATH POLICY, THE OPERATOR'S: direct registration wherever the device permits it
+// ("I strongly suggest enabling it if it's supposed to be", 2026-09-18). On GB10 the device reports
+// no GPUDirect APIs, so this policy reads the staged path as the platform's supported state; it bites
+// only on a device that could register and a runtime that did not.
+data glm_group_b_desired_memory_path: DesiredCollectiveMemoryPath = DirectRegistrationWhereDevicePermits
+
+fn rank_memory_path_reading(capability: RankGpuDirectCapabilityReceipt, nccl: RankNcclMemoryPathReceipt) -> RankMemoryPathReading {
+  if !observed_rank_incarnations_agree(a: capability.from, b: nccl.from) {
+    RankMemoryPathProvenanceMismatch { capability_from: capability.from, nccl_from: nccl.from }
+  } else {
+    let announced = rank_nccl_gpu_direct_devices(r: nccl)
+    if any(announced, d => to_string(d) != to_string(capability.device_ordinal)) {
+      RankMemoryPathDeviceMismatch { probed: capability.device_ordinal, announced: announced }
+    } else {
+      let standing = collective_memory_path_standing(
+        capability: rank_gpu_direct_capability(platform: spark_gb10_platform, r: capability),
+        observed: rank_nccl_memory_path_reading(r: nccl),
+      )
+      RankMemoryPathRead { facet: RankMemoryPathFacet {
+        from: capability.from,
+        standing: standing,
+        defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
+      } }
+    }
+  }
+}
+
+fn rank_memory_path_text(r: RankMemoryPathReading) -> String {
+  match r {
+    RankMemoryPathProvenanceMismatch { capability_from: c, nccl_from: n } =>
+      join(["PROVENANCE MISMATCH: the capability was read from ", observed_rank_incarnation_text(i: c), " and the NCCL lines from ", observed_rank_incarnation_text(i: n), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathDeviceMismatch { probed: p, announced: ds } =>
+      join(["DEVICE MISMATCH: the CUDA probe asked device ", to_string(p), " and GPU Direct RDMA lines came from device(s) ", join(map(ds, d => to_string(d)), ","), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathLogNotFromIncarnation { log_from: f } =>
+      join(["PROVENANCE MISMATCH: the log was captured from ", observed_rank_subject_text(s: f), ", not from the inspected incarnation"], "")
+    RankMemoryPathRead { facet: f } =>
+      join([
+        "memory path on ", observed_rank_incarnation_text(i: f.from), ": ",
+        match f.defect {
+          DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
+          EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
+          DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
+          NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
+        },
+      ], "")
+  }
+}
+
+fn observe_rank_report(
+  trust: FleetOpenSshTrustPolicy,
+  path: SparkReachPath,
+  administrator: Secret,
+  credential_file: NonEmptyStr,
+  subject: ObservedRankSubject,
+) -> RankReport
+{
+  let ctx = rank_context(host: subject.host, trust: trust, path: path, administrator: administrator, credential_file: credential_file)
+  match observe_rank_container(ctx: ctx, subject: subject) {
+    RankInspectRefused { refusal: r } =>
+      RankReport {
+        subject: subject,
+        lines: [rank_observation_refusal_text(r: r)],
+        standing: RankNotFullyRead { what: "the container could not be inspected" as NonEmptyStr },
+        memory_path: none,
+      }
+    RankInspected { subject: _, container: c } =>
+      match observed_rank_incarnation(subject: subject, c: c) {
+        Absent => RankReport {
+          subject: subject,
+          lines: ["the inspected container reports no container id or no node rank, so no later leg can be pinned to this incarnation"],
+          standing: RankNotFullyRead { what: "the container's incarnation was not read" as NonEmptyStr },
+          memory_path: none,
+        }
+        Present { value: incarnation } => observe_rank_incarnation(ctx: ctx, subject: subject, c: c, incarnation: incarnation)
+      }
+  }
+}
+
+// EVERY LEG AFTER THE INSPECTION ADDRESSES THE INSPECTED INCARNATION BY ITS IMMUTABLE ID. The log,
+// the revision readback and both CUDA queries go through `pinned`, so they cannot straddle a stop and
+// recreate: a new container under the same name has a different id, and the pinned legs refuse on it.
+fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankSubject, c: ContainerInspect, incarnation: ObservedRankIncarnation) -> RankReport
+{
+  let pinned = incarnation_leg_subject(i: incarnation)
+      let shape = match observed_verbs_shape(subject: subject, container: c) {
+        Absent => RankFacet { lines: ["the container's own argv does not name a rank, so this reading has nothing to bind to"], complete: false }
+        Present { value: sh } => RankFacet { lines: [verbs_shape_text(s: sh)], complete: verbs_shape_is_complete(s: sh) }
+      }
+      let log = capture_rank_log(ctx: ctx, subject: pinned, step: glm_group_b_log_step)
+      let transport = match log {
+        RankLogRefused { refusal: r } => RankTransportFacet {
+          lines: [rank_observation_refusal_text(r: r)],
+          standing: RankNotFullyRead { what: "the container log could not be captured" as NonEmptyStr },
+        }
+        RankLogCaptured { from: _, text: t } =>
+          match rank_transport_from_log(subject: subject, container: c, captured: t) {
+            RankTransportRefused { refusal: r } => RankTransportFacet {
+              lines: [rank_observation_refusal_text(r: r)],
+              standing: RankNotFullyRead { what: "the transport verdict could not be read" as NonEmptyStr },
+            }
+            RankTransportObserved { verdict: v } => RankTransportFacet {
+              lines: [rank_transport_verdict_text(v: v)],
+              standing: transport_standing(v: v),
+            }
+          }
+      }
+      let memory_path = match rank_nccl_memory_path_receipt(incarnation: incarnation, log: log) {
+        RankNcclReceiptLogUnread => none
+        RankNcclReceiptLogFromAnotherSubject { log_from: f } => Present { value: RankMemoryPathLogNotFromIncarnation { log_from: f } }
+        RankNcclReceiptBuilt { receipt: nccl } =>
+          Present { value: rank_memory_path_reading(
+            capability: observe_rank_gpu_direct_capability(ctx: ctx, incarnation: incarnation),
+            nccl: nccl,
+          ) }
+      }
+      let startup = match rank_startup_facet(ctx: ctx, subject: pinned, container: c, log: log) {
+        RankStartupRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
+        RankStartupObserved { reading: sr } => RankFacet {
+          lines: [join([
+            "vllm revision ", sr.revision.full_revision as String,
+            ", startup lines read: ", to_string(count(sr.readings)),
+            ", kv pool: ", match sr.pool_tokens {
+              VllmNumberNotThisLineClass { line: _ } => "not yet printed -- the engine has emitted no KV-cache-size line"
+              VllmNumberUnreadable { captured_text: _, cause: why } =>
+                join(["PRINTED BUT UNREADABLE: ", why as String], "")
+              VllmNumberRead { value: t } => to_string(token_count_value(t: t))
+            },
+          ], "")],
+          complete: true,
+        }
+      }
+      RankReport {
+        subject: subject,
+        lines: concat(shape.lines, concat(transport.lines, concat(startup.lines, [rank_standing_text(s: joined_standing(shape: shape, transport: transport))]))),
+        standing: joined_standing(shape: shape, transport: transport),
+        memory_path: memory_path,
+      }
+}
+
+data glm_group_b_observe_attempt_raw: String = "glm-group-b-serving-observe"
+data glm_group_b_observe_receipt_path: String = "target/glm-group-b-serving-observation.txt"
+
+// THE RECEIPT READS THE TYPED FACET, NOT A COPY OF ITS TEXT. The memory-path reading is carried on
+// RankReport as a value and rendered here from that field, so the observation receipt is its consumer;
+// an absent reading (no log captured) renders nothing rather than a guessed line.
+fn rank_report_memory_path_lines(r: RankReport) -> List<String> {
+  match r.memory_path {
+    Absent => [] as List<String>
+    Present { value: m } => [rank_memory_path_text(r: m)]
+  }
+}
+
+// AN EMPTY SUBJECT ROSTER REFUSES BEFORE A CREDENTIAL IS MATERIALIZED, and the check is here rather
+// than after the reads for the same reason the transaction's is before its capture phase: at zero
+// subjects the report list is empty, `count(filter(reports, r => !r.complete)) > 0` is vacuously
+// false, and this route writes a receipt naming no ranks and exits successfully -- an affirmative
+// reading of "every rank is on the verbs transport" derived from ZERO observations, by the route this
+// module calls the one that reads the facts off a live rank.
+//
+// AND THE ROSTER IS A FILTER, so it is empty the moment Group B's hosts stop being observed rather
+// than only when someone writes it that way. Refusing before the access bracket also means an
+// unobserved group does not cause an administrator credential to be read off disk for no reason.
+fn glm_group_b_observe_wet() -> ProcessExit
+{
+  if count(glm_group_b_subjects()) == 0 {
+    exit_failure(reason: "glm group b names no observed hosts, so there is nothing to read; an empty roster is a group whose members are not observed, not an arm with no ranks to check")
+  } else {
+  with_group_b_access(use: fn(trust, path, administrator, file) {
+    let reports = map(glm_group_b_subjects(), s =>
+      observe_rank_report(trust: trust, path: path, administrator: administrator, credential_file: file, subject: s))
+    let body = join([
+      join(["glm group b serving observation at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n"], ""),
+      join(map(reports, r => join([
+        observed_rank_subject_text(s: r.subject), "\n",
+        join(map(concat(r.lines, rank_report_memory_path_lines(r: r)), l => join(["  ", l], "")), "\n"), "\n",
+      ], "")), ""),
+    ], "")
+    let w = Filesystem.Write(path: glm_group_b_observe_receipt_path, content: body)
+    if !w.success {
+      exit_failure(reason: join(["glm group b observation receipt write failed: ", w.error], ""))
+    } else if count(filter(reports, r => !rank_standing_is_read(s: r.standing))) > 0 {
+      exit_failure(reason: join([
+        to_string(count(filter(reports, r => !rank_standing_is_read(s: r.standing)))),
+        " of ", to_string(count(reports)),
+        " ranks could not be fully read, so this run establishes nothing about the arm's transport:\n", body,
+      ], ""))
+    } else if count(filter(reports, r => !rank_standing_is_on_verbs(s: r.standing))) > 0 {
+      exit_failure(reason: join([
+        "every rank was read and ", to_string(count(filter(reports, r => !rank_standing_is_on_verbs(s: r.standing)))),
+        " of ", to_string(count(reports)),
+        " is NOT on the verbs transport -- this is the state the arm was found in on 2026-09-15:\n", body,
+      ], ""))
+    } else {
+      ExitSuccess
+    }
+  }, attempt_raw: glm_group_b_observe_attempt_raw, credential_file_name: "gunbc-glm-group-b-observe-admin-password" as NonEmptyStr)
+  }
+}
+
+// ── THE ACTUATING ROUTE ───────────────────────────────────────────────────────────────────────
+//
+// THE SUCCESSOR SPECS COME FROM THE LAUNCH PLANNER AND ARE NOT ASSEMBLED HERE. That is the whole
+// point of stacking on it: gunbc.spark.serving_arm_launch already derives a per-rank DockerCreateSpec
+// whose device, capability, memlock and seven environment names are projections of one transport
+// decision. A relaunch that built its own spec would be a second authority for the thing the
+// incident was about.
+//
+// THE INTENT IS A BOUNDED EXPERIMENT, WHICH IS WHAT THIS RELAUNCH ACTUALLY IS. The profile it plans
+// carries no execution receipt: no engine running sixteen sequences at 8567 basis points has been
+// observed serving, which is precisely why someone wants to relaunch onto it. Asking for normal
+// serving would be asserting the receipt this arm does not have, and gunbc.spark.serving_arm_launch
+// intent_refusal refuses exactly that. When an engine on this profile IS observed serving, the
+// subject gains its receipt and the intent becomes a real question again rather than a formality.
+//
+// AND THE RANK IN THE PLAN IS THE PLANNER'S, WHICH THE TRANSACTION THEN CHECKS AGAINST THE
+// CONTAINER'S OWN ARGV. Group B's rank order is not its address order, so the transaction refuses
+// rather than reconciling if the two disagree.
+// THE PLAN IS BUILT BEFORE ANY CREDENTIAL IS MATERIALIZED, so it carries no remote context yet: an
+// arm whose successor spec cannot even be planned should refuse without ever reading a secret off
+// disk. The context is bound per rank inside the access bracket, where it can be.
+type PlannedRank sole_constructor {
+  subject: ObservedRankSubject
+  spec: DockerCreateSpec
+  node_rank: Nat
+  gid_selection: NcclRoceGidSelection
+}
+
+type ArmPlanRoster
+  = ArmPlanned { plans: List<PlannedRank> }
+  | ArmPlanRefused { cause: NonEmptyStr }
+
+fn glm_group_b_rank_plans() -> ArmPlanRoster {
+  match glm_group_b_launch_plan(intent: ArmBoundedExperiment) {
+    ArmLaunchRefused { cause: why } => ArmPlanRefused { cause: why }
+    ArmLaunchPlanned { lines: ls, master: _ } => ArmPlanned {
+      plans: map(ls, l => PlannedRank {
+        subject: observed_rank_subject(host: l.node.host, container: l.container.name),
+        spec: l.container,
+        node_rank: l.node.node_rank,
+        gid_selection: arm_rail_gid_selection,
+      }),
+    }
+  }
+}
+
+data glm_group_b_relaunch_attempt_raw: String = "glm-group-b-transport-relaunch"
+data glm_group_b_relaunch_receipt_path: String = "target/glm-group-b-transport-relaunch.txt"
+
+// THIS ROUTE STOPS A SERVING ENGINE ON FOUR HOSTS. It is invoked by hand, by an operator who means
+// it, and it is not registered in gunbc.ci.ci_spec for that reason. Its safety is not that it is hard
+// to reach -- it is that it refuses before touching anything if the successor spec differs from the
+// incumbent anywhere a declared axis does not explain, and that it rolls back to the preserved
+// incumbent from every step after that.
+fn glm_group_b_relaunch_wet() -> ProcessExit
+{
+  match glm_group_b_rank_plans() {
+    ArmPlanRefused { cause: why } => exit_failure(reason: why as String)
+    ArmPlanned { plans: plans } =>
+      if count(plans) == 0 {
+        exit_failure(reason: "the launch planner produced no ranks for this group, so there is nothing to relaunch; an empty roster is a group whose members are not observed")
+      } else {
+      with_group_b_access(use: fn(trust, path, administrator, file) {
+        let outcome = relaunch_arm(ranks: map(plans, p => rank_plan(
+          subject: p.subject, spec: p.spec, node_rank: p.node_rank, gid_selection: p.gid_selection,
+          ctx: rank_context(host: p.subject.host, trust: trust, path: path, administrator: administrator, credential_file: file),
+        )))
+        let body = join([
+          join(["glm group b transport relaunch at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n"], ""),
+          arm_relaunch_outcome_text(o: outcome), "\n",
+        ], "")
+        let w = Filesystem.Write(path: glm_group_b_relaunch_receipt_path, content: body)
+        if !w.success {
+          exit_failure(reason: join(["glm group b relaunch receipt write failed: ", w.error], ""))
+        } else {
+          match outcome {
+            ArmCommitted { verdicts: _, preserved: _, moved_axes: _, unobservable: _, unclaimed_env: _ } => ExitSuccess
+            ArmRefusedBeforeActuation { causes: _ } => exit_failure(reason: body)
+            ArmRolledBack { step: _, cause: _, rollbacks: _ } => exit_failure(reason: body)
+          }
+        }
+      }, attempt_raw: glm_group_b_relaunch_attempt_raw, credential_file_name: "gunbc-glm-group-b-relaunch-admin-password" as NonEmptyStr)
+      }
+  }
+}
+
+// ── THE ACCESS BRACKET, SHARED BY BOTH ROUTES ─────────────────────────────────────────────────
+//
+// THE TRUST ANCHOR AND THE CREDENTIAL ARE MATERIALIZED ONCE AND THE FILE IS TORN DOWN BY THE BRACKET,
+// which is the shape gunbc.spark.v41_runtime_image_probe already uses for the same hosts and the same
+// daemon. A second spelling of it here would be a second place a credential file can outlive its use.
+fn with_group_b_access(
+  use: fn(FleetOpenSshTrustPolicy, SparkReachPath, Secret, NonEmptyStr) -> ProcessExit,
+  attempt_raw: String,
+  credential_file_name: NonEmptyStr,
+) -> ProcessExit
+{
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm group b route: ", c], ""))
+    ExecutorReachKnown { short_hostname: _, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: attempt_raw) {
+            Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: credential_file_name,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) { use(trust, path, administrator as Secret, file) },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: outcome } => outcome
+                  }
+              }
+            }
+          }
+      }
+  }
+}

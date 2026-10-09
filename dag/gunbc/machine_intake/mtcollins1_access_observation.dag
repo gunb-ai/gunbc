@@ -1,6 +1,8 @@
 module gunbc.machine_intake_mtcollins1_access_observation
 
 import std.types { EpochMs, Int, NonEmptyStr, String }
+import std.measure { Second, second }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootSelection, aarch64_uefi_once_boot_selection }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
@@ -275,6 +277,13 @@ data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserve
 // probably real, and it is still omitted because that session was driven by hand from a terminal
 // and not through any modeled route. A capability this row asserts must be one the AUTOMATION can
 // perform.
+// THE ONE-SHOT SELECTION THAT REACHES THIS UNIT'S VIRTUAL MEDIA: an aarch64 UEFI one-time boot from the
+// CD-ROM device, which is how its MegaRAC presents an attached image. A fact of the unit and its
+// controller, read by both policies that boot it -- gunbc.managed_host_boot boot_selection (the boot
+// arm) and gunbc.host_reset_boot_selection reset_boot_selection (the reset arm) -- so the device is
+// spelled once. The two arms stay separate decisions over it; neither admission accepts the other's.
+data mtcollins1_virtual_media_boot_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+
 data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
   firmware: mtcollins1_firmware,
   capabilities: [
@@ -283,3 +292,11 @@ data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareRel
     CapabilityOemRemoteMedia,
   ],
 }
+
+// THE BOUND ON ONE READ-ONLY ipmitool EXCHANGE WITH THIS UNIT'S CONTROLLER, as `timeout --kill-after`
+// operands. A fact about reaching this BMC, not about any one run that reads it: the boot's diagnostic
+// bundle, its media attach and the UI bundle observation all bound their IPMI reads by it. It lives
+// here, with the endpoint it bounds, so a read-only mode does not import the boot closure to learn it.
+data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
+
+data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)

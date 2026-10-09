@@ -1,5 +1,6 @@
 module v2.lens.enforcement.lens_module_gate
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -13,7 +14,7 @@ import v2.lens.registry {
   MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LeafModelVerification, LifecycleCarrier, LiveReadClassification,
-  MachineShape, MockTotality, MutationAdequacy, NonFoldResidue, ProductionQualificationOriginProbe,
+  MachineShape, MockTotality, MutationAdequacy, ProductionQualificationOriginProbe,
   RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
@@ -27,10 +28,9 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, list_snoc_item, HeadFound, HeadAbsent }
-import v2.std.collection { List }
+import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, HeadFound, HeadAbsent }
+import std.algebra { list_snoc_item }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }
 
@@ -503,14 +503,6 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
-      admission: GenuinelyNewInvariant
-    }
-    NonFoldResidue => LensInvariantSurface {
-      module: module,
-      lens_id: id,
-      projection: ProjectionImportGraph,
-      verdict_authority: VerdictLensVerdict,
-      remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
     MetaExecConfinement => LensInvariantSurface {

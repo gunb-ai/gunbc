@@ -1,42 +1,115 @@
 module gunbc.roadmap.roadmap_belt_commit
 
-import std.types { String, NonEmptyStr }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
-
-type BeltCommitDecision
-  = CommitNeeded { message: NonEmptyStr }
-  | CommitNotNeeded { reason: NonEmptyStr }
-
-fn belt_commit_message(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["dispatch: ", node_id, " a", attempt_key], "") as NonEmptyStr
+import std.types { String, NonEmptyStr, List }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
+import gunbc.roadmap.roadmap_submission {
+  SubmissionObservation,
+  SubmissionCapture,
+  WorkerSubmission,
+  CandidateDecision,
+  CandidateFresh,
+  CandidateCheckpoint,
+  submission_candidate_decision,
 }
 
-fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attempt_key: String, entries_nul: String) -> BeltCommitDecision {
+// SUBMISSION ≠ CHECKPOINT (docs/plans/harness-work-lifecycle.md rule 2). Both are commits the belt
+// makes over a dirty terminal worktree, but they answer different questions and the vocabulary keeps
+// them apart end to end: a CANDIDATE commit is the captured handoff -- created only when a fresh,
+// decodable submission declares it -- and only it may advance to authoritative verification; a
+// CHECKPOINT commit is preservation only, and its note says why no candidate was declared (no
+// artifact, an undecodable artifact, or a declaration already captured at an earlier head). The
+// purity boundary is unchanged from the pre-submission design: this module decides from values, the
+// belt performs every read and write.
+type BeltCommitDecision
+  = CandidateCommitNeeded { message: NonEmptyStr, submission: WorkerSubmission, digest: String }
+  | CheckpointCommitNeeded { message: NonEmptyStr, note: String }
+  | CommitNotNeeded { reason: NonEmptyStr }
+
+fn belt_candidate_commit_message(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["dispatch candidate: ", node_id, " a", attempt_key], "") as NonEmptyStr
+}
+
+// THE INVERSE OF THE CANDIDATE MESSAGE, beside its one producer: the attempt a candidate commit was
+// captured from, read back from the message belt_candidate_commit_message wrote. Absent for any
+// message that producer could not have written -- a caller treats that as underivable, never as
+// "no attempt". A commit's BASE is typed since the BaseAdvance follow-up (its parent's intake
+// record, gunbc.scm.intake); its capturing ATTEMPT is not, so this producer's format remains the only
+// record of it, read only here and only for a line that predates the typed base record.
+type CandidateCommitSubject {
+  node_id: String
+  attempt_key: String
+}
+
+data belt_candidate_commit_prefix: String = "dispatch candidate: "
+
+fn belt_candidate_commit_subject(message: String) -> CandidateCommitSubject? {
+  if !starts_with(s: message, prefix: belt_candidate_commit_prefix) {
+    none
+  } else {
+    let rest = substring(s: message, start: string_length(s: belt_candidate_commit_prefix), end: string_length(s: message))
+    let parts = split(s: rest, delimiter: " a")
+    if count(parts) != 2 {
+      none
+    } else {
+      match parts.first() {
+        Absent => none
+        Present { value: node_id } =>
+          match parts.last() {
+            Absent => none
+            Present { value: attempt_key } =>
+              if node_id == "" || attempt_key == "" || (belt_candidate_commit_message(node_id: node_id, attempt_key: attempt_key) as String) != message {
+                none
+              } else {
+                Present { value: CandidateCommitSubject { node_id: node_id, attempt_key: attempt_key } }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn belt_checkpoint_commit_message(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["dispatch checkpoint: ", node_id, " a", attempt_key], "") as NonEmptyStr
+}
+
+fn belt_commit_decision_for_terminal(
+  node_id: String,
+  attempt_key: String,
+  entries_nul: String,
+  submission: SubmissionObservation,
+  captures: List<SubmissionCapture>,
+) -> BeltCommitDecision {
+  if entries_nul == "" {
+    CommitNotNeeded { reason: "worktree clean" }
+  } else {
+    match submission_candidate_decision(observation: submission, captures: captures) {
+      CandidateFresh { submission, digest } =>
+        CandidateCommitNeeded {
+          message: belt_candidate_commit_message(node_id: node_id, attempt_key: attempt_key),
+          submission: submission,
+          digest: digest,
+        }
+      CandidateCheckpoint { note } =>
+        CheckpointCommitNeeded {
+          message: belt_checkpoint_commit_message(node_id: node_id, attempt_key: attempt_key),
+          note: note,
+        }
+    }
+  }
+}
+
+fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attempt_key: String, entries_nul: String, submission: SubmissionObservation, captures: List<SubmissionCapture>) -> BeltCommitDecision {
   match provider {
     ProviderNotStarted => CommitNotNeeded { reason: "provider not completed" }
     ProviderStarting { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderAwaitingSeat { detail: _ } => CommitNotNeeded { reason: "provider not completed" }
     ProviderRunning { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
-    ProviderCompleted { activity: _ } => {
-      if entries_nul == "" {
-        CommitNotNeeded { reason: "worktree clean" }
-      } else {
-        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
-      }
-    }
-    ProviderFailed { activity: _, detail: _ } => {
-      if entries_nul == "" {
-        CommitNotNeeded { reason: "worktree clean" }
-      } else {
-        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
-      }
-    }
-    ProviderBudgetSpent { activity: _, detail: _ } => {
-      if entries_nul == "" {
-        CommitNotNeeded { reason: "worktree clean" }
-      } else {
-        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
-      }
-    }
+    ProviderCompleted { activity: _ } =>
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
+    ProviderFailed { activity: _, detail: _ } =>
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
+    ProviderBudgetSpent { activity: _, detail: _ } =>
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
     ProviderEventsRefused { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
   }
 }

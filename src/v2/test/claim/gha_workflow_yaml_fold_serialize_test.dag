@@ -1,10 +1,11 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.types { YamlValue }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.github.actions { Job }
 import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
 import extdeps.languages.yaml.gha_workflow { job_yaml }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.gha_workflow_yaml_fold {
   gha_fold_flat_steps_wrong_emitted,
   gha_fold_flat_steps_wrong_target_model_witness,
@@ -17,7 +18,6 @@ import v2.extdeps.languages.gha_workflow_yaml_fold {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -25,7 +25,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn gha_fold_oracle_job(job: Job) -> String {
-  serialize_yaml(v: job_yaml(job: job))
+  emitted_yaml_text(v: job_yaml(job: job))
 }
 
 fn gha_fold_serialize_emitted(target: TargetModel, emitted: Node) -> Outcome<String> {
@@ -89,5 +89,14 @@ test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
         Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => true
+  }
+}
+
+// The emitted text, or "" when the writer refuses: every claim below asserts content the refused
+// value does not have, so a refusal cannot pass one.
+fn emitted_yaml_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
   }
 }

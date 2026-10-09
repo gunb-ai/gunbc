@@ -1,5 +1,6 @@
 module v2.test.claim.bash_program_fold
 
+import std.types { List }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign,
@@ -25,13 +26,13 @@ import v2.workflow.bash_emit {
   BashEmitTagged,
   bash_emit_matches_golden,
   bash_emit_program,
-  bash_emit_program_matches_golden
+  bash_emit_program_matches_golden,
+  bash_emit_program_sequence
 }
-import v2.std.algebra { list_append, list_map }
-import v2.std.collection { List }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.test.claim.bash_program_fold_support {
   bash_program_fixture_assign_root_node,
@@ -297,3 +298,26 @@ test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
   )
 }
 
+// bash_emit_program_sequence: the one join of complete emitted programs. The positive control
+// joins newline-terminated parts in order and lets the last one stay open; the RED is a non-final
+// part that does not end its line, which would fuse two commands and must refuse, never join.
+test fn bash_program_sequence_joins_terminated_parts_in_order_holds() -> Bool {
+  match bash_emit_program_sequence(programs: ["A=1\n", "echo \"$A\"\n", "true"]) {
+    Accepted { value: text, diagnostics: _ } => text == "A=1\necho \"$A\"\ntrue"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_program_sequence_refuses_an_unterminated_non_final_part_holds() -> Bool {
+  match bash_emit_program_sequence(programs: ["A=1", "echo \"$A\"\n"]) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn bash_program_sequence_refuses_an_empty_non_final_part_holds() -> Bool {
+  match bash_emit_program_sequence(programs: ["", "true"]) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

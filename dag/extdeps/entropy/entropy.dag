@@ -7,7 +7,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { Int, Unit }
-import std.string_type { String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -77,9 +76,10 @@ data entropy_read_password_shell_emit_dissolution_trigger: DissolutionCondition 
 // captures a producing stage's exit status through a pipe, that one checks the length of a command
 // substitution's result -- and they collided here only because both added a dissolution row to the
 // same region and the same import at different positions.
-data urandom_read_bytes_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Urandom.ReadBytes / Urandom.ReadPassword transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
+data urandom_read_bytes_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Urandom.ReadBytes / Urandom.ReadPassword transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN [C7 producer-status-pipeline] (an extdeps shell transport cannot declare a producer-then-consumer argv pair whose realization reports the PRODUCING stage's exit status; dash has no pipefail) lands and these operations declare that argv pair in place of an sh -c program.")
 service Urandom {
   operation ReadBytes {
+    requires none
     input { count: Int }
     output { octets_b64: String from "stdout" }
     readonly
@@ -91,6 +91,7 @@ service Urandom {
   }
 
   operation ReadPassword {
+    requires none
     input { count: Int }
     output { password: String from "stdout" }
     readonly

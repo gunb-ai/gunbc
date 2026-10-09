@@ -1,0 +1,9 @@
+module test.fixture.emitted_closure_partition.mutated.entry
+
+import test.fixture.emitted_closure_partition.mutated.left { mutated_left_value }
+import test.fixture.emitted_closure_partition.mutated.right { mutated_right_value }
+import test.fixture.emitted_closure_partition.mutated.stray { mutated_stray_value }
+
+fn mutated_entry_value() -> Int {
+  mutated_left_value() + mutated_right_value() + mutated_stray_value()
+}

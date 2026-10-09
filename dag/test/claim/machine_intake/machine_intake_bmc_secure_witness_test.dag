@@ -2,7 +2,7 @@ module test.claim.machine_intake_bmc_secure_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
@@ -33,26 +33,24 @@ import gunbc.machine_intake_subject {
   MachineIntakeSubject,
   QualificationSubject,
   UnitKey,
-  content_hash_equal,
   qualification_subject_of,
 }
+import gunbc.deployment_risk { ProdRisk, TestRisk }
 import gunbc.machine_intake_phase {
   Arrival,
   BmcAccess,
   BmcSecure,
-  DevelopmentAndTest,
   IntakePhase,
-  IntakeQualificationPolicy,
+  MachineQualificationPolicy,
   OperatorAction,
-  Production,
   QualificationPolicy,
   QualificationRefusalOwner,
   StagingInfrastructure,
   UnitHardware,
   fleet_admission_required_phases,
-  intake_qualification_policy,
-  intake_qualification_policy_digest,
-  production_qualification_policy,
+  machine_qualification_policy,
+  machine_qualification_policy_digest,
+  prod_risk_admitting_qualification_policy,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -123,7 +121,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialRetired,
   PublishedCredentialRetirementUnestablished,
   PublishedCredentialRetainedByPolicy,
-  PublishedCredentialRetainedNotAdmittedForProduction,
+  PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   PublishedCredentialNotRetained,
   PublishedCredentialStillAccepted,
   BreakGlassAccount,
@@ -361,8 +359,8 @@ fn both_lan_accepting() -> List<PublishedCredentialLanProbe> {
   ]
 }
 
-fn derive_dev(observation: BmcCredentialRotationObservation) -> BmcSecureStanding {
-  derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: DevelopmentAndTest))
+fn derive_admitting_test_risk(observation: BmcCredentialRotationObservation) -> BmcSecureStanding {
+  derive_bmc_secure(subject: intake_subject, observation: observation, policy: machine_qualification_policy(admits: TestRisk))
 }
 
 // One rotation observation. Every test below perturbs exactly one reading.
@@ -433,7 +431,7 @@ fn refused_with(standing: BmcSecureStanding, expected: BmcSecureRefusalCause) ->
 // the published credential does not — and the phase is satisfied. Without this
 // arm every refusal below would also pass on a function that refused always.
 test fn nominal_rotation_secures_the_bmc() -> Bool {
-  let standing = derive_dev(observation: nominal_rotation())
+  let standing = derive_admitting_test_risk(observation: nominal_rotation())
   let satisfied = match standing.outcome {
     BmcSecured { endpoint: e, reference: r, evidence: ev, latest_admitted_probe_at: at, published_credential: acc } =>
       e == controller && r.credential_epoch == 1 && list_length(items: ev) == 7 && at == 1788000008000 && acc == published_account_retired
@@ -447,7 +445,7 @@ test fn nominal_rotation_secures_the_bmc() -> Bool {
 test fn latest_admitted_probe_at_is_max_not_census_order() -> Bool {
   let later_on_first = CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000009000 }
   let earlier_on_second = CredentialRejected { evidence: evidence(label: "published-login-401-231"), observed_at: 1788000005500 }
-  let standing = derive_dev(
+  let standing = derive_admitting_test_risk(
     observation: rotation_observed(
       subj: intake_subject,
       previous_epoch: 0,
@@ -489,7 +487,7 @@ test fn published_credential_still_working_refuses() -> Bool {
     ],
     account: published_account_retired,
   )
-  let standing = derive_dev(observation: observation)
+  let standing = derive_admitting_test_risk(observation: observation)
   refused_with(standing: standing, expected: PublishedCredentialStillAccepted { channel: channel_one }) && (is_secured(standing: standing) == false)
 }
 
@@ -512,7 +510,7 @@ test fn published_credential_retirement_unestablished_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
   )
 }
@@ -536,7 +534,7 @@ test fn published_probe_before_rotation_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
   )
 }
@@ -557,7 +555,7 @@ test fn split_lan_census_one_accepting_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialStillAccepted { channel: channel_eight },
   )
 }
@@ -579,7 +577,7 @@ test fn single_address_without_census_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialCensusNotTaken,
   )
 }
@@ -602,7 +600,7 @@ test fn census_member_unprobed_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
   )
 }
@@ -626,7 +624,7 @@ test fn probe_that_agrees_on_channel_but_not_address_does_not_cover() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
   )
 }
@@ -646,7 +644,7 @@ test fn published_probe_unmatched_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialProbeUnmatched { channel: channel_two },
   )
 }
@@ -668,7 +666,7 @@ test fn published_probe_duplicate_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialProbeDuplicate { channel: channel_one },
   )
 }
@@ -686,7 +684,7 @@ test fn serial_only_census_is_not_vacuous_secure() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialNoAddressableLanMember,
   )
 }
@@ -706,7 +704,7 @@ test fn unaddressed_lan_with_administrator_access_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
   )
 }
@@ -726,7 +724,7 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_retired,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   is_secured(standing: standing)
 }
@@ -746,7 +744,7 @@ test fn unaddressed_lan_no_access_for_other_user_does_not_close() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialUserAccessUnestablished { channel: channel_seven },
   )
 }
@@ -770,7 +768,7 @@ test fn census_before_rotation_refuses() -> Bool {
     published_account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialCensusPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   )
 }
@@ -791,7 +789,7 @@ test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
     published_account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialCensusPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   )
 }
@@ -816,7 +814,7 @@ test fn published_account_before_rotation_refuses() -> Bool {
     },
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialAccountPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   )
 }
@@ -835,7 +833,7 @@ test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_retired,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   is_secured(standing: standing)
 }
@@ -853,7 +851,7 @@ test fn serial_channel_with_administrator_access_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialChannelAccessNotClosed { channel: channel_two },
   )
 }
@@ -872,7 +870,7 @@ test fn disabled_not_retired_is_a_secured_residual() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_disabled,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
@@ -895,7 +893,7 @@ test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_disabled_reenable,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
@@ -904,8 +902,8 @@ test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
   }
 }
 
-test fn break_glass_retention_secures_dev_test() -> Bool {
-  let standing = derive_dev(observation: rotation_observed(
+test fn break_glass_retention_secures_under_test_risk_admission() -> Bool {
+  let standing = derive_admitting_test_risk(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
     bootstrap: bootstrap_accepted,
@@ -923,7 +921,7 @@ test fn break_glass_retention_secures_dev_test() -> Bool {
   }
 }
 
-test fn retained_credential_refuses_under_production() -> Bool {
+test fn retained_credential_refuses_under_prod_risk_admission() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -936,13 +934,24 @@ test fn retained_credential_refuses_under_production() -> Bool {
     account: published_account_break_glass,
   )
   refused_with(
-    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: Production)),
-    expected: PublishedCredentialRetainedNotAdmittedForProduction,
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: machine_qualification_policy(admits: ProdRisk)),
+    expected: PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   )
 }
 
-test fn published_factory_retention_secures_dev_test_only_when_explicit() -> Bool {
-  let standing = derive_dev(observation: rotation_observed(
+// The ProdRisk arm's positive control: a ProdRisk-admitting policy requires the published credential
+// closed, and a closed one secures. Without it the refusal above could be a policy that refuses everything.
+test fn closed_published_credential_secures_under_prod_risk_admission() -> Bool {
+  let standing = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation(), policy: machine_qualification_policy(admits: ProdRisk))
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
+      acc == published_account_retired && standing.policy.admits == ProdRisk
+    BmcSecureRefused { cause: _ } => false
+  }
+}
+
+test fn published_factory_retention_secures_under_test_risk_admission_only_when_explicit() -> Bool {
+  let standing = derive_admitting_test_risk(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
     bootstrap: bootstrap_accepted,
@@ -960,7 +969,7 @@ test fn published_factory_retention_secures_dev_test_only_when_explicit() -> Boo
   }
 }
 
-test fn published_factory_retention_refuses_under_production() -> Bool {
+test fn published_factory_retention_refuses_under_prod_risk_admission() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -973,15 +982,15 @@ test fn published_factory_retention_refuses_under_production() -> Bool {
     account: published_account_factory_retained,
   )
   refused_with(
-    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: Production)),
-    expected: PublishedCredentialRetainedNotAdmittedForProduction,
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: machine_qualification_policy(admits: ProdRisk)),
+    expected: PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   )
 }
 
-// review 65136: a DevTest factory-retention standing is BMC-secured on purpose,
-// but derive_fleet_admission under the Production bar must not mint FleetAdmissible.
-test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -> Bool {
-  let standing = derive_dev(observation: rotation_observed(
+// review 65136: a TestRisk-admitting factory-retention standing is BMC-secured on purpose,
+// but derive_fleet_admission under the ProdRisk-admitting bar must not mint FleetAdmissible.
+test fn factory_retention_test_risk_ledger_is_not_fleet_admissible_under_prod_risk_bar() -> Bool {
+  let standing = derive_admitting_test_risk(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
     bootstrap: bootstrap_accepted,
@@ -995,7 +1004,7 @@ test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -
   match validate_intake_receipt_ledger(receipts: chain(receipts: ledger_with_bmc_secure(standing: standing))) {
     LedgerRefused { cause: _ } => false
     LedgerValidated { ledger: l } =>
-      match derive_fleet_admission(observed_subject: subject, ledger: l, policy: production_qualification_policy(), now: 1788000100000) {
+      match derive_fleet_admission(observed_subject: subject, ledger: l, policy: prod_risk_admitting_qualification_policy(), now: 1788000100000) {
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => is_secured(standing: standing)
         FleetAdmissible { receipt: _ } => false
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
@@ -1016,7 +1025,7 @@ test fn factory_retention_without_acceptance_is_not_retained() -> Bool {
     account: published_account_factory_retained,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: PublishedCredentialNotRetained { channel: channel_one },
   )
 }
@@ -1033,7 +1042,7 @@ test fn managed_credential_rejected_refuses() -> Bool {
     probes: both_lan_rejecting(),
     account: published_account_retired,
   )
-  refused_with(standing: derive_dev(observation: observation), expected: ManagedCredentialRejected)
+  refused_with(standing: derive_admitting_test_risk(observation: observation), expected: ManagedCredentialRejected)
 }
 
 test fn managed_credential_unestablished_refuses() -> Bool {
@@ -1049,7 +1058,7 @@ test fn managed_credential_unestablished_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: ManagedCredentialUnestablished { detail: "no route to the account service" },
   )
 }
@@ -1067,7 +1076,7 @@ test fn managed_probe_before_rotation_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: ManagedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000004000 },
   )
 }
@@ -1088,7 +1097,7 @@ test fn credential_epoch_not_advanced_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: CredentialEpochNotAdvanced { previous: 1, observed: 1 },
   )
 }
@@ -1108,7 +1117,7 @@ test fn rotation_not_attempted_refuses() -> Bool {
     published_user: published_user,
     published_account: published_account_retired,
   )
-  refused_with(standing: derive_dev(observation: observation), expected: CredentialRotationNotApplied)
+  refused_with(standing: derive_admitting_test_risk(observation: observation), expected: CredentialRotationNotApplied)
 }
 
 test fn account_management_unavailable_refuses() -> Bool {
@@ -1127,7 +1136,7 @@ test fn account_management_unavailable_refuses() -> Bool {
     published_account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: AccountManagementUnreachable { detail: "AccountService returned 501" },
   )
 }
@@ -1147,7 +1156,7 @@ test fn bootstrap_credential_already_rejected_refuses() -> Bool {
     probes: both_lan_rejecting(),
     account: published_account_retired,
   )
-  refused_with(standing: derive_dev(observation: observation), expected: PreviouslyRotatedCredentialRequired)
+  refused_with(standing: derive_admitting_test_risk(observation: observation), expected: PreviouslyRotatedCredentialRequired)
 }
 
 test fn bootstrap_credential_state_unknown_refuses() -> Bool {
@@ -1163,7 +1172,7 @@ test fn bootstrap_credential_state_unknown_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: CredentialStateUnknown { detail: "tls handshake failed" },
   )
 }
@@ -1183,7 +1192,7 @@ test fn rotation_observation_for_other_attempt_refuses() -> Bool {
     account: published_account_retired,
   )
   refused_with(
-    standing: derive_dev(observation: observation),
+    standing: derive_admitting_test_risk(observation: observation),
     expected: RotationObservationForOtherAttempt { expected: intake_subject, found: other_attempt_subject },
   )
 }
@@ -1212,7 +1221,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
   PublishedCredentialProbeDuplicate { channel: channel_one },
   PublishedCredentialProbeUnmatched { channel: channel_eight },
-  PublishedCredentialRetainedNotAdmittedForProduction,
+  PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   PublishedCredentialNotRetained { channel: channel_eight },
 ]
 
@@ -1256,7 +1265,7 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialCensusMemberUnprobed { channel: _ } => 20
     PublishedCredentialProbeDuplicate { channel: _ } => 21
     PublishedCredentialProbeUnmatched { channel: _ } => 22
-    PublishedCredentialRetainedNotAdmittedForProduction => 23
+    PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => 23
     PublishedCredentialNotRetained { channel: _ } => 24
   }
 }
@@ -1296,9 +1305,9 @@ data producer: IntakeProducerIdentity = IntakeProducerIdentity {
   agent_artifact: none,
 }
 
-data policy_devtest: IntakeQualificationPolicy = intake_qualification_policy(environment: DevelopmentAndTest)
-data policy_production: IntakeQualificationPolicy = intake_qualification_policy(environment: Production)
-data policy_digest: ContentHash = intake_qualification_policy_digest(policy: policy_devtest)
+data policy_admits_test_risk: MachineQualificationPolicy = machine_qualification_policy(admits: TestRisk)
+data policy_admits_prod_risk: MachineQualificationPolicy = machine_qualification_policy(admits: ProdRisk)
+data policy_digest: ContentHash = machine_qualification_policy_digest(policy: policy_admits_test_risk)
 
 fn satisfied_receipt_with(phase: IntakePhase, digest: ContentHash) -> IntakeReceiptEnvelope {
   IntakeReceiptEnvelope {
@@ -1366,7 +1375,7 @@ fn ledger_with_bmc_secure(standing: BmcSecureStanding) -> List<IntakeReceiptEnve
     ended_at: 1788000001000,
     previous_receipt: none,
   )
-  let digest = intake_qualification_policy_digest(policy: standing.policy)
+  let digest = machine_qualification_policy_digest(policy: standing.policy)
   fold(
     fleet_admission_required_phases,
     init: [],
@@ -1405,7 +1414,7 @@ test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
     probes: split_lan_probes(),
     account: published_account_retired,
   )
-  match disposition_with_bmc_secure(standing: derive_dev(observation: observation)) {
+  match disposition_with_bmc_secure(standing: derive_admitting_test_risk(observation: observation)) {
     Present { value: d } =>
       match d {
         PartsHold { reason: r, next_action: _ } =>
@@ -1424,7 +1433,7 @@ test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
 // admits, so the refusal above is attributable to the published credential and
 // not to anything else in the roster.
 test fn rotated_bmc_admits_the_unit() -> Bool {
-  match disposition_with_bmc_secure(standing: derive_dev(observation: nominal_rotation())) {
+  match disposition_with_bmc_secure(standing: derive_admitting_test_risk(observation: nominal_rotation())) {
     Present { value: d } =>
       match d {
         Admitted { admission_receipt: _ } => true
@@ -1439,7 +1448,7 @@ test fn rotated_bmc_admits_the_unit() -> Bool {
 // satisfied one carries the four readings it rests on — so a reader of the
 // durable spine can tell which rotation secured the unit without this module.
 test fn phase_receipt_projects_the_standing() -> Bool {
-  let secured = derive_dev(observation: nominal_rotation())
+  let secured = derive_admitting_test_risk(observation: nominal_rotation())
   let good = bmc_secure_phase_receipt(standing: secured, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let refused_standing = derive_bmc_secure(
     subject: intake_subject,
@@ -1454,7 +1463,7 @@ test fn phase_receipt_projects_the_standing() -> Bool {
     probes: split_lan_probes(),
     account: published_account_retired,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let good_ok = match good.result {
@@ -1480,7 +1489,7 @@ test fn phase_receipt_projects_the_standing() -> Bool {
 // receipts that a ledger tells apart: attempt one's receipt placed inside a
 // ledger whose genesis is attempt two's is refused on the subject it bears.
 test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
-  let standing_one = derive_dev(observation: nominal_rotation())
+  let standing_one = derive_admitting_test_risk(observation: nominal_rotation())
   let standing_two = derive_bmc_secure(
     subject: other_attempt_subject,
     observation: rotation_observed(
@@ -1494,7 +1503,7 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
     probes: both_lan_rejecting(),
     account: published_account_retired,
     ),
-    policy: intake_qualification_policy(environment: DevelopmentAndTest),
+    policy: machine_qualification_policy(admits: TestRisk),
   )
   let receipt_one = bmc_secure_phase_receipt(standing: standing_one, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let receipt_two = bmc_secure_phase_receipt(standing: standing_two, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
@@ -1512,8 +1521,8 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
   both_secured && carries_own_attempt && mixed
 }
 
-test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool {
-  let standing = derive_dev(observation: nominal_rotation())
+test fn test_risk_admitting_standing_cannot_be_inherited_under_prod_risk_bar() -> Bool {
+  let standing = derive_admitting_test_risk(observation: nominal_rotation())
   let bmc_receipt = bmc_secure_phase_receipt(
     standing: standing,
     producer: producer,
@@ -1521,18 +1530,18 @@ test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool {
     ended_at: 1788000009000,
     previous_receipt: none,
   )
-  let production_digest = intake_qualification_policy_digest(policy: policy_production)
+  let prod_risk_digest = machine_qualification_policy_digest(policy: policy_admits_prod_risk)
   let mixed = fold(
     fleet_admission_required_phases,
     init: [],
-    f: (acc, p) => if (p == bmc_secure_phase) { concat(acc, [bmc_receipt]) } else { concat(acc, [satisfied_receipt_with(phase: p, digest: production_digest)]) },
+    f: (acc, p) => if (p == bmc_secure_phase) { concat(acc, [bmc_receipt]) } else { concat(acc, [satisfied_receipt_with(phase: p, digest: prod_risk_digest)]) },
   )
-  let digest_stays_devtest =
+  let digest_stays_test_risk =
     content_hash_equal(
       left: bmc_receipt.policy_digest,
-      right: intake_qualification_policy_digest(policy: standing.policy),
+      right: machine_qualification_policy_digest(policy: standing.policy),
     )
-      && (content_hash_equal(left: bmc_receipt.policy_digest, right: production_digest) == false)
+      && (content_hash_equal(left: bmc_receipt.policy_digest, right: prod_risk_digest) == false)
   let ledger_refuses_restamp = match validate_intake_receipt_ledger(receipts: chain(receipts: mixed)) {
     LedgerValidated { ledger: _ } => false
     LedgerRefused { cause: c } => match c {
@@ -1540,5 +1549,5 @@ test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool {
       _ => false
     }
   }
-  is_secured(standing: standing) && digest_stays_devtest && ledger_refuses_restamp
+  is_secured(standing: standing) && digest_stays_test_risk && ledger_refuses_restamp
 }

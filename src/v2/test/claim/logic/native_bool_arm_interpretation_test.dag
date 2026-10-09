@@ -1,0 +1,30 @@
+module v2.test.claim.logic.native_bool_arm_interpretation_test
+
+import v2.test.fixture.local_verdict_coproduct { verdict_top, verdict_negate, verdict_is_top }
+
+// THE INTERPRETER'S HALF OF THE NATIVE-VARIANT LOWERING, through the real interpreter route. The
+// arms of std.types Bool (the kernel Bool every module's `Bool` resolves to) realize as the host
+// bool: a `True`/`False` pattern matches the host values and a constructed `True` IS host true.
+// Before the lowering the interpreter matched variant patterns by name against a host bool and
+// failed (PatternMatchFailure { value: "true" }).
+//
+// The patterns are the subject here, so the arm bodies return host values. A bare `True`/`False`
+// VALUE in this corpus still resolves to v2.std.logic's structural Bool until the Bool de-fork
+// deletes it; the constructed-arm claim therefore lives with that cut, where the one Bool is the
+// only thing a bare arm can mean.
+fn negate_by_arms(b: Bool) -> Bool {
+  match b {
+    True => false
+    False => true
+  }
+}
+
+test fn bool_arms_match_the_host_values() -> Bool {
+  negate_by_arms(b: true) == false && negate_by_arms(b: false) == true
+}
+
+// THE IDENTITY CONTROL: a module-local coproduct whose arms are spelled True/False keeps being its
+// own coproduct in the interpreter -- constructed as its variant, matched as its variant.
+test fn a_local_coproduct_with_true_false_arms_stays_its_own_variants() -> Bool {
+  verdict_is_top(v: verdict_top()) && !verdict_is_top(v: verdict_negate(v: verdict_top()))
+}

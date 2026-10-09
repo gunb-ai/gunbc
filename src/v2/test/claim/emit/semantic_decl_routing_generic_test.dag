@@ -1,23 +1,23 @@
 module v2.test.emit.semantic_decl_routing_generic
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
 import std.algebra { Empty }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data semantic_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
+data semantic_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: i32 } }")
 
-data semantic_witness_wrong_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Violates { diagnostic: Diagnostic }, Holds { value: C } }")
+data semantic_witness_wrong_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Violates { diagnostic: i32 }, Holds { value: C } }")
 
 data semantic_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
@@ -28,7 +28,7 @@ fn sdrg_atom_type(name: Symbol) -> Node {
 }
 
 fn sdrg_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdrg_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: sdrg_atom_type(name: type_name))
 }
 
 fn sdrg_record(edges: List<Edge>) -> Node {
@@ -36,7 +36,7 @@ fn sdrg_record(edges: List<Edge>) -> Node {
 }
 
 fn sdrg_variant_edge(name: Symbol, payload: Node) -> Edge {
-  Edge { label: Named { name: name }, target: payload }
+  Edge { label: Authored { name: name }, target: payload }
 }
 
 fn semantic_witness_coproduct() -> Node {
@@ -44,7 +44,7 @@ fn semantic_witness_coproduct() -> Node {
     kind: TypeNode { connective: Disj },
     children: [
       sdrg_variant_edge(name: ^Holds, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^value, type_name: ^C) ])),
-      sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^Diagnostic) ]))
+      sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^dag_binding_type_int) ]))
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -55,7 +55,7 @@ fn semantic_pair_record() -> Node {
 }
 
 fn semantic_generic_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_semantic_decl_target_model_staging()) {
+  match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_semantic_decl_target_model_staging(), realization_host: rust_semantic_decl_target_model_staging()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

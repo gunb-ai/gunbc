@@ -6,6 +6,7 @@ use self::CheckedIntOperands::*;
 use self::CheckedNat::*;
 use self::IntegerArithmeticOperation::*;
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -18,7 +19,7 @@ pub fn int_inclusive_max() -> i64 {
 }
 
 pub fn int_inclusive_min() -> i64 {
-    ((0 - int_inclusive_max()) - 1)
+    v1_rt::int_sub(v1_rt::int_sub(0, int_inclusive_max()), 1)
 }
 
 #[derive(
@@ -54,7 +55,7 @@ pub enum CheckedInt {
 
 pub fn checked_int_add(a: i64, b: i64) -> Rc<CheckedInt> {
     if (b.clone() > 0) {
-        if (a.clone() > (int_inclusive_max() - b.clone())) {
+        if (a.clone() > v1_rt::int_sub(int_inclusive_max(), b.clone())) {
             Rc::new(CheckedInt::CheckedIntOverflow {
                 cause: Rc::new(IntegerOverflow {
                     operation: IntegerArithmeticOperation::IntegerAdd,
@@ -66,12 +67,12 @@ pub fn checked_int_add(a: i64, b: i64) -> Rc<CheckedInt> {
             })
         } else {
             Rc::new(CheckedInt::CheckedIntReady {
-                value: (a.clone() + b.clone()),
+                value: v1_rt::int_add(a.clone(), b.clone()),
             })
         }
     } else {
         if (b.clone() < 0) {
-            if (a.clone() < (int_inclusive_min() - b.clone())) {
+            if (a.clone() < v1_rt::int_sub(int_inclusive_min(), b.clone())) {
                 Rc::new(CheckedInt::CheckedIntOverflow {
                     cause: Rc::new(IntegerOverflow {
                         operation: IntegerArithmeticOperation::IntegerAdd,
@@ -83,7 +84,7 @@ pub fn checked_int_add(a: i64, b: i64) -> Rc<CheckedInt> {
                 })
             } else {
                 Rc::new(CheckedInt::CheckedIntReady {
-                    value: (a.clone() + b.clone()),
+                    value: v1_rt::int_add(a.clone(), b.clone()),
                 })
             }
         } else {
@@ -94,7 +95,7 @@ pub fn checked_int_add(a: i64, b: i64) -> Rc<CheckedInt> {
 
 pub fn checked_int_subtract(a: i64, b: i64) -> Rc<CheckedInt> {
     if (b.clone() > 0) {
-        if (a.clone() < (int_inclusive_min() + b.clone())) {
+        if (a.clone() < v1_rt::int_add(int_inclusive_min(), b.clone())) {
             Rc::new(CheckedInt::CheckedIntOverflow {
                 cause: Rc::new(IntegerOverflow {
                     operation: IntegerArithmeticOperation::IntegerSubtract,
@@ -106,12 +107,12 @@ pub fn checked_int_subtract(a: i64, b: i64) -> Rc<CheckedInt> {
             })
         } else {
             Rc::new(CheckedInt::CheckedIntReady {
-                value: (a.clone() - b.clone()),
+                value: v1_rt::int_sub(a.clone(), b.clone()),
             })
         }
     } else {
         if (b.clone() < 0) {
-            if (a.clone() > (int_inclusive_max() + b.clone())) {
+            if (a.clone() > v1_rt::int_add(int_inclusive_max(), b.clone())) {
                 Rc::new(CheckedInt::CheckedIntOverflow {
                     cause: Rc::new(IntegerOverflow {
                         operation: IntegerArithmeticOperation::IntegerSubtract,
@@ -123,7 +124,7 @@ pub fn checked_int_subtract(a: i64, b: i64) -> Rc<CheckedInt> {
                 })
             } else {
                 Rc::new(CheckedInt::CheckedIntReady {
-                    value: (a.clone() - b.clone()),
+                    value: v1_rt::int_sub(a.clone(), b.clone()),
                 })
             }
         } else {
@@ -142,7 +143,7 @@ pub fn checked_int_negate(a: i64) -> Rc<CheckedInt> {
         })
     } else {
         Rc::new(CheckedInt::CheckedIntReady {
-            value: (0 - a.clone()),
+            value: v1_rt::int_sub(0, a.clone()),
         })
     }
 }
@@ -154,7 +155,7 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
         if (a.clone() == 0) {
             Rc::new(CheckedInt::CheckedIntReady { value: 0 })
         } else {
-            if (b.clone() == (0 - 1)) {
+            if (b.clone() == v1_rt::int_sub(0, 1)) {
                 if (a.clone() == int_inclusive_min()) {
                     Rc::new(CheckedInt::CheckedIntOverflow {
                         cause: Rc::new(IntegerOverflow {
@@ -167,13 +168,13 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
                     })
                 } else {
                     Rc::new(CheckedInt::CheckedIntReady {
-                        value: (0 - a.clone()),
+                        value: v1_rt::int_sub(0, a.clone()),
                     })
                 }
             } else {
                 if (b.clone() > 0) {
                     if (a.clone() > 0) {
-                        if (a.clone() > (int_inclusive_max() / b.clone())) {
+                        if (a.clone() > v1_rt::int_div(int_inclusive_max(), b.clone())) {
                             Rc::new(CheckedInt::CheckedIntOverflow {
                                 cause: Rc::new(IntegerOverflow {
                                     operation: IntegerArithmeticOperation::IntegerMultiply,
@@ -185,11 +186,11 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
                             })
                         } else {
                             Rc::new(CheckedInt::CheckedIntReady {
-                                value: (a.clone() * b.clone()),
+                                value: v1_rt::int_mul(a.clone(), b.clone()),
                             })
                         }
                     } else {
-                        if (a.clone() < (int_inclusive_min() / b.clone())) {
+                        if (a.clone() < v1_rt::int_div(int_inclusive_min(), b.clone())) {
                             Rc::new(CheckedInt::CheckedIntOverflow {
                                 cause: Rc::new(IntegerOverflow {
                                     operation: IntegerArithmeticOperation::IntegerMultiply,
@@ -201,13 +202,13 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
                             })
                         } else {
                             Rc::new(CheckedInt::CheckedIntReady {
-                                value: (a.clone() * b.clone()),
+                                value: v1_rt::int_mul(a.clone(), b.clone()),
                             })
                         }
                     }
                 } else {
                     if (a.clone() > 0) {
-                        if (b.clone() < (int_inclusive_min() / a.clone())) {
+                        if (b.clone() < v1_rt::int_div(int_inclusive_min(), a.clone())) {
                             Rc::new(CheckedInt::CheckedIntOverflow {
                                 cause: Rc::new(IntegerOverflow {
                                     operation: IntegerArithmeticOperation::IntegerMultiply,
@@ -219,11 +220,11 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
                             })
                         } else {
                             Rc::new(CheckedInt::CheckedIntReady {
-                                value: (a.clone() * b.clone()),
+                                value: v1_rt::int_mul(a.clone(), b.clone()),
                             })
                         }
                     } else {
-                        if (b.clone() < (int_inclusive_max() / a.clone())) {
+                        if (b.clone() < v1_rt::int_div(int_inclusive_max(), a.clone())) {
                             Rc::new(CheckedInt::CheckedIntOverflow {
                                 cause: Rc::new(IntegerOverflow {
                                     operation: IntegerArithmeticOperation::IntegerMultiply,
@@ -235,7 +236,7 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
                             })
                         } else {
                             Rc::new(CheckedInt::CheckedIntReady {
-                                value: (a.clone() * b.clone()),
+                                value: v1_rt::int_mul(a.clone(), b.clone()),
                             })
                         }
                     }
@@ -274,9 +275,20 @@ pub fn checked_int_magnitude(a: i64) -> Rc<CheckedNat> {
     }
 }
 
+pub fn checked_int_to_nat(n: i64) -> Option<Nat> {
+    if (n.clone() < 0) {
+        std::option::Option::None
+    } else {
+        match (*checked_int_magnitude(n.clone())).clone() {
+            CheckedNat::CheckedNatOverflow { cause: _, .. } => std::option::Option::None,
+            CheckedNat::CheckedNatReady { value: v, .. } => Some(v.clone()),
+        }
+    }
+}
+
 pub fn nat_magnitude(a: i64) -> Nat {
     if (a.clone() < 0) {
-        (0 - a.clone())
+        v1_rt::int_sub(0, a.clone())
     } else {
         a.clone()
     }

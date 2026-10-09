@@ -1,7 +1,6 @@
 module test.claim.long.dag_arrow_lambda_witness_test
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.algebra { fold_list }
 import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
@@ -27,7 +26,7 @@ import v2.extdeps.languages.dag {
 // sum admission.
 
 fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
-  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(s: source), file: ^lambda_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {

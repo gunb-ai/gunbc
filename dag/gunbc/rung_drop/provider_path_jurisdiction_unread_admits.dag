@@ -51,9 +51,17 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // by its restoration trigger and by nothing else, and that trigger -- a jurisdiction standing on
 // ProviderPathStanding -- does not exist. Not dissolved by subject deletion either, which an earlier
 // draft of this paragraph claimed: the admitting path was not deleted, and recording it as deleted
-// would make the ruling silently unreachable while this record went on claiming otherwise. It stands
-// with an empty population, pending attribution, and it starts counting again the moment an
-// evidence-bearing admission path is built.
+// would make the ruling silently unreachable while this record went on claiming otherwise.
+//
+// THE ATTRIBUTION EVIDENCE LANDED 2026-09-17, AND THE POPULATION IS STILL EMPTY -- for the opposite
+// reason than before. The incarnation observation now carries the answering container's effective
+// environment and spark_serving_usage_stats_standing classifies it, so the located arm IS reachable
+// by evidence. But both serving renders declare the reporter off (VLLM_NO_USAGE_STATS=1, spelled
+// from extdeps.vllm.usage_stats' own row), so the reading of the fleet as declared comes out
+// UsageStatsDisabledByLaunch and the path projects ProviderPathAbsent -- there is no telemetry path
+// to locate, and this row admits nothing. The row starts counting the moment an observed launch's
+// effective environment leaves the reporter ENABLED: then the located arm is reached with its
+// jurisdiction unread, the enrollment executes, and the population is this one path again.
 //
 // A FOURTH ITEM WAS CLAIMED HERE AND IS NOW GONE, and the correction belongs in this row rather than
 // only in the module, because this row is what a reader consults to learn what survived the drop. It
@@ -112,9 +120,10 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // DECLARED 2026-09-11 with the Spark first-party serving route, under review 63995.
 
 // THE POPULATION IS EMPTY AND THAT IS A COUNTED ZERO, NOT AN UNCOUNTED ONE. Nothing reaches
-// gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm, because
-// spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, so this row
-// admits nothing today. A previous spelling put that sentence INSIDE the list as its sole
+// gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm today: the
+// standing reads the answering container's effective environment (landed 2026-09-17), and the
+// fleet's declared launches disable the reporter, so the reading projects ProviderPathAbsent and
+// this row admits nothing today. A previous spelling put that sentence INSIDE the list as its sole
 // member, which made gunbc.rung_drop rung_drop_declaration_message publish a one-member
 // population whose one member denied being a member -- and any consumer counting members got 1.
 // A fabricated plausible value is worse than an uninformative one, which is why this is [].
@@ -137,12 +146,13 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // with an undocumented jurisdiction is produced. Keeping that member would have reinstated, in the
 // projected ledger, the exact claim this branch removed from the code.
 //
-// SO THE ENROLLMENT IS CURRENTLY UNREACHABLE, WHICH IS #11194'S SUBJECT AND NOT THIS ROW'S TO
-// SETTLE. The enrollment is well-formed and its matching rule is keyed to this path rather than to
-// a sentinel, which is the stronger design; what it now lacks is an occurrence, because the arm it
-// excepts cannot be reached while the telemetry path refuses. It becomes live again by the same
-// trigger that repopulates this row -- evidence identifying the deployment that answered -- so the
-// two are discharged together rather than separately.
+// SO THE ENROLLMENT'S OCCURRENCE, NOT ITS REACHABILITY, IS WHAT IS MISSING. The attribution
+// evidence the enrollment waited on landed 2026-09-17 (the incarnation observation carries the
+// answering container's effective environment), so the excepted arm is reachable by evidence now;
+// what it lacks is an occurrence, because the fleet's declared launches disable the reporter and
+// the reading projects ProviderPathAbsent instead. The enrollment goes live the moment an observed
+// launch leaves the reporter enabled -- the same event that repopulates this row, so the two are
+// discharged together rather than separately.
 data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
   identity: "provider_path_jurisdiction_unread_admits" as NonEmptyStr,
 

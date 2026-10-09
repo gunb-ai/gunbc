@@ -1,0 +1,186 @@
+module v2.test.claim.emit.produced_item_parameter_order
+
+import std.types { List }
+import v2.std.collection { Absent, Present, list_at_optional }
+import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
+import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domain_binder_names, produced_decl_subject_from_name_and_arrow }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  canonicalize_node_for_content_hash,
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FUNCTION ITEM IS EMITTED WITH ITS PARAMETERS IN DECLARED ORDER, asked at its one interface
+// (DESIGN section 3's witness rule) with supplied item Arrows: an item is called positionally, so
+// v2.std.compilers.target_model produced_decl_subject_from_name_and_arrow -- the subject every
+// produced declaration's signature is rendered from -- must list the Arrow's declared order, not its
+// domain Conj's stored sequence. The specimen declares (z: Int, a: Bool): its domain is built by the
+// declared-signature constructor lowering uses (v2.std.arrow_signature declared_signature), and a
+// second copy has only its domain canonicalized. Both denote the same function, so both must answer
+// [z, a] with z still typed Int; the stored-order read of the canonical domain answers [a, z]
+// (asserted below as the mutation this claim discriminates). The real path -- a real module through
+// the production front end into this renderer, whose emitted text is compared to a golden -- is
+// already executed by v2.test.emit.rust_produced_decl_emit rust_produced_decl_name_discriminates and
+// v2.test.long.emit_host_produced_module_equals_eval produced_module_two_distinct_fns_assemble; with
+// this reader in place both reach it through the declared-order arm (their decls carry an order
+// edge), so they are this interface's inhabitance claims. A second real-module claim here would
+// re-pay the whole front end for no discrimination: lowering keeps the authored sequence, so no
+// real module can tell a stored-order read from a declared-order one.
+fn ipo_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn ipo_item() -> Node {
+  let sig = declared_signature(
+    params: [
+      binder_edge(name: ^ipo_z, type_node: ipo_atom(id: ^ipo_int)),
+      binder_edge(name: ^ipo_a, type_node: ipo_atom(id: ^ipo_bool))
+    ],
+    source: ipo_atom(id: ^ipo_source)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      sig.domain,
+      Edge { label: Positional, target: ipo_atom(id: ^ipo_int) },
+      sig.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: ipo_atom(id: ^ipo_z) }
+    ]
+  )
+}
+
+type IpoDomainWalk {
+  done: Bool
+  edges: List<Edge>
+}
+
+fn ipo_canonical_domain(arrow: Node) -> Node {
+  let seen = fold(arrow.children, init: IpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Positional =>
+        if acc.done {
+          IpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
+        } else {
+          IpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+        }
+      Authored { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+    }
+  })
+  Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
+}
+
+fn ipo_without_order(arrow: Node) -> Node {
+  Node {
+    kind: arrow.kind,
+    children: fold(arrow.children, init: [], f: fn(acc, e) {
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
+    }),
+    occurrence_id: arrow.occurrence_id
+  }
+}
+
+// Each parameter as its label then its type atom, so the claim reads order AND the binding of each
+// label to its own type.
+fn ipo_param_symbols(params: List<Edge>) -> List<Symbol> {
+  fold(params, init: [], f: fn(acc, e) {
+    let name = match e.label {
+      StructuralLabel { label: _ } => ^ipo_structural
+      Authored { name: n } => n
+      Positional => ^ipo_positional
+    }
+    let ty = match e.target.kind {
+      TypeNode { connective: Atom { identity: t } } => t
+      _ => ^ipo_not_an_atom
+    }
+    concat(acc, [name, ty])
+  })
+}
+
+fn ipo_is_z_int_then_a_bool(params: List<Edge>) -> Bool {
+  ipo_param_symbols(params: params) == [^ipo_z, ^ipo_int, ^ipo_a, ^ipo_bool]
+}
+
+fn ipo_ordered(arrow: Node) -> Bool {
+  match produced_decl_subject_from_name_and_arrow(fn_name: ^ipo_f, arrow: arrow) {
+    Accepted { value: subject, diagnostics: _ } => ipo_is_z_int_then_a_bool(params: subject.params)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn an_item_emits_its_parameters_in_declared_order() -> Bool {
+  ipo_ordered(arrow: ipo_item())
+}
+
+test fn a_domain_canonicalized_item_emits_the_same_parameter_order() -> Bool {
+  ipo_ordered(arrow: ipo_canonical_domain(arrow: ipo_item()))
+}
+
+// POSITIONAL BEHAVIOR AT A CALL SITE, not only an equal-looking list. The emitted item is applied
+// positionally: the k-th actual of a call f(first, second) binds the k-th rendered parameter. So the
+// rendered list is read as the call does -- zipped against the actuals in order -- and z, the first
+// declared parameter, must receive the FIRST actual on the original item AND on the
+// domain-canonicalized copy, and the two copies must render the identical parameter list. A
+// renderer that read the canonical domain's stored order would bind z to the second actual.
+fn ipo_bound_to_first_actual(params: List<Edge>) -> Symbol {
+  match list_at_optional(xs: ipo_param_symbols(params: params), index: 0) {
+    Present { value: n } => n
+    Absent => ^ipo_no_parameter
+  }
+}
+
+fn ipo_rendered_params(arrow: Node) -> List<Edge> {
+  match produced_decl_subject_from_name_and_arrow(fn_name: ^ipo_f, arrow: arrow) {
+    Accepted { value: subject, diagnostics: _ } => subject.params
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+test fn a_positional_call_binds_z_to_the_first_actual_on_both_copies() -> Bool {
+  let original = ipo_rendered_params(arrow: ipo_item())
+  let canonical = ipo_rendered_params(arrow: ipo_canonical_domain(arrow: ipo_item()))
+  ipo_bound_to_first_actual(params: original) == ^ipo_z
+    && ipo_bound_to_first_actual(params: canonical) == ^ipo_z
+    && ipo_param_symbols(params: original) == ipo_param_symbols(params: canonical)
+}
+
+// THE MUTATION THIS DISCRIMINATES: the stored-order read of the canonical domain is [a, z], so a
+// renderer restoring domain.children as the parameter list fails the claim above.
+test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
+  arrow_domain_binder_names(arrow: ipo_canonical_domain(arrow: ipo_item())) == [^ipo_a, ^ipo_z]
+}
+
+// AN ITEM WHOSE DOMAIN BINDS NAMES BUT CARRIES NO ORDER EDGE IS ILL FORMED (A4, gunbc#12770): such an
+// Arrow has no admitted meaning (v2.std.node arrow_signature_edges_conform refuses it at Node
+// admission), so the declared-order read answers Malformed for it and the renderer refuses with the
+// malformed reason. Before A4 the same Arrow was well formed and refused later, as order ABSENT; the
+// refusal moved earlier, it did not go away. The claim pins both the route (the admission wall's
+// answer) and the typed refusal, and still reds if the renderer ever accepts the order-less item.
+test fn an_item_with_parameters_and_no_order_refuses_typed() -> Bool {
+  let stripped = ipo_without_order(arrow: ipo_item())
+  match arrow_declared_parameter_order(arrow: stripped) {
+    ArrowParameterOrderMalformed =>
+      match produced_decl_subject_from_name_and_arrow(fn_name: ^ipo_f, arrow: stripped) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^produced_decl_render_parameter_order_malformed
+      }
+    _ => false
+  }
+}

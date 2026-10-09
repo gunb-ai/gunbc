@@ -109,13 +109,13 @@ pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
         variant: "RecurringFailureModeRows",
         type_name: "RecurringFailureMode",
         roster_module: super::derived_row_roster::ROSTER_MODULE,
-        roster_declaration: "recurring_failure_mode_roster",
+        roster_declaration: super::derived_row_roster::RECURRING_FAILURE_MODE.roster_declaration,
     },
     EnrolledRowType {
         variant: "RungDropRows",
         type_name: "RungDrop",
-        roster_module: "gunbc.rung_drop.roster",
-        roster_declaration: "rung_drop_roster",
+        roster_module: super::derived_row_roster::RUNG_DROP.roster_module,
+        roster_declaration: super::derived_row_roster::RUNG_DROP.roster_declaration,
     },
     EnrolledRowType {
         variant: "CollisionRowControl",
@@ -512,11 +512,79 @@ fn join_row_files_to_roster_members(
     findings
 }
 
+/// THE DECLARED POPULATION, READ FROM THE PARSE THE SWEEP ALREADY RAN.
+///
+/// The same population `coproduct_reflection::data_decl_type_rows` produces -- one row per
+/// top-level `data` declaration of every module the pool's module-path index names, with its
+/// declared-type spelling -- but read from the sweep's records instead of parsing every pool file
+/// a second time, single-threaded, right after the sweep parsed them all (70 s on merge-queue run
+/// 36339106604). The spelling is recorded at ingestion by the one authority for it,
+/// `coproduct_reflection::data_item_declared_type_name`.
+///
+/// THE POPULATION IS JOINED AT FILE IDENTITY, NOT BORROWED. The module-path index still names
+/// which file is each pool module, exactly as before, and each record must come from that same
+/// file. A pool module the sweep has no record for, or one whose record was read from a different
+/// file, refuses: the two walks disagree about the pool, and answering from either would be a
+/// population the join never checked.
+fn data_decl_type_population_from_sweep(
+    index: &DeclarationIndex,
+) -> Result<crate::coproduct_reflection::DataDeclTypePopulation, String> {
+    let roots: Vec<String> = JOIN_POOL_ROOTS.iter().map(|r| r.to_string()).collect();
+    let defects = crate::coproduct_reflection::pool_root_defects(&roots);
+    if !defects.is_empty() {
+        return Err(crate::coproduct_reflection::pool_root_refusal_message(
+            &defects,
+            roots.len(),
+            "data_decl_type_facts",
+        ));
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let mut modules: Vec<(String, String)> =
+        crate::cli_run::build_module_path_index(&abs_pool_roots)
+            .into_iter()
+            .map(|(module_path, rel_path)| (module_path, rel_path.replace('\\', "/")))
+            .collect();
+    modules.sort();
+    let mut rows = Vec::new();
+    for (module_path, rel_path) in &modules {
+        let Some(record) = index_get(index, module_path) else {
+            return Err(format!(
+                "rostered-row-join: pool module `{module_path}` ({rel_path}) has no record in the \
+                 parse sweep's index, so its data declarations were never read -- the sweep and \
+                 the join disagree about the pool"
+            ));
+        };
+        let record_path = record.rel_path.replace('\\', "/");
+        if &record_path != rel_path {
+            return Err(format!(
+                "rostered-row-join: pool module `{module_path}` is `{rel_path}` to the join and \
+                 `{record_path}` to the parse sweep -- the two disagree about which file is the \
+                 module, so neither answer is the population the join checks"
+            ));
+        }
+        for (decl_name, type_name) in &record.data_decl_types {
+            rows.push(crate::coproduct_reflection::DataDeclTypeRow {
+                module_path: module_path.clone(),
+                decl_name: decl_name.clone(),
+                type_name: type_name.clone(),
+                rel_path: rel_path.clone(),
+            });
+        }
+    }
+    Ok(crate::coproduct_reflection::DataDeclTypePopulation {
+        rows,
+        accounted_modules: modules,
+    })
+}
+
 /// Run the join. `Err` is reserved for the declared population being unobtainable at all — a
 /// state in which no verdict exists, as distinct from a verdict of "unrostered rows found".
 pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, String> {
-    let roots: Vec<String> = JOIN_POOL_ROOTS.iter().map(|r| r.to_string()).collect();
-    let population = crate::coproduct_reflection::data_decl_type_rows(&roots)?;
+    let population = data_decl_type_population_from_sweep(index)?;
 
     let mut report = JoinReport {
         sources_accounted: population.accounted_modules.len(),

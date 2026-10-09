@@ -3,9 +3,9 @@ module test.claim.toolchain_home_standing_witness
 import std.types { Bool, List, String }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  SelfHosted, HostedRunner, UbuntuLatest, RunsOnExpression,
-  checkout_action, setup_rust_action
+  SelfHosted, HostedRunner, UbuntuLatest, RunsOnExpression
 }
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
 import extdeps.languages.yaml.types { yaml_string, kv }
 import gunbc.toolchain_home_standing {
   ToolchainHomeClassification,
@@ -23,7 +23,7 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.witness_floor_workflow { witness_floor_workflow }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -64,6 +64,7 @@ fn fixture_job(job_id: String, steps: List<Step>) -> Job {
     id: job_id,
     name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    environment: none,
     steps: steps,
     needs: [],
     env: none,
@@ -173,6 +174,7 @@ test fn an_expression_runner_installing_unisolated_fails_closed() -> Bool {
     id: "fleet-converge",
     name: none,
     runner: RunsOnExpression { expression: "${{ fromJSON(inputs.host) }}" },
+    environment: none,
     steps: [fixture_checkout_step(), fixture_install_step()],
     needs: [],
     env: none,
@@ -202,6 +204,7 @@ test fn a_hosted_runner_install_is_private_by_construction() -> Bool {
       id: "hosted",
       name: none,
       runner: HostedRunner { label: UbuntuLatest },
+      environment: none,
       steps: [fixture_checkout_step(), fixture_install_step()],
       needs: [],
       env: none,

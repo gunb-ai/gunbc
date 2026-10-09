@@ -1,0 +1,54 @@
+module test.claim.data_row_wide_integer_literal_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A NESTED-RECORD DATA ROW WHOSE Int IS ABOVE 2^31 MUST EMIT AS PARSED JSON TEXT.
+//
+// v1.compiler.emit_rust emit_data_def_body realizes a data row whose type carries a record by
+// serializing the value with emit_data_value_json. It used to splice that document into
+// `serde_json::json!` as Rust TOKENS, so rustc read each number as an integer literal whose type
+// defaults to i32 when nothing pins it: 3144134277 failed with `literal out of range for i32`. The
+// build refused loudly, so this was not silent. But the same default admits every literal inside
+// i32 and would have been wrong for any consumer reading the value at another width, so the row's
+// realization depended on a Rust inference default rather than on the declared Int. The repair parses
+// the same text: JSON has one number grammar, and serde_json reads it into the declared field type.
+//
+// THE RED IS THE FORBIDDEN SPELLING. On the unrepaired emitter the emitted module contains
+// `serde_json::json!(`, and the second list fails the check. The value itself must survive into the
+// emitted text unchanged, so a repair that rounded or suffixed it would also fail.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because it is a text claim: that the emitted crate BUILDS and
+// READS 3144134277 back. That was measured once, in gunbc#12219 (a fixture crate built and
+// printed the exact value on a remote runner), and the durable executing consumer is the native
+// crypto instrument: SHA-256's initial hash words are exactly such a row, and a wrong read changes
+// every digest (gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier).
+fn wide_literal_row_source() -> String {
+  "module probe_wide_data_row\n\nimport std.types { Int, List }\n\ntype WidePair {\n  hi: Int\n  lo: Int\n}\n\ndata wide_rows: List<WidePair> = [WidePair { hi: 3144134277, lo: 1 }]\n"
+}
+
+// THE CONTROL: a row whose literals all fit i32 takes the same realization, so the check is about
+// the route and not about the magnitude happening to trip it.
+fn narrow_literal_row_source() -> String {
+  "module probe_narrow_data_row\n\nimport std.types { Int, List }\n\ntype NarrowPair {\n  hi: Int\n  lo: Int\n}\n\ndata narrow_rows: List<NarrowPair> = [NarrowPair { hi: 7, lo: 1 }]\n"
+}
+
+test fn a_wide_integer_in_a_record_data_row_is_parsed_from_json_text() -> Bool {
+  compile_dag_rust_emit_check(
+    wide_literal_row_source(),
+    "src/probe_wide_data_row.rs",
+    ["serde_json::from_str(", "3144134277"],
+    ["serde_json::json!("]
+  )
+}
+
+test fn a_narrow_integer_row_takes_the_same_route() -> Bool {
+  compile_dag_rust_emit_check(
+    narrow_literal_row_source(),
+    "src/probe_narrow_data_row.rs",
+    ["serde_json::from_str("],
+    ["serde_json::json!("]
+  )
+}

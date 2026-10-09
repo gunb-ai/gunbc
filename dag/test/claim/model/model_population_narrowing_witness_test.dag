@@ -256,24 +256,6 @@ test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
     question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }))
 }
 
-// AGGREGATE, so the whole carrier is established in ONE corpus resolve rather than eight. It is a
-// conjunction of the individual claims and adds no coverage; it exists because each separate entry
-// point re-resolves the corpus, and eight resolves exceed a remote dispatch budget that one fits
-// inside. Every conjunct remains independently runnable, so a failure is still located.
-test fn w_all_population_claims_hold() -> Bool {
-  w_ollama_local_absence_does_not_remove_from_the_open_weight_population()
-    && w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable()
-    && w_an_empty_narrowing_does_not_remove_from_the_open_weight_population()
-    && w_narrowing_cannot_introduce_a_member_the_parent_lacked()
-    && w_a_closed_weight_release_is_excluded_from_the_open_weight_population()
-    && w_completeness_refuses_when_every_source_is_a_single_distributor()
-    && w_completeness_answers_for_the_publisher_whose_catalog_is_held()
-    && w_one_publishers_catalog_does_not_answer_for_another_publisher()
-    && w_universe_completeness_is_never_answerable()
-    && w_a_backward_or_same_stage_transition_refuses()
-    && w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
-}
-
 // THE DISCRIMINATING CONTROL, kept enrolled. `population_holds` must not be constantly true, or
 // every claim above is a conjunction of things that hold by vacuity rather than by the structural
 // separation. It asserts both directions in one row: a release the root population does not carry

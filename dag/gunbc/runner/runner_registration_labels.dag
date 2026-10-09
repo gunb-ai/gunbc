@@ -1,0 +1,98 @@
+module gunbc.runner_registration_labels
+
+import std.types { String, NonEmptyStr, List }
+import product.host_identity { HostIdentity }
+import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
+import gunbc.ci_fleet { fleet_compute_offer_for }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+
+// ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
+// the one place that owns it:
+//   platform  self-hosted / os / arch   gunbc.runner_spec_from_offer, from the host's ComputeOffer
+//   class     gunbc-heavy                gunbc.runner_slot_desired gunbc_runner_slot_desired
+//   host      the host it executes on    gunbc.runner_slot_allocation runner_host_label
+// Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
+// their labels here. The host-pinned selector (gunbc.ci_deploy_target_host host_pinned_runner_spec)
+// reads its platform labels from the same runner_spec_from_offer and its host label from the same
+// runner_host_label, so any label it names is one a registration carries.
+//
+// A HOST WITH NO FLEET COMPUTE OFFER REFUSES. Its OS and architecture are unknown, and filling them
+// in with the labels the enrolled hosts carry would register a runner under an architecture nobody
+// observed on that host.
+type RunnerRegistrationLabelsResolution
+  = RegistrationLabelsResolved { labels: List<String> }
+  | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
+
+fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  match fleet_compute_offer_for(host: host) {
+    Absent =>
+      RegistrationLabelsRefused {
+        host: host,
+        cause: "host has no fleet compute offer, so its platform labels (os, architecture) are unknown and no registration label set is derived" as NonEmptyStr,
+      }
+    Present { value: offer } =>
+      match runner_spec_from_offer(offer: offer) {
+        SelfHosted { labels: platform } =>
+          RegistrationLabelsResolved {
+            labels: runner_label_set_union(
+              a: runner_label_set_union(a: platform, b: gunbc_runner_slot_desired().labels.github_labels),
+              b: [runner_host_label(host: host)],
+            ),
+          }
+        HostedRunner { label: _ } => registration_labels_refused_not_self_hosted(host: host)
+        RunsOnExpression { expression: _ } => registration_labels_refused_not_self_hosted(host: host)
+      }
+  }
+}
+
+// ── BROWSER READINESS: A LABEL THE BROWSER-TOOLCHAIN CONVERGE GRANTS AND NOTHING ELSE ─────────────
+//
+// The floor runs real-Chromium wet claims inside its claim_executor run, so a runner on a host whose
+// browser toolchain was never converged refuses them (five test.claim.machine_intake
+// mtcollins1_kvm_observer_protocol_wet_witness claims on srv1, at the missing toolchain tree). The
+// host's readiness is therefore a LABEL: gunbc.runner_browser_toolchain
+// browser_ready_labels_converge_wet writes it as a template drop-in when that converge's readback
+// holds and removes it when it does not, and once every host in the floor's pool reads ready the
+// floor's runs-on names it -- so an unconverged runner cannot take the floor at all.
+data gunbc_browser_ready_label: String = "gunbc-browser-ready"
+
+fn runner_browser_ready_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  match runner_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
+    RegistrationLabelsResolved { labels: ls } =>
+      RegistrationLabelsResolved { labels: runner_label_set_union(a: ls, b: [gunbc_browser_ready_label]) }
+  }
+}
+
+// WHETHER AN OBSERVED REGISTRATION CONFORMS TO ITS SLOT. The host's set exactly, or the host's set
+// plus the readiness label: those are the only two states the converge writes, so both are healthy,
+// and anything else -- another host's label, a stray extra -- is a divergence. Treating the ungranted
+// state as diverged would make the recovery path churn every slot on a host whose toolchain is not
+// converged yet; withholding the label is already the refusal, because the floor selects on it.
+type RegistrationLabelsConformance
+  = RegistrationLabelsConform
+  | RegistrationLabelsDiverge
+  | RegistrationLabelsUnjudged { host: HostIdentity, cause: NonEmptyStr }
+
+fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> RegistrationLabelsConformance {
+  match runner_registration_labels(host: slot.host) {
+    RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsUnjudged { host: h, cause: c }
+    RegistrationLabelsResolved { labels: host_labels } =>
+      if runner_label_sets_equal(a: observed, b: host_labels)
+        || runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: [gunbc_browser_ready_label])) {
+        RegistrationLabelsConform
+      } else {
+        RegistrationLabelsDiverge
+      }
+  }
+}
+
+fn registration_labels_refused_not_self_hosted(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  RegistrationLabelsRefused {
+    host: host,
+    cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
+  }
+}

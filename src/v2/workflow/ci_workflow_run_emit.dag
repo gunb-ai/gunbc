@@ -4,8 +4,6 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.std.orchestration {
   Comment,
   Do,
@@ -33,8 +31,6 @@ data ci_isolate_echo_home_command: String = "echo \"HOME=$RUNNER_TEMP\" >> \"$GI
 data ci_isolate_echo_cargo_home_command: String = "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\""
 
 data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\""
-
-data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
 
 // Durable native-artifact cache root (extdeps.realization.native_artifact_cache,
 // PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted
@@ -102,13 +98,6 @@ fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-fn ci_isolate_cargo_build_jobs_command(build_jobs_count: Int) -> String {
-  concat(
-    "echo \"CARGO_BUILD_JOBS=",
-    concat(to_string(build_jobs_count), "\" >> \"$GITHUB_ENV\"")
-  )
-}
-
 // THREE CONCEPTS WERE RIDING IN ONE STEP, AND ONLY THE FIRST FIXES THE OUTAGE. Toolchain-home
 // isolation is what stops concurrent runner slots sharing one $HOME/.cargo and rewriting a
 // toolchain under a running job; MAKEFLAGS, CARGO_BUILD_JOBS and the sccache binding are
@@ -129,14 +118,6 @@ fn ci_toolchain_home_isolation_steps() -> List<PipelineStep> {
   ]
 }
 
-fn ci_fleet_build_tuning_steps(build_jobs_count: Int) -> List<PipelineStep> {
-  [
-    ci_workflow_do(command: ci_isolate_echo_makeflags_command),
-    ci_workflow_do(command: ci_isolate_cargo_build_jobs_command(build_jobs_count: build_jobs_count)),
-    ci_workflow_do(command: ci_sccache_provider_shell_injection())
-  ]
-}
-
 fn ci_toolchain_home_isolation_intent() -> Pipeline {
   Pipeline {
     steps: ci_toolchain_home_isolation_steps(),
@@ -154,7 +135,7 @@ fn ci_toolchain_home_isolation_script() -> String {
 // MARKED ON REQUEST (review 56091), and the honest scope is narrower than "a new shell carrier".
 // This function authors NO new shell: it emits four pre-existing command rows
 // (ci_isolate_rm_rustup_cargo_command and the three echo rows), unchanged, that
-// ci_isolate_toolchain_script already emitted. What is new is the COMPOSITION, not the medium.
+// ci_isolate_toolchain_script (gunbc.fleet_workflow_steps) already emitted. What is new is the COMPOSITION, not the medium.
 //
 // The marker is still correct, because the carrier really is orch-emitted foreign-executor shell
 // pending the same shell-to-intent migration ci_native_cache_root_script names. WORTH RECORDING:
@@ -194,20 +175,6 @@ data ci_pin_rustup_default_shell_emit_scaffold: Disposition = Scaffold {
 
 data ci_pin_rustup_default_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing")
 
-fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      ci_toolchain_home_isolation_steps(),
-      ci_fleet_build_tuning_steps(build_jobs_count: build_jobs_count)
-    ),
-    on_failure: FailFast
-  }
-}
-
-fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
-  ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
-}
-
 fn ci_native_cache_root_intent() -> Pipeline {
   Pipeline {
     steps: [
@@ -237,7 +204,7 @@ data ci_native_cache_root_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
+data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply")
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 

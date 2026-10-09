@@ -44,14 +44,16 @@ import gunbc.live_deploy.emit {
   emit_publication_service_unit_doc,
   emit_belt_service_unit_doc,
   emit_systemd_unit_doc,
+}
+import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  deployment_spec_srv1,
   deployment_credential_env_path,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 
 // WHAT THIS FILE ASSERTS, AND WHAT IT CANNOT.
 //

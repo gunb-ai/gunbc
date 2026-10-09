@@ -13,9 +13,8 @@ import v2.std.algebra {
   list_reverse,
 }
 import v2.std.collection { Absent, Present }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.decl_index { DeclFact }
-import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of }
+import v2.std.node { Edge, Authored, StructuralLabel, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of, symbol_lexeme, EdgeLabel }
 
 type OuterRecordConstructorLexeme = String
 
@@ -185,7 +184,8 @@ type AtomLexemeCensus {
 
 fn skeleton_edge_is_construction_spelling(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
+    Authored { name: nm } => nm == ^record_construction_spelling
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -204,14 +204,12 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
               self_is_atom: true,
               self_lexeme: symbol_lexeme(sym: s)
             }
-          _ =>
-            AtomLexemeCensus {
-              all_atom_lexemes: Empty,
-              construction_spelling_lexemes: Empty,
-              authored_string_lexemes: Empty,
-              self_is_atom: false,
-              self_lexeme: ""
-            }
+          TypeNode { connective: Conj } => skeleton_atom_lexeme_census_fold_otherwise()
+          TypeNode { connective: Disj } => skeleton_atom_lexeme_census_fold_otherwise()
+          TypeNode { connective: Arrow } => skeleton_atom_lexeme_census_fold_otherwise()
+          TypeNode { connective: Cardinality } => skeleton_atom_lexeme_census_fold_otherwise()
+          TypeNode { connective: Instantiation } => skeleton_atom_lexeme_census_fold_otherwise()
+          ComputationNode { behavior: _ } => skeleton_atom_lexeme_census_fold_otherwise()
         }
       },
       step: fn(acc, e, child) {
@@ -249,6 +247,16 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
       }
     }
   )
+}
+
+fn skeleton_atom_lexeme_census_fold_otherwise() -> AtomLexemeCensus {
+  AtomLexemeCensus {
+    all_atom_lexemes: Empty,
+    construction_spelling_lexemes: Empty,
+    authored_string_lexemes: Empty,
+    self_is_atom: false,
+    self_lexeme: ""
+  }
 }
 
 fn node_skeleton_authored_non_construction_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {

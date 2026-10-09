@@ -430,7 +430,7 @@ fn is_variant_value_binding(expr: &Rc<Node>) -> bool {
 
 fn variant_value_binding_parent_enum(expr: &Rc<Node>) -> Option<String> {
     match expr_var_binding_kind(expr).as_deref() {
-        Some(VarBindingKind::VariantValueBinding { parent_enum }) => Some(parent_enum.clone()),
+        Some(VarBindingKind::VariantValueBinding { parent_enum, .. }) => Some(parent_enum.clone()),
         _ => None,
     }
 }
@@ -634,7 +634,11 @@ pub(crate) fn with_authored_string_literals(
     if lexemes.is_empty() {
         return Ok(projection);
     }
-    let Value::Record { type_name, fields } = projection else {
+    let Value::Record {
+        type_name,
+        ref fields,
+    } = projection
+    else {
         return Err(InterpError::TypeError {
             msg: "decl_facts DataItem projection is not a Node record; cannot attach authored string literals".to_string(),
         });
@@ -684,7 +688,7 @@ fn projection_edge_named(ctx: &InterpContext, name: &str, target: Value) -> Valu
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Named"),
+                    variant_name: ctx.sym("Authored"),
                     fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
@@ -1225,7 +1229,6 @@ mod projection_marshal_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
@@ -1235,8 +1238,8 @@ mod projection_marshal_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }

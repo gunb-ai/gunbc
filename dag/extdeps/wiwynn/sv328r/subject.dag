@@ -1,0 +1,64 @@
+module extdeps.wiwynn.sv328r.subject
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.wiwynn { wiwynn_vendor }
+
+// WIWYNN SV328R IS AN INDEPENDENTLY VERSIONED PRODUCT that inhabits the OCP Mt. Jade motherboard
+// class. It is not a nickname for extdeps.ocp.mt_jade.subject: a Wiwynn chassis change must not
+// require editing the OCP specification module, and an OCP motherboard revision must not rewrite
+// this datasheet.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.wiwynn.com/hubfs/Datasheet-SV328R_211104_internal.pdf",
+  }
+}
+
+data sv328r_datasheet_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data sv328r_datasheet_title: NonEmptyStr = "Wiwynn SV328R 64-bit ARM Server"
+
+data sv328r_datasheet_file_identity: NonEmptyStr = "Datasheet-SV328R_211104_internal.pdf"
+
+data sv328r_datasheet_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Datasheet footer as fetched 2026-09-17: 'Copyright (C) 2015 by Wiwynn Corporation. All rights reserved.' plus a reservation of the right to change the document without notice and an express disclaimer of merchantability and fitness. Marketing collateral distributed publicly and marked; no licence is granted by it.",
+}
+
+type Sv328rDatasheet20211104 {}
+
+type Sv328rDatasheetRevision = Sv328rDatasheet20211104
+
+type WiwynnSv328rProduct {
+  marketing_name: NonEmptyStr
+  revision: Sv328rDatasheetRevision
+  file_identity: NonEmptyStr
+  publisher: Vendor<Hardware>
+}
+
+data wiwynn_sv328r_product: WiwynnSv328rProduct = WiwynnSv328rProduct {
+  marketing_name: "SV328R",
+  revision: Sv328rDatasheet20211104 {},
+  file_identity: sv328r_datasheet_file_identity,
+  publisher: wiwynn_vendor,
+}
+
+data sv328r_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.wiwynn.sv328r.subject",
+      decl_name: "wiwynn_sv328r_product",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: sv328r_datasheet_authority,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = sv328r_model_scope

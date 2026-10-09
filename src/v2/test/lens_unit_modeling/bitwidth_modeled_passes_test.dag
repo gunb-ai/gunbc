@@ -3,17 +3,17 @@ module v2.test.lens_unit_modeling.bitwidth_modeled_passes
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,10 +26,10 @@ data bitwidth_carrier_target: Node = Node {
 data bitwidth_modeled_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^pointer_width },
-      target: bitwidth_carrier_target
-    }
+    binder_edge(
+      name: ^pointer_width,
+      type_node: bitwidth_carrier_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }

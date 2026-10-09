@@ -1,7 +1,9 @@
 module v2.test.claim.body_lowering.arrow_body_form_witness
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag {
   dag_add_arrow_with_body_node,
@@ -21,12 +23,14 @@ import v2.std.node {
   ComputationBody,
   ComputationNode,
   Conj,
+  DeclarationReferenceBody,
   DirectAtomBody,
   Disj,
   Edge,
+  FunctionValueBody,
   Loop,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   RecordConstructBody,
@@ -40,12 +44,18 @@ import v2.std.node {
   classify_arrow_body_form,
   node_synthetic,
   well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.qualified_name { declaration_reference_node }
+import std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node_query { binder_edge }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   ArrowBodyFormAdmissionProduction,
   ArrowBodyFormAdmissionRedNoComputationBody,
+  ArrowBodyFormAdmissionRedNoDeclarationReference,
   ArrowBodyFormAdmissionRedNoDirectAtom,
+  ArrowBodyFormAdmissionRedNoFunctionValueBody,
   arrow_body_form_admits_body_with_mirror,
   arrow_body_form_eval_binary_int_holds,
   arrow_body_form_eval_call_does_not_reject_unsupported_callee,
@@ -71,14 +81,18 @@ fn arrow_body_form_fixture_atom(identity: Symbol) -> Node {
   )
 }
 
+// A nullary declared Arrow: the body form is the subject, and the nullary eval call below reaches it
+// with no arity question in the way.
 fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
+  let signature = declared_signature(params: [], source: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain))
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
+      signature.domain,
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   )
 }
@@ -88,10 +102,10 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
     domain: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^dag_binding_param_x },
-          target: dag_type_atom_node(identity: dag_int_type_binding())
-        }
+        binder_edge(
+          name: ^dag_binding_param_x,
+          type_node: dag_type_atom_node(identity: dag_int_type_binding())
+        )
       ]
     ),
     return_type_binding: dag_int_type_binding(),
@@ -123,7 +137,7 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
 // arm FAILS the witness rather than skipping it — an unadmittable fixture is a defect in
 // the fixture, not a reason to report green.
 fn abf_admitted_add_arrow_tree() -> Outcome<NormalizedTree> {
-  admit_normalized_tree(root: dag_add_arrow_with_body_node(), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: dag_add_arrow_with_body_node(), diagnostics: None)
 }
 
 test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
@@ -143,7 +157,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
               )
                 && arrow_body_form_eval_nullary_int_holds(callee: zero_arrow, expected: 0)
                 && arrow_body_form_eval_binary_int_holds(
-                  callee: add_arrow,
+                  callee: add_arrow.root,
                   left_lex: "2",
                   right_lex: "3",
                   expected: 5
@@ -169,7 +183,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^arrow_body_form_record_field },
+          label: Authored { name: ^arrow_body_form_record_field },
           target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_record_value)
         }
       ]
@@ -187,6 +201,61 @@ test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
     ComputationBody { behavior: Transform } => true
     _ => false
   }
+}
+
+// A BODY THAT IS ITSELF AN ARROW IS A FUNCTION VALUE: it classifies FunctionValueBody, the outer
+// Arrow is well-formed exactly when the inner one is (its own Arrow arm is the only check), and eval
+// refuses it by the eval-entry population rather than dispatching into it.
+fn arrow_body_form_fixture_function_value_body() -> Node {
+  arrow_body_form_fixture_arrow_with_body(
+    body: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
+  )
+}
+
+test fn arrow_body_form_classify_function_value_holds() -> Bool {
+  match classify_arrow_body_form(target: arrow_body_form_fixture_function_value_body()) {
+    FunctionValueBody => true
+    _ => false
+  }
+}
+
+test fn arrow_body_form_function_value_body_well_formed_holds() -> Bool {
+  well_formed(n: arrow_body_form_fixture_arrow_with_body(body: arrow_body_form_fixture_function_value_body()))
+    && well_formed(
+      n: arrow_body_form_fixture_arrow_with_body(
+        body: arrow_body_form_fixture_arrow_with_body(body: arrow_body_form_fixture_function_value_body())
+      )
+    )
+}
+
+test fn arrow_body_form_ill_formed_inner_arrow_refused_well_formed_holds() -> Bool {
+  !well_formed(
+    n: arrow_body_form_fixture_arrow_with_body(
+      body: arrow_body_form_fixture_arrow_with_body(
+        body: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+      )
+    )
+  )
+}
+
+test fn arrow_body_form_function_value_refused_eval_entry_holds() -> Bool {
+  !arrow_body_admits_eval_entry(form: FunctionValueBody)
+}
+
+// THE MUTATION CONTROL: production admits a function-value body; the mirror with the
+// FunctionValueBody arm deleted refuses the same body.
+test fn arrow_body_form_function_value_body_admitted_structurally_holds() -> Bool {
+  arrow_body_form_admits_body_with_mirror(
+    target: arrow_body_form_fixture_function_value_body(),
+    mirror: ArrowBodyFormAdmissionProduction
+  )
+}
+
+test fn arrow_body_form_RED_no_function_value_refuses_function_value_body_holds() -> Bool {
+  !arrow_body_form_admits_body_with_mirror(
+    target: arrow_body_form_fixture_function_value_body(),
+    mirror: ArrowBodyFormAdmissionRedNoFunctionValueBody
+  )
 }
 
 test fn arrow_body_form_classify_unsupported_holds() -> Bool {
@@ -331,4 +400,87 @@ test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
       )
     Absent => false
   }
+}
+
+// ── a resolved declaration reference is an arrow body in its own right ─────────────────────────
+// `data d: D = A` lowers to a nullary Arrow whose body is the initializer, and resolve mints the
+// reference A as v2.std.qualified_name declaration_reference_node. Before DeclarationReferenceBody the
+// classifier read that Conj as a record construct whose first field did not target an Atom, so every
+// module holding such a declaration failed well_formed and eval refused all of its tests -- the
+// native lane canary v2.test.native_lane_smoke, refused eval_rejected_invalid_node (2026-09-26).
+
+fn abf_declaration_reference() -> Node {
+  declaration_reference_node(qn: [^abf_module, ^abf_constructor], occurrence_id: OccurrenceSynthetic)
+}
+
+// The same shape under an authored label: a one-field record whose value is itself a record.
+fn abf_reference_shaped_record() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^abf_authored_field },
+        target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+      }
+    ]
+  )
+}
+
+test fn arrow_body_form_classify_declaration_reference_holds() -> Bool {
+  match classify_arrow_body_form(target: abf_declaration_reference()) {
+    DeclarationReferenceBody => true
+    _ => false
+  }
+}
+
+test fn arrow_body_form_declaration_reference_arrow_well_formed_holds() -> Bool {
+  let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_declaration_reference())
+  well_formed(n: arrow)
+}
+
+// THE MUTATION: the classifier with the arm deleted reads the reference as a record construct and
+// refuses it -- the fault the canary observed.
+test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_holds() -> Bool {
+  arrow_body_form_admits_body_with_mirror(
+    target: abf_declaration_reference(),
+    mirror: ArrowBodyFormAdmissionProduction
+  )
+    && !arrow_body_form_admits_body_with_mirror(
+      target: abf_declaration_reference(),
+      mirror: ArrowBodyFormAdmissionRedNoDeclarationReference
+    )
+}
+
+// The marker, not the shape, makes a reference. The same one-edge Conj under an authored label is
+// a record construct whose first field does not target an Atom, and v2.std.node well_formed refuses
+// it itself -- so every gate that admits by well_formed refuses it, not only eval's (gunbc#12377
+// review 71638: with the label checked beside eval alone, the other gates admitted it).
+test fn arrow_body_form_reference_shape_without_marker_refused_holds() -> Bool {
+  let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record())
+  (match classify_arrow_body_form(target: abf_reference_shaped_record()) {
+    RecordConstructBody => true
+    _ => false
+  })
+    && !well_formed(n: arrow)
+}
+
+// ...and it reaches a gate that is not eval: resolve admits a normalized tree only if it is well
+// formed, so the unmarked shape is refused there before any evaluator runs.
+fn abf_admitted_unmarked_reference_tree() -> Outcome<NormalizedTree> {
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record()), diagnostics: None)
+}
+
+test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds() -> Bool {
+  match abf_admitted_unmarked_reference_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+test fn arrow_body_form_declaration_reference_not_an_eval_entry_holds() -> Bool {
+  !arrow_body_admits_eval_entry(form: DeclarationReferenceBody)
 }

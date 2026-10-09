@@ -1,13 +1,47 @@
 module test.claim.nbd_proxy_serve_transport
 
+import extdeps.filesystem.filesystem_io {
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+}
+import extdeps.exec.command { argv_words }
+import extdeps.systemd { MemoryMax, WorkingDirectoryProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command }
+import gunbc.host_effect_nbd_proxy_serve {
+  BmcwebSessionTokenObservation,
+  BmcwebSessionTokenUsable,
+  BmcwebSessionTokenStartRefused,
+  bmcweb_session_token_observation_of,
+  bmcweb_session_token_start_decision,
+}
+import gunbc.srv3_nbd_proxy_serve_intent {
+  srv3_nbd_proxy_lease_key,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIELD GRAIN. Every assertion below reads the described commands' fields -- the program
+// against the cited identity row, argument words by membership -- and NONE of them joins the words
+// into a surface to search. The joined-string oracle this module used to assert through
+// (extdeps.bmc.webui.nbd_proxy_serve nbd_proxy_serve_argv_surface_text and
+// nbd_proxy_serve_has_no_shell_supervision_grammar, with the marker detector and its red control)
+// retired with the raw word lists it guarded: the no-supervision law it enforced (operator ruling
+// 2026-07-14, no trap/&/$! ShellStmt vocabulary) is now structural -- the realization takes
+// command words into a systemd transient unit (gunbc.host_effect_nbd_proxy_serve) and offers no
+// shell-statement vocabulary at all, so there is no surface a detector could meaningfully read.
+
+fn words_contain(words: List<String>, word: String) -> Bool {
+  fold(words, init: false, f: (acc, w) => acc || w == word)
+}
 
 test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
   bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"
 }
 
-test fn nbd_proxy_serve_argv_is_typed_not_shell_supervision_program() -> Bool {
+test fn nbd_proxy_serve_serve_legs_are_described_commands() -> Bool {
   let intent = nbd_proxy_serve_transport_intent(
     bmc_host: asrock_srv3_live_bmc_host,
     session_token: bmcweb_session_token_env_ref,
@@ -15,9 +49,21 @@ test fn nbd_proxy_serve_argv_is_typed_not_shell_supervision_program() -> Bool {
     iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso",
     local_nbd_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
   )
-  nbd_proxy_serve_websocat_argv_leading_tool_is_websocat(intent: intent)
-    && nbd_proxy_serve_nbdkit_argv_includes_iso(intent: intent)
-    && nbd_proxy_serve_has_no_shell_supervision_grammar(intent: intent)
+  let websocat = websocat_nbd_proxy_bridge_command(
+    bmc_host: intent.bmc_host,
+    ws_path: intent.ws_path,
+    session_token: intent.session_token,
+    local_nbd_port: intent.local_nbd_port,
+  )
+  let nbdkit = nbdkit_readonly_file_serve_command(
+    port: intent.local_nbd_port,
+    backing_path: intent.iso_path,
+  )
+  websocat.program.invocation == websocat_install_path
+    && nbdkit.program.invocation == nbdkit_cli_tool.program.invocation
+    && words_contain(words: nbdkit.arguments, word: concat("file=", intent.iso_path as String))
+    && words_contain(words: websocat.arguments, word: concat("wss://", concat(intent.bmc_host, intent.ws_path)))
+    && words_contain(words: websocat.arguments, word: concat("tcp:127.0.0.1:", to_string(intent.local_nbd_port)))
     && string_contains(
       s: nbd_proxy_serve_nbdkit_unit_name(lease_key: srv3_nbd_proxy_lease_key) as String,
       pattern: "nbd-proxy-",
@@ -35,7 +81,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_nbdkit() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == nbdkit_cli_tool.name
+    f: (acc, name) => acc || name == nbdkit_cli_tool.program.invocation
   )
 }
 
@@ -43,7 +89,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_websocat() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == websocat_cli_tool.name
+    f: (acc, name) => acc || name == websocat_cli_tool.program.invocation
   )
 }
 
@@ -51,61 +97,42 @@ fn nbd_proxy_serve_cited_tool_names_includes_socat() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == socat_cli_tool.name
+    f: (acc, name) => acc || name == socat_cli_tool.program.invocation
   )
 }
 
-test fn nbd_proxy_serve_supervision_marker_red_control_holds() -> Bool {
-  nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "trap 'kill $PID' EXIT")
-    && nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "nbdkit -p 10809 &")
-    && nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: "echo $!")
-    && !nbd_proxy_serve_argv_surface_contains_supervision_marker(
-      surface: "websocat --text --header=\"Authorization: Token abc\" wss://host/vm/0/0",
-    )
-}
-
-test fn nbd_proxy_serve_carrier_names_systemd_realization_dissolution_trigger() -> Bool {
-  match nbd_proxy_serve_systemd_realization_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+// THE RETIRED SCAFFOLD'S STANDING. The row was a Scaffold bound to the raw websocat word list; the
+// dispatch it dissolved into landed and the legs are described commands, so it is Terminal with a
+// reason that names both facts and the one obligation that moved with the header word.
+test fn nbd_proxy_serve_systemd_realization_standing_is_terminal() -> Bool {
+  match nbd_proxy_serve_systemd_realization_disposition {
+    Terminal { reason: why } =>
+      string_contains(s: why, pattern: "transient-unit realization dispatch")
+        && string_contains(s: why, pattern: "websocat_header_argv_word_dissolution_trigger")
+    Scaffold { dissolves_to: _, bind: _ } => false
   }
 }
 
-test fn bmcweb_session_login_argv_uses_curl_authority_not_inline_secret() -> Bool {
-  witness_bmcweb_session_login_argv_semantic_surface_holds()
+test fn bmcweb_session_login_command_uses_curl_authority() -> Bool {
+  witness_bmcweb_session_login_command_fields_hold()
 }
 
-fn witness_bmcweb_session_login_argv_semantic_surface_holds() -> Bool {
+fn witness_bmcweb_session_login_command_fields_hold() -> Bool {
   let body = "/tmp/bmcweb-login.json" as NonEmptyStr
   let response = "/tmp/bmcweb-login-response.json" as NonEmptyStr
-  let curl_args = bmcweb_session_login_curl_args(
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: body,
     response_path: response,
   )
-  let argv = bmcweb_session_login_argv(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: body,
-    response_path: response,
-  )
-  let curl_args_surface = fold(
-    curl_args,
-    init: "",
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  let argv_surface = fold(
-    argv,
-    init: "",
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.name
-    && curl_cli_tool.name == "curl"
-    && string_contains(s: argv_surface, pattern: curl_args_surface)
-    && string_contains(s: argv_surface, pattern: "-o")
-    && string_contains(s: argv_surface, pattern: body as String)
-    && string_contains(s: argv_surface, pattern: response as String)
-    && string_contains(s: argv_surface, pattern: "https://")
-    && string_contains(s: argv_surface, pattern: "/login")
+  login.program.invocation == curl_cli_tool.program.invocation
+    && words_contain(words: login.arguments, word: "-X")
+    && words_contain(words: login.arguments, word: "POST")
+    && words_contain(words: login.arguments, word: "--data")
+    && words_contain(words: login.arguments, word: concat("@", body as String))
+    && words_contain(words: login.arguments, word: "-o")
+    && words_contain(words: login.arguments, word: (response as String))
+    && words_contain(words: login.arguments, word: concat("https://", concat(asrock_srv3_live_bmc_host as String, "/login")))
 }
 
 test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {
@@ -193,11 +220,14 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
 }
 
 test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
-  )
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE EMPTY POPULATION ABOVE CANNOT SEE A PROPERTY THAT NEVER REACHES THE EXECUTED WORDS, which is
@@ -206,11 +236,14 @@ test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool
 // is launched unbounded. This control carries a real population so the materialized argv and the
 // extdeps authority must agree on the property word itself.
 test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
-  )
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE WHITESPACE ARM IS THE ONE THE OLD COMPARISON COULD NOT SEE. join(a," ")==join(b," ") cannot
@@ -219,11 +252,14 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
 // such a value here means the control fails if argv agreement is ever weakened back to a text
 // comparison: the words still join to the same text, and only cardinality separates them.
 test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809"],
-  )
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE ENCODING'S OWN PRECONDITION IS ASSERTED, not assumed. argv_exact_token_equal is injective
@@ -238,13 +274,19 @@ test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
 // authority against one materialization; if the transport template silently dropped the property
 // words, BOTH sides would drop them together only if the authority also stopped rendering them --
 // which this asserts it does not. The property word must be present in the authority's own output.
+// POSITIVE CONTROL FOR THE CUTOVER: the wire name reaches the projected words untransformed, in
+// position, in the non-wait start the nbd proxy's serve path actually runs.
 test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
-  join(
-    systemd_run_property_argv(
-      properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
-    ),
-    " ",
-  ) == "--property=MemoryMax=17179869184"
+  match systemd_run_transient_unit_command(
+    unit: "nbd-proxy-witness.service",
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      join(argv_words(command: command), " ")
+        == "systemd-run --unit=nbd-proxy-witness.service --collect --property=MemoryMax=17179869184 -- /bin/true"
+  }
 }
 
 test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
@@ -253,4 +295,115 @@ test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
 
 test fn witness_systemctl_is_active_operation_argv_matches_authority() -> Bool {
   systemctl_is_active_operation_argv_matches_authority(unit: "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr)
+}
+
+// ---- THE BMCWEB SESSION TOKEN READ (gunbc.host_effect_nbd_proxy_serve) ----
+//
+// The wet reader runs Filesystem.List and Filesystem.Read against the real token path; these
+// claims hold the POLICY seam that consumes what they reported. The observations below are built
+// through the filesystem observation fold over authored channel values, which is what the wet path
+// hands it. What they deliberately do not establish is that the host emits those bytes for /tmp --
+// that is transport coverage the hermetic fold cannot carry, and the fold's own witness
+// (test.claim.filesystem_absence_establishment_witness_test) records the same boundary.
+//
+// THE TWO RED CELLS ARE THE DEFECT AS FOUND. Before the observation fold, a refused read AND an
+// unreadable-but-present token both answered Absent, and the unit-start caller reported "BMCWEB
+// session token absent" for a file that was there. Both arms now refuse with their cause.
+fn token_observation(
+  listing_success: Bool,
+  entries: String,
+  listing_error: String,
+  read_success: Bool,
+  content: String,
+  read_error: String,
+) -> BmcwebSessionTokenObservation {
+  bmcweb_session_token_observation_of(o: filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/run/bmcweb",
+      success: listing_success,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: "srv3_bmcweb_token",
+    path: "/run/bmcweb/srv3_bmcweb_token",
+    read: filesystem_read_outcome(content: content, success: read_success, error: read_error),
+  ))
+}
+
+fn token_decision_reason(o: BmcwebSessionTokenObservation) -> String {
+  match bmcweb_session_token_start_decision(o: o) {
+    BmcwebSessionTokenUsable { token: _ } => "usable"
+    BmcwebSessionTokenStartRefused { reason: why } => why as String
+  }
+}
+
+test fn an_unreadable_but_listed_token_refuses_instead_of_absent() -> Bool {
+  string_contains(
+    s: token_decision_reason(o: token_observation(
+      listing_success: true,
+      entries: "srv3_bmcweb_token\nother\n",
+      listing_error: "",
+      read_success: false,
+      content: "",
+      read_error: "Permission denied (os error 13)",
+    )),
+    pattern: "could not be observed",
+  )
+}
+
+test fn an_unlistable_token_directory_refuses_instead_of_absent() -> Bool {
+  string_contains(
+    s: token_decision_reason(o: token_observation(
+      listing_success: false,
+      entries: "",
+      listing_error: "Permission denied (os error 13)",
+      read_success: false,
+      content: "",
+      read_error: "Permission denied (os error 13)",
+    )),
+    pattern: "could not be observed",
+  )
+}
+
+// POSITIVE CONTROL, absence arm: the same refused read, over a listing that does not name the
+// file, is the only route to "absent" -- the arms are decided by the LISTING, not the read.
+test fn a_token_absent_from_the_listing_still_refuses_as_absent() -> Bool {
+  token_decision_reason(o: token_observation(
+    listing_success: true,
+    entries: "other\n",
+    listing_error: "",
+    read_success: false,
+    content: "",
+    read_error: "No such file or directory (os error 2)",
+  )) == "BMCWEB session token absent"
+}
+
+test fn a_listed_and_read_token_starts_the_units() -> Bool {
+  match bmcweb_session_token_start_decision(o: token_observation(
+    listing_success: true,
+    entries: "srv3_bmcweb_token\n",
+    listing_error: "",
+    read_success: true,
+    content: "tok-123",
+    read_error: "",
+  )) {
+    BmcwebSessionTokenUsable { token: t } => t as String == "tok-123"
+    BmcwebSessionTokenStartRefused { reason: _ } => false
+  }
+}
+
+// The empty content is a third fact and is carried as one: the file exists, was read, and holds
+// no token -- a broken materialization, not an absent one.
+test fn an_empty_token_file_refuses_as_present_not_absent() -> Bool {
+  string_contains(
+    s: token_decision_reason(o: token_observation(
+      listing_success: true,
+      entries: "srv3_bmcweb_token\n",
+      listing_error: "",
+      read_success: true,
+      content: "",
+      read_error: "",
+    )),
+    pattern: "holds no token",
+  )
 }

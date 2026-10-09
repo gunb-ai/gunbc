@@ -18,6 +18,7 @@ import gunbc.semantic_conformance {
   SubjectAuthorityBinding, AuthorityBound, AuthorityMissing,
   DifferentialRecord,
   ConformanceDisposition, Conforms, NativeV2Defect, V2EvaluatorDefect, HostRealizationDefect,
+  RouteEffectDisagreement,
   SemanticAuthorityMissing, WitnessDefect, LegacyV1Defect,
   ContractFacet, ValueResultFacet, RefusalBehaviorFacet, EffectOrderingFacet,
   BehaviorSubjectIdentity,
@@ -91,9 +92,10 @@ fn record(
   DifferentialRecord {
     binding: AuthorityBound { subject: fixture_subject() },
     native_v2: native,
+    native_v2_effects: [],
     v2_evaluator: evaluator,
+    v2_evaluator_effects: [],
     legacy_v1: legacy,
-    effect_receipt: [],
   }
 }
 
@@ -266,9 +268,10 @@ test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() ->
           area: CompilerClosureMechanism,
         },
         native_v2: right(),
+        native_v2_effects: [],
         v2_evaluator: right(),
+        v2_evaluator_effects: [],
         legacy_v1: LegacyNotConsulted,
-        effect_receipt: [],
       },
       route: EvaluatorOnPromotedRoute
     )
@@ -301,9 +304,10 @@ fn effect_record(receipt: List<EffectReceiptEntry>) -> DifferentialRecord {
   DifferentialRecord {
     binding: AuthorityBound { subject: ordered_effect_subject() },
     native_v2: right(),
+    native_v2_effects: receipt,
     v2_evaluator: right(),
+    v2_evaluator_effects: receipt,
     legacy_v1: LegacyNotConsulted,
-    effect_receipt: receipt,
   }
 }
 
@@ -662,4 +666,68 @@ test fn a_failed_open_omitted_arm_refuses_a_clean_gate() -> Bool {
           } => b == 0 && u == 1
         }
   }
+}
+
+fn is_route_effect_disagreement(d: ConformanceDisposition) -> Bool {
+  match d {
+    RouteEffectDisagreement { detail: _ } => true
+    _ => false
+  }
+}
+
+fn two_route_effect_record(
+  native: ObservedResult,
+  native_effects: List<EffectReceiptEntry>,
+  evaluator_effects: List<EffectReceiptEntry>
+) -> DifferentialRecord {
+  DifferentialRecord {
+    binding: AuthorityBound { subject: fixture_subject() },
+    native_v2: native,
+    native_v2_effects: native_effects,
+    v2_evaluator: right(),
+    v2_evaluator_effects: evaluator_effects,
+    legacy_v1: LegacyNotConsulted,
+  }
+}
+
+// THE SUBJECT EXPECTS A VALUE, NOT AN ORDER, deliberately. No row in the corpus says which
+// sibling-effect order is correct, so the disagreement must be detectable without one: the two
+// routes' receipts are joined against EACH OTHER at identity grain, ordinal included. Both routes
+// produce the authority value, so a classifier that only compared a receipt against an expected order
+// answers Conforms here -- the disagreement silently absorbed -- and one that read a single unrouted
+// receipt answers HostRealizationDefect, naming the wrong subject.
+test fn two_routes_disagreeing_on_effect_ordinal_is_a_route_disagreement() -> Bool {
+  is_route_effect_disagreement(
+    d: classify_differential_record(
+      record: two_route_effect_record(
+        native: right(),
+        native_effects: [effect(name: "open", ordinal: 0), effect(name: "write", ordinal: 1)],
+        evaluator_effects: [effect(name: "write", ordinal: 0), effect(name: "open", ordinal: 1)]
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+// THE CONTROL, shaped as the gunbc#12032 specimen: the routes agree on their (empty) effect receipts
+// and disagree on value, native wrong against the law. It must classify NativeV2Defect before and
+// after the split -- agreeing receipts contribute nothing to the verdict -- and an agreeing NONEMPTY
+// pair must not trip the disagreement arm either.
+test fn routes_agreeing_on_effects_classify_by_value_unchanged() -> Bool {
+  is_native_defect(
+    d: classify_differential_record(
+      record: two_route_effect_record(native: wrong(), native_effects: [], evaluator_effects: []),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+    && is_conforms(
+      d: classify_differential_record(
+        record: two_route_effect_record(
+          native: right(),
+          native_effects: [effect(name: "open", ordinal: 0), effect(name: "write", ordinal: 1)],
+          evaluator_effects: [effect(name: "open", ordinal: 0), effect(name: "write", ordinal: 1)]
+        ),
+        route: EvaluatorOnPromotedRoute
+      )
+    )
 }

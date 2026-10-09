@@ -1,0 +1,479 @@
+module test.claim.parse_test_fn_decl_return_clause
+
+import v2.compiler.body_lowering_fold {
+  BodyLowerFnSignature,
+  BodyLowered,
+  NoTypeParams,
+  body_lower_fn_signature_bindings_refusal,
+  body_lower_fn_decl_to_arrow,
+  body_lower_fn_decl_to_census_arrow,
+  body_lower_outcome_is_wrapper_retained,
+  body_lower_return_type_from_fn_captured,
+  body_lower_unwrap_captured
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.namespace_graft { module_header_containment_graft }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag {
+  parse_production_emitted_identity_optional
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node_query { binder_edge }
+import std.optional { Absent, Optional, Present, optional_present }
+
+// ---------------------------------------------------------------------------
+// THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.
+//
+// WHERE THESE EXECUTE IS PART OF WHAT THEY ARE. This file began as
+// v2.test.manual.normalize_fn_body_cost_probe, the cost decomposition that located the fn-body
+// normalize charge; its twelve dangling cost fns were deleted (review 70132) and what remained
+// are the reds and falsifiers below. Under that name the module matched neither
+// v2.workflow.required_floor `required_gate_prefixes` nor `required_gate_authored_modules`, so
+// the required floor dispositioned every identity here DeclinedOutsideRequiredGate: a wall that
+// never ran on the merge path. THE REPAIR IS A MOVE, NOT A ROSTER EDIT (the rosters are closed to
+// growth without operator sign-off; the precedent is
+// test.claim.infer_record_field_completeness_zero_field_witness_test): the module name now
+// matches the admitted `test.claim.parse_test` family, whose subject -- the fn_decl production's
+// spine as the parser emits it -- is the contract these claims hold for the positional reader.
+// The identities were renamed with the module; nothing else cites them.
+// ---------------------------------------------------------------------------
+
+// FALSIFIERS FOR THE POSITIONAL READ ITSELF. The spine read relies on opt(generic_params)
+// occupying its position when elided; a generic fn is the case where that assumption, if
+// wrong, shifts every later position. The `= expr` form exercises the OTHER arm of the body
+// choice at the same spine depth. A wrong read here is a regression across the corpus, not an
+// edge case: generic fns and `=`-bodied fns are ordinary.
+data nfbcp_generic_fn_source: String = "module m\nfn f<T>(x: T) -> T { x }\n"
+
+data nfbcp_eq_body_fn_source: String = "module m\nfn f(x: Int) -> Int = x\n"
+
+data nfbcp_ordinary_fn_source: String = "module m\nfn f(x: Int) -> Int { x }\n"
+
+// ARM 1 -- a declared return type. The deleted reading met the parameter's fn-type arrow
+// first and answered Int for a function declared to return Bool: a WRONG CODOMAIN on an
+// otherwise ordinary lowering. This arm has natural instances in the corpus.
+data nfbcp_fn_type_param_source: String = "module m\nfn g(h: fn(Int) -> Int) -> Bool { true }\n"
+
+// ARM 2 -- NO declared return type. The production carries no arrow clause at all, so a
+// positional read is Absent and the consumer must retain the wrapper. The deleted reading
+// instead found the PARAMETER's arrow and minted an Arrow with Int as its codomain, so the
+// defect here is a DISPOSITION FLIP, not only a wrong type.
+//
+// The corpus population for this arm is EMPTY today (sizing scan over 76839 fn declarations
+// across dag/ and src/v2: one apparent candidate, and it is prose inside a String in
+// gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target). An empty
+// population is a fact about today's corpus and not about the compiler -- the first fn
+// anyone writes in this shape flips -- so this arm has no natural instance protecting it
+// and its red is an AUTHORED fixture. DESIGN section 4b asks whether the forbidden state is
+// authorable before writing the check: it is, so declining the fixture would be
+// specification-without-execution.
+data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { true }\n"
+
+// The PREPARED grammar, not the whole language model. dag_prepared_grammar is admitted by the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share), so the required floor fills it during strict
+// preparation -- outside every per-claim budget -- and a claim here pays the lookup rather
+// than the construction. Building dag_language_model() per claim instead charged ~107k eval
+// steps to every probe below, which is the parse subject and not this claim's.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nfbcp_parsed(text: String) -> Optional<Node> {
+  match tokenize_prepared(text: text, file: ^nfbcp_probe_file, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: ts, prepared: prepared, validation_residue: None) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+          }
+      }
+  }
+}
+
+fn nfbcp_find_shell(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        optional_present(value: root)
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => nfbcp_find_shell(root: e.target, emitted: emitted)
+          }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => nfbcp_find_shell(root: e.target, emitted: emitted)
+        }
+      })
+  }
+}
+
+fn nfbcp_fn_decl_shell(text: String) -> Optional<Node> {
+  match nfbcp_parsed(text: text) {
+    Absent => Absent
+    Present { value: tree } => nfbcp_find_shell(root: tree, emitted: ^dag_surface_fn_decl)
+  }
+}
+
+fn nfbcp_fn_captured(text: String) -> Optional<Node> {
+  match nfbcp_fn_decl_shell(text: text) {
+    Absent => Absent
+    Present { value: shell } => body_lower_unwrap_captured(shell: shell)
+  }
+}
+
+fn nfbcp_return_atom(text: String) -> Optional<Symbol> {
+  match nfbcp_fn_captured(text: text) {
+    Absent => Absent
+    Present { value: captured } =>
+      match body_lower_return_type_from_fn_captured(captured: captured) {
+        Absent => Absent
+        Present { value: rt } => nfbcp_atom_identity_deep(node: rt)
+      }
+  }
+}
+
+fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => optional_present(value: id)
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => nfbcp_atom_identity_deep(node: e.target)
+        }
+      })
+  }
+}
+
+// THE MARGIN HERE IS THIN, AND THAT IS A STANDING FACT ABOUT THIS FILE RATHER THAN A NUMBER.
+// The most expensive claim below is the disposition arm, because it is the only one that pays
+// parse AND body_lower_fn_decl_to_arrow; it sits just under the per-claim ceiling derived by
+// v2.workflow.required_floor `claim_ceiling_eval_step_budget`. So enlarging a specimen or adding
+// an assertion to that claim is a budget decision, not a free edit. The producer that re-derives
+// the current figures is the required floor itself, which prints eval_steps per claim on every
+// run -- not transcribed here, because a copied number would rot without anyone touching either
+// end (DESIGN section 6).
+//
+// WHY THE SUPPLIED-TOKEN ROUTE IS NOT USED HERE, since it is the obvious headroom and declining
+// it is a judgement rather than an oversight. v2.test.parse.supplied_token_stream_support exists
+// for claims whose text route exceeds the budget BEFORE they assert anything; it converts one
+// over-budget claim into TWO that must each fit (a fidelity claim costing tokenize, plus the
+// supplied-route claim) and needs a hand-authored TokenStream per specimen. These claims are
+// already under the ceiling, so adopting it would author four token streams and double the claim
+// count to buy speculative margin -- and today it would also mean carrying a second copy of that
+// module, which is the DESIGN section 3 fork. If a later edit pushes the disposition arm over,
+// that is the mechanism to adopt, and the specimens here are small enough for it to work.
+//
+// ===========================================================================
+// ENROLLED REDS for the positional-return-type repair (DESIGN section 4b(4):
+// these stay enrolled as regression controls after they green; they do not retire).
+// ===========================================================================
+
+// ARM 1 RED. Fails on the deleted shape-search reading, which answered the PARAMETER
+// fn-type's Int; holds on the positional read, which cannot reach a parameter at all.
+test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_fn_type_param_source) {
+    Absent => false
+    Present { value: id } => id == ^Bool
+  }
+}
+
+// ARM 2 RED. With no arrow clause in the production there is no return type to read, so
+// the positional read must be ABSENT. The deleted reading returned the parameter's arrow.
+test fn nfbcp_hazard_no_return_type_reads_absent_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_no_return_type_source) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ARM 2 RED, at the consumer. An Absent return type reaches
+// `Absent => body_lower_wrapper_retained_shell`, so the member is RETAINED rather than
+// lowered to an Arrow carrying a codomain the source never declared. Asserting the
+// disposition and not only the type keeps this a claim about the ROUTE.
+test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_no_return_type_source) {
+    Absent => false
+    Present { value: shell } =>
+      body_lower_outcome_is_wrapper_retained(o: body_lower_fn_decl_to_arrow(shell: shell))
+  }
+}
+
+// POSITIVE CONTROL for the repair: an ordinary fn with a declared return type and no
+// fn-typed parameter still lowers, so the positional read is not a blanket refusal. Lowering
+// carries the AUTHORED spelling: v2.compiler.resolve maps an unshadowed kernel spelling to its
+// canonical binding, so these rows read `Int` and `Bool` as written, as the generic row reads `T`
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^Int
+  }
+}
+
+// FALSIFIER: a generic fn must still read its declared return type. Absent here would mean
+// every generic fn in the corpus retains its wrapper instead of lowering.
+test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^T
+  }
+}
+
+// FALSIFIER: the `= expr` body arm sits at the same spine depth as the braced body, so the
+// return clause must read identically through it.
+test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^Int
+  }
+}
+
+test fn nfbcp_generic_fn_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nfbcp_eq_body_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// SPECIMEN CONTROLS. Separate "no hazard" from "the specimen stopped parsing" -- without
+// these, both reds above could go green by the fixture ceasing to compile.
+test fn nfbcp_hazard_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_fn_type_param_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_no_return_type_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MQ-4: THE DEEPEST RETENTION ROUTE, REFUSED AT ITS OWN LOCUS, END TO END.
+//
+// The retention above is minted at the deepest call site a module's normalize can reach:
+// v2.compiler.normalize normalize_node_ctx -> body_lower_finish_for_normalize ->
+// body_lower_after_children -> body_lower_production_emitted -> body_lower_forward_row_apply ->
+// body_lower_fn_decl_to_arrow -> body_lower_fn_decl_to_arrow_admitted, whose signature arm answers
+// body_lower_wrapper_retained_shell. Every frame on that chain now returns the typed BodyLowering, so
+// the retention cannot be dropped by a `diagnostics: _` on the way up; normalize gathers it into its
+// BodyLoweredTree and v2.compiler.normalized_tree admit_retention_free refuses it.
+//
+// This row runs that whole route on the real parse and asserts WHERE the refusal lands: under the
+// door's cause, anchored at the fn_decl shell that was retained -- not at the module root, where the
+// pre-MQ-4 door placed its single diagnostic. Deleting the door's refusal arm (admitting every tree)
+// turns normalize Accepted and reds it. A door refusing everything is caught by the normalize-accepts
+// rows that already run the same route (v2.test.manual.body_lowering_normalize_add
+// body_lowering_normalize_accepts, v2.test.claim.body_lowering.data_initializer_fn_value
+// lambda_in_fn_body_control_holds), so this row adds no second parse for a positive control.
+//
+// The specimen is the smallest module whose fn declaration reaches the signature arm with no return
+// type -- the whole parse and normalize is this row's cost, so it carries nothing else.
+data nfbcp_retention_route_source: String = "module m\nfn g() { true }\n"
+fn nfbcp_retention_anchored_at_fn_decl(d: Diagnostic) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match parse_production_emitted_identity_optional(node: a.at) {
+        Present { value: id } => id == ^dag_surface_fn_decl
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn nfbcp_is_door_retention(d: Diagnostic) -> Bool {
+  d.reason == ^normalized_tree_reason_wrapper_retention_not_normalized
+}
+
+test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_retention_route_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: nfbcp_is_door_retention(d: ne.head) && nfbcp_retention_anchored_at_fn_decl(d: ne.head), f: fn(found, d) {
+            found || (nfbcp_is_door_retention(d: d) && nfbcp_retention_anchored_at_fn_decl(d: d))
+          })
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A REPEATED PARAMETER BINDING REFUSES AT THE SECOND BINDING, NOT AT THE MODULE ROOT.
+//
+// The Arrow domain is a Conj keyed by binding name, so a repeated binding has no well-formed domain.
+// Before v2.compiler.body_lowering_fold body_lower_fn_signature_bindings_refusal the lowering built
+// that Conj, and normalize's recursive well_formed gate refused the module with
+// normalize_reason_post_normalize_not_well_formed at the module root (the gen-two census specimens,
+// std.key_relation and provider_readiness_independence_claim, were repeated `_`, which now lower to
+// distinct minted binders). The first row supplies the signature at the refusal's own interface,
+// body_lower_fn_signature_bindings_refusal, because the domain is the only input that refusal reads; on
+// the full parse-and-lower route it exceeded the required floor's per-claim eval-step budget while its
+// assertion inspected one diagnostic. The second row is that boundary's one inhabitance claim: a parsed
+// fn through body_lower_fn_decl_to_census_arrow, which reaches the same refusal without lowering the
+// body; its `= a` body keeps the parsed source to the fewest tokens that still reach the signature. Both assert the cause and that the locus is the SECOND binding's type (B; the first is A).
+// Answering optional_absent from the bindings arm restores the ill-formed domain and reds both rows.
+// Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
+// Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
+// (v2.std.anonymous_binder), and v2.test.claim.anonymous_param_binder holds that route.
+data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A = a\n"
+
+fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id == atom
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
+  match body_lower_fn_signature_bindings_refusal(shell: nfbcp_atom(identity: ^g), sig: nfbcp_repeated_signature()) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
+    Present { value: Rejected { diagnostics: ne } } =>
+      (ne.head.reason == ^body_lowering_reason_arrow_domain_param_binding_repeated) && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
+  }
+}
+
+// THE SAME REFUSAL ON THE REAL ROUTE: a parsed fn through the census-grade fn_decl producer, which reads
+// the signature and reaches body_lower_fn_signature_refusal without lowering the body. This is the one
+// inhabitance claim for the supplied signature above (DESIGN section 3, the pairing obligation).
+test fn nfbcp_repeated_named_param_refuses_on_the_parsed_route_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_named_repeat_source) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_census_arrow(shell: shell) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          (ne.head.reason == ^body_lowering_reason_arrow_domain_param_binding_repeated) && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
+      }
+  }
+}
+
+fn nfbcp_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+// The signature fn g(a: A, a: B) -> A as the fn_decl producer reads it: the domain is the one place the
+// refusal looks, so it is supplied here at that boundary instead of parsed.
+fn nfbcp_repeated_signature() -> BodyLowerFnSignature {
+  BodyLowerFnSignature {
+    domain: node_synthetic(kind: TypeNode { connective: Conj }, children: [
+      binder_edge(name: ^a, type_node: nfbcp_atom(identity: ^A)),
+      binder_edge(name: ^a, type_node: nfbcp_atom(identity: ^B))
+    ]),
+    order: [^a, ^a],
+    return_type: nfbcp_atom(identity: ^A),
+    fn_name: ^g,
+    type_params: NoTypeParams
+  }
+}
+
+// A REPEATED DECLARATION NAME REFUSES AT THE GRAFT, AT THE SECOND DECLARATION. The module body is a
+// Conj keyed by declaration name; v2.compiler.namespace_graft module_header_containment_graft now
+// refuses a repeated name (gen-two census: two `data fixture_v3_tick_wire` in the roadmap launch
+// witness) instead of building a body the well_formed gate refuses at the root. This row hands the
+// parsed module to the graft itself. The locus is the second declaration's member, discriminated by
+// its declared type (B; the first is A).
+data nfbcp_repeated_decl_source: String = "module m\ndata x: A = a\ndata x: B = a\n"
+
+fn nfbcp_node_mentions_atom(n: Node, atom: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => id == atom
+    Absent => fold(n.children, init: false, f: fn(found, e) { found || nfbcp_node_mentions_atom(n: e.target, atom: atom) })
+  }
+}
+
+fn nfbcp_locus_mentions_atom(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } => nfbcp_node_mentions_atom(n: a.at, atom: atom)
+    _ => false
+  }
+}
+
+test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_decl_source) {
+    Absent => false
+    Present { value: tree } =>
+      match module_header_containment_graft(root: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          (ne.head.reason == ^namespace_graft_declaration_name_repeated)
+            && nfbcp_locus_mentions_atom(d: ne.head, atom: ^B)
+            && !nfbcp_locus_mentions_atom(d: ne.head, atom: ^A)
+      }
+  }
+}
+
+// A REPEATED SERVICE OPERATION IS REFUSED AT THE SECOND OPERATION. The service lowering reads the
+// repeated name from v2.std.node_query repeated_name_edges, the same authority the declaration
+// graft above reads; only the second operation carries a field, so a locus at the first operation
+// (no b) or at the service (which mentions S) reds this row.
+data nfbcp_repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op { input { b: Int } }\n}\n"
+
+test fn nfbcp_repeated_operation_refuses_at_the_second_operation_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_operation_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: nfbcp_is_repeated_operation_at_second(d: ne.head), f: fn(found, d) { found || nfbcp_is_repeated_operation_at_second(d: d) })
+      }
+  }
+}
+
+fn nfbcp_is_repeated_operation_at_second(d: Diagnostic) -> Bool {
+  (d.reason == ^body_lowering_reason_service_operation_repeated)
+    && nfbcp_locus_mentions_atom(d: d, atom: ^b)
+    && !nfbcp_locus_mentions_atom(d: d, atom: ^S)
+}
+
+// AN ANONYMOUS RECORD RETURN TYPE LOWERS; IT IS NOT RETAINED. `-> { s: B }` is a type expression
+// whose captured is a field_decl_block. v2.compiler.body_lowering_fold
+// body_lower_anonymous_record_type_optional reads it through the record declaration's own field-block
+// reader, so the signature is readable and the fn_decl producer lowers it. The row runs the
+// census-grade producer, which reads the same signature (body_lower_fn_signature_optional) and
+// skips the body, so it pays for the fact under test and nothing else. Before that arm the reader
+// answered Absent and the whole fn_decl was retained, refused by the normalized-tree door (gen-two
+// census: gunbc.tools.cron_tag upsert_tagged_cron_tab). Deleting the arm restores the retention and
+// reds this row.
+data nfbcp_anonymous_record_return_source: String = "module m\nfn g() -> { s: B } { a }\n"
+
+test fn nfbcp_anonymous_record_return_type_lowers_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_record_return_source) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_census_arrow(shell: shell) {
+        Accepted { value: BodyLowered { node: _ }, diagnostics: _ } => true
+        _ => false
+      }
+  }
+}

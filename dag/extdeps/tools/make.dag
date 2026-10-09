@@ -1,5 +1,7 @@
 module extdeps.tools.make
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,7 +31,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data make_program: NonEmptyStr = "make"
+fn make_program() -> ProgramIdentity = uncataloged_program(invocation: "make")
 
 // -C IS PART OF THE OPERATION, THE REST IS THE CALLER'S. Which directory the build runs in is a fact
 // this builder owns, because getting it from the ambient working directory is how a build silently
@@ -37,5 +39,5 @@ data make_program: NonEmptyStr = "make"
 // takes as ordinary operands -- is the caller's own request, which this module has no authority to
 // enumerate: a builder that tried would be modeling every Makefile in the world.
 fn make_command(directory: String, arguments: List<String>) -> ArgvCommand {
-  argv_command(program: make_program, arguments: append(["-C", directory], items: arguments))
+  argv_command(program: make_program(), arguments: append(["-C", directory], items: arguments))
 }

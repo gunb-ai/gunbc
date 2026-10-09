@@ -1,0 +1,96 @@
+module v2.test.claim.self_host_contract.target_carriers_emitted_contract
+
+import std.logic { Bool }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import v2.compiler.target_carriers { bundle_fidelity_quotient_optional, fidelity_quotient_decode_fidelity }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Edge, Authored, Positional, Atom, TypeNode, ComputationNode, Conj, Value, Symbol, node_synthetic }
+import std.optional { Present, Absent }
+
+// THE 07_target_carriers ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.target_carriers fidelity_quotient_decode_fidelity folds a target's fidelity quotient
+// to Lossless when every disposition is the modeled kind, to Lossy when one declares a fail-closed
+// kind, and refuses a disposition it does not recognize -- it never defaults one to Lossless. And
+// bundle_fidelity_quotient_optional reads a bundle with no fidelity-quotient edge as Absent but
+// refuses one with two, rather than reading a self-contradicting target as declaring none.
+fn tcc_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn tcc_conj(children: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+}
+
+fn tcc_modeled_only() -> Node {
+  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled) }])
+}
+
+fn tcc_with_fail_closed() -> Node {
+  tcc_conj(children: [
+    Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled) },
+    Edge {
+      label: Positional,
+      target: tcc_conj(children: [
+        Edge {
+          label: Authored { name: ^dag_fidelity_disposition_kind_fail_closed },
+          target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+        }
+      ])
+    }
+  ])
+}
+
+fn tcc_unrecognized() -> Node {
+  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^self_host_witness_unknown_disposition) }])
+}
+
+fn tcc_quotient_edge() -> Edge {
+  Edge { label: Authored { name: ^target_model_edge_fidelity_quotient }, target: tcc_modeled_only() }
+}
+
+type TccQuotientReading = TccQuotientRefused | TccQuotientAbsent | TccQuotientPresent
+
+fn tcc_quotient_in(bundle: Node) -> TccQuotientReading {
+  match bundle_fidelity_quotient_optional(bundle: bundle) {
+    Rejected { diagnostics: _ } => TccQuotientRefused
+    Accepted { value: q, diagnostics: _ } => match q {
+      Present { value: _ } => TccQuotientPresent
+      Absent => TccQuotientAbsent
+    }
+  }
+}
+
+type TccDecodeReading = TccDecodeRefused | TccDecodedLossless | TccDecodedLossy
+
+fn tcc_decode(quotient: Node) -> TccDecodeReading {
+  match fidelity_quotient_decode_fidelity(quotient: quotient) {
+    Rejected { diagnostics: _ } => TccDecodeRefused
+    Accepted { value: f, diagnostics: _ } => match f {
+      Lossless => TccDecodedLossless
+      Lossy => TccDecodedLossy
+    }
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: the injected reading holds exactly when the
+// module accepts an unrecognized disposition or an ambiguous bundle, so a correct module does not
+// hold it.
+fn target_carriers_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let unrecognized_refused = tcc_decode(quotient: tcc_unrecognized()) == TccDecodeRefused
+  let ambiguous_refused = tcc_quotient_in(bundle: tcc_conj(children: [tcc_quotient_edge(), tcc_quotient_edge()])) == TccQuotientRefused
+  if inject_fault {
+    !unrecognized_refused || !ambiguous_refused
+  } else {
+    tcc_decode(quotient: tcc_modeled_only()) == TccDecodedLossless
+      && tcc_decode(quotient: tcc_with_fail_closed()) == TccDecodedLossy
+      && unrecognized_refused
+      && tcc_quotient_in(bundle: tcc_conj(children: [])) == TccQuotientAbsent
+      && tcc_quotient_in(bundle: tcc_conj(children: [tcc_quotient_edge()])) == TccQuotientPresent
+      && ambiguous_refused
+  }
+}
+
+test fn target_carriers_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  target_carriers_emitted_contract_holds(inject_fault: false)
+    && !target_carriers_emitted_contract_holds(inject_fault: true)
+}

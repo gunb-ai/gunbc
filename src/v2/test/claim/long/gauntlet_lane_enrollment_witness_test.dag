@@ -1,5 +1,6 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
+import std.types { List }
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
 import gunbc.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
@@ -17,8 +18,6 @@ import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
 }
 import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow
@@ -101,8 +100,10 @@ fn substrate_long_lane_contains(f: String) -> Bool {
 test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
   let entries = live_roster_falsifier_witness_entries()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
-    && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
-    && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_loop_executes_witness_holds")
+    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_wrong_value_red_holds")
+    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_wrong_value_red_holds")
     && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 

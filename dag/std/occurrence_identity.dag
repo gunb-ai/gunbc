@@ -1,10 +1,11 @@
 module std.occurrence_identity
+import std.optional { Absent, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { FreeMonoid }
 import std.content_hash { Fnv1a64Structural }
-import std.types { Bool, Int, String, SourceSpan }
+import std.types { Bool, Int, String, SourceSpan, List, Map }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
@@ -317,15 +318,37 @@ fn scoped_occurrence_ref_in_scope(
 // mechanically preventable at that join, and the next rung here would be a construction that can
 // only be reached from a resolved base transport.
 //
+// ONE ARM, TWO PRODUCERS, AND THE CAUSE'S SCOPE IS WHAT TELLS THEM APART. The arm's contract is
+// "a real occurrence of the containing graph that has a cause and no author", and two producers
+// meet it. A projector INSERTION's cause is in a different allocator domain, as above. A same-graph
+// LOWERING MEMBER (alloc_projected_occurrence) has its cause in its own graph's domain, and its id
+// is allocated from that same domain's allocator. The two have different
+// owners and repairs, so they must stay distinguishable, and they are, without a fourth arm:
+// scoped_occurrence_ref_in_scope(caused_by, <the containing graph's scope>) is true exactly for a
+// lowering member. v2.workflow.legacy_binding_delta insertion_provenance_entry branches on it, and
+// any other consumer that needs the distinction asks the same function rather than a new field.
+//
 // NOTE THE ASYMMETRY, WHICH IS DELIBERATE: a carried-forward node gets no arm here. Its
 // correspondence to its base counterpart relates two occurrences that BOTH exist, so the projector
 // can emit that pairing from the copy it performed and nothing needs to ride on the node. An
 // insertion has no base counterpart to be paired WITH, which is precisely why its cause has nowhere
 // else to live.
+// THE FOURTH ARM IS A PHASE, NOT A KIND OF OCCURRENCE. A lowering builder closes its image purely,
+// at the root it names: the root keeps OccurrenceMinted and every other member is marked
+// OccurrencePending with the source that caused it. Normalization's final pass allocates each
+// pending member an id from the graph's one allocator, in canonical pre-order, and converts it to
+// OccurrenceProjected. So a builder never threads allocator state, and the allocation pass touches
+// ONLY pending members: a builder that forgot to close leaves duplicate MINTED ids, which the pass
+// never repairs, and the duplicate-minted admission wall refuses them. The cause is a bare ordinal
+// here because it is in the SAME graph as the pending node, and the scope it will be stated in
+// arrives with the allocator. RUNG: admission refuses any OccurrencePending that survives
+// normalization (v2.compiler.normalized_tree), so no accepted tree holds one; the arm is still
+// constructible downstream, which makes it mechanically preventable, not impossible.
 type NodeOccurrenceIdentity
   = OccurrenceSynthetic
   | OccurrenceMinted { id: OccurrenceId }
   | OccurrenceProjected { id: OccurrenceId, caused_by: ScopedOccurrenceRef }
+  | OccurrencePending { caused_by: OccurrenceId }
 
 type OccurrenceIdAllocator {
   next_id: Int
@@ -380,6 +403,73 @@ fn node_occurrence_identity_projected(
   caused_by: ScopedOccurrenceRef
 ) -> NodeOccurrenceIdentity {
   OccurrenceProjected { id: id, caused_by: caused_by }
+}
+
+// A SAME-GRAPH LOWERING ALLOCATES ITS PROJECTED IDS FROM THE GRAPH'S ONE ALLOCATOR.
+//
+// A lowering turns one authored node into an IMAGE of several structurally different nodes. Exactly
+// one of them, the image root the builder names, stands for the authored text and keeps its
+// OccurrenceMinted. Every other member is a real occurrence of the lowered graph with an authored
+// CAUSE, which is what OccurrenceProjected says, and its id comes from the same allocator the parse
+// drew from -- occurrence_identity_scope_law's one graph allocator, unchanged.
+//
+// WHY ALLOCATED AND NOT DERIVED. An earlier model derived the id as N + cantor(source, k) over the
+// parse's final bound N, sealed so later allocation skipped the derived range. That is unsound in
+// production: v2.compiler.program_assembly parses and normalizes FILE BY FILE with one allocator,
+// so N is not final when a file is lowered, and a later file's authored ids land in the earlier
+// file's derived range; sealing per file cannot fix it, because the reserved span overflows Int
+// within a few files. Allocation is collision-free by the allocator's own construction.
+//
+// DETERMINISM AND STABILITY. Ids follow the fixed traversal order of normalization, so two runs
+// over one input give identical ids. Editing a LATER file leaves an earlier file's ids unchanged,
+// because the earlier file was parsed and lowered before the later one allocated anything; editing
+// an EARLIER file shifts every later id, exactly as it already shifts every later authored id. An
+// allocated id is therefore a WITHIN-RUN identity: a consumer that needs identity across runs keys
+// on the named image root plus a structural path, never on this ordinal.
+//
+// THE ALLOCATOR TRAVELS WITH ITS SCOPE, as one value, so an id and the scope its cause is stated in
+// can never come from two different ingests. The scope is the digest of the ingest's source-ref
+// list (v2.compiler.source_authority source_ref_list_digest), computed once where the ingest begins.
+type ScopedOccurrenceAllocator {
+  alloc: OccurrenceIdAllocator
+  scope: Fnv1a64Structural
+}
+
+type ProjectedOccurrenceAllocation {
+  identity: NodeOccurrenceIdentity
+  allocator: ScopedOccurrenceAllocator
+}
+
+fn scoped_occurrence_allocator(alloc: OccurrenceIdAllocator, scope: Fnv1a64Structural) -> ScopedOccurrenceAllocator {
+  ScopedOccurrenceAllocator { alloc: alloc, scope: scope }
+}
+
+fn alloc_projected_occurrence(
+  allocator: ScopedOccurrenceAllocator,
+  source: OccurrenceId
+) -> ProjectedOccurrenceAllocation {
+  let minted = alloc_occurrence_id(alloc: allocator.alloc)
+  ProjectedOccurrenceAllocation {
+    identity: OccurrenceProjected {
+      id: minted.id,
+      caused_by: ScopedOccurrenceRef { scope: allocator.scope, occurrence: source },
+    },
+    allocator: ScopedOccurrenceAllocator { alloc: minted.alloc, scope: allocator.scope },
+  }
+}
+
+// Membership in a source's image is read from the identity, never from shape: a node belongs to
+// source's image when it carries source's minted id, or is already pending with source as its
+// cause. That second arm is what makes closing idempotent, so an image-root lowering that calls
+// another on the SAME source leaves the inner members pending once rather than twice. A projected
+// node is never a member: projection happens after every image is closed.
+fn occurrence_identity_in_image_of(identity: NodeOccurrenceIdentity, source: OccurrenceId) -> Bool {
+  match identity {
+    OccurrenceSynthetic => false
+    OccurrenceMinted { id: id } => id.value == source.value
+    OccurrencePending { caused_by: caused_by } => caused_by.value == source.value
+    OccurrenceProjected { id: _, caused_by: _ } => false
+  }
 }
 
 // occurrence_transport_refusal builds each graph-local identity/category index exactly once, then
@@ -446,23 +536,25 @@ fn occurrence_id_list_is_prefix_of(
     f: (acc, expected) =>
       if !acc.ok {
         acc
-      } else if (acc.path_remaining |> count) == 0 {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: [],
-          ok: false,
-        }
-      } else if occurrence_id_eq(
-        left: acc.path_remaining.first(),
-        right: expected,
-      ) {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: acc.path_remaining.skip(n: 1),
-          ok: true,
-        }
       } else {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: acc.path_remaining,
-          ok: false,
+        match acc.path_remaining.first() {
+          Absent =>
+            OccurrenceIdListPrefixAcc {
+              path_remaining: [],
+              ok: false,
+            }
+          Present { value: head } =>
+            if occurrence_id_eq(left: head, right: expected) {
+              OccurrenceIdListPrefixAcc {
+                path_remaining: acc.path_remaining.skip(n: 1),
+                ok: true,
+              }
+            } else {
+              OccurrenceIdListPrefixAcc {
+                path_remaining: acc.path_remaining,
+                ok: false,
+              }
+            }
         }
       },
   ).ok

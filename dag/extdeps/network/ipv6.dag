@@ -1,17 +1,28 @@
 module extdeps.network.ipv6
 
-import std.types { Int, String, Bool, NonEmptyStr, List }
+import std.types { Int, String, Bool, NonEmptyStr, List, range }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { bound_dissolution }
 import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.rfc-editor.org/rfc/rfc4291",
   }
+}
+
+// Reading: RFC 4291 section 2.5.3 owns the loopback address; ipv6_is_loopback is that rule (::1) as code, so the function is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.ipv6", decl_name: "ipv6_is_loopback", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data ipv6_text_representation_authority: ExternalAuthority = ExternalAuthority {

@@ -1,9 +1,8 @@
 module v2.lens.mandatory_tag.corpus_scan
 
+import v2.std.node { symbol_intern_lexeme }
 import std.algebra { Cons, Empty }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 

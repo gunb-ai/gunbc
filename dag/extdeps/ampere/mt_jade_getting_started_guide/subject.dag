@@ -1,0 +1,84 @@
+module extdeps.ampere.mt_jade_getting_started_guide.subject
+
+import std.types { NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking, SpecificationDocumentDate }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// AMPERE ALTRA FAMILY MT. JADE PVT/DVT (NVME) GETTING STARTED GUIDE, Document Issue 1.00.
+// Independently versioned from the OCP Mt. Jade motherboard specification (extdeps.ocp.mt_jade).
+// FrameMaker source name in the PDF info dictionary: Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.fm.
+// Every page is footed Ampere Computing Proprietary; that marking grants nothing and decides
+// nothing for carriage (gunbc.upstream_document_carriage). This is not the Customer Connect
+// reference-board design package. The publisher locator is first_citation. The operator Drive
+// copy is a further citation (a mirror), never the publisher slot. How this repository read
+// either locator is gunbc.specification_citation_read_provenance.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.pdf&type=technical-document&doc_id=631",
+  }
+}
+
+data mt_jade_gsg_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data mt_jade_gsg_operator_drive_mirror_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "drive.google.com/uc?export=download&id=13SIlqviMX8RGa13G8pu4xsr2EwblbYbe",
+  }
+}
+
+data mt_jade_gsg_title: NonEmptyStr = "Ampere Altra Family Mt. Jade PVT/DVT (NVMe) Getting Started Guide"
+
+data mt_jade_gsg_issue: NonEmptyStr = "1.00"
+
+data mt_jade_gsg_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2022,
+  month: 4,
+  day: 12,
+}
+
+data mt_jade_gsg_content_digest: Sha256Digest = Sha256Digest {
+  hex: "f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f" as Sha256DigestHex,
+}
+
+type MtJadeGettingStartedGuide {
+  title: NonEmptyStr
+  issue: NonEmptyStr
+  published: SpecificationDocumentDate
+  publisher: Vendor<Hardware>
+  content_digest: Sha256Digest
+}
+
+data mt_jade_getting_started_guide: MtJadeGettingStartedGuide = MtJadeGettingStartedGuide {
+  title: mt_jade_gsg_title,
+  issue: mt_jade_gsg_issue,
+  published: mt_jade_gsg_date,
+  publisher: ampere_vendor,
+  content_digest: mt_jade_gsg_content_digest,
+}
+
+data mt_jade_gsg_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Ampere Computing Proprietary, Document Issue 1.00",
+}
+
+data mt_jade_gsg_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_jade_getting_started_guide.subject",
+      decl_name: "mt_jade_getting_started_guide",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [mt_jade_gsg_operator_drive_mirror_authority],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope

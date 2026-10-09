@@ -1,6 +1,6 @@
 module v2.extdeps.formatters.rustfmt
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Outcome }
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 import v2.std.refinement {
@@ -278,8 +278,6 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   ignore: [],
 }
 
-type RustfmtConfigPatch = ConfigPatchRecord<RustfmtConfig>
-
-fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
+fn rustfmt_layer(base: RustfmtConfig, patch: ConfigPatchRecord<RustfmtConfig>) -> RustfmtConfig {
   config_patch_layer(base: base, patch: patch)
 }

@@ -2,6 +2,8 @@ module gunbc.census_closure_frontier
 
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
+import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
+import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
 import extdeps.docker.container_inspect {
@@ -22,6 +24,7 @@ import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows 
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
 }
+import extdeps.github.app { modeled_webhook_event_vocabulary_frontier_rows }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
   public_workload_census_replay_consumer_frontier_rows,
@@ -29,6 +32,13 @@ import gunbc.public_workload_census {
   public_workload_census_declared_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
+import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
+import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
+import gunbc.review_sheet_formula_observation { review_sheet_formula_observation_consumer_frontier_rows }
+import gunbc.review_sheet_header_init { review_sheet_header_init_consumer_frontier_rows }
+import gunbc.review_sheet_batch_actuator { review_sheet_batch_write_consumer_frontier_rows }
+import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
+import extdeps.pricing.github_actions { actions_allowance_consumer_frontier_rows }
 import gunbc.roadmap_dispatch_destination { attempt_admission_subject_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
 import extdeps.pin { pin_frontier_rows }
@@ -41,9 +51,14 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
+import gunbc.fleet.mtcollins_firmware_converge { hpm_check_converge_reader_frontier_rows }
+import extdeps.linux.usb_gadget { configfs_attr_write_realization_frontier_rows, configfs_rmdir_absent_as_converged_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
+import gunbc.cloudflare.boot_origin { cloudflare_boot_origin_frontier_rows }
+import gunbc.network_boot_delivery { network_boot_delivery_frontier_rows }
+import gunbc.site_uefi_arm64_pxe_edge { site_uefi_arm64_pxe_edge_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
@@ -52,14 +67,32 @@ import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontie
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier_rows }
+import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
+import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
+import gunbc.github_app_acquisition {
+  github_app_human_step_frontier_rows,
+  census_app_installation_population_frontier_rows,
+}
+import gunbc.instruments.github_app_acquire {
+  census_app_installation_route_frontier_rows,
+  census_app_custody_handoff_frontier_rows,
+}
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
+    resolver_cost_frontier_rows,
+    review_sheet_whole_estate_consumer_frontier_rows,
+    review_sheet_formula_observation_consumer_frontier_rows,
+    review_sheet_header_init_consumer_frontier_rows,
+    review_sheet_batch_write_consumer_frontier_rows,
+    review_sheet_identity_consumer_frontier_rows,
+    sheets_bootstrap_project_consumer_frontier_rows,
+    actions_allowance_consumer_frontier_rows,
     data_class_frontier_rows,
     data_category_frontier_rows,
     buyer_review_ensure_projection_frontier_rows,
@@ -78,6 +111,12 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
+    modeled_webhook_event_vocabulary_frontier_rows,
+    census_app_installation_route_frontier_rows,
+    census_app_installation_population_frontier_rows,
+    human_intervention_frequency_frontier_rows,
+    census_app_custody_handoff_frontier_rows,
+    github_app_human_step_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
     public_workload_census_run_attempt_consumer_frontier_rows,
     public_workload_census_declared_runner_frontier_rows,
@@ -90,10 +129,16 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
+    hpm_check_converge_reader_frontier_rows,
+    configfs_attr_write_realization_frontier_rows,
+    configfs_rmdir_absent_as_converged_frontier_rows,
     pin_frontier_rows,
     cloudflare_r2_token_mint_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
+    cloudflare_boot_origin_frontier_rows,
+    network_boot_delivery_frontier_rows,
+    site_uefi_arm64_pxe_edge_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
@@ -105,6 +150,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
+    network_boot_manifest_broker_frontier_rows,
+    machine_word_consumer_frontier_rows,
   ]
 }
 

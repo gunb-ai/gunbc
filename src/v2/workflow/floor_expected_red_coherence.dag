@@ -1,7 +1,8 @@
 module v2.workflow.floor_expected_red_coherence
 
 import std.types { Bool, List, String }
-import v2.std.algebra { Cons, Empty, contains, length, list_append, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, length, list_reverse }
+import std.algebra { list_append }
 import v2.std.decl_facts_skeleton {
   DeclFactQualifiedNameResolution,
   DeclFactResolvedAmbiguous,
@@ -180,7 +181,11 @@ fn floor_expected_red_chunk_coherence_check(
   let aggregator_resolution = resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
   let aggregator_causes = match aggregator_resolution {
     DeclFactResolvedUnique { fact: _ } => Empty
-    _ => Cons {
+    DeclFactResolvedMissing { qualified_name: _ } => Cons {
+      head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
+      tail: Empty
+    }
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Cons {
       head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
       tail: Empty
     }

@@ -5,7 +5,7 @@ import std.types { String, Int, List, NonEmptyStr }
 import gunbc.auth.approval_ntfy_converge {
   NtfyConvergedMember, NtfyServiceAccount, NtfyStateDirectory, NtfyConfigDirectory,
   NtfyUnitDaemonReloaded, NtfyUnitEnabled, NtfyUnitStarted,
-  approval_ntfy_desired_members, ntfy_member_key,
+  approval_ntfy_desired_members, ntfy_member_key, ntfy_member_operations,
   approval_ntfy_converge_commands,
 }
 import std.disposition { Scaffold, RealizationDispatch, Terminal, SingleAuthority, SubstrateMandatoryTag }
@@ -47,6 +47,44 @@ test fn witness_directory_ensure_needs_no_precondition() -> Bool {
     NoPrecondition => true
     AccountExistsCheck { login: _ } => false
   }
+}
+
+// THE MODE THIS CONVERGE ENSURES IS THE ONE THE DEPLOYMENT DECLARES, ASSERTED HERE BECAUSE NOTHING
+// ELSE ASSERTS IT.
+//
+// ntfy_state_dir_mode was an octal literal in this module and gunbc.host_credential_custody_converge
+// spelled the same octal for the SAME config directory; the only executing check over either was a
+// row in the custody witness holding the two EQUAL. That row is gone -- both sides now read
+// gunbc.auth.approval_ntfy_deployment approval_ntfy_dir_mode, so there is no second value left to
+// compare -- and deleting it without this row would have left THIS converge's mode derived by
+// construction and witnessed by nothing, which is the specification-without-execution the
+// consolidation was supposed to remove rather than relocate.
+//
+// MEASURED: with this row absent, mutating the shared arm's group bits or repointing
+// approval_ntfy_dir_mode reddened five rows in the custody witness and NOT ONE here.
+//
+// 0750 IS A CONTROLLED EXPECTED VALUE, not a second authority: the server runs as the ntfy
+// principal and must ENTER this directory to read a config it may never rewrite, and the
+// group-readable publisher token beneath it is unreadable through a directory the group cannot
+// enter. A derivation that stopped producing it would be a live outage on the approval loop.
+test fn every_ensured_directory_carries_the_declared_ntfy_mode() -> Bool {
+  all(
+    flat_map(approval_ntfy_desired_members(), m => ntfy_member_operations(m: m)),
+    op => match op {
+      EnsureOwnedDirectory { path: _, owner: _, group: _, mode: mo } => (mo as String) == "0750"
+      _ => true
+    })
+}
+
+// THE DISCRIMINATING RED'S COMPANION: the roster really does contain directory ensures, so the
+// row above cannot pass vacuously over a member list that stopped producing them.
+test fn the_desired_set_really_ensures_directories() -> Bool {
+  list_length(items: filter(
+    xs: flat_map(approval_ntfy_desired_members(), m => ntfy_member_operations(m: m)),
+    f: op => match op {
+      EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => true
+      _ => false
+    })) == 3
 }
 
 // THE ACCOUNT CHECK NAMES THE LOGIN IT CHECKS, so the precondition cannot drift from the operation

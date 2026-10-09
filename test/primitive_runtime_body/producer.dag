@@ -1,0 +1,73 @@
+module v1.compiler.primitive_runtime_body
+
+import std.primitive_identity {
+  PrimitiveRuntimeBodyCensus, PrimitiveRuntimeBodyCheck,
+  PrimitiveRuntimeBodiesObserved, PrimitiveRuntimeBodiesMissing,
+  RuntimeBody, EmitHandler, BuiltinRegistry,
+  primitive_surface_census_with_runtime, surface_rows_carry_symbol_on,
+  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { List }
+import gunbc.primitive_runtime_body_gate { runtime_body_required_check_census_in }
+import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
+import v1.compiler.runtime_rust { rust_runtime_source }
+
+// Read the bytes the runtime producer emits, never its checked-in bootstrap mirror.
+fn rust_primitive_runtime_body_census() -> PrimitiveRuntimeBodyCensus {
+  primitive_runtime_body_census_in(
+    registry: rt_function_registry,
+    source: rust_runtime_source()
+  )
+}
+
+fn rust_primitive_runtime_body_check() -> PrimitiveRuntimeBodyCheck {
+  primitive_runtime_body_check_in(
+    registry: rt_function_registry,
+    census: rust_primitive_runtime_body_census()
+  )
+}
+
+// These live-producer controls belong to the required phase, whose subject includes src/v1.
+// They are not orphan test declarations outside the ordinary floor's discovery roots. The
+// complete legacy surface census is also measured here, rather than making a small fixture
+// witness repeatedly derive the corpus-wide population under the new-witness step ceiling.
+fn runtime_body_producer_controls(registry: List<RuntimeFunction>, census: PrimitiveRuntimeBodyCensus) -> ProcessExit {
+  let surface_join = match primitive_surface_census_with_runtime(runtime: census) {
+    PrimitiveRuntimeBodiesObserved { rows: rows } => registry
+      |> filter(row => row.name == "map_insert")
+      |> all(row =>
+        surface_rows_carry_symbol_on(rows: rows, authority: RuntimeBody, authored_symbol: row.bridge_name)
+          && surface_rows_carry_symbol_on(rows: rows, authority: EmitHandler, authored_symbol: row.name)
+          && surface_rows_carry_symbol_on(rows: rows, authority: BuiltinRegistry, authored_symbol: row.name))
+    _ => false
+  }
+  if !surface_join {
+    ExitFailure { code: 1, reason: "runtime-body combined-surface control lost a bridge or body authority" }
+  } else {
+    let expanded = concat(registry, [RuntimeFunction {
+      name: "runtime_body_missing_control", bridge_name: "runtime_body_missing_control",
+      passes_by_ref: false, wraps_result: false
+    }])
+    match primitive_runtime_body_check_in(registry: expanded, census: census) {
+      PrimitiveRuntimeBodiesMissing { violations: rows } =>
+        if count(rows) == 1 && (rows |> all(row =>
+          row.authored_symbol == "runtime_body_missing_control" && row.bridge_name == "runtime_body_missing_control"
+        )) { ExitSuccess } else {
+          ExitFailure { code: 1, reason: "runtime-body new-bridge control refused the wrong population" }
+        }
+      _ => ExitFailure { code: 1, reason: "runtime-body new-bridge control did not refuse the appended missing body" }
+    }
+  }
+}
+
+// One census feeds standing admission, the permanent map_insert mutation, surface composition,
+// and the appended-bridge control. The host transports ProcessExit, not admission decisions.
+fn check() -> ProcessExit {
+  let census = rust_primitive_runtime_body_census()
+  let standing = runtime_body_required_check_census_in(registry: rt_function_registry, census: census)
+  match standing {
+    ExitFailure { code: _, reason: _ } => standing
+    ExitSuccess => runtime_body_producer_controls(registry: rt_function_registry, census: census)
+  }
+}

@@ -1,9 +1,12 @@
 module v2.test.long.door_real_module_probe
 
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.extdeps.languages.dag { dag_surface_edge }
+
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.compiler.name_resolve { resolve_with_admission_policy }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, Authored }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -36,16 +39,14 @@ fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Nod
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: quad_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -61,18 +62,16 @@ fn quad_subject_with_import_use() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: quad_qn_node(seg: ^quadmod)
       ),
       Edge {
-        label: Named { name: ^list_append },
+        label: Authored { name: ^list_append },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
+          kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
           children: [],
           occurrence_id: OccurrenceSynthetic
         }
@@ -83,14 +82,14 @@ fn quad_subject_with_import_use() -> Node {
 }
 
 fn quad_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: quad_subject_with_import_use(),
     tail: Cons {
       head: quad_module_root(
         seg: ^minialg,
         export_sym: ^list_append,
-        export_atom: ^dag_c3_surface_sugar_type
+        export_atom: ^dag_token_colon
       ),
       tail: Empty
     }
@@ -150,10 +149,3 @@ test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
   }
 }
 
-test fn quad_with_peer_import_scoped_reds_ambiguous_export_holds() -> Bool {
-  quad_import_scoped_admission_reds_ambiguous_export_holds()
-}
-
-test fn quad_with_peer_greens_under_namespace_only_projection() -> Bool {
-  quad_namespace_only_resolve_accepts_holds()
-}

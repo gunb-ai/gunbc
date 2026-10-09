@@ -1,5 +1,6 @@
 module v2.workflow.realization_sweep
 
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
 import v2.workflow.realization_attempt {
   EntryRealizationAttempt,
   RealizationAttemptStanding,
@@ -26,12 +27,10 @@ import v2.compiler.source_authority_read {
   SourceRootIngestBuildReadFailed,
   source_root_ingest_build_from_source_refs
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.integer { integer_int_to_decimal_string }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
-import v2.std.logic { Bool }
 import std.types { Int, List, String }
 import std.algebra { Cons, Empty }
 

@@ -23,7 +23,7 @@ import extdeps.languages.json.parse {
 }
 
 import v2.std.node {
-  Node, Edge, Named, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
+  Node, Edge, Authored, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
 }
 
 import gunbc.scm.object_store {
@@ -75,6 +75,13 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeStagedIsSemanticNode, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
+  RepositoryEncodeStoreIsPartial,
+  RepositoryEncodeIntakeNotInWholeFormat,
+  RepositoryEncodeAppendCarriesSemanticNode,
+  RepositoryEncodeAppendShadowsRosteredIdentity,
+  RepositoryIndexHasNoObjectRoster,
+  RepositoryIntakeCensusRefused, RepositorySupersessionCensusRefused, RepositorySupersessionRootsUnverifiable,
+  RepositoryObjectRosterMalformed,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
@@ -148,7 +155,7 @@ fn scm_env_atom(identity: Symbol) -> Node {
 }
 
 fn scm_env_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 // Two programs SHARING a subtree. The shared-population claim is meaningless without real sharing.
@@ -428,9 +435,9 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // It counted objects in the DECODED store and asserted 4. That observation cannot distinguish one
 // shared table of 4 entries from two complete per-commit closures of 6 entries, because
-// decode_object_table routes every entry through insert_from_structure and insert_derived answers
-// the idempotent arm for a record already held. Both encodings decode to 4. The claim measured the
-// deduplicator, not the encoding it names.
+// decode_object_table admits every entry through the store-admission accumulator, whose
+// present-and-equal arm answers idempotently for a record already held. Both encodings decode to
+// 4. The claim measured the deduplicator, not the encoding it names.
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then
@@ -449,7 +456,7 @@ fn scm_env_count_named_array(members: List<JsonKeyValue>, key: String) -> Int {
 fn scm_env_array_len_if_key(acc: Int, m: JsonKeyValue, key: String) -> Int {
   if m.key == key {
     match m.value {
-      JsonArray { elements: es } => count(es)
+      JsonArray { elements: es } => count(es) as Int
       _ => acc
     }
   } else {
@@ -703,6 +710,10 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
         RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => "commit_integration_source"
+        RepositoryEncodeStoreIsPartial { rostered_shards: _ } => "store_is_partial"
+        RepositoryEncodeAppendCarriesSemanticNode { target: _ } => "append_carries_semantic_node"
+        RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => "append_shadows_rostered_identity"
+        RepositoryEncodeIntakeNotInWholeFormat { commit: _ } => "intake_not_in_whole_format"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
@@ -1005,6 +1016,10 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
         RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => false
+        RepositoryEncodeStoreIsPartial { rostered_shards: _ } => false
+        RepositoryEncodeAppendCarriesSemanticNode { target: _ } => false
+        RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => false
+        RepositoryEncodeIntakeNotInWholeFormat { commit: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
       }
@@ -1119,6 +1134,13 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryMemberReadRefused { cause: _ } => "member_read"
         RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryFormatRetired { found: _ } => "format_retired"
+        RepositoryShardedIndexIsNotWhole { found: _ } => "format_sharded_index"
+        RepositoryShardNotDecodable { detail: _ } => "shard_not_decodable"
+        RepositoryIntakeCensusRefused { cause: _ } => "shard_not_decodable"
+        RepositorySupersessionCensusRefused { cause: _ } => "shard_not_decodable"
+        RepositorySupersessionRootsUnverifiable { missing: _ } => "shard_not_decodable"
+        RepositoryIndexHasNoObjectRoster { found: _ } => "index_has_no_object_roster"
+        RepositoryObjectRosterMalformed { detail: _ } => "object_roster_malformed"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
@@ -1705,7 +1727,7 @@ test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() ->
         store: with_file,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+          StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
         ],
       ) {
         LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
@@ -2038,7 +2060,7 @@ fn scm_env_child_over(store: ObjectStore, locator: ObjectId) -> ObjectStore {
     store: store,
     kind: TypeNode { connective: Conj },
     children: [
-      StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: locator } },
+      StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: locator } },
     ],
   ) {
     LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()

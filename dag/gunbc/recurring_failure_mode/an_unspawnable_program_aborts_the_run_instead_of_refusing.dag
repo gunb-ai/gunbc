@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.an_unspawnable_program_aborts_the_run_instead_of_refusing
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data an_unspawnable_program_aborts_the_run_instead_of_refusing: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unspawnable_program_aborts_the_run_instead_of_refusing" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a gunbc run evaluates gunbc.command_runner run_shell_command_capture over a program that cannot be spawned (an absent path, a missing interpreter), and the evaluation ABORTS -- the shell.Exec.RunArgv row it reaches answers a spawn failure by stopping the evaluation rather than with a value -- instead of the caller receiving ProcessRefused, or a typed not-spawned arm, that it already knows how to match. HARM: every effect the program would have performed after that call is lost, including the receipt it writes on its refusal arms, so an observe whose whole product is a receipt reports a bare process failure with nothing uploaded. A missing binary is an ordinary observation, never a reason the run cannot answer.",
+    "RECEIPT, fleet-converge run 36806730263 on srv1, 2026-10-01 (gunbc#12837): gunbc.machine_intake_mtcollins1_census_qemu_host_observe hashed /usr/bin/qemu-system-aarch64, found it absent, then ran its --version through run_shell_command_capture; the spawn refused, the run ended, and no receipt was uploaded. The fix there was local -- qemu_banner_may_be_read gates the spawn on a prior executability test -- which is the mitigation, not the repair: every other run_shell_command_capture caller over a program that may be absent carries the same abort.",
+    "DISTINGUISHING FACTS: the typed route already exists beside it. extdeps.shell.exec RunArgvOutcome returns ShellSpawnRefused as a value, and gunbc.command_runner run_shell_command_observe_outcome folds it into ProcessNotSpawned; run_shell_command_capture, the route most callers use, does not reach it. So this is not a missing capability but two routes for one fact with the unsafe one as the default -- a caller cannot tell from its own code which arm a spawn failure takes.",
+    "FOUND AT MITIGATABLE: per-call guards (test -x before spawning) contain it where an author anticipated it. CEILING: STRUCTURALLY GUARANTEED -- the spawn outcome is decidable at the transport and already typed. NEXT TRIGGER: run_shell_command_capture (and every ProcessOutcome producer over LocalExec) consumes RunArgvOutcome, so a spawn failure reaches every caller as a typed refusal it must match, and the aborting RunArgv route has no remaining ProcessOutcome consumer. A guard added at one more call site does not retire this row.",
+  ],
+  evidence: [
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
+    decl_ref(module_path: "gunbc.runner_qemu_host_standing", decl_name: "qemu_banner_may_be_read"),
+  ],
+}

@@ -1,0 +1,411 @@
+module v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
+import v2.std.integer { integer_int_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { bool_node }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node { Arrow, Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A RECORD CONSTRUCT'S FIELD VALUES INHABIT THE FIELDS ITS RECORD DECLARES, OR INFER REFUSES.
+//
+// The subject is v2.compiler.infer infer_record_construct_facts: a construct whose tag resolves to a
+// declared record is its constructor applied by name, so the one binding plan pairs each declared
+// field with the value that fills it and the one judge (infer_judge_declared_position, at
+// v2.std.inhabitance PositionRecordField) decides each pair under one instantiation of the record's
+// binders. The class is gunbc.recurring_failure_mode
+// construct_field_value_not_typed_against_the_record_declaration, and its specimen is rcf_bad_source.
+//
+// THE ROUTE IS REAL. Every claim reaches infer from inline source text through the production fold
+// (tokenize, parse, normalize with body lowering, resolve through v2.compiler.name_resolve
+// resolve_in_context), and infer is handed resolve's own ResolvedTree, index
+// included. No tree here is hand-built, so deleting the record row, or the index read it depends on,
+// turns the refusing claims green-to-red rather than leaving a designed fixture passing. Each
+// subject's resolution is a nullary warm producer (v2.workflow.floor_pure_producer_share) and infer
+// stays per claim.
+//
+// EVERY RED HAS A CONTROL ONE TERM AWAY. The specimen differs from the accepted module only in
+// `n: true` against `n: 1`; the generic red only in `w: true` against `w: 2`. So no refusal here
+// can be satisfied by a check that refuses every construct, and no acceptance by one that judges
+// nothing: the accepted module is also asserted DECIDED (no counted obligation at its constructs).
+//
+// WHAT IS NOT CLAIMED. A record declared in ANOTHER module has its field SET checked and its field
+// VALUES counted, not judged: v2.compiler.resolve ResolvedTree resolved_declarations holds the
+// subject module's declarations with resolved bodies, and no other module's. rcf_far_value pins that state as it is -- accepted, with
+// a counted UndecidableFormalUnresolved at the value -- so it flips when infer can read a resolved
+// declaration across modules (the row's trigger), and is then rewritten as a refusal.
+data rcf_provider_source: String = "module v2.test.rcfp\n\ntype RcfFar {\n  n: Int\n  m: Int\n}\n"
+
+data rcf_bad_source: String = "module v2.test.rcf_bad\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
+
+data rcf_good_source: String = "module v2.test.rcf_good\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_good: ArB = ArB { n: 1, m: 3 }\n"
+
+data rcf_generic_good_source: String = "module v2.test.rcf_generic_good\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n"
+
+data rcf_nested_good_source: String = "module v2.test.rcf_nested_good\n\ntype ArB {\n  n: Int\n}\n\ntype ArOuter {\n  inner: ArB\n}\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: 1 } }\n"
+
+data rcf_missing_source: String = "module v2.test.rcf_missing\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_missing: ArB = ArB { n: 1 }\n"
+
+data rcf_unknown_source: String = "module v2.test.rcf_unknown\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_unknown: ArB = ArB { n: 1, m: 3, q: 4 }\n"
+
+data rcf_generic_bad_source: String = "module v2.test.rcf_generic_bad\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_bad: Bx<Int> = Bx { v: 1, w: true }\n"
+
+data rcf_other_source: String = "module v2.test.rcf_other\n\ntype ArA {\n  n: Int\n}\n\ntype ArB {\n  n: Int\n}\n\ndata ar_other: ArB = ArA { n: 1 }\n"
+
+data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_value: RcfFar = RcfFar { n: true, m: 3 }\n"
+
+data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
+
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport std.types { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
+
+data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
+
+fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data rcf_ingest: SourceRootIngest = [
+  rcf_read(source: rcf_provider_source, id: ^rcf_provider_read, unit: ^rcf_provider_cu, path: "src/v2/test/fixture/record_construct_field/provider.dag"),
+  rcf_read(source: rcf_bad_source, id: ^rcf_bad_read, unit: ^rcf_bad_cu, path: "src/v2/test/fixture/record_construct_field/bad.dag"),
+  rcf_read(source: rcf_good_source, id: ^rcf_good_read, unit: ^rcf_good_cu, path: "src/v2/test/fixture/record_construct_field/good.dag"),
+  rcf_read(source: rcf_generic_good_source, id: ^rcf_generic_good_read, unit: ^rcf_generic_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_good.dag"),
+  rcf_read(source: rcf_nested_good_source, id: ^rcf_nested_good_read, unit: ^rcf_nested_good_cu, path: "src/v2/test/fixture/record_construct_field/nested_good.dag"),
+  rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag"),
+  rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag"),
+  rcf_read(source: rcf_generic_bad_source, id: ^rcf_generic_bad_read, unit: ^rcf_generic_bad_cu, path: "src/v2/test/fixture/record_construct_field/generic_bad.dag"),
+  rcf_read(source: rcf_other_source, id: ^rcf_other_read, unit: ^rcf_other_cu, path: "src/v2/test/fixture/record_construct_field/other.dag"),
+  rcf_read(source: rcf_far_value_source, id: ^rcf_far_value_read, unit: ^rcf_far_value_cu, path: "src/v2/test/fixture/record_construct_field/far_value.dag"),
+  rcf_read(source: rcf_far_missing_source, id: ^rcf_far_missing_read, unit: ^rcf_far_missing_cu, path: "src/v2/test/fixture/record_construct_field/far_missing.dag"),
+  rcf_read(source: rcf_bool_field_source, id: ^rcf_bool_field_read, unit: ^rcf_bool_field_cu, path: "src/v2/test/fixture/record_construct_field/bool_field.dag"),
+  rcf_read(source: rcf_pattern_source, id: ^rcf_pattern_read, unit: ^rcf_pattern_cu, path: "src/v2/test/fixture/record_construct_field/pattern.dag")
+]
+
+fn rcf_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: rcf_ingest, lm: dag_language_model())
+}
+
+fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match rcf_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn rcf_resolved_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bad") }
+fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_good") }
+fn rcf_resolved_generic_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_good") }
+fn rcf_resolved_nested_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_nested_good") }
+fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_missing") }
+fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_unknown") }
+fn rcf_resolved_generic_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_bad") }
+fn rcf_resolved_bool_field() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bool_field") }
+fn rcf_resolved_other() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_other") }
+fn rcf_resolved_far_value() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_value") }
+fn rcf_resolved_far_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_missing") }
+fn rcf_resolved_pattern() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_pattern") }
+
+// INFER'S VERDICT, READ WHOLE. A refusal carries the advisories pending when it fired ahead of the
+// refusing diagnostic (v2.std.diagnostic rejected_with_pending), so the refusal is looked for by
+// reason across the list and never assumed to be the head.
+type RcfVerdict
+  = RcfResolveRefused
+  | RcfInferAccepted { diagnostics: Diagnostics }
+  | RcfInferRefused { diagnostics: Diagnostics }
+
+fn rcf_verdict(resolved: Outcome<ResolvedTree>) -> RcfVerdict {
+  match resolved {
+    Rejected { diagnostics: _ } => RcfResolveRefused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: ds } => RcfInferAccepted { diagnostics: ds }
+        Rejected { diagnostics: r } => RcfInferRefused { diagnostics: Some { diagnostics: r } }
+      }
+  }
+}
+
+fn rcf_refuses_with(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match rcf_verdict(resolved: resolved) {
+    RcfInferRefused { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: reason)
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+fn rcf_refusal(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Optional<Diagnostic> {
+  match rcf_verdict(resolved: resolved) {
+    RcfInferRefused { diagnostics: ds } =>
+      match ds {
+        None => optional_absent()
+        Some { diagnostics: ne } =>
+          fold(ne.tail, init: if ne.head.reason == reason { optional_present(value: ne.head) } else { optional_absent() }, f: fn(acc, d) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => if d.reason == reason { optional_present(value: d) } else { acc }
+            }
+          })
+      }
+    RcfInferAccepted { diagnostics: _ } => optional_absent()
+    RcfResolveRefused => optional_absent()
+  }
+}
+
+// The value a resolved module's one record construct supplies for a field.
+fn rcf_construct_field_value(resolved: Outcome<ResolvedTree>, field: Symbol) -> Optional<Node> {
+  match resolved {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: optional_absent(), f: fn(acc, n) {
+        match construct_tag_optional(n: n) {
+          Absent => acc
+          Present { value: _ } =>
+            fold(construct_field_edges(n: n), init: acc, f: fn(inner, e) {
+              match e.label {
+                Authored { name: label } => if label == field { optional_present(value: e.target) } else { inner }
+                StructuralLabel { label: _ } => inner
+                Positional => inner
+              }
+            })
+        }
+      })
+  }
+}
+
+fn rcf_named_target(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: target, diagnostics: _ } => optional_present(value: target)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn rcf_names_record(correction_node: Node, dotted: String) -> Bool {
+  match rcf_named_target(node: correction_node, name: ^inhabitance_record) {
+    Absent => false
+    Present { value: record } =>
+      match declaration_reference_path_optional(node: record) {
+        Present { value: path } => qualified_name_to_dotted_string(qn: path) == dotted
+        Absent => false
+      }
+  }
+}
+
+fn rcf_names_type(correction_node: Node, name: Symbol, expected: Node) -> Bool {
+  match rcf_named_target(node: correction_node, name: name) {
+    Absent => false
+    Present { value: t } => exact_structural_equality_zip_fold(source_facts: t, candidate: expected)
+  }
+}
+
+// THE DISCRIMINATING RED, the row's specimen: `n` declares Int and holds a Bool.
+test fn rcf_a_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE REFUSAL IS TYPED AND LOCATED, AND IT NAMES ALL FOUR FACTS: it sits at the value `true`, and its
+// correction carries the record (the construct's resolved constructor reference), the field under
+// its own name with the type the record declares for it, and the type the value produced.
+test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Bool {
+  match rcf_refusal(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit) {
+    Absent => false
+    Present { value: d } =>
+      match rcf_construct_field_value(resolved: rcf_resolved_bad(), field: ^n) {
+        Absent => false
+        Present { value: value } =>
+          (d.at == node_locus(node: value))
+            && (match d.correction {
+              Suggested { node: c } =>
+                rcf_names_record(correction_node: c, dotted: "v2.test.rcf_bad.ArB")
+                  && rcf_names_type(correction_node: c, name: ^n, expected: integer_int_type_node())
+                  && rcf_names_type(correction_node: c, name: ^inhabitance_produced_type, expected: bool_node())
+              Unavailable { reason: _ } => false
+            })
+      }
+  }
+}
+
+// THE SUBJECT OF A DECIDED CONTROL IS THE DECLARATION'S MEMBER, NOT THE MODULE AROUND IT. Infer runs
+// over the one Arrow the named `data` declaration lowered to, handed the two indexes resolve produced
+// for the whole module unchanged -- so the construct's tag, the record's declared fields and the
+// declared type it is judged at are all the production route's. Inferring the whole module is more
+// than one claim's budget on the required floor once the verdict is an acceptance
+// (v2.test.execution.data_decl_lowering_grounding records the same measurement), and the type
+// declarations beside the member are not what these claims are about. The refusing claims above
+// and below do run the whole module: a refusal stops early.
+fn rcf_member_arrow(root: Node, name: Symbol) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(n.children, init: acc, f: fn(inner, e) {
+          match e.label {
+            Authored { name: label } =>
+              if label == name {
+                match e.target.kind {
+                  TypeNode { connective: Arrow } => optional_present(value: e.target)
+                  _ => inner
+                }
+              } else {
+                inner
+              }
+            StructuralLabel { label: _ } => inner
+            Positional => inner
+          }
+        })
+    }
+  })
+}
+
+// ACCEPTED AND DECIDED, from ONE run of infer: the verdict is Accepted and none of its diagnostics
+// is a counted inhabitance obligation. An acceptance that merely judged nothing would carry one.
+fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symbol) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rcf_member_arrow(root: tree.root, name: member) {
+        Absent => false
+        Present { value: arrow } =>
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: ds } =>
+              !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
+                && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_argument_type_not_derived)
+                && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_generic_formal)
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL, one term from the red, and DECIDED rather than waved through: the construct
+// derived its declared record and the data initializer was judged at its declared type.
+test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_good(), member: ^ar_good)
+}
+
+// The generic record at its instantiation: `Bx { v: 1, w: 2 }` is a Bx<Int> and is decided at a
+// declared Bx<Int>.
+test fn rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_generic_good(), member: ^bx_good)
+}
+
+// A field declared as a record of the subject module is judged too: `inner: ArB` holding an ArB
+// construct is decided, so the nominal refusal below is not a refusal of every nested construct.
+test fn rcf_a_nested_construct_at_a_record_declared_field_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_nested_good(), member: ^ar_outer)
+}
+
+// A declared field the construct leaves out refuses, at the construct, naming the record and the
+// missing field with its declared type.
+test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool {
+  match rcf_refusal(resolved: rcf_resolved_missing(), reason: ^record_construct_field_missing) {
+    Absent => false
+    Present { value: d } =>
+      match d.correction {
+        Suggested { node: c } =>
+          rcf_names_record(correction_node: c, dotted: "v2.test.rcf_missing.ArB")
+            && rcf_names_type(correction_node: c, name: ^m, expected: integer_int_type_node())
+        Unavailable { reason: _ } => false
+      }
+  }
+}
+
+// A field the record does not declare refuses, at the value supplied for it.
+test fn rcf_an_undeclared_field_refuses_and_is_named_holds() -> Bool {
+  match rcf_refusal(resolved: rcf_resolved_unknown(), reason: ^record_construct_field_not_declared) {
+    Absent => false
+    Present { value: d } =>
+      match rcf_construct_field_value(resolved: rcf_resolved_unknown(), field: ^q) {
+        Absent => false
+        Present { value: value } =>
+          (d.at == node_locus(node: value))
+            && (match d.correction {
+              Suggested { node: c } => rcf_names_record(correction_node: c, dotted: "v2.test.rcf_unknown.ArB")
+              Unavailable { reason: _ } => false
+            })
+      }
+  }
+}
+
+// GENERIC INSTANTIATION IS THE APPLICATION'S: the first field value at `T` instantiates it for this
+// construct and the second must inhabit that instance. `v: 1` fixes T = Int, so `w: true` refuses.
+test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_generic_bad(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE CONSTRUCT'S TYPE IS THE RECORD IT CONSTRUCTS, so a declared type meets it by identity:
+// `data ar_other: ArB = ArA { n: 1 }` refuses although ArA and ArB declare the same field. This is
+// the declared-return judgment (a data initializer is a nullary Arrow's body); before record
+// introduction the body's type was not derived and the case was not decided.
+test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// A BOOL-DECLARED FIELD IS JUDGED LIKE AN INT-DECLARED ONE: `m: Bool` holding `3` refuses. Until the
+// kernel value-type roster (v2.extdeps.languages.dag dag_kernel_value_type_roster) this was accepted
+// with a counted obligation, because resolve bound a declared Bool to one symbol and the
+// binding->denotation join denoted another; this claim was pinned to that state and is rewritten
+// here to the refusal, as its note said it would be.
+test fn rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_bool_field(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE CROSS-MODULE STATE, PINNED AS IT IS. The field SET of a record declared in another module is
+// checked: a missing field refuses.
+test fn rcf_a_cross_module_records_missing_field_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_far_missing(), reason: ^record_construct_field_missing)
+}
+
+// Its field VALUES are counted, not judged: the specimen's mismatch against a record declared in
+// another module is accepted with a counted UndecidableFormalUnresolved. This claim goes red when
+// infer reads a resolved declaration across modules, and is then rewritten to assert the refusal.
+test fn rcf_a_cross_module_records_field_value_is_counted_not_judged_holds() -> Bool {
+  match rcf_verdict(resolved: rcf_resolved_far_value()) {
+    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// A PATTERN IS NOT A CONSTRUCTION. `ArB { n: x }` in a match arm names one of ArB's two fields, and
+// is never refused as a construct missing `m`.
+test fn rcf_a_pattern_naming_a_subset_of_fields_is_not_a_missing_field_holds() -> Bool {
+  match rcf_verdict(resolved: rcf_resolved_pattern()) {
+    RcfResolveRefused => false
+    RcfInferAccepted { diagnostics: ds } => !diagnostics_has_reason(d: ds, reason: ^record_construct_field_missing)
+    RcfInferRefused { diagnostics: ds } => !diagnostics_has_reason(d: ds, reason: ^record_construct_field_missing)
+  }
+}

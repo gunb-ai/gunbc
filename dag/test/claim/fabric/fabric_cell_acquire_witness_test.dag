@@ -3,8 +3,8 @@ module test.claim.fabric_cell_acquire_witness
 import std.types { Bool, String, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import gunbc.fabric_cell_converge {
   FabricCellRootAddress,
@@ -27,26 +27,13 @@ import gunbc.fabric_cell_observe {
   AddressStateRead,
   AddressStateReadRefused,
 }
+import extdeps.tools.stat { StatFileKind, DirectoryKind, RegularFileKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_of, StatFileTypeReading, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
 import gunbc.fabric_cell_acquire {
   FabricCellDirectoryObservation,
-  FifoKind,
-  CharacterDeviceKind,
-  BlockDeviceKind,
   DirectoryListed,
   DirectoryNotPresent,
   DirectoryUnreadable,
   PathOccupiedByNonDirectory,
-  FabricCellPathKind,
-  SocketKind,
-  SymbolicLinkKind,
-  DirectoryKind,
-  RegularFileKind,
-  UnknownKind,
-  fabric_cell_path_kind_of,
-  fabric_cell_path_kind_observation,
-  FabricCellPathKindObservation,
-  PathKindRead,
-  PathKindReadRefused,
   FabricCellParentStanding,
   ParentHoldsEntry,
   ParentLacksEntry,
@@ -360,10 +347,10 @@ test fn witness_acquire_parent_standing_needs_a_successful_enumeration() -> Bool
 // VERBATIM RATHER THAN DEFAULTED. A type this repository has not met is a fact about the host, and
 // silently folding it into one of the known arms would report a device node as a regular file.
 test fn witness_acquire_file_type_words_decode_without_a_silent_default() -> Bool {
-  kind_is_directory(k: fabric_cell_path_kind_of(word: "directory"))
-    && kind_is_regular_file(k: fabric_cell_path_kind_of(word: "regular empty file"))
-    && kind_is_symlink(k: fabric_cell_path_kind_of(word: "symbolic link"))
-    && kind_is_unknown_word(k: fabric_cell_path_kind_of(word: "weird new thing"), word: "weird new thing")
+  kind_is_directory(k: stat_file_kind_of(word: "directory"))
+    && kind_is_regular_file(k: stat_file_kind_of(word: "regular empty file"))
+    && kind_is_symlink(k: stat_file_kind_of(word: "symbolic link"))
+    && kind_is_unknown_word(k: stat_file_kind_of(word: "weird new thing"), word: "weird new thing")
 }
 
 fn observation_is_absent_dir(o: FabricCellDirectoryObservation) -> Bool {
@@ -408,7 +395,7 @@ fn standing_unobserved(st: FabricCellParentStanding) -> Bool {
   }
 }
 
-fn kind_is_directory(k: FabricCellPathKind) -> Bool {
+fn kind_is_directory(k: StatFileKind) -> Bool {
   match k {
     DirectoryKind => true
     RegularFileKind => false
@@ -421,7 +408,7 @@ fn kind_is_directory(k: FabricCellPathKind) -> Bool {
   }
 }
 
-fn kind_is_regular_file(k: FabricCellPathKind) -> Bool {
+fn kind_is_regular_file(k: StatFileKind) -> Bool {
   match k {
     RegularFileKind => true
     DirectoryKind => false
@@ -434,7 +421,7 @@ fn kind_is_regular_file(k: FabricCellPathKind) -> Bool {
   }
 }
 
-fn kind_is_symlink(k: FabricCellPathKind) -> Bool {
+fn kind_is_symlink(k: StatFileKind) -> Bool {
   match k {
     SymbolicLinkKind => true
     DirectoryKind => false
@@ -447,7 +434,7 @@ fn kind_is_symlink(k: FabricCellPathKind) -> Bool {
   }
 }
 
-fn kind_is_unknown_word(k: FabricCellPathKind, word: String) -> Bool {
+fn kind_is_unknown_word(k: StatFileKind, word: String) -> Bool {
   match k {
     UnknownKind { word: w } => w == word
     DirectoryKind => false
@@ -561,27 +548,27 @@ fn property_is_read_as(o: FabricCellPropertyObservation, value: String) -> Bool 
 // test and not a value filter, which is why "0" and "-" are asserted READ: a reader that dropped
 // values it found uninteresting would pass an emptiness assertion and still lose real answers.
 test fn witness_acquire_empty_file_type_refuses_rather_than_naming_a_kind() -> Bool {
-  path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: ""))
-    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: "   "))
-    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: false, output: "directory"))
-    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "directory"))
-    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "symbolic link"))
-    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "socket"))
-    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "0"))
-    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "weird new thing"))
+  path_kind_is_refused(o: stat_file_type_reading(success: true, output: ""))
+    && path_kind_is_refused(o: stat_file_type_reading(success: true, output: "   "))
+    && path_kind_is_refused(o: stat_file_type_reading(success: false, output: "directory"))
+    && path_kind_is_read(o: stat_file_type_reading(success: true, output: "directory"))
+    && path_kind_is_read(o: stat_file_type_reading(success: true, output: "symbolic link"))
+    && path_kind_is_read(o: stat_file_type_reading(success: true, output: "socket"))
+    && path_kind_is_read(o: stat_file_type_reading(success: true, output: "0"))
+    && path_kind_is_read(o: stat_file_type_reading(success: true, output: "weird new thing"))
 }
 
-fn path_kind_is_refused(o: FabricCellPathKindObservation) -> Bool {
+fn path_kind_is_refused(o: StatFileTypeReading) -> Bool {
   match o {
-    PathKindReadRefused { cause: _ } => true
-    PathKindRead { kind: _ } => false
+    StatFileTypeUnanswered { cause: _ } => true
+    StatFileTypeRead { kind: _ } => false
   }
 }
 
-fn path_kind_is_read(o: FabricCellPathKindObservation) -> Bool {
+fn path_kind_is_read(o: StatFileTypeReading) -> Bool {
   match o {
-    PathKindRead { kind: _ } => true
-    PathKindReadRefused { cause: _ } => false
+    StatFileTypeRead { kind: _ } => true
+    StatFileTypeUnanswered { cause: _ } => false
   }
 }
 

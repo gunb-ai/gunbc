@@ -35,6 +35,6 @@ fn serialize_diff_as_source_patch(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
     mechanism: RealizationDispatch,
-    authority: DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
+    authority: DeclarationRef { module_path: "v2.compiler.target_serialize", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
   }
 }

@@ -1,0 +1,8 @@
+module test.fixture.forked_spelling.provider
+
+import std.types { Int }
+import std.machine_constraints { Compose, MachineWidth }
+
+// The AUTHORED provider: the phantom alias test.claim.authored_import_variant_spelling_witness_test
+// imports by name. Phantom like std.integer UInt8, so it has no Rust nominal shell of its own.
+type FspOctet = Compose<Int, MachineWidth<8>>

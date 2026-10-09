@@ -1,0 +1,49 @@
+module gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_apply_render_rows }
+
+// DECLARED 4b(3) DROP (CONVERGENCE-ONE C2 rescue, 2026-09-17). The DECLARATION lives here; the
+// POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_apply_render_rows`. The seed runner's membership set is the UNION
+// of both eval-step drop lists via `floor_eval_step_cost_drop_members`, not a second copy of
+// these two names.
+//
+// WHY THIS IS NOT COST-DEBT AND NOT THE ROADMAP DROP: both identities still execute when the
+// emit module is a changed witness; eval_steps stay recorded; a semantic red still blocks. The
+// 500ms CPU withhold-override already applied (planned_as_changed_witness, verdict pass). The
+// new-witness eval-step gate is a different wall. The roadmap four stay on their own list so
+// this population cannot hide inside that drop's trigger.
+//
+// THE COST IS THE APPLY RENDER, NOT THE PREDICATES. Both claims string-inspect
+// `test.claim.live_deploy.emit` `witness_apply_script`, which is module-scope
+// `live_deploy_apply_script_for`. Required floor run 35174104379 measured 197955 and 205036
+// eval steps against a 72300 new-witness budget. Run 35098721741 on the prior C2 head measured
+// 5408 and 230 for the same identities because gunbc#11204's warm share fill of
+// `witness_apply_script` still resolved in that changed subject. gunbc#11457 unrostered those
+// warm rows (a `dag/test/claim/**` producer is `PureProducerShareProducerModuleOutsideSubject`
+// on every subject that does not change that file). The fill leaving is why the step count
+// jumped; C6's emit edits are not the billed work.
+data live_deploy_apply_render_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_apply_render_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_apply_render_rows; measured by "), m.measured_by))
+
+data live_deploy_apply_render_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "live_deploy_apply_render_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over two live_deploy emit identities that read the production apply script: they still execute, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+
+  declared: "2026-09-17",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+          replacement: "the production apply script as a shared fill-netted artifact reachable from every required-floor subject, so a changed emit claim does not re-pay live_deploy_apply_script_for in-frame",
+    },
+    population: live_deploy_apply_render_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) emission witnesses reach a terminal verdict over the production apply script because that script is a shared fill-netted artifact (the capability v2.workflow.floor_cost_debt already names on this subject: either the script becomes a shared fill-netted artifact or an emission lane declares and enforces its own sufficient ceiling). Seeding a dag/test/claim module into every floor subject is a floor POLICY change and is one way to make the fill resolve; restoring the gunbc#11204 warm rows without that reach is not the capability. WHAT THE FILL MUST BE SUFFICIENT FOR: a required-floor claim over apply_script_stays_within_ci_runner_grants or repository_convergence_is_ordered_after_binary_and_before_readback does not re-pay live_deploy_apply_script_for per claim frame. (ii) AND each of the two identities measured under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the two under budget without the shared-fill capability does not retire the row; landing a fill that does not cover these two identities does not retire it either. Merely deleting either identity, emptying floor_cost_debt, or replacing production emission with a smaller fixture satisfies neither clause.",
+  }
+}

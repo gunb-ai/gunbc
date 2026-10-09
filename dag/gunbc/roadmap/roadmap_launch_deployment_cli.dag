@@ -3,7 +3,6 @@ module gunbc.roadmap_launch_deployment_cli
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
@@ -17,7 +16,7 @@ import extdeps.access.posix_effective_principal {
   effective_posix_principal_name,
 }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
@@ -35,7 +34,7 @@ import gunbc.fleet_converge_receipt {
 }
 import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
-  live_deploy_apply_receipt_artifact_path,
+  live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
@@ -54,9 +53,15 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
-  RevisionBoundAtEmission, live_deploy_serve_unit_file, live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_timer_unit_file,
+}
+import gunbc.live_deploy.release_locus {
+  RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_timer_standing, observe_belt_oneshot_standing,
@@ -69,7 +74,7 @@ import gunbc.roadmap_belt_actuate {
   BeltProviderPreflight, ProviderPreflightRefused,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
-import gunbc.roadmap_model { Unsized }
+import gunbc.dispatch_selection { NoDerivedSizingExpectation }
 import gunbc.dispatch_preflight { dispatch_preflight_for_instance, PreflightAdmitted, PreflightRefused }
 import gunbc.roadmap_launch_admission { launch_admission_contract_digest_hex }
 import gunbc.roadmap_launch_deployment_observe {
@@ -103,6 +108,7 @@ import gunbc.roadmap_launch_deployment_receipt {
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.
@@ -140,7 +146,10 @@ fn rlm_workflow_file_path() -> String {
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
-data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
+// The pin moves only with an intentional admission-contract change in the same commit, which is
+// the drift check working rather than bypassed: 2026-09-19 re-pinned for the `centering` gate
+// (launch_admission_contract_text gains the gate and the centering_absent refusal arm).
+data rlm1_contract_digest_frozen: String = "7bcb9aaf9a17d274"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
@@ -174,7 +183,7 @@ fn read_remote_main_hex() -> RemoteRefRead {
     if line == "" {
       RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
         Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
         Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
       }
@@ -207,10 +216,17 @@ fn transition_text(s: ActuationStanding) -> String {
   }
 }
 
-fn deployed_tree_hexes(o: DeployedTreeObservation) -> List<String> {
+fn deployed_revision_hex_text(o: DeployedTreeObservation) -> String {
   match o {
-    DeployedTreeObserved { revision: r, tree: t, content: _ } => [git_object_id_wire_hex(oid: r) as String, git_object_id_wire_hex(oid: t) as String]
-    DeployedTreeUnobservable { cause: c } => [join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], ""), "unobserved"]
+    DeployedTreeObserved { revision: r, tree: _, content: _ } => git_object_id_wire_hex(oid: r) as String
+    DeployedTreeUnobservable { cause: c } => join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], "")
+  }
+}
+
+fn deployed_tree_hex_text(o: DeployedTreeObservation) -> String {
+  match o {
+    DeployedTreeObserved { revision: _, tree: t, content: _ } => git_object_id_wire_hex(oid: t) as String
+    DeployedTreeUnobservable { cause: _ } => "unobserved"
   }
 }
 
@@ -241,19 +257,17 @@ fn active_instance_text_routed(base: String?) -> String {
 }
 
 fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
-  uses net: Network
 {
   let tree = observe_deployed_tree(locus: deployed_tree_locus(
     context: context,
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
-  let hexes = deployed_tree_hexes(o: tree)
   WindowSnapshot {
     main_hex: remote_ref_text(r: read_remote_main_hex()),
     desired_hex: remote_ref_text(r: read_desired_hex()),
-    deployed_revision_hex: hexes.first(),
-    deployed_tree_hex: hexes.last(),
+    deployed_revision_hex: deployed_revision_hex_text(o: tree),
+    deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
     transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
     active_instance: active_instance_text_routed(base: routed_base),
@@ -273,7 +287,6 @@ fn receipt_digest_at(path: String) -> String? {
 }
 
 fn persist_receipt(instance: HostDashboardInstance, document: String) -> ReceiptPersistence
-  uses net: Network
 {
   match run_shell_commands(commands: [mkdir_parents_command(path: rlm_receipt_staging_dir)], transport: LocalExec) {
     ExitFailure { code: _, reason: why } => ReceiptPersistenceRefused { detail: join(["staging mkdir refused: ", why], "") }
@@ -330,7 +343,7 @@ fn principal_fact() -> PrincipalFact {
 }
 
 fn provider_fact(instance: HostDashboardInstance) -> BeltProviderPreflight {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionRefused { reason: r } => ProviderPreflightRefused { step: "dispatch-selection", detail: r as String }
     DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
   }
@@ -361,7 +374,6 @@ fn tick_fact(instance: HostDashboardInstance, dashboard: DashboardReceiptFact, n
 }
 
 fn unit_standing_fact(revision: String) -> LaunchUnitStanding
-  uses net: Network
 {
   let spec = deployment_spec_srv1()
   LaunchUnitStanding {
@@ -382,7 +394,6 @@ fn unit_standing_fact(revision: String) -> LaunchUnitStanding
 
 // ---------------------------------------------------------------- the entry
 fn rlm_launch_deployment_receipt_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
@@ -448,36 +459,69 @@ fn rlm_routed_base_url() -> String? {
 }
 
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
-// P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text.
-fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
-  uses net: Network
+// P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text. A
+// read the API refused is PredecessorRunUnread, which carries no run record at all, so no head or
+// conclusion is reported for a run that was not read.
+type PredecessorRunObservation
+  = PredecessorRunRead { provenance: PredecessorRunProvenance }
+  | PredecessorRunUnread { detail: String }
+
+fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } =>
+      join(["workflow-runs API refused the read of run ", run_id, ": HTTP ", to_string(status), ": ", body], "")
+    RestTransportRefused { cause } =>
+      join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    RestBodyUndecodable { status, cause } =>
+      join(["workflow-runs API answered HTTP ", to_string(status), " for run ", run_id, " with a body that did not decode: ", cause as String], "")
+  }
+}
+
+fn rlm_predecessor_run(run_id: String) -> PredecessorRunObservation
 {
-  let got = github.WorkflowRuns.GetRun(
+  match github.WorkflowRuns.GetRun(
     auth_token: "",
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     run_id: run_id,
-  )
-  PredecessorRunProvenance {
-    run_id: run_id,
-    conclusion_wire: (match got.run.conclusion {
-      Present { value: c } => workflow_run_conclusion_wire_label(conclusion: c)
-      Absent => "null (run not completed)"
-    }),
-    head_sha: got.run.head_sha as String,
-    workflow_path: (match got.run.path { Present { value: wp } => wp  Absent => "(path absent from run record)" }),
+  ) {
+    RestRefused { refusal } =>
+      PredecessorRunUnread { detail: rlm_predecessor_run_refusal_detail(run_id: run_id, refusal: refusal) }
+    RestAnswered { answer: got } =>
+      PredecessorRunRead {
+        provenance: PredecessorRunProvenance {
+          run_id: run_id,
+          conclusion_wire: (match got.run.conclusion {
+            Present { value: c } => workflow_run_conclusion_wire_label(conclusion: c)
+            Absent => "null (run not completed)"
+          }),
+          head_sha: got.run.head_sha as String,
+          workflow_path: (match got.run.path { Present { value: wp } => wp  Absent => "(path absent from run record)" }),
+        },
+      }
   }
 }
 
 fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
-  uses net: Network
 {
-  RunProvenanceObserved {
-    receipt_repository: run.repository,
-    plan: rlm_predecessor_run(run_id: plan_run_id),
-    apply: rlm_predecessor_run(run_id: apply_run_id),
-    dashboard: rlm_predecessor_run(run_id: dashboard_run_id),
-    receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
+  match rlm_predecessor_run(run_id: plan_run_id) {
+    PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["plan: ", d], "") }
+    PredecessorRunRead { provenance: plan_observed } =>
+      match rlm_predecessor_run(run_id: apply_run_id) {
+        PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["apply: ", d], "") }
+        PredecessorRunRead { provenance: apply_observed } =>
+          match rlm_predecessor_run(run_id: dashboard_run_id) {
+            PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["dashboard: ", d], "") }
+            PredecessorRunRead { provenance: dashboard_observed } =>
+              RunProvenanceObserved {
+                receipt_repository: run.repository,
+                plan: plan_observed,
+                apply: apply_observed,
+                dashboard: dashboard_observed,
+                receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
+              }
+          }
+      }
   }
 }
 
@@ -490,7 +534,6 @@ fn rlm_launch_deployment_receipt_bound(
   dashboard_run_id: String,
   context: FleetSshExecutionContext,
 ) -> ProcessExit
-  uses net: Network
 {
   let instance = srv1_live_dashboard_instance()
   let spec = deployment_spec_srv1()
@@ -521,7 +564,7 @@ fn rlm_launch_deployment_receipt_bound(
     FleetConvergeApplyReceiptDecoded { receipt: a } => ApplyReceiptRead { receipt: a }
     FleetConvergeApplyReceiptUnreadable { reason: why } => ApplyReceiptUnreadable { reason: why }
   }
-  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path) {
+  let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path_for(instance_id: instance.instance_id as String)) {
     LiveDeployApplyReceiptDecoded { receipt: d } => DashboardReceiptRead { receipt: d }
     LiveDeployApplyReceiptUnreadable { reason: why } => DashboardReceiptUnreadable { reason: why }
   }
@@ -570,6 +613,9 @@ fn rlm_launch_deployment_receipt_bound(
     Present { value: h } => HostObserved { name: h as String }
     Absent => HostUnobserved { detail: "hostname probe did not succeed or returned empty output" }
   }
+  let unit_standing = unit_standing_fact(revision: revision)
+  let observation_window_closed = window_snapshot(context: context, instance: instance, routed_base: routed_base)
+  let run_provenance = rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id)
   let facts = RoadmapLaunchDeploymentFacts {
     desired_revision: (match main_hex {
       RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["main: ", d], "") }
@@ -586,7 +632,7 @@ fn rlm_launch_deployment_receipt_bound(
     release_binding: binding,
     readiness: readiness,
     transition: transition_actuation_standing(instance_root: instance.instance_root as String),
-    unit_standing: unit_standing_fact(revision: revision),
+    unit_standing: unit_standing,
     tick_standing: tick_fact(instance: instance, dashboard: dashboard, now: now),
     footprint: belt_footprint_admission_for_instance(instance: instance),
     provider_preflight: provider_fact(instance: instance),
@@ -595,8 +641,8 @@ fn rlm_launch_deployment_receipt_bound(
     instance_endpoint: instance_doc,
     principal: principal_fact(),
     observed_host: host,
-    observation_window: observation_window_fact(opened: opened, closed: window_snapshot(context: context, instance: instance, routed_base: routed_base)),
-    run_provenance: rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id),
+    observation_window: observation_window_fact(opened: opened, closed: observation_window_closed),
+    run_provenance: run_provenance,
   }
   let verdict = roadmap_launch_deployment_verdict(subject: subject, facts: facts)
   let document = roadmap_launch_deployment_receipt_document(v: verdict)

@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                                                              w_no_realization_spells_the_bare_string_token
 //   restore the Symbol row to rust_type_checkpoints           -> w_migrated_names_are_absent_from_the_bare_table
 //   add a bare row with no verdict                            -> w_every_bare_row_carries_a_verdict
-//   bind v2.std.logic Bool beside std.types Bool             -> w_sibling_declarations_of_one_spelling_receive_no_binding
+//   bind v2.std.text String beside the kernel String row     -> w_sibling_declarations_of_one_spelling_receive_no_binding
 //   resolve Absent identity by falling to a bare spelling     -> w_missing_source_identity_refuses
 //   duplicate the Symbol row in rust_source_type_binding_rows -> w_corpus_bindings_are_unambiguous
 //   answer InternedIdentity while every law says lexeme       -> w_symbol_decision_is_coherent
@@ -62,15 +62,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SAME-SPELLING SIBLINGS, all REAL declarations (the cited-declaration gate refuses a citation
 // of a declaration that does not exist, so the "another module declaring Symbol" falsifier is
-// asked of the declarations the corpus actually has two of): v2.std.text String and std.string_type
-// String beside the kernel String row, v2.std.logic Bool beside std.types Bool (which HAS an exact
-// row), and v2.std.node Hash, declared in Symbol's own module one line below it. None may receive a
-// binding authored for a different declaration -- module-path and decl-name discrimination both.
+// asked of the declarations the corpus actually has two of): v2.std.text String beside the kernel
+// String row, and v2.std.node Hash, declared in Symbol's own module one line below it. None may
+// receive a binding authored for a different declaration -- module-path and decl-name
+// discrimination both. (v2.std.logic Bool stood here beside std.types Bool until the Bool de-fork
+// deleted it; a citation of a declaration that no longer exists is refused, so it left the list
+// rather than stay as a dead row.)
 fn sibling_declarations_without_bindings() -> List<DeclarationRef> {
   [
     decl_ref(module_path: "v2.std.text", decl_name: "String"),
-    decl_ref(module_path: "std.string_type", decl_name: "String"),
-    decl_ref(module_path: "v2.std.logic", decl_name: "Bool"),
     decl_ref(module_path: "v2.std.node", decl_name: "Hash")
   ]
 }

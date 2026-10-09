@@ -1,0 +1,181 @@
+module gunbc.roadmap.roadmap_attempt_request_record
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
+
+// THE ATTEMPT'S REQUEST RECORD: the durable, create-only fact of which request an attempt answers.
+// It is its own module, below the event carrier, because two readers on opposite sides of that
+// carrier need it: the launch (gunbc.roadmap.roadmap_attempt_request_binding), which decides the
+// binding with the carrier's help and commits it here, and the carrier's bound result append
+// (gunbc.roadmap.roadmap_event_carrier roadmap_bound_result_append), which reads it back to learn
+// the claim a result must name -- so that the claim on a result is never something a caller hands
+// in. This module knows the record, its codec, its path and its two operations, and nothing about
+// events.
+// THE BINDING AN ATTEMPT RECORDS, ONCE. Bound names the claim event; Autonomous is an attempt with
+// no requester. There is no third state: a request-bound launch whose claim cannot be established
+// does not launch (gunbc.roadmap.roadmap_attempt_request_binding attempt_request_binding_commit_for_instance refuses), because an attempt that
+// ran without knowing who asked could finish and never be able to answer.
+type AttemptRequestBinding
+  = RequestClaimBound { claim: RoadmapEventId }
+  | RequestAutonomous
+
+data attempt_request_binding_schema: String = "roadmap-attempt-request-binding/v1"
+data attempt_request_binding_basename: String = "request-binding.json"
+
+fn attempt_request_binding_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_request_binding_basename], "")
+}
+
+fn attempt_request_binding_json(binding: AttemptRequestBinding) -> String {
+  serialize_json(v: json_object(members: match binding {
+    RequestClaimBound { claim } => [
+      json_kv(key: "schema", value: json_string(s: attempt_request_binding_schema)),
+      json_kv(key: "status", value: json_string(s: "bound")),
+      json_kv(key: "claim", value: json_string(s: claim as String)),
+    ]
+    RequestAutonomous => [
+      json_kv(key: "schema", value: json_string(s: attempt_request_binding_schema)),
+      json_kv(key: "status", value: json_string(s: "autonomous")),
+    ]
+  }))
+}
+
+fn binding_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+type AttemptRequestBindingDecode
+  = RequestBindingDecoded { binding: AttemptRequestBinding }
+  | RequestBindingUndecodable { reason: String }
+
+// THE DECODE IS STRICT: the schema must be this one, the status one of the two, and a bound record
+// must name a non-empty claim. A document that is anything else is undecodable, never autonomous.
+fn attempt_request_binding_decode(text: String) -> AttemptRequestBindingDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => RequestBindingUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match binding_member_string(doc: doc, key: "schema") {
+        Absent => RequestBindingUndecodable { reason: "the binding has no schema member" }
+        Present { value: schema } =>
+          if schema != attempt_request_binding_schema {
+            RequestBindingUndecodable { reason: join(["schema is ", schema, ", expected ", attempt_request_binding_schema], "") }
+          } else {
+            match binding_member_string(doc: doc, key: "status") {
+              Absent => RequestBindingUndecodable { reason: "the binding has no status member" }
+              Present { value: status } =>
+                if status == "bound" {
+                  match binding_member_string(doc: doc, key: "claim") {
+                    Absent => RequestBindingUndecodable { reason: "a bound binding names no claim" }
+                    Present { value: claim } =>
+                      if claim == "" { RequestBindingUndecodable { reason: "a bound binding names an empty claim" } }
+                      else { RequestBindingDecoded { binding: RequestClaimBound { claim: claim as NonEmptyStr as RoadmapEventId } } }
+                  }
+                } else if status == "autonomous" {
+                  RequestBindingDecoded { binding: RequestAutonomous }
+                } else {
+                  RequestBindingUndecodable { reason: join(["status ", status, " is not bound or autonomous"], "") }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE CREATE-ONLY COMMIT, pure over what the create answered and what is on disk. Created is the
+// first commit. An occupied target is read back: the SAME binding is an idempotent success, so a
+// repeated initialization of the same decision changes nothing; a DIFFERENT binding, or a file that
+// does not decode, refuses -- the first commit stands and a later initialization under another
+// claim cannot replace it. Any other refusal of the create is the host's and fails the launch.
+type AttemptRequestBindingCommit
+  = RequestBindingCommitted { binding: AttemptRequestBinding }
+  | RequestBindingCommitRefused { step: String, detail: String }
+
+fn attempt_request_binding_commit_of(binding: AttemptRequestBinding, created: FilesystemCreateNew, existing: AttemptRequestBindingRead) -> AttemptRequestBindingCommit {
+  match created {
+    FilesystemCreated { path: _ } => RequestBindingCommitted { binding: binding }
+    FilesystemCreateRefused { path: _, kind: _, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: error }
+    FilesystemCreateKindUnrecognized { path: _, observed, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: join([observed, ": ", error], "") }
+    FilesystemCreateTargetOccupied { path: _ } =>
+      match existing {
+        RequestBindingRead { binding: recorded } =>
+          if recorded == binding { RequestBindingCommitted { binding: recorded } }
+          else { RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt is already bound (", attempt_request_binding_json(binding: recorded), ") and cannot be re-bound (", attempt_request_binding_json(binding: binding), ")"], "") } }
+        RequestBindingAbsent => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: "the binding could not be created because the target was occupied, and then could not be found" }
+        RequestBindingUnreadable { reason } => RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt already has a binding that cannot be read, which is not replaced: ", reason], "") }
+      }
+  }
+}
+
+// THE CREATE-ONLY WRITE: publish the binding with a create that fails when the file exists, then
+// decide with attempt_request_binding_commit_of over what the create answered and, only when the
+// target was occupied, what is recorded there.
+fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
+  let path = attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let write = Filesystem.WriteCreateNew(path: path, content: attempt_request_binding_json(binding: binding))
+  let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+  attempt_request_binding_commit_of(
+    binding: binding,
+    created: created,
+    existing: match created {
+      FilesystemCreateTargetOccupied { path: _ } => attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+      FilesystemCreated { path: _ } => RequestBindingAbsent
+      FilesystemCreateRefused { path: _, kind: _, error: _ } => RequestBindingAbsent
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => RequestBindingAbsent
+    },
+  )
+}
+
+// THE BINDING AS A LATER READER FINDS IT. Absent is an attempt launched before bindings were
+// recorded (or one whose state was never initialized): it has no recorded request, which is its
+// own arm and not autonomous. Unreadable is a file that is there and cannot be read or decoded.
+type AttemptRequestBindingRead
+  = RequestBindingRead { binding: AttemptRequestBinding }
+  | RequestBindingAbsent
+  | RequestBindingUnreadable { reason: String }
+
+fn attempt_request_binding_read_from_observation(observation: FilesystemFileObservation) -> AttemptRequestBindingRead {
+  match observation {
+    FilesystemFileAbsent(_) => RequestBindingAbsent
+    FilesystemFileRead { path: _, content } =>
+      match attempt_request_binding_decode(text: content) {
+        RequestBindingDecoded { binding } => RequestBindingRead { binding: binding }
+        RequestBindingUndecodable { reason } => RequestBindingUnreadable { reason: reason }
+      }
+    FilesystemFileIndeterminate { cause } => RequestBindingUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => RequestBindingUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => RequestBindingUnreadable { reason: cause }
+  }
+}
+
+fn attempt_request_binding_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRead {
+  attempt_request_binding_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    ),
+  )
+}

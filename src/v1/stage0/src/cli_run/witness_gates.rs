@@ -57,7 +57,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -84,12 +83,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -286,6 +285,21 @@ pub fn witness_exclusion_substrings() -> Vec<String> {
 pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
     plan: &CompileCleanScopePlan,
 ) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
+    witness_layer_roots_compile_clean_sources_and_index_for_plan(plan)
+        .map(|loaded| loaded.map(|(sources, _)| sources))
+}
+
+/// A compile-clean source closure and the witness-layer index it was loaded from.
+pub(crate) type CompileCleanSourcesAndIndex =
+    (Vec<Rc<v1_compiler_compile::SourceFile>>, MultiEntryIndex);
+
+/// The plan's source closure together with the witness-layer index it was loaded from, in both
+/// the whole-tree and the scoped arm. A caller that derives the name census and the corpus claim
+/// consults this build rather than re-walking both roots, so the closure and the corpus judgment
+/// come from one index (review 68591).
+pub(crate) fn witness_layer_roots_compile_clean_sources_and_index_for_plan(
+    plan: &CompileCleanScopePlan,
+) -> Result<Option<CompileCleanSourcesAndIndex>, String> {
     match plan {
         CompileCleanScopePlan::Refused { reason } => {
             eprintln!("compile-clean scope: refused ({reason})");
@@ -295,15 +309,7 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
             eprintln!("compile-clean scope: skipped ({reason})");
             Ok(None)
         }
-        CompileCleanScopePlan::WholeTree => {
-            eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
-            let roots = witness_layer_roots();
-            let mei = build_multi_entry_index_primary_precedence(&roots);
-            load_compile_clean_entry_sources(&roots, &mei, None).map(|mut sources| {
-                append_test_floor_compile_clean_inject(&mut sources);
-                Some(sources)
-            })
-        }
+        CompileCleanScopePlan::WholeTree => compile_clean_whole_tree_sources_and_index().map(Some),
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
                 "compile-clean scope: {} affected entr{} (of whole-tree gate)",
@@ -316,25 +322,39 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
                 .collect();
             let roots = witness_layer_roots();
             let mei = build_multi_entry_index_primary_precedence(&roots);
-            load_compile_clean_entry_sources(&roots, &mei, Some(&filter)).map(Some)
+            let sources = load_compile_clean_entry_sources(&roots, &mei, Some(&filter))?;
+            Ok(Some((sources, mei)))
         }
     }
+}
+
+/// The whole-tree entry closure together with the witness-layer index it was loaded from. The index
+/// is returned rather than dropped so a caller that needs the name census and the corpus claim
+/// consults this one build instead of re-walking both roots (review 68591).
+pub(crate) fn compile_clean_whole_tree_sources_and_index(
+) -> Result<CompileCleanSourcesAndIndex, String> {
+    eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
+    let roots = witness_layer_roots();
+    let mei = build_multi_entry_index_primary_precedence(&roots);
+    let mut sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    append_test_floor_compile_clean_inject(&mut sources);
+    Ok((sources, mei))
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
-/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
+/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc.ci_diff_policy` `gunbc_ci_diff_policy`
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
 /// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
 /// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
-    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+    match witness_layer_roots_compile_clean_sources_and_index_for_plan(
+        &compile_clean_scope_plan_for_ci(),
+    ) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let roots = witness_layer_roots();
-            let index = build_multi_entry_index_primary_precedence(&roots);
+        Ok(Some((sources, index))) => {
             let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
             let result = v1_compiler_compile::compile_to_resolved_with_options(
                 Rc::new(sources.into()),
@@ -358,57 +378,15 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 /// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
 /// floor gate consumes `install_or_consume_floor_compile_clean_gate_receipt` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+    match witness_layer_roots_compile_clean_sources_and_index_for_plan(
+        &compile_clean_scope_plan_for_ci(),
+    ) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let roots = witness_layer_roots();
-            let index = build_multi_entry_index_primary_precedence(&roots);
-            floor_compile_clean_emit_ok(sources, Some(&index))
-        }
+        Ok(Some((sources, index))) => floor_compile_clean_emit_ok(sources, Some(&index)),
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
         }
-    }
-}
-
-/// The floor receipt's leg label, read from the memo primed by
-/// `prime_witness_execution_legs`. The label is a pure function of the entry path, derived
-/// from the `.dag` classification authority — there is no census carrier to read and none
-/// to keep in sync (§2/§3).
-///
-/// Fail-closed (§5): an unprimed entry refuses. It does not quietly derive on the spot,
-/// because doing so off the floor's own index costs a second whole-corpus index — measured
-/// at ~6GB of extra demand, which pushed the floor into swap and inflated batch 3 by 44%.
-/// A miss is a wiring bug in the caller, and it says so rather than paying that silently.
-pub fn witness_execution_leg_label(entry: &str) -> String {
-    let rel = repo_relative_dag_path(entry);
-    match witness_execution_leg_cached(&rel) {
-        Some(hit) => hit,
-        None => panic!(
-            "witness execution leg: entry {rel:?} was not primed (refuse — call \
-             prime_witness_execution_legs with the floor's index before running rows)"
-        ),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache() -> &'static std::sync::RwLock<HashMap<String, String>> {
-    WITNESS_EXECUTION_LEG_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
-}
-
-pub(crate) fn witness_execution_leg_cached(rel: &str) -> Option<String> {
-    match witness_execution_leg_cache().read() {
-        Ok(map) => map.get(rel).cloned(),
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache_put(rel: &str, leg: &str) {
-    match witness_execution_leg_cache().write() {
-        Ok(mut map) => {
-            map.insert(rel.to_string(), leg.to_string());
-        }
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
     }
 }
 
@@ -514,7 +492,7 @@ pub(crate) fn witness_cost_clock_nanos(
     })?;
     let Value::Variant {
         variant_name,
-        fields,
+        ref fields,
         ..
     } = measured
     else {
@@ -532,7 +510,7 @@ pub(crate) fn witness_cost_clock_nanos(
             ctx.resolve(variant_name)
         ));
     }
-    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+    let value = ctx.field(fields, "value").cloned().ok_or_else(|| {
         "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
     })?;
     witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)

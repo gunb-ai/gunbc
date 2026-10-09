@@ -7,6 +7,10 @@ module gunbc.runner_host_grants
 // cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
 // know nothing about hosts; this module joins the two.
 
+import gunbc.fleet_converge_state_path { fleet_converge_state_root }
+import gunbc.workspace_allocation_operations { workspace_launch_operations }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
 import std.types { String, NonEmptyStr, List, list_length }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -23,7 +27,8 @@ import gunbc.executor_privileged_operation {
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm_slot_unit { microvm_slot_reserve_unit_name }
 import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_root_path,
@@ -37,9 +42,7 @@ import gunbc.fabric_cell_effect {
   FabricCellSubstrateOwner,
   CellSubstrateRootOwned,
   CellAttemptWriterOwned,
-  fabric_cell_slice_desired_directives,
-  SliceDirectivesComplete,
-  SliceDirectivesQuotaSurveyRefused,
+  fabric_cell_slice_desired_directives_of_slot,
 }
 import gunbc.fabric_allocation_store_substrate {
   AllocationStoreEffect,
@@ -47,10 +50,13 @@ import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_ensure_effect,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner_host_deploy { runner_index_seq }
+import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
+import gunbc.host_boot_attempt_admission { boot_attempt_slot_root }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -61,7 +67,7 @@ import gunbc.runner_unit { runner_unit_name_of_registration }
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
 // nothing else uses.
-data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr
+data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 
 // THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
 // line for every desired slot. That is what makes gunbc.runner_service_activation's separation
@@ -148,19 +154,14 @@ fn fabric_cell_slice_property_operations(
   )
 }
 
-// A REFUSED SURVEY EMITS NO SLICE PROPERTY GRANTS. Applying MemoryMax without CPUQuota is the
-// unbounded-CPU slice this module must not authorize. When the survey resolves, the operations
-// are `fabric_cell_slice_desired_directives`'s complete list, including `slice_cpu_quota`.
+// THE SLICE PROPERTY GRANTS ARE `fabric_cell_slice_desired_directives`'S COMPLETE LIST, six lines
+// including the CPUQuota line -- a ceiling or the affirmative unset, never omitted. The fold has no
+// refusing arm since the quota's only refusing producer (a vendor survey) was deleted.
 fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
-  match fabric_cell_slice_desired_directives() {
-    SliceDirectivesComplete { directives: ds } =>
-      fabric_cell_slice_property_operations(
-        unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-        directives: ds,
-      )
-    SliceDirectivesQuotaSurveyRefused { cause: _ } =>
-      [] as List<ExecutorPrivilegedOperation>
-  }
+  fabric_cell_slice_property_operations(
+    unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives_of_slot(slot: slot),
+  )
 }
 
 // THE EFFECT-TO-OPERATION PROJECTION THE APPLY SHELL CONSUMES. gunbc.fleet_converge_plan renders
@@ -318,7 +319,59 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
     },
     EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
     SystemdDaemonReload
-  ]
+  ] + unit_hold_store_operations(spec: spec)
+}
+
+// THE UNIT HOLD STORE LIVES ONLY WHERE A MANAGED HOST'S HOLD NAMES IT. gunbc.managed_host_unit_hold
+// unit_hold_store_hosts derives the store hosts from the managed rows' own hold decisions -- the host
+// a unit's boot job is pinned to and where the operator takes its maintenance holds; the boot refuses when the store root
+// is unreadable, so the root must exist before the first acquire and nothing else creates it. It is
+// the job user's (the boot and the operator's session both write slots as that account); the store
+// publishes DefaultAccessCreateOnly (gunbc.durable_exclusive_hold_file_store), so the directory
+// carries no confidentiality requirement beyond the executor's managed mode. Every other host
+// contributes nothing: a store root on a host no hold-owner runs on would be an unused authority.
+//
+// THE BOOT ATTEMPT ADMISSION STORE IS ITS NEIGHBOUR, NOT ITS CHILD (gunbc.host_boot_attempt_admission
+// boot_attempt_slot_root). Admission writes through the same store-host executor, so the root lives on
+// the same hosts with the same owner and mode; it is a separate directory because a hold's release or
+// recovery must never reach an attempt's create-once slot.
+fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
+    [
+      EnsureOwnedDirectory {
+        path: unit_hold_store_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: boot_attempt_slot_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+// No designated workspace slot means no workspace launch or credential publication grant.
+fn workspace_host_launch_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  flat_map(filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (deploy.host_label as String)), slot => workspace_launch_operations(slot: slot))
+}
+
+// THE SHAKEDOWN BROKER'S ONE GRANT: START ITS FIXED UNIT, ON THE HOST THAT CARRIES THE SHAKEDOWN SLOT
+// AND NOWHERE ELSE. The job user may ask systemd to start gunbc-microvm-slot-reserve.service and do
+// nothing else to it: the unit is root-owned, installed from the root-owned locus, and derives what it
+// reserves inside the root process (gunbc.runner_microvm_slot_reserve), so this line authorizes a
+// request and carries no payload. It is one exact argv rendered from SystemdStartUnit, never a pattern.
+fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if (deploy.host_label as String) == (srv1_microvm_shakedown_slot().host as String) {
+    [SystemdStartUnit { unit: microvm_slot_reserve_unit_name }]
+  } else {
+    []
+  }
 }
 
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
@@ -329,7 +382,10 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
+    + workspace_host_launch_operations(deploy: deploy)
+    + microvm_slot_reserve_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
+    + microvm_network_granted_operations()
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
@@ -420,40 +476,6 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) 
   ], "")
 }
 
-// THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
-// install its own sudoers grant -- the subject receiving authority cannot be the sole source of the
-// authority that grants it -- so the first install on any host is performed by a DIFFERENT principal.
-// On the executor fleet that principal is NOT the deploy row's ssh_target.
-//
-// MEASURED ON srv3, 2026-08-25, with the fleet key (extdeps secret fleet-automation-ssh-key,
-// fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ):
-//   briansrls        Permission denied (publickey)  -- the deploy row's ssh_target does NOT accept it
-//   fleet-automation Permission denied (publickey)
-//   root             Permission denied (publickey)
-//   ghrunner         authenticates, then nologin     -- the GRANTEE, a service account
-//   ubuntu           full shell, (ALL) NOPASSWD: ALL -- THE BOOTSTRAP PRINCIPAL
-//
-// WHY THIS ROW EXISTS RATHER THAN A COMMENT IN A RUNBOOK: the operator did not know the briansrls
-// password and reasonably believed the fleet credential already carried sudo. It does -- under
-// ubuntu, not under the ssh_target the deploy row names. That single fact was the whole blocker, it
-// is not derivable from any other row in this repository, and it was recovered by probing five
-// accounts against a live host. Left in prose it would be lost by the next session.
-type ExecutorBootstrapPrincipal {
-  login: NonEmptyStr
-  reachable_with_secret: NonEmptyStr
-}
-
-// ONE ROW FOR THE FLEET, NOT ONE PER HOST, AND WHAT IS MEASURED IS STATED SEPARATELY FROM WHAT IS
-// DECLARED. It was named for srv3 because srv3 is where the probe above ran. Two further facts arrived
-// later and neither is a measurement of reach: srv1 carries an `ubuntu` account with a NOPASSWD sudoers
-// file (read on srv1, 2026-09-11), and srv1-srv4 were imaged the same way. So the row is the DECLARED
-// administrator for every runner host, measured only on srv3; gunbc.runner_host_file_converge probes
-// `sudo -n` as this principal on every run and refuses by name on a host where the declaration is
-// false, before any write. Per-host rows would be the right shape only once a host is known to differ.
-data executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
-  login: "ubuntu" as NonEmptyStr,
-  reachable_with_secret: "fleet-automation-ssh-key" as NonEmptyStr,
-}
 
 // THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
 // future edit that points both at one account fails a witness rather than silently creating an
@@ -462,5 +484,17 @@ fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
 ) -> Bool {
-  bootstrap.login != deploy.job_user
+  bootstrap_principal_is_not_the_job_user(bootstrap: bootstrap, job_user: deploy.job_user)
+}
+
+// THE SAME LAW OVER THE JOB USER ALONE. A deploy row is a spec plus an ADMITTED WIDTH, and the
+// privilege law does not depend on the width: whether the writer is the account CI jobs run as is a
+// fact about the two principals, not about how many slots a host admits. A custody converge that
+// resolves its host from runner_host_spec_for asks this directly rather than re-spelling the
+// comparison, so the law has one authority and the deploy arm above is one caller of it.
+fn bootstrap_principal_is_not_the_job_user(
+  bootstrap: ExecutorBootstrapPrincipal,
+  job_user: NonEmptyStr,
+) -> Bool {
+  bootstrap.login != job_user
 }

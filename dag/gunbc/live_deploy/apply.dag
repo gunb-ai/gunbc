@@ -1,5 +1,13 @@
 module gunbc.live_deploy.apply
 
+import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   RepositoryTransitionAdmission,
@@ -11,9 +19,11 @@ import gunbc.live_deploy.deployed_tree_scope {
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
-  deployment_spec_srv1,
   deployment_plan_listen_port,
+  deployment_plan_host_identity,
+  deployment_tailnet_door_socket,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
   CandidateRelease,
@@ -32,6 +42,7 @@ import gunbc.ci_deploy_access {
   deploy_access_preflight_pass_message,
   deploy_access_decision_reason,
   deploy_target_proof_from_access,
+  deploy_access_sudoers_install_scope,
 }
 import gunbc.ci_deploy_access_observe {
   deploy_mutation_gate,
@@ -53,18 +64,64 @@ import gunbc.host_effect {
   ShellEffectApplied,
   LiveDeployApply,
   LiveDeployRetract,
+  LiveDeployApprovalBrokerDarkInstall,
+  LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeployServeRoute,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import gunbc.live_deploy.tailnet_door_cutover {
+  ServeCutoverEffects, ServeCutoverOutcome, CapturedServeBackend, CapturedRestorableBackend, CapturedNoRoute,
+  tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
+}
+import gunbc.live_deploy.tailnet_door_cutover_host {
+  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write,
+}
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.auth.approval_broker_cutover {
+  CutoverAdmission, StageAdmitted, StageRefused,
+  dark_install_release_discharged, cutover_refusal_reason,
+  BrokerTreeReceiptRead, observe_broker_tree_receipt,
+}
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
-  ServiceReadyApplyEffect,
-  ServiceReadyEvidence,
+  live_deploy_liveness_get_local,
+  ServiceReadiness,
+  ServiceProbeUnanswered,
+  service_readiness_reason,
+  live_deploy_proxied_readiness,
 }
+import gunbc.live_deploy.service_ready {
+  approval_broker_expected_startup,
+  live_deploy_service_ready_poll_bound_margin_factor,
+  live_deploy_service_ready_poll_cadence,
+}
+import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
+import gunbc.live_deploy.emit {
+  microvm_controller_vmm_receipt_path,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  RevisionBoundAtEmission,
+  ReleaseRevisionBinding,
+}
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
+  microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
+}
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import extdeps.systemd { systemd_unit_property_wire, LoadState }
+import std.algebra { trim }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { Second, second, second_count }
+import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -91,11 +148,60 @@ import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
-  live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir, live_deploy_apply_receipt_artifact_path,
+  live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
 }
 import gunbc.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
+}
+
+// WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
+// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
+// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
+// mutation (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// the gate demands only what that install spends; demanding the rest would require the grant the
+// gated step exists to install. Every other effect installs nothing and is gated on the full roster.
+fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
+  match effect {
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => deploy_access_sudoers_install_scope(access: access)
+    LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
+    RedfishAction { action: _ } => access
+    ConvergePlan { policy: _ } => access
+    OsInstallActuatorToolchainEnsure {} => access
+    EnsureBuildCacheInstance { desired: _ } => access
+    ProvisionCodexRuntime {} => access
+    EnsureCompilePoolSlice {} => access
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => access
+    ReadEffectivePosixPrincipal { read: _ } => access
+    SudoNopasswdExecuteProbe { probe: _ } => access
+    SudoNopasswdGrantListProbe { probe: _ } => access
+    Srv3InstallMediaFetch => access
+    Srv3SeededInstallMediaRemaster => access
+    Srv3SeededInstallMediaToolchainEnsure => access
+    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebTokenExtract => access
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => access
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
+    Srv3BootOnceReadBackSleep => access
+    Srv3ReceiptEmit { lines: _ } => access
+    HostIdentityShortHostnameRead => access
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
+    LiveDeployMicrovmControllerInstall { candidate: _ } => access
+    LiveDeployEnsureDependency { dep: _ } => access
+    LiveDeployDigestReadback { port: _ } => access
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => access
+    DeployAccessPreflight {} => access
+    EnsureActionsRunnerRelease { runner_release: _ } => access
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
+    EnsureRunnerJitWrapper { host_label: _ } => access
+    EnsureRunnerSystemdTemplate { host_label: _ } => access
+    EnsureRunnerMemoryCaps { slot: _ } => access
+    ActivateRunnerSlot { slot: _ } => access
+    ReplaceRunnerIncarnation { from: _, cause: _ } => access
+    ObserveRunnerLocalState { slot: _ } => access
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
+    ProbeToolchainHomeInterference {} => access
+  }
 }
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
@@ -135,9 +241,10 @@ fn live_deploy_mutation_denied(
 //
 // WHAT WENT, AS ONE POPULATION: the slot selection coproduct and its Tailscale-status read, the
 // deploy-idle-then-flip-then-retire fold, the slot/route/retiring spec projections, and the second
-// HostDashboardInstance. What replaces them is this: apply converges deployment_spec_srv1 IN PLACE,
-// members in declared order, and the Tailscale mapping is an ordinary member pointing at the one
-// port rather than a route flipped between two.
+// HostDashboardInstance. What replaces them is this: apply converges a caller-supplied
+// DeploymentSpec in place (gunbc.live_deploy.desired selected_deployment_spec), members in
+// declared order, and the Tailscale mapping is an ordinary member pointing at that spec's port
+// rather than a route flipped between two.
 //
 // WHAT IS HONESTLY LOST is the property blue/green existed to buy: a failed candidate can no longer
 // be discovered on an idle slot while the old process keeps serving. A bad deploy now restarts the
@@ -163,6 +270,13 @@ fn live_deploy_mutation_denied(
 // add rather than as a replace, the route is briefly ABSENT while the service is unverified. That
 // is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering
 // is a known quantity rather than something a later reader rediscovers as a surprise.
+//
+// THAT ARGUMENT HOLDS ONLY FOR A ROUTE TO THE PORT THE RESTARTED UNIT SERVES. A deployment whose
+// route targets its tailnet door would be redirecting traffic to a second process, which is the
+// redirection-to-an-unverified-process the paragraph above rules out. So for such a deployment the
+// mapping is NOT written inside the mutation (gunbc.live_deploy.emit
+// tailscale_serve_mapping_apply_steps): it is written by live_deploy_tailnet_door_cutover_gate
+// below, after the readiness gate, as a transaction that restores the prior backend on failure.
 fn live_deploy_fold(
   spec: DeploymentSpec,
   effect: HostEffect,
@@ -172,8 +286,9 @@ fn live_deploy_fold(
   fixture_host: DeployTargetHostObservation?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let target = HostOs { node: spec.target.host }
+  let gate_access = live_deploy_pre_mutation_access(effect: effect, access: access)
   let gate = deploy_mutation_gate(
-    access: access,
+    access: gate_access,
     fixture_actor: fixture_actor,
     fixture_host: fixture_host
   )
@@ -187,7 +302,7 @@ fn live_deploy_fold(
       )
     Permit =>
       host_effect_apply_gated(
-        access: access,
+        access: gate_access,
         target: target,
         effect: effect,
         evidence: host_effect_identity_evidence,
@@ -240,45 +355,143 @@ fn live_deploy_apply_mutation_via_transport(
   }
 }
 
-fn live_deploy_apply_readiness_gate(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
+// One NotConverged, reached from both non-Ready arms. The Pending/Refused
+// distinction is NOT erased by the collapse: service_readiness_reason carries the
+// readiness value into the reason, and the retry decision that consumes the
+// distinction lives in the poll, not in this gate.
+fn readiness_gate_not_converged(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: ServiceReadiness,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_readiness_gate_with_readiness(
-    mutation: mutation,
-    readiness: live_deploy_poll_until_service_ready_for_deploy(
-      spec: spec,
-      candidate: candidate,
-      transport: transport,
-      access: access,
-    ),
-  )
+  let intent = match mutation {
+    Converged { evidence: _, applied: applied_intent } => applied_intent
+    NotConverged { reason: _, applied: applied_intent } => applied_intent
+  }
+  NotConverged { reason: service_readiness_reason(r: readiness), applied: intent }
 }
 
 fn live_deploy_apply_readiness_gate_with_readiness(
   mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  readiness: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
+  readiness: ServiceReadiness,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
-    if reconciliation_converged(r: readiness) {
-      mutation
-    } else {
-      match readiness {
-        NotConverged { reason: why, applied: _ } =>
-          match mutation {
-            Converged { evidence: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
-          }
-        Converged { evidence: _, applied: _ } => mutation
-      }
+    match readiness {
+      Ready { evidence: _ } => mutation
+      Pending { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
+      Refused { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
     }
+  }
+}
+
+// ── THE TAILNET DOOR CUTOVER, ON THE HOST ───────────────────────────────────────────────────
+// The four effects gunbc.live_deploy.tailnet_door_cutover sequences, bound to this deployment and
+// transport. The re-point and the restore are each one LiveDeployServeRoute through the same
+// mutation gate every other deploy mutation crosses; the observation and the proxied probe are
+// reads, and the journal is one fenced slot in the fabric state store. The restore writes the
+// backend word the capture already carries.
+fn serve_route_effect_refusal(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String {
+  match r {
+    Converged { evidence: _, applied: _ } => ""
+    NotConverged { reason: why, applied: _ } => if why == "" { "the serve route effect did not converge" } else { why }
+  }
+}
+
+fn live_deploy_serve_route_restore(
+  spec: DeploymentSpec,
+  prior: CapturedServeBackend,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> String {
+  let declared = spec.names.tailscale_serve_endpoint
+  match prior {
+    CapturedNoRoute =>
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: declared, enabled: false }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    CapturedRestorableBackend { target: _, backend: backend } =>
+      serve_route_effect_refusal(r: live_deploy_fold(
+        spec: spec,
+        effect: LiveDeployServeRoute { endpoint: TailscaleServeEndpoint { https_port: declared.https_port, mount: declared.mount, backend: backend }, enabled: true },
+        transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent,
+      ))
+  }
+}
+
+fn live_deploy_tailnet_door_cutover_effects(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  journal: FabricStorageBinding,
+) -> ServeCutoverEffects {
+  let binding = tailnet_door_cutover_binding(spec: spec, candidate: candidate)
+  ServeCutoverEffects {
+    journal_read: fn() { tailnet_door_cutover_journal_read(store: journal, binding: binding) },
+    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: journal, binding: binding, expected_generation: expected_generation, record: record) },
+    observe: fn(n) { live_deploy_serve_route_observe(spec: spec, transport: transport) },
+    repoint: fn(permit) {
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: spec.names.tailscale_serve_endpoint, enabled: true }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    },
+    proxied: fn() { live_deploy_proxied_readiness(spec: spec, candidate: candidate, transport: transport) },
+    restore: fn(prior) { live_deploy_serve_route_restore(spec: spec, prior: prior, transport: transport, access: access) },
+  }
+}
+
+// What the cutover's outcome makes of the deployment: committed leaves the reconciliation as it
+// was, and anything else is NotConverged carrying the outcome's own account, including what
+// became of the route.
+fn tailnet_door_cutover_reconciliation(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  outcome: ServeCutoverOutcome,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if serve_cutover_outcome_committed(outcome: outcome) {
+    mutation
+  } else {
+    match mutation {
+      Converged { evidence: _, applied: intent } => NotConverged { reason: serve_cutover_outcome_reason(outcome: outcome), applied: intent }
+      NotConverged { reason: why, applied: intent } => NotConverged { reason: join([why, "; ", serve_cutover_outcome_reason(outcome: outcome)], ""), applied: intent }
+    }
+  }
+}
+
+// THE CUTOVER GATE RUNS WHATEVER THE READINESS WAS, because an interrupted cutover is resumed from
+// its journal even when this run's door is not ready -- that is the case in which the route must
+// be put back. What readiness decides is the PERMIT: a mutation that did not converge, or a door
+// that is not ready, yields no permit, so this run re-points nothing and can only resume or roll
+// back.
+fn tailnet_door_cutover_door_standing(mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
+  if reconciliation_converged(r: mutation) {
+    readiness
+  } else {
+    tailnet_door_cutover_unpermitted_standing()
+  }
+}
+
+fn tailnet_door_cutover_unpermitted_standing() -> ServiceReadiness {
+  Pending { cause: ServiceProbeUnanswered { detail: "the deployment mutation did not converge" } }
+}
+
+// A deployment with no door has no cutover: its mapping was applied inside the mutation.
+fn live_deploy_tailnet_door_cutover_gate(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  readiness: ServiceReadiness,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  journal: FabricStorageBinding,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => mutation
+    Present { value: _ } =>
+      tailnet_door_cutover_reconciliation(
+        mutation: mutation,
+        outcome: tailnet_door_cutover_run(
+          door: readiness,
+          binding: tailnet_door_cutover_binding(spec: spec, candidate: candidate),
+          effects: live_deploy_tailnet_door_cutover_effects(spec: spec, candidate: candidate, transport: transport, access: access, journal: journal),
+        ).outcome,
+      )
   }
 }
 
@@ -341,13 +554,22 @@ fn live_deploy_apply_via_transport(
     transport: transport,
     access: access,
   )
-  let gated = live_deploy_apply_readiness_gate(
+  let readiness = live_deploy_poll_until_service_ready_for_deploy(
     spec: spec,
     candidate: candidate,
     transport: transport,
     access: access,
-    mutation: mutation,
   )
+  let cutover = live_deploy_tailnet_door_cutover_gate(
+    spec: spec, candidate: candidate, transport: transport, access: access,
+    readiness: tailnet_door_cutover_door_standing(mutation: mutation, readiness: readiness),
+    mutation: mutation, journal: fabric_state_storage_binding(),
+  )
+  let gated = if !reconciliation_converged(r: cutover) {
+    cutover
+  } else {
+    live_deploy_apply_readiness_gate_with_readiness(mutation: cutover, readiness: readiness)
+  }
   if !reconciliation_converged(r: gated) {
     gated
   } else {
@@ -398,7 +620,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
     }
   } else {
     let gate = deploy_mutation_gate(
-      access: access,
+      access: deploy_access_sudoers_install_scope(access: access),
       fixture_actor: Absent,
       fixture_host: Absent
     )
@@ -431,15 +653,27 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
   live_deploy_access_preflight_for(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_apply_srv1_with_access(
+fn live_deploy_apply_with_access(
+  spec: DeploymentSpec,
   access: DeployAccess,
   candidate: CandidateRelease,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_via_transport(
-    spec: deployment_spec_srv1(),
+    spec: spec,
     candidate: candidate,
     transport: access.transport,
     access: access,
+  )
+}
+
+fn live_deploy_apply_srv1_with_access(
+  access: DeployAccess,
+  candidate: CandidateRelease,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_with_access(
+    spec: deployment_spec_srv1(),
+    access: access,
+    candidate: candidate,
   )
 }
 
@@ -451,14 +685,21 @@ fn live_deploy_apply_srv1_with_access(
 // condition with no bearing whatsoever on tearing down a unit.\n\nThe fold now passes
 // RevisionNotInstalled, so the arm that would render an ExecStart refuses loudly instead of naming
 // a revision this operation never had.
-fn live_deploy_retract_srv1_with_access(
+fn live_deploy_retract_with_access(
+  spec: DeploymentSpec,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_transport(
-    spec: deployment_spec_srv1(),
+    spec: spec,
     transport: access.transport,
     access: access
   )
+}
+
+fn live_deploy_retract_srv1_with_access(
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_retract_with_access(spec: deployment_spec_srv1(), access: access)
 }
 
 fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -503,17 +744,19 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
 // transition, and a wall that also blocked retraction would strand an operator with a host they
 // could neither converge nor take down -- a refusal with no exit is not fail-closed, it is stuck.
 fn live_deploy_wet_with_access_for_realization(
+  spec: DeploymentSpec,
   access: DeployAccess,
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
-    RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(access: access)
+    RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(spec: spec, access: access)
   }
 }
 
-fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
   live_deploy_wet_with_access_for_realization(
+    spec: spec,
     access: access,
     realization: deployed_tree_repository_transition,
   )
@@ -526,12 +769,12 @@ fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
 // ancestry, on the same grounds the repository-transition admission above states for itself: a
 // wall that also blocked teardown would strand an operator with a host they could neither
 // converge nor take down.
-fn live_deploy_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_admitted_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
     CandidateObserved { candidate: candidate } =>
-      live_deploy_candidate_wet_with_access(access: access, candidate: candidate)
+      live_deploy_candidate_wet_with_access(spec: spec, access: access, candidate: candidate)
   }
 }
 
@@ -543,6 +786,7 @@ fn live_deploy_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
 // zero-mutation plan rather than a short circuit, and a host whose tree drifted beneath an
 // unchanged announcement is repaired rather than skipped.
 fn live_deploy_candidate_wet_with_access(
+  spec: DeploymentSpec,
   access: DeployAccess,
   candidate: CandidateRelease,
 ) -> ProcessExit {
@@ -551,43 +795,359 @@ fn live_deploy_candidate_wet_with_access(
     live_deploy_reconciliation_exit(r: preflight)
   } else {
     live_deploy_reconciliation_exit(
-      r: live_deploy_apply_srv1_with_access(access: access, candidate: candidate)
+      r: live_deploy_apply_with_access(spec: spec, access: access, candidate: candidate)
     )
   }
 }
 
-fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
   let preflight = live_deploy_access_preflight_for(access: access)
   if !reconciliation_converged(r: preflight) {
     live_deploy_reconciliation_exit(r: preflight)
   } else {
     live_deploy_reconciliation_exit(
-      r: live_deploy_retract_srv1_with_access(access: access)
+      r: live_deploy_retract_with_access(spec: spec, access: access)
     )
   }
 }
 
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
+// IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
+// is the point: an additive install is still a privileged host mutation, and giving it its own path
+// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// gate exists to hold.
+//
+// WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
+// (operator directive 2026-09-19: roadmap redeploys are frozen at the current release until the
+// cutover completes). That is a property of the EFFECT, not of this wrapper -- the arm's script
+// writes the broker's two files and starts one unit -- so a later edit cannot quietly widen it here
+// without widening the emitter the byte oracles pin.
+//
+// IT OBSERVES A CANDIDATE because the unit it writes names a release in its ExecStart, and a broker
+// whose launch identity is not a revision must never be started: the cutover's next stage reads that
+// identity back, and every reading after it would otherwise be about an unknown build.
+fn approval_broker_dark_install_wet_with_access(
+  spec: DeploymentSpec,
+  access: DeployAccess,
+) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        let mutation = live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployApprovalBrokerDarkInstall { spec: spec, candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          approval_broker_dark_install_readback_exit(spec: spec, candidate: candidate)
+        }
+      }
+    }
+  }
+}
+
+// THE INSTALL IS NOT THE POINT; THE READBACK IS. A converged mutation says the unit files were
+// written and systemd was asked to start one -- it says nothing about whether a process came up,
+// bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
+// question, and this is where it is asked, so the plan has a production consumer rather than being
+// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+//
+// THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
+// probe reaches the process this deploy actually placed, and cannot drift to the serving port while
+// the roadmap is still a writer.
+//
+// THE ADMITTING ARM CARRIES NO MESSAGE because ProcessExit's success arm has no field to carry one;
+// what the probe said reaches an operator through the refusal path, where it is needed, and through
+// the journal of the unit that answered.
+//
+// IT EXITS ON THE STAGE BEING DISCHARGED, NOT ON BEING ADMITTED TO IT, and the difference is the
+// defect review 68058 found in the first cut of this function: admission for ProveRelease asks
+// whether the readback MAY BE ATTEMPTED and was a constant pass from here, so a broker that never
+// bound its port still exited success while this annotation claimed the opposite.
+//
+// What goes red now: an unanswered probe, non-JSON bytes, a JSON value that is not an object, a
+// missing or duplicated revision member, a non-string revision, a revision that is not 40 lowercase
+// hex, AND -- the case the cutover HOLD's item 4 named -- a well-formed revision that is not THIS
+// DEPLOY'S CANDIDATE. That last one is the stale-broker case: the unit was written and something is
+// answering, but the service did not restart or came back on an older admitted release, and until
+// this comparison existed it passed the stage whose whole purpose is to say which build is
+// listening. The candidate comes from the deploy that just installed it, never from the process
+// being interrogated.
+// ── THE READBACK POLLS, BECAUSE A RESTART DOES NOT BIND INSTANTLY ───────────────────────────
+// THE STAGE-A RUN FAILED HERE ON A SINGLE GET. The step sequence is systemctl restart then probe,
+// and a process that has not finished binding refuses the connection IMMEDIATELY -- curl's deadline
+// does not help, because connection-refused is an answer rather than a timeout. So the one shot
+// landed in the gap between restart and bind and the stage refused a broker that was about to come
+// up perfectly.
+//
+// IT RETRIES ONLY ON Unreachable, WHICH IS THE WHOLE DESIGN. Every other ServeLivenessRead arm is a
+// process that ANSWERED -- unparseable bytes, a missing revision member, a revision that is not
+// this candidate -- and those are settled facts, not transient states. Retrying them would burn the
+// bound and then report "unreachable at the bound" as the cause when the real cause was observed on
+// the first attempt and is something else entirely. That distinction is the not-met versus
+// cannot-tell split this module keeps everywhere else.
+//
+// THE BOUND IS THE BROKER'S OWN, derived from one measured srv1 start (see
+// gunbc.live_deploy.service_ready approval_broker_expected_startup for the reading and its
+// thinness), never from the roadmap's 240 s: the two units load different closures. The cadence and
+// the margin factor are the roadmap's own declarations rather than new numbers, because the
+// uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
+fn approval_broker_readback_poll_attempts() -> Int {
+  second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+}
+
+fn approval_broker_liveness_poll(
+  spec: DeploymentSpec,
+  port: Port,
+  attempt: Int,
+  last: ServeLivenessRead,
+) -> ServeLivenessRead {
+  if attempt >= approval_broker_readback_poll_attempts() {
+    last
+  } else {
+    let read = live_deploy_liveness_get_local(port: port, spec: spec)
+    match read {
+      ServeLivenessUnreachable { detail: _ } => {
+        let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
+        if delay {
+          approval_broker_liveness_poll(spec: spec, port: port, attempt: attempt + 1, last: read)
+        } else {
+          ServeLivenessUnreachable {
+            detail: "sleep between broker liveness probes failed, so the poll cannot distinguish a slow bind from a dead unit" as NonEmptyStr
+          }
+        }
+      }
+      ServeLivenessBodyUnparseable => read
+      ServeLivenessBodyNotAnObject => read
+      ServeLivenessRevisionAbsent => read
+      ServeLivenessRevisionDuplicated { count: _ } => read
+      ServeLivenessRevisionNotAString => read
+      ServeLivenessRevisionMalformed { text: _ } => read
+      ServeLivenessObserved { revision: _ } => read
+    }
+  }
+}
+
+fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let port = spec.approval_broker.listen.port
+  let read = approval_broker_liveness_poll(
+    spec: spec,
+    port: port,
+    attempt: 0,
+    last: ServeLivenessUnreachable {
+      detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
+    },
+  )
+  let receipt_path = approval_broker_tree_receipt_path_for(
+    root: spec.approval_broker.repo_root as String,
+    revision: RevisionBoundAtEmission { revision: candidate.revision },
+  )
+  let receipt_read = Filesystem.Read(path: receipt_path)
+  let tree_receipt = observe_broker_tree_receipt(
+    success: receipt_read.success,
+    body: receipt_read.content,
+    error: join(["reading ", receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
+  )
+  match dark_install_release_discharged(
+    listening_port: port,
+    read: read,
+    tree_receipt: tree_receipt,
+    expected_release: candidate.revision as String as NonEmptyStr,
+  ) {
+    StageAdmitted { stage: _ } => ExitSuccess
+    StageRefused { stage: _, cause: c } =>
+      exit_failure(reason: join([
+        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        cutover_refusal_reason(c: c) as String,
+      ], ""))
+  }
+}
+
+// THERE IS NO OPERATOR-LOCAL TWIN OF THE FOLD BELOW, and its absence is the point rather than an
+// omission (review 68991). One existed: approval_broker_dark_install_srv1_operator_local_wet, same
+// body with ci_deploy_srv1_operator_local_access substituted. Nothing called it and nothing routed
+// it -- gunbc.apply apply_dispatch routes only the ghrunner variant -- so it was a dangling
+// declaration, and a privileged host-mutation entry at that.
+//
+// IT ALSO CONTRADICTED THIS CHANGE'S OWN ARGUMENT. gunbc.ci_spec says of the principal refusal that
+// sent the dark install to a runner-executed route: "That refusal is the access model working, not
+// an obstacle to route around -- so the install reaches srv1 the way every other host mutation
+// does, as a dispatched job on the host-pinned runner, rather than by relaxing the expected
+// principal." An unrouted operator-local twin IS that relaxation, sitting in the tree for the next
+// person under time pressure to reach for. Deleted rather than routed, because routing it would
+// contradict the reasoning that put the ghrunner route there in the first place.
+//
+// The roadmap's live_deploy_apply_srv1_operator_local_wet is NOT this case and stays: it has a real
+// consumer in gunbc.fleet.fleet_converge_plan_cli, so it is a routed entry rather than a dormant
+// second door.
+// ── THE microVM SLOT CONTROLLER INSTALL (the microvm_controller_install mode) ─────────────────
+//
+// THE SAME FOLD AS THE DARK INSTALL, OVER THE SAME ACCESS: ghrunner on the host-pinned runner, the
+// srv1 deployment spec for the target and the gate, and one additive effect
+// (gunbc.host_effect LiveDeployMicrovmControllerInstall) that writes the controller's release
+// locus, the VMM and jailer, and the template unit, then reloads the manager. The spec is consumed
+// for WHERE (target host, access gate) and not for WHAT: the effect carries the candidate alone,
+// because the controller is not a member of the dashboard deployment (gunbc.runner_microvm_slot_unit
+// states the locus root and owner), which is the one section 3b divergence this install declares.
+//
+// THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the script ran; what
+// this asks afterwards is whether the locus carries THIS candidate's tree receipt and a VMM
+// receipt, and whether systemd loads the template for the shakedown slot's instance. An installer
+// asserting it installed is the control-plane acknowledgement gunbc.recurring_failure_mode
+// control_plane_acknowledgement_minted_as_effect refuses.
+fn microvm_controller_install_srv1_wet() -> ProcessExit {
+  microvm_controller_install_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+}
+
+fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        let mutation = live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployMicrovmControllerInstall { candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          microvm_controller_install_readback_exit(candidate: candidate)
+        }
+      }
+    }
+  }
+}
+
+fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
+  let revision = RevisionBoundAtEmission { revision: candidate.revision }
+  let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root, revision: revision))
+  match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+    TreeReceiptUnreadable { detail: d } =>
+      exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
+    TreeReceiptMalformed { detail: d } =>
+      exit_failure(reason: join(["microvm_controller_install: the locus tree receipt is malformed: ", d as String], ""))
+    TreeReceiptObserved { revision: r, installed_digest: _ } =>
+      if (r as String) != (candidate.revision as String) {
+        exit_failure(reason: join(["microvm_controller_install: the locus tree receipt names ", r as String, " and this install's candidate is ", candidate.revision as String], ""))
+      } else {
+        match microvm_controller_vmm_readback_exit(revision: revision) {
+          ExitSuccess => if workspace_executor_installed_adapter_matches(
+            release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
+            slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
+            ExitSuccess
+          } else { exit_failure(reason: "microvm_controller_install: executor scripts or loaded unit failed exact readback") }
+          refused => refused
+        }
+      }
+  }
+}
+
+fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> ProcessExit {
+  let vmm = Filesystem.Read(path: microvm_controller_vmm_receipt_path(revision: revision))
+  if !vmm.success {
+    exit_failure(reason: join(["microvm_controller_install: the VMM receipt could not be read, so the Firecracker and jailer installs did not complete: ", vmm.error], ""))
+  } else if !string_contains(s: vmm.content, pattern: microvm_controller_vmm_name) || !string_contains(s: vmm.content, pattern: microvm_controller_jailer_name) {
+    exit_failure(reason: join(["microvm_controller_install: the VMM receipt does not name both binaries: ", vmm.content], ""))
+  } else {
+    microvm_readiness_store_substrate_readback_exit()
+  }
+}
+
+// Verify only the directory's write authority. Existing records are preserved and no cell
+// becomes ready here; initial commissioning still owes history and sanitation admission.
+fn microvm_readiness_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: cell_readiness_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: readiness directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: readiness directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_commissioning_store_substrate_readback_exit()
+  }
+}
+
+// Directory custody is an installation fact, not commissioning completion or capacity admission.
+fn microvm_commissioning_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: workspace_commissioning_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: commissioning directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: commissioning directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_slot_unit_load_readback_exit()
+  }
+}
+
+// THE TEMPLATE IS READ BACK THROUGH AN INSTANCE NAME, because systemd loads a template only when
+// an instance is asked for; the shakedown slot's instance is the one the operator will start, and
+// `show` loads it without starting it. Anything but `loaded` means the unit file the install wrote
+// is not what the manager parses.
+fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
+  match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+    ExitSuccess => match microvm_unit_load_readback(unit: workspace_executor_unit_instance_name(
+      slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+      ExitSuccess => if microvm_controller_requires_ci_reservation_unit() {
+        microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+      } else { ExitSuccess }
+      refused => refused
+    }
+    refused => refused
+  }
+}
+
+fn microvm_unit_load_readback(unit: NonEmptyStr) -> ProcessExit {
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: LoadState))
+  if !shown.success {
+    exit_failure(reason: join(["microvm_controller_install: LoadState of ", unit as String, " could not be read"], ""))
+  } else if trim(s: shown.value) != "loaded" {
+    exit_failure(reason: join(["microvm_controller_install: ", unit as String, " is not loaded after the install (LoadState=", trim(s: shown.value), ")"], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_access,
+  )
+}
+
 fn live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_wet_with_access(access: ci_deploy_srv1_access)
+  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_apply_srv1_operator_wet() -> ProcessExit {
-  live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access)
+  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_access)
 }
 
 // The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
 // principal on the host itself. Candidate observation, preflight, mutation and the readiness
 // gate are all shared; nothing here is a second deploy.
 fn live_deploy_apply_srv1_operator_local_wet() -> ProcessExit {
-  live_deploy_wet_with_access(access: ci_deploy_srv1_operator_local_access)
+  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_local_access)
 }
 
 fn live_deploy_retract_srv1_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_access)
+  live_deploy_retract_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_retract_srv1_operator_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
+  live_deploy_retract_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_access)
 }
 
 
@@ -604,8 +1164,8 @@ fn live_deploy_retract_srv1_operator_wet() -> ProcessExit {
 // artifact path the workflow uploads. Whether the fold installed anything is LiveDeployApplyOutcome
 // on that receipt, not a deleted target-decision label: the join reads apply_outcome.
 
-fn live_deploy_post_apply_readiness(access: DeployAccess) -> LiveDeployReadinessOutcome {
-  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: deployment_spec_srv1()), transport: access.transport) {
+fn live_deploy_post_apply_readiness(spec: DeploymentSpec, access: DeployAccess) -> LiveDeployReadinessOutcome {
+  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), spec: spec, transport: access.transport) {
     HealthzProbeRefused { probe_error: e } => LiveDeployReadinessRefused { detail: e }
     HealthzBodyRead { body: b } =>
       match observe_running_release_identity(healthz_body: b) {
@@ -616,13 +1176,15 @@ fn live_deploy_post_apply_readiness(access: DeployAccess) -> LiveDeployReadiness
   }
 }
 
-fn live_deploy_write_transaction_receipt(receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
-  match run_shell_commands(commands: [mkdir_parents_command(path: live_deploy_apply_receipt_dir)], transport: LocalExec) {
+fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: spec.instance_id as String)
+  let path = live_deploy_apply_receipt_artifact_path_for(instance_id: spec.instance_id as String)
+  match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {
     ExitFailure { code: _, reason: why } => exit_failure(reason: join(["live_deploy transaction: receipt dir refused: ", why], ""))
     ExitSuccess => {
-      let wrote = Filesystem.Write(path: live_deploy_apply_receipt_artifact_path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))
+      let wrote = Filesystem.Write(path: path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))
       if !wrote.success {
-        exit_failure(reason: join(["live_deploy transaction: receipt write refused at ", live_deploy_apply_receipt_artifact_path, ": ", wrote.error], ""))
+        exit_failure(reason: join(["live_deploy transaction: receipt write refused at ", path, ": ", wrote.error], ""))
       } else {
         exit
       }
@@ -631,6 +1193,7 @@ fn live_deploy_write_transaction_receipt(receipt: LiveDeployApplyReceipt, exit: 
 }
 
 fn live_deploy_transaction_receipt_for(
+  spec: DeploymentSpec,
   run: ActionsRunBinding,
   expected: String,
   candidate: CandidateRelease,
@@ -641,7 +1204,8 @@ fn live_deploy_transaction_receipt_for(
 ) -> LiveDeployApplyReceipt {
   LiveDeployApplyReceipt {
     run: run,
-    target: srv1_dashboard_target_name,
+    target: deployment_plan_host_identity(spec: spec),
+    instance_id: spec.instance_id as String,
     expected_revision: expected,
     candidate_revision: candidate.revision as String,
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
@@ -653,9 +1217,8 @@ fn live_deploy_transaction_receipt_for(
   }
 }
 
-data srv1_dashboard_target_name: String = "srv1"
-
 fn live_deploy_transaction_decided(
+  spec: DeploymentSpec,
   access: DeployAccess,
   run: ActionsRunBinding,
   expected: String,
@@ -666,23 +1229,25 @@ fn live_deploy_transaction_decided(
       let preflight = live_deploy_access_preflight_for(access: access)
       if !reconciliation_converged(r: preflight) {
         live_deploy_write_transaction_receipt(
-          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
+          spec: spec,
+          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
       } else {
-        let applied = live_deploy_apply_srv1_with_access(access: access, candidate: candidate)
+        let applied = live_deploy_apply_with_access(spec: spec, access: access, candidate: candidate)
         let outcome = match applied {
           Converged { evidence: _, applied: _ } => LiveDeployApplyConverged
           NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
         }
         live_deploy_write_transaction_receipt(
-          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(access: access), provenance: provenance),
+          spec: spec,
+          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: applied),
         )
   }
 }
 
-fn live_deploy_transaction_admitted(access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
+fn live_deploy_transaction_admitted(spec: DeploymentSpec, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
@@ -695,6 +1260,7 @@ fn live_deploy_transaction_admitted(access: DeployAccess, run: ActionsRunBinding
             exit_failure(reason: join(["live_deploy transaction: CandidateTreeUnobservable — ", d], ""))
           CandidateTreeOidObserved { oid_hex: candidate_tree } =>
             live_deploy_transaction_decided(
+              spec: spec,
               access: access,
               run: run,
               expected: expected,
@@ -707,7 +1273,7 @@ fn live_deploy_transaction_admitted(access: DeployAccess, run: ActionsRunBinding
   }
 }
 
-fn live_deploy_transaction_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
@@ -739,7 +1305,7 @@ fn live_deploy_transaction_admitted_wet_with_access(access: DeployAccess) -> Pro
                     plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
                     apply_receipt_identity: fleet_converge_apply_receipt_identity_hex(r: fleet_apply_receipt),
                   }
-                  live_deploy_transaction_admitted(access: access, run: run, expected: expected, provenance: provenance)
+                  live_deploy_transaction_admitted(spec: spec, access: access, run: run, expected: expected, provenance: provenance)
                   }
                   }
                   }
@@ -753,22 +1319,24 @@ fn live_deploy_transaction_admitted_wet_with_access(access: DeployAccess) -> Pro
 // Keeping realization injectable at this internal seam makes the refusing arm executable in a
 // hermetic witness while the production entry below remains constructed from the one bound row.
 fn live_deploy_transaction_wet_with_access_for_realization(
+  spec: DeploymentSpec,
   access: DeployAccess,
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
-    RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(access: access)
+    RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(spec: spec, access: access)
   }
 }
 
-fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_transaction_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
   live_deploy_transaction_wet_with_access_for_realization(
+    spec: spec,
     access: access,
     realization: deployed_tree_repository_transition,
   )
 }
 
 fn live_deploy_apply_srv1_transaction_wet() -> ProcessExit {
-  live_deploy_transaction_wet_with_access(access: ci_deploy_srv1_access)
+  live_deploy_transaction_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
 }

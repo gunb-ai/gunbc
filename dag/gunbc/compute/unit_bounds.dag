@@ -1,0 +1,71 @@
+module gunbc.compute.unit_bounds
+
+import std.types { String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
+
+// THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
+// gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
+// copied because a second consumer arrived that the provider's module cannot serve:
+// gunbc.compute.work_provider_local imports gunbc.roadmap_dispatch_actuator, so the dispatch
+// actuator -- which builds the agent session's unit -- cannot import the provider back without a
+// cycle. A copy of the MemoryMax line in the actuator is what it had, and that copy read the
+// instance's ceiling rather than the grant, which is the drift between reservation and enforcement
+// this fold exists to make unwritable. The provider's compute_unit_properties is now a projection of
+// this fold, and so is the agent session's.
+
+// THE TERMINATION POLICY IS BOUND, NOT INHERITED, and that is what makes a successful wait mean
+// anything about the cgroup. `systemd-run --wait` returns when the MAIN process exits; under
+// KillMode=process or none a forked child survives in the unit's cgroup and goes on using the
+// memory this seat is accounting for. control-group is systemd's default, but a default is not a
+// declaration -- a drop-in or a future default could change it, and a provider would keep treating
+// a completed wait as an empty cgroup (side-chat review at 773825cf). Binding it makes the policy a
+// fact of the invocation, and an agent session releases its seat on the same reading.
+data compute_kill_mode_property: SystemdUnitProperty = KillModeProperty
+
+// WHAT A GRANT DOES NOT CARRY, NAMED RATHER THAN INVENTED. product.capacity.pool grants MEMORY: the
+// lease is an encumbrance over a Memory pool and nothing else, so a CPU quota or a task ceiling is
+// not a fact the grant can supply. A unit that needs them takes them as a separately stated bound
+// beside the grant, and a consumer that has none passes `none` -- the compute provider does, so
+// its units are unchanged by this fold moving.
+//
+// THE CPU BOUND IS A MILLICORE, NOT A PERCENT. systemd spells CPUQuota as a percentage of one CPU
+// (100% = one core), which is a rendering: the quantity is a CPU share, std.measure Millicore, and
+// it is converted to systemd's percent exactly once, below, where the property is written
+// (1000 millicores = 100%).
+type UnitProcessBounds {
+  cpu_quota: Millicore
+  tasks_max: Nat
+}
+
+fn unit_cpu_quota_percent(m: Millicore) -> Nat {
+  millicore_count(m: m) / 10
+}
+
+fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
+  concat(
+    [
+      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
+      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value() },
+      SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+    ],
+    match process_bounds {
+      Absent => []
+      Present { value: b } => [
+        SystemdRunProperty { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
+        SystemdRunProperty { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
+      ]
+    },
+  )
+}
+
+// THE kill mode the release decision relies on is the closed systemd fact KillModeControlGroup;
+// its wire spelling is owned by systemd_kill_mode_wire. This layer projects, it does not store a
+// second copy of the spelling (review 76958: the stored "control-group" was a parallel wire for a
+// closed upstream fact).
+fn compute_kill_mode_value() -> NonEmptyStr {
+  systemd_kill_mode_wire(mode: KillModeControlGroup) as NonEmptyStr
+}

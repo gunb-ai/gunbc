@@ -1,6 +1,6 @@
 module extdeps.transports.shell
 
-import std.types { FermiDepth }
+import std.types { FermiDepth, Int, NonEmptyStr, String }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -14,13 +14,43 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
 
-type ShellOutputChannel
-  = Stdout
-  | Stderr
-  | StdoutLines
-  | ExitSuccess
-
 type ShellTransportConfig {
   working_dir: String?
   env: Map<String, String>
 }
+
+// A PROGRAM THAT NEVER RAN HAS NO EXIT STATUS, and until this type existed the realization had no
+// way to say so except by aborting the evaluation. When argv[0] cannot be spawned -- the binary is
+// absent from PATH, or present and not executable -- no process exists, so exit_code, exit_success,
+// stdout and stderr are not unfavourable answers but questions that do not apply. The seed raised
+// an untyped error instead, which unwound the whole evaluation: a caller that models a refusal arm
+// could not reach it, and an outer attempt that should have recorded the failure recorded nothing.
+//
+// TWO STATES. ShellExited means a process was spawned and ran to an exit status; the operation's
+// declared output fields carry that status and its captured streams, and a nonzero exit is an
+// answer read from them, not a transport failure. ShellSpawnRefused means the transport never
+// produced a process: the program and the host's reason are retained, and every other declared
+// field is absent rather than fabricated -- a sentinel exit code or an empty stdout would be a
+// plausible-looking answer where the honest one is that nothing answered. This is the shell
+// counterpart of extdeps.transports.rest RestTransportRefused, and it is kept distinct from a
+// nonzero exit for the same reason RestTransportRefused is kept distinct from a status: 'the
+// program said no' and 'there was no program' have different remedies.
+//
+// SCOPE, STATED SO IT IS NOT MISREAD AS COMPLETE: an operation carries this outcome by declaring an
+// output field of type ShellOutcome. An operation that declares none still refuses the evaluation
+// on a spawn failure, now as the typed seed diagnostic shell-spawn-refused rather than a rendered
+// type error. The rest transport no longer has such an opt-in: every rest operation yields
+// extdeps.transports.rest RestResult. This opt-in dissolves when a shell operation's result
+// authority derives its transport-failure arm without a declared field.
+type ShellOutcome
+  = ShellExited
+  | ShellSpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
+
+// WHAT THE SHELL TRANSPORT OBSERVES, as a value: a process that ran to an exit status with its two
+// captured streams, or no process at all. This is the observation a modeled operation realization
+// (v2.std.operation_realization) supplies in place of a spawned process; the interpreter feeds it to
+// the same declared-output projection a real process result reaches, so every field an operation
+// declares from stdout, stderr or the exit status is derived exactly as it would be from a real run.
+type ShellExchangeObservation
+  = ShellProcessExited { exit_code: Int, stdout: String, stderr: String }
+  | ShellProcessSpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }

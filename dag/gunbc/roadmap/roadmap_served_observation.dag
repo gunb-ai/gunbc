@@ -1,13 +1,28 @@
 module gunbc.roadmap_served_observation
 
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read }
+import gunbc.roadmap_page { issue_query_snapshot_for_projection }
+import gunbc.site.markup { page_render_refusal_body }
+
+import gunbc.roadmap.roadmap_event_log { RoadmapStandings }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read, CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import std.types { String, Int, Bool, List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileRead,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  filesystem_established_absence_detail,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonArray,
+  JsonValue, JsonString, JsonArray, JsonNull, JsonBool, JsonNumber, JsonObject,
   serialize_json, json_string, json_array, json_object, json_kv,
 }
 import extdeps.languages.json.parse {
@@ -16,9 +31,20 @@ import extdeps.languages.json.parse {
 }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
+import gunbc.auth.profile_projection { profile_store_layout_for_instance, profile_store_read_all, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
+import gunbc.roadmap_authority { roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_site_surface_render { site_artifact_digest }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import gunbc.roadmap_launch_admission {
+  LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
+  launch_identity_of_json, LaunchIdentityDecoded, LaunchIdentityUnreadable, launch_identity_revision_hex,
+}
+import gunbc.fleet_desired_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_presentation { AttemptRevisionObservation, stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page_over,
@@ -56,6 +82,7 @@ type ServedObservationKind
   | AttemptsJson
   | WorkflowJson
   | SessionsJson
+  | IssueQueryRows
 
 type ServedObservationSurface {
   kind: ServedObservationKind
@@ -112,6 +139,7 @@ fn served_observation_kind_key(kind: ServedObservationKind) -> String {
     DailyPage => "daily_page"
     AttemptsJson => "attempts_json"
     WorkflowJson => "workflow_json"
+    IssueQueryRows => "issue_query_rows"
     SessionsJson => "sessions_json"
   }
 }
@@ -121,6 +149,7 @@ fn served_observation_kind_url_path(kind: ServedObservationKind) -> String {
     DailyPage => "/"
     AttemptsJson => "/attempts.json"
     WorkflowJson => "/workflow.json"
+    IssueQueryRows => "/issues/query"
     SessionsJson => "/sessions.json"
   }
 }
@@ -130,6 +159,7 @@ fn served_observation_kind_media_type(kind: ServedObservationKind, status: Int) 
     DailyPage => if status == 200 { text_html_utf8 } else { text_plain_utf8 }
     AttemptsJson => application_json_utf8
     WorkflowJson => application_json_utf8
+    IssueQueryRows => text_plain_utf8
     SessionsJson => application_json_utf8
   }
 }
@@ -142,6 +172,7 @@ fn served_observation_kind_of_key(key: String) -> ServedObservationKindDecode {
   if key == "daily_page" { ServedObservationKindDecoded { kind: DailyPage } }
   else if key == "attempts_json" { ServedObservationKindDecoded { kind: AttemptsJson } }
   else if key == "workflow_json" { ServedObservationKindDecoded { kind: WorkflowJson } }
+  else if key == "issue_query_rows" { ServedObservationKindDecoded { kind: IssueQueryRows } }
   else if key == "sessions_json" { ServedObservationKindDecoded { kind: SessionsJson } }
   else { ServedObservationKindUnknown { key: key } }
 }
@@ -160,21 +191,105 @@ fn served_observation_status_of_label(label: String) -> ServedObservationStatusD
   else { ServedObservationStatusUnknown { label: label } }
 }
 
+// THE STALE-ATTEMPT REVISION COMPARISON (operator ruling 2026-09-20). The tick already reads each
+// attempt's recorded launch identity (written by the actuation path beside the admission receipt);
+// comparing its revision to the deployed-tree head the launch host standing observed decides which
+// attempts answer a superseded question. The DECISION lives in
+// gunbc.roadmap_presentation.stale_attempt_nodes; what lives here is only the effectful read of the
+// two facts. An unreadable or undecodable launch record yields an empty observation — never a
+// fabricated revision — and the decision arm for an empty fact dims nothing.
+fn served_current_revision_hex(launch: LaunchHostStanding) -> String {
+  match launch {
+    LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision, sessions: _, capacity: _, mode: _ } =>
+      match revision {
+        LocalTreeRevisionObserved { revision: oid } => git_object_id_wire_hex(oid: oid) as String
+        LocalTreeRevisionUnobserved { cause: _ } => ""
+      }
+    LaunchHostObserveOnly { instance_id: _ } => ""
+    LaunchHostHalted { instance_id: _, gate: _, refusal: _ } => ""
+    LaunchHostUnobserved { reason: _ } => ""
+  }
+}
+
+fn attempt_launch_revision_hex(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String {
+  let read = Filesystem.Read(
+    path: dispatch_attempt_launch_path_for_instance(
+      instance: instance,
+      node_id: node_id as NonEmptyStr as RoadmapNodeId,
+      attempt_key: attempt_key,
+    ),
+  )
+  if !read.success {
+    ""
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: _ } => ""
+      JsonDocumentParsed { value: doc } =>
+        match launch_identity_of_json(doc: doc) {
+          LaunchIdentityDecoded { identity } => launch_identity_revision_hex(id: identity)
+          LaunchIdentityUnreadable { reason: _ } => ""
+        }
+    }
+  }
+}
+
+fn served_attempt_revision_observations(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>) -> List<AttemptRevisionObservation> {
+  map(attempts, p => AttemptRevisionObservation {
+    node_id: p.node_id,
+    launch_revision_hex: attempt_launch_revision_hex(instance: instance, node_id: p.node_id, attempt_key: p.attempt_key),
+  })
+}
+
 // The daily page is RENDERED HERE, at the tick, and only read back at request time -- so this is
 // where the plan a snapshot is about has to arrive. It is the same parameter the serve entry takes,
-// travelling the other route into the same page fold.
-fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
-  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
-  let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
+// travelling the other route into the same page fold. THE AUTH PROFILE ROSTER is read ONCE here
+// (the tick has the instance in hand; serve reads only the finished bytes) and rides every row the
+// page renders — the assignee chips project real identity under the never-blocks law: a store read
+// that refuses degrades to the empty roster, never a failed page.
+fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
+  let standings = served_standings_after_snapshot_close(read: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)))
+  let profiles = served_observation_profiles_for_instance(instance: instance)
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: attempts, attempts_refused: none, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed_stale(
+        proj: plan,
+        attempts: attempts,
+        attempts_refused: none,
+        standings: standings,
+        launch: launch,
+        stale_nodes: stale_attempt_nodes(
+          observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
+          current_revision_hex: served_current_revision_hex(launch: launch)),
+        profiles: profiles,
+      )
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch, profiles: profiles)
   }
   match try_serialize_html_source(node: page) {
     EmitOk { html } => ServedObservationSurface { kind: DailyPage, status: 200, body: html }
     EmitRejected { reason } => ServedObservationSurface { kind: DailyPage, status: 500, body: page_render_refusal_body(reason: reason) }
+  }
+}
+
+// THE DAILY PAGE HAS NO SURFACE FOR A LEAKED STANDINGS SNAPSHOT. The page renders standings or the
+// reason they are unobserved; a worktree the read could not remove is neither, and writing it into
+// StandingsUnobserved would replace standings that WERE read with a refusal. So the standing of the
+// snapshot is matched here by name and the standings pass through unchanged. THIS FAILURE ITSELF
+// IS RECORDED NOWHERE. A snapshot left registered is listed by the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance) for as long as
+// it stays registered; the census does not know a removal failed, and the page does not render it.
+fn served_standings_after_snapshot_close(read: CarrierClosed<RoadmapStandings>) -> RoadmapStandings {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+fn served_observation_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
+  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+    ProfileStoreRead { profiles, skipped: _ } => profiles
+    ProfileStoreUnread { step: _, reason: _ } => []
   }
 }
 
@@ -183,11 +298,17 @@ fn served_observation_attempts_surface_for_instance(instance: HostDashboardInsta
   ServedObservationSurface { kind: AttemptsJson, status: belt_attempts_http_status(a: a), body: belt_attempts_observed_json(a: a) }
 }
 
-fn served_observation_workflow_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
+// The workflow wire names each attempt's compact view revision, and that view includes whether
+// the attempt is stale, so the wire is given the same revision comparison the pages make.
+fn served_observation_workflow_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
+  let stale_nodes = match observed {
+    WorkflowAttemptsObserved { attempts } => stale_attempt_nodes(observations: served_attempt_revision_observations(instance: instance, attempts: attempts), current_revision_hex: served_current_revision_hex(launch: launch))
+    WorkflowAttemptsRefused { reason: _ } => []
+  }
   ServedObservationSurface {
     kind: WorkflowJson,
     status: belt_workflow_attempts_http_status(observed: observed),
-    body: belt_workflow_attempts_observed_json_for_instance(instance: instance, observed: observed),
+    body: belt_workflow_attempts_observed_json_for_instance(instance: instance, observed: observed, stale_nodes: stale_nodes),
   }
 }
 
@@ -196,16 +317,20 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
   ServedObservationSurface { kind: SessionsJson, status: belt_sessions_http_status(o: o), body: belt_sessions_observed_json(o: o) }
 }
 
-// The workflow attempts are observed ONCE per tick and shared by the two surfaces that project them
-// (one observing authority, two projections), so the walk over dispatch worktrees happens once.
+// The workflow attempts are observed ONCE per tick and shared by the surfaces that project them
+// (one observing authority, several projections), so the walk over dispatch worktrees happens
+// once; the launch host standing is read once as well and handed to the three surfaces that read
+// it, rather than read again by each.
 fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
+  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   ServedObservationSnapshot {
     observed_at: observed_at,
     surfaces: [
-      served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed),
+      served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed, launch: launch),
+      served_observation_issue_query_surface(instance: instance, plan: plan, observed: observed, launch: launch),
       served_observation_attempts_surface_for_instance(instance: instance),
-      served_observation_workflow_surface_for_instance(instance: instance, observed: observed),
+      served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
     ],
   }
@@ -285,13 +410,34 @@ fn served_observation_entry_of_json(doc: JsonValue) -> ServedObservationEntryDec
                   match json_object_unique_member(v: doc, key: "digest") {
                     JsonMemberFound { value: JsonString { value: digest } } =>
                       ServedObservationEntryDecoded { entry: ServedObservationEntry { kind: kind, status: status, digest: digest } }
-                    _ => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: JsonNull } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
                   }
               }
-            _ => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: JsonNull } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
           }
       }
-    _ => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: JsonNull } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
   }
 }
 
@@ -340,31 +486,62 @@ fn served_observation_decode(raw: String) -> ServedObservationRead {
                         } else {
                           ServedObservationPresent { index: index }
                         }
-                      _ => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: JsonNull } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
                     }
                   }
                 }
-              _ => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: JsonNull } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
             }
           }
-        _ => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: JsonNull } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: JsonBool { value: _ } } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: JsonNumber { lexeme: _ } } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: JsonArray { elements: _ } } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: JsonObject { members: _ } } => ServedObservationUnreadable { reason: "served observation schema is missing" }
       }
   }
 }
 
-fn served_observation_read_from_filesystem(success: Bool, content: String, error: String) -> ServedObservationRead {
-  if success {
-    if trim(content) == "" { ServedObservationAbsent } else { served_observation_decode(raw: content) }
-  } else if string_contains(s: error, pattern: "No such file") || string_contains(s: error, pattern: "not found") {
-    ServedObservationAbsent
-  } else {
-    ServedObservationUnreadable { reason: join(["served observation index could not be read: ", error], "") }
+// The served-observation index is classified from an OBSERVATION, not by text-matching the host's
+// error string: absence is established from the listing by the observation authority, and the host
+// error rides inside the cause text instead of being pattern-matched.
+fn served_observation_read_from_observation(observation: FilesystemFileObservation) -> ServedObservationRead {
+  match observation {
+    FilesystemFileAbsent(_) => ServedObservationAbsent
+    FilesystemFileRead { path: _, content } =>
+      if trim(content) == "" { ServedObservationAbsent } else { served_observation_decode(raw: content) }
+    FilesystemFileIndeterminate { cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
   }
 }
 
 fn served_observation_read_for_instance(instance: HostDashboardInstance) -> ServedObservationRead {
-  let read = Filesystem.Read(path: served_observation_path_for_instance(instance: instance))
-  served_observation_read_from_filesystem(success: read.success, content: read.content, error: read.error)
+  served_observation_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: served_observation_path_for_instance(instance: instance),
+    ),
+  )
 }
 
 // Bodies first, index last: a reader that races the writer sees either the previous complete
@@ -382,7 +559,9 @@ fn served_observation_write_bodies_for_instance(instance: HostDashboardInstance,
         BeltPassFailed { reason: join(["the served observation ", served_observation_kind_key(kind: s.kind), " body could not be written: ", write.error], "") }
       }
     }
-    _ => acc
+    BeltPassDeferred { reason: _ } => acc
+    BeltPassRefused { reason: _ } => acc
+    BeltPassFailed { reason: _ } => acc
   })
 }
 
@@ -413,7 +592,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     observed_at: observed_at,
   )
 }
@@ -434,24 +613,33 @@ fn served_observation_entry_lookup(index: ServedObservationIndex, kind: ServedOb
 type ServedObservationBodyRead
   = ServedObservationBodyPresent { body: String }
   | ServedObservationBodyMissing { reason: String }
+  | ServedObservationBodyUnreadable { cause: String }
   | ServedObservationBodyMismatch { expected: String, actual: String }
 
-fn served_observation_body_read_from_filesystem(entry: ServedObservationEntry, success: Bool, content: String, error: String) -> ServedObservationBodyRead {
-  if !success {
-    ServedObservationBodyMissing { reason: error }
-  } else {
-    let actual = served_observation_body_digest(body: content)
-    if actual == entry.digest {
-      ServedObservationBodyPresent { body: content }
-    } else {
-      ServedObservationBodyMismatch { expected: entry.digest, actual: actual }
+fn served_observation_body_read_from_observation(entry: ServedObservationEntry, observation: FilesystemFileObservation) -> ServedObservationBodyRead {
+  match observation {
+    FilesystemFileAbsent(absence) => ServedObservationBodyMissing { reason: filesystem_established_absence_detail(absence: absence) }
+    FilesystemFileRead { path: _, content } => {
+      let actual = served_observation_body_digest(body: content)
+      if actual == entry.digest {
+        ServedObservationBodyPresent { body: content }
+      } else {
+        ServedObservationBodyMismatch { expected: entry.digest, actual: actual }
+      }
     }
+    FilesystemFileIndeterminate { cause } => ServedObservationBodyUnreadable { cause: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ServedObservationBodyUnreadable { cause: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ServedObservationBodyUnreadable { cause: cause }
   }
 }
 
 fn served_observation_body_read_for_instance(instance: HostDashboardInstance, entry: ServedObservationEntry) -> ServedObservationBodyRead {
-  let read = Filesystem.Read(path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind))
-  served_observation_body_read_from_filesystem(entry: entry, success: read.success, content: read.content, error: read.error)
+  served_observation_body_read_from_observation(
+    entry: entry,
+    observation: filesystem_file_observation_of_path(
+      path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind),
+    ),
+  )
 }
 
 fn served_observation_refusal_body(refusal: String, detail: String) -> String {
@@ -464,6 +652,7 @@ fn served_observation_refusal_body(refusal: String, detail: String) -> String {
 
 fn served_observation_refusal_response(refusal: String, detail: String) -> ServeHttpResponse {
   ServeHttpResponse {
+    headers: [],
     status: 503,
     content_type: application_json_utf8,
     body: served_observation_refusal_body(refusal: refusal, detail: detail),
@@ -477,6 +666,11 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
         refusal: "ServedObservationBodyMissing",
         detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index could not be read: ", reason], ""),
       )
+    ServedObservationBodyUnreadable { cause } =>
+      served_observation_refusal_response(
+        refusal: "ServedObservationBodyUnreadable",
+        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index could not be observed: ", cause], ""),
+      )
     ServedObservationBodyMismatch { expected, actual } =>
       served_observation_refusal_response(
         refusal: "ServedObservationBodyMismatch",
@@ -484,6 +678,7 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
       )
     ServedObservationBodyPresent { body: bytes } =>
       ServeHttpResponse {
+        headers: [],
         status: entry.status,
         content_type: served_observation_kind_media_type(kind: entry.kind, status: entry.status),
         body: bytes,
@@ -566,8 +761,22 @@ fn served_observation_standing_http_status(read: ServedObservationRead) -> Int {
 fn served_observation_standing_response_for_instance(instance: HostDashboardInstance) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
   ServeHttpResponse {
+    headers: [],
     status: served_observation_standing_http_status(read: read),
     content_type: application_json_utf8,
     body: serialize_json(v: served_observation_standing_json_value(read: read)),
+  }
+}
+
+fn served_observation_issue_query_surface(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
+  let attempts = match observed { WorkflowAttemptsObserved { attempts } => attempts WorkflowAttemptsRefused { reason: _ } => [] }
+  let body = issue_query_snapshot_for_projection(proj: plan, attempts: attempts,
+    attempts_refused: match observed { WorkflowAttemptsObserved { attempts: _ } => none WorkflowAttemptsRefused { reason } => Present { value: reason } },
+    standings: served_standings_after_snapshot_close(read: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))), launch: launch,
+    stale_nodes: stale_attempt_nodes(observations: served_attempt_revision_observations(instance: instance, attempts: attempts), current_revision_hex: served_current_revision_hex(launch: launch)),
+    profiles: served_observation_profiles_for_instance(instance: instance))
+  match body {
+    Present { value } => ServedObservationSurface { kind: IssueQueryRows, status: 200, body: value }
+    Absent => ServedObservationSurface { kind: IssueQueryRows, status: 503, body: "Issue query observation unavailable." }
   }
 }

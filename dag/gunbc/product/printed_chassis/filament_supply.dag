@@ -233,7 +233,8 @@ fn foreign_subjects(
 fn conflicting_route_count(tags: List<String>, labels: List<String>) -> Nat {
   let t = count(distinct_strings(values: tags))
   let l = count(distinct_strings(values: labels))
-  if t > 1 { t } else { if l > 1 { l } else { 0 } }
+  let no_conflict: Nat = 0
+  if t > 1 { t } else { if l > 1 { l } else { no_conflict } }
 }
 
 fn assess_identifier_evidence(

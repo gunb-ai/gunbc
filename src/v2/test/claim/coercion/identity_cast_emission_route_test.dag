@@ -1,0 +1,148 @@
+module v2.test.claim.coercion.identity_cast_emission_route
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import std.optional { Absent }
+import v2.compiler.self_host.closure_emission {
+  ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_type_atom_node }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.coercion { CoercionResult, Identity, NoTargetCandidate, coercion_cast_crossing }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import v2.test.lens_common.infer_fixture { claim_canonical_grounding }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLOSURE DOOR'S REPORT SHAPE FOR AN IDENTITY CAST, AND THE INTERFACES THE FLOOR ROWS INSPECT.
+// identity_cast_route_verdict runs v2.compiler.self_host.closure_emission
+// emit_closure_from_ingest_located under the production Rust model (the door v2.cli.compile_cli
+// drives). Two rows discriminate at coercion_cast_crossing over supplied Int/Bool atoms (DESIGN
+// section 3). Two inhabitance rows still drive the door on this module, on the required gate.
+// gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost retired when those inhabitance
+// identities billed inside the new-witness eval-step budget on gunbc#13489 required floor run
+// 37522243686 (artifact required-floor-claim-cost). The native partner builds and runs the emitted
+// text; it is not the last execution of the door.
+data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Int { x as Int }\n"
+
+data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"
+
+type IdentityCastRouteVerdict
+  = IdentityCastEntryEmitted { text: String, members: Int }
+  | IdentityCastEntryRefused { reason: Symbol, members: Int }
+  | IdentityCastClosureRefused { reason: Symbol }
+
+fn identity_cast_route_locus() -> Node {
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_route_locus } }, children: [])
+}
+
+fn identity_cast_route_emit(source: String) -> ClosureEmissionLocated {
+  emit_closure_from_ingest_located(
+    ingest: [
+      DagSourceReadWitness {
+        source: Medium { carried: source, fidelity: Lossless },
+        artifact: Artifact { kind: SourceFile, id: ^identity_cast_route_read, file_path: "src/v2/test/fixture/identity_cast/entry.dag" },
+        compilation_unit: ^identity_cast_route_read,
+        source_root: DagTree
+      }
+    ],
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.identity_cast"),
+    entry_locus: identity_cast_route_locus(),
+    target: rust_target_model()
+  )
+}
+
+fn identity_cast_route_verdict_of(source: String) -> IdentityCastRouteVerdict {
+  match identity_cast_route_emit(source: source).outcome {
+    Rejected { diagnostics: d } => IdentityCastClosureRefused { reason: diagnostics_fatal_reason(d: d) }
+    Accepted { value: ce, diagnostics: _ } =>
+      let members = count(ce.modules)
+      match first(ce.modules) {
+        Absent => IdentityCastClosureRefused { reason: ^identity_cast_route_no_member }
+        Present { value: ClosureMemberEmitted { module: _, text: t } } => IdentityCastEntryEmitted { text: t, members: members }
+        Present { value: ClosureMemberRefused { module: _, diagnostics: d } } =>
+          IdentityCastEntryRefused { reason: diagnostics_fatal_reason(d: d), members: members }
+      }
+  }
+}
+
+fn identity_cast_route_verdict() -> IdentityCastRouteVerdict {
+  identity_cast_route_verdict_of(source: identity_cast_source)
+}
+
+fn refused_cast_route_verdict() -> IdentityCastRouteVerdict {
+  identity_cast_route_verdict_of(source: refused_cast_source)
+}
+
+fn identity_cast_route_admitted_holds(v: IdentityCastRouteVerdict) -> Bool {
+  match v {
+    IdentityCastEntryEmitted { text: t, members: n } =>
+      n == 1 && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
+    IdentityCastEntryRefused { reason: _, members: _ } => false
+    IdentityCastClosureRefused { reason: _ } => false
+  }
+}
+
+fn identity_cast_route_refused_holds(v: IdentityCastRouteVerdict) -> Bool {
+  match v {
+    IdentityCastEntryEmitted { text: _, members: _ } => false
+    IdentityCastEntryRefused { reason: r, members: n } =>
+      n == 1 && r == ^find_witness_reason_no_candidate
+    IdentityCastClosureRefused { reason: _ } => false
+  }
+}
+
+fn identity_cast_supplied_int() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
+fn identity_cast_supplied_bool() -> Node { dag_type_atom_node(identity: ^bool_node_symbol) }
+
+fn identity_cast_supplied_crossing(target: Node) -> Outcome<CoercionResult> {
+  coercion_cast_crossing(
+    source: claim_canonical_grounding(type_symbol: ^dag_binding_type_int, algebra_symbol: ^dag_binding_type_int),
+    source_type: identity_cast_supplied_int(),
+    source_declared_carrier: Absent,
+    target: target
+  )
+}
+
+// The admitted identity cast, at coercion's interface over SUPPLIED Int atoms: the crossing is
+// Identity. A Exact/Widened admission, or a refusal, is false. The closure door for the same
+// subject is an_admitted_identity_cast_emits_through_the_closure_route_holds on this module.
+test fn an_int_identity_cast_is_an_identity_crossing_holds() -> Bool {
+  match identity_cast_supplied_crossing(target: identity_cast_supplied_int()) {
+    Accepted { value: r, diagnostics: _ } =>
+      match r.quality {
+        Identity => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The same crossing to Bool -- a kernel type Int has no structural witness into -- is refused by
+// coercion's mismatch at v2.std.coercion, not by a parse, resolve or emission failure. Asserting
+// NoTargetCandidate is what makes this a control of admission. coercion_wrap_find_witness_rejection
+// places that typed mismatch at the head; diagnostics_fatal_reason is the last upstream
+// find_witness_reason_no_candidate. The door's refusal inhabitance is
+// a_cast_with_no_witness_refuses_before_realization_holds on this module.
+test fn an_int_to_bool_cast_has_no_witness_holds() -> Bool {
+  match identity_cast_supplied_crossing(target: identity_cast_supplied_bool()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == discriminant(v: NoTargetCandidate)
+  }
+}
+
+// INHABITANCE OF THE CLOSURE DOOR, ON THE REQUIRED GATE.
+test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool {
+  identity_cast_route_admitted_holds(v: identity_cast_route_verdict())
+}
+
+test fn a_cast_with_no_witness_refuses_before_realization_holds() -> Bool {
+  identity_cast_route_refused_holds(v: refused_cast_route_verdict())
+}

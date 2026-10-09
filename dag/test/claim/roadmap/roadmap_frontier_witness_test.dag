@@ -3,20 +3,24 @@ module test.claim.roadmap_frontier_witness
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
-  IntricacyHigh, VolumeMedium,
   PrsMerged,
-  NodeSizing, Unsized, Sized,
+  WorkItemDispatch, NotDispatchable, Dispatchable,
   SectionElement, Group, SectionGroup,
+  AdmittedRoot,
 }
+import std.types { NonEmptyStr }
 import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
-import gunbc.roadmap_page {
-  roadmap_daily_workspace_page,
-  roadmap_daily_workspace_page_for_authority,
-}
+import gunbc.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
+import gunbc.site.document { site_header }
+import gunbc.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_authority { authored_merged_prs }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_daily_page, fx_ready_task_ids }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -30,10 +34,12 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     node: roadmap_frontier_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: roadmap_launch_canary_execution_contract(),
     owner: "",
     signoff: Unsigned,
+    parent: Present { value: AdmittedRoot },
+    centering: Present { value: "fixture centering plan" as NonEmptyStr },
   }
 }
 
@@ -43,23 +49,27 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    sizing: base.sizing,
+    dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
-fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -133,7 +143,7 @@ test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
-  let node = unsized_derivable(id: "unsized-open", prs: [], title: "Unsized")
+  let node = undispatchable_derivable(id: "unsized-open", prs: [], title: "NotDispatchable")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [])
   count(frontier.ready) == 0
@@ -155,27 +165,57 @@ test fn witness_buckets_are_disjoint() -> Bool {
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "a-open"))
 }
 
-fn daily_workspace_html(doc: RoadmapDocument, merged: List<Int>) -> String {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: merged)) {
+// THE BAND BOUNDARY, SUPPLIED: the workspace view built from the document's rows by the same
+// work_row_view / daily_workspace_view the page uses, without the program-progress strip and the
+// live family roster (whole-authority reads that cost ~190k steps and carry nothing about bands),
+// then serialized through workspace_markup -- the fragment the page embeds. The page composition
+// itself is exercised by the page witnesses; these claims are about which band a row lands in.
+fn fixture_workspace_view(doc: RoadmapDocument, merged: List<Int>) -> DailyWorkspaceView {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch_host_unobserved_static_render())
+  let rows = map(nodes, rn => work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: merged,
+    activity: daily_row_activity(node_id: rn.node as String, attempts: [], attempts_refused: none),
+    rounds: daily_row_rounds(node_id: rn.node as String, attempts: [], attempts_refused: none),
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: []))
+  daily_workspace_view(rows: rows, edges: edges, program: none, observation: observation_impact_view(workflow_refused: none), families: [], members: [], memberships: [])
+}
+
+fn workspace_band_html(doc: RoadmapDocument, merged: List<Int>) -> String {
+  match try_serialize_html_source(node: workspace_markup(ws: fixture_workspace_view(doc: doc, merged: merged), edges: doc_all_edges(doc: doc), memberships: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
+fn daily_workspace_header_html() -> String {
+  match try_serialize_html_source(node: site_header(page: "daily workspace")) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+// THE BAND VOCABULARY WITHOUT THE BAND SURFACE (owner ruling 2026-09-25, "just copy buganizer";
+// the sized fixture is a complete node -- rooted, centered, bound -- so the page reads it ready):
+// the frontier's four buckets — ready / upcoming / done / superseded — no longer render as
+// frontier-bucket sections; they survive as the table's row vocabulary: the flat rows carry the
+// band in data-band (the band chips filter on it) in the same bucket order the view derived, and
+// the band CHIPS render for the filter. The forest that presented the buckets retired with the
+// tree/bands view tabs.
 test fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
-  let h = daily_workspace_html(doc: doc, merged: [])
-  string_contains(s: h, pattern: "<h1>daily workspace</h1>")
-    && string_contains(s: h, pattern: "class=\"roadmap-frontier\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-superseded\"")
-    && string_contains(s: h, pattern: "<h2>Ready</h2>")
-    && string_contains(s: h, pattern: "<h2>Upcoming</h2>")
-    && string_contains(s: h, pattern: "<h2>Done</h2>")
-    && string_contains(s: h, pattern: "<h2>Superseded</h2>")
+  let h = workspace_band_html(doc: doc, merged: [])
+  string_contains(s: daily_workspace_header_html(), pattern: "<h1>daily workspace</h1>")
+    && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\">")
+    && !string_contains(s: h, pattern: "frontier-bucket")
+    && !string_contains(s: h, pattern: "<h2>Ready</h2>")
+    && string_contains(s: h, pattern: "data-band=\"ready\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"ready\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"not-ready\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"done\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"superseded\"")
 }
 
 fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
@@ -184,10 +224,12 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     node: roadmap_frontier_nid(s: id),
     line: SupersededLine { by: by, content: "Old Row" },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -197,10 +239,12 @@ fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     node: roadmap_frontier_nid(s: id),
     line: SupersededLine { by: by, content: "Accepted Old Row" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
@@ -230,28 +274,31 @@ test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
 test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
   let doc = fixture_doc(nodes: [node_old], edges: [])
-  let h = daily_workspace_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Old Row")
-    && string_contains(s: h, pattern: "class=\"status status-superseded\"")
-    && string_contains(s: h, pattern: "→ successor-lane")
+    && string_contains(s: h, pattern: "data-band=\"superseded\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
     && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
 }
 
 test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let h = daily_workspace_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Spawn Me Now")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-    && string_contains(s: h, pattern: "class=\"node node-open\" data-node=\"spawn-me\"")
+    && string_contains(s: h, pattern: "data-band=\"ready\"")
+    && string_contains(s: h, pattern: "data-node=\"spawn-me\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
-test fn witness_authority_daily_workspace_serializes() -> Bool {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-        && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
-    EmitRejected { reason: _ } => false
-  }
+// A signed, sized node is done, and the table row carries the done band the band chips filter on.
+test fn witness_page_places_done_node_in_done_bucket() -> Bool {
+  let node = accepted_node(base: sized_derivable(id: "finished-row", prs: [43], title: "Finished Row"))
+  let h = workspace_band_html(doc: fixture_doc(nodes: [node], edges: []), merged: [])
+  string_contains(s: h, pattern: "Finished Row")
+    && string_contains(s: h, pattern: "data-band=\"done\"")
+    && !string_contains(s: h, pattern: "data-band=\"ready\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
 }
+

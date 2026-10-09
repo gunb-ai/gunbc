@@ -1,5 +1,6 @@
 module v2.lens.cost.copied_port_derivation
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.lens.cost {
   LinearCost,
@@ -7,34 +8,39 @@ import v2.lens.cost {
   SumCost,
   SymbolicCost,
   UnknownCost,
-  symbolic_cost_of_node
+  symbolic_cost_of_node,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LogCost,
+  PolyLogCost,
+  PolynomialCost
 }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present
 }
+import v2.std.node_query { declared_field_from_edge }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
+  ComputationNode
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 
 // Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each
-// combiner's cited Arrow body (^arrow_body_edge only — edge_contributes_to_cost_fold), never
+// combiner's cited Arrow body (^arrow_body_edge only — v2.std.node cost_edge_role), never
 // hand-stamped indices. derive_copied_port_index_from_arrow finds the unique parameter port whose
 // size the body cost is linear in; multi-linear ambiguity (two or more linear ports) returns Absent
 // — no tiebreak heuristic. Current stdlib citations (list_append, list_snoc_item, map_merge) are
@@ -42,8 +48,13 @@ import v2.std.algebra { CopiedPortFact, fold_list }
 // fires). Unpriceable shapes return Absent — classify_call keeps
 // ^combiner_unregistered_carrier_reaches fail-closed.
 
+// `declaration` is the cited declaration's dotted path when the combiner HAS a .dag declaration, so a
+// QUALIFIED call reaches this citation only by naming that declaration -- never by sharing its leaf
+// (`foreign.list_append` is not std.algebra list_append). Absent where the combiner has no .dag
+// declaration to name (map_merge); a qualified call then reaches no citation at all.
 type CombinerArrowCitation {
   combiner: Symbol
+  declaration: Optional<String>
   arrow: Node
 }
 
@@ -73,17 +84,20 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
             match e.target.kind {
               TypeNode { connective: Conj } =>
                 fold(e.target.children, init: acc, f: fn(a, de) {
-                  match de.label {
-                    Named { name: _ } => Cons { head: de.target, tail: a }
-                    Positional => a
+                  match declared_field_from_edge(e: de) {
+                    Present { value: binder } => Cons { head: binder.type_node, tail: a }
+                    Absent => a
                   }
                 })
-              _ => acc
+              ComputationNode { behavior: _ } => acc
+              TypeNode { connective: _ } => acc
             }
-          Named { name: _ } => acc
+          Authored { name: _ } => acc
+          StructuralLabel { label: _ } => acc
         }
       })
-    _ => Empty
+    ComputationNode { behavior: _ } => Empty
+    TypeNode { connective: _ } => Empty
   }
 }
 

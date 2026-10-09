@@ -5,7 +5,8 @@ import extdeps.currency.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.envelope { unstated_envelope }
+import product.fabric.envelope { ResourceEnvelope }
+import gunbc.floor_demand { floor_execution_requirements }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -32,12 +33,14 @@ import product.fabric.demand {
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.command { argv_words }
-import extdeps.github.actions { ActionRef, checkout_action, setup_rust_action }
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
+import extdeps.github.action_release { ActionRelease }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
-import gunbc.claim_executor_cli { claim_executor_command, claim_executor_release_path }
+import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program }
 import gunbc.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
+import std.algebra { Cons, Empty }
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //
@@ -157,8 +160,8 @@ fn command_material(command: ArgvCommand) -> NonEmptyStr {
   )
 }
 
-fn action_ref_material(action: ActionRef) -> NonEmptyStr {
-  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.ref))))
+fn action_ref_material(action: ActionRelease) -> NonEmptyStr {
+  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.commit))))
 }
 
 // Opaque contract name. Obligations are the structured field —
@@ -263,7 +266,7 @@ fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWo
           source: source,
           checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
           toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
-          executable_provenance: [repo_self_build_all_bins_command(), claim_executor_release_path],
+          executable_provenance: [repo_self_build_all_bins_command(), claim_executor_program().invocation],
           command: build_lane_run_command(),
           environment: [
             RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
@@ -411,65 +414,6 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
   }
 }
 
-// OUR FLOOR IS arm64. THE CLASS IS NOT.
-//
-// This function previously spelled the architecture INSIDE a capability tag --
-// "gunbc.capabilities.linux-aarch64-rust-toolchain" -- making an accident of our supply look like
-// a property of the execution class. Ampere is what we stock; the product must serve x86 and arm
-// at the lowest cost, and rented x86 is an anticipated supplier. A class that names its
-// architecture cannot admit one it did not -- the GitHub-vocabulary argument one layer over. So
-// the tag below names the toolchain and NOT the machine.
-//
-// WHY NO Architecture VALUE IS DECLARED HERE YET. Matching a declared architecture needs the OFFER
-// to carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm that reads
-// it land together. An earlier revision declared `floor_architecture() -> Architecture = Aarch64`
-// anyway, with ZERO consumers; v2.lens.inert_carrier caught it on CI as an unrostered inert
-// carrier -- in the same commit whose message refused to add an unread field to SupplierOffer by
-// citing review 53848's declared-but-nothing-derives-it defect. Refusing the defect on one side of
-// a module boundary and authoring it on the other is the same defect.
-//
-// So the architecture decision lives in prose and in the recut plan until it has a consumer: a
-// decision recorded is not a carrier modeled, and minting it early buys only a row that lies about
-// being load-bearing.
-
-// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
-//
-// A floor run is OUR OWN work on OUR OWN fleet, and it runs today on slots providing none of the
-// isolation guarantees -- a reused writable root by design, the host's process namespace, and
-// /home/ghrunner shared across every slot. Declaring a requirement the floor does not have would
-// invent a gap: the run modeled as ineligible for the executor it has been green on for months.
-//
-// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER: the floor asks for no tenancy
-// guarantee. The gap this model expresses belongs to CUSTOMER work -- see product.fabric.isolation
-// tenant_workload_isolation_requirement and the witness measuring today's slots against it.
-//
-// CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
-// has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
-// the modeled decision the broker will consume, not a live wall; calling it enforcement would be
-// the rung inflation recorded above for affordability. NEXT-RUNG TRIGGER is the same: a broker
-// fold that selects an Offer for this Demand.
-fn floor_isolation_requirement() -> IsolationProfile {
-  IsolationProfile { guarantees: [] }
-}
-
-// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
-// class exists to protect: our own scheduler, reconciliation, admission and
-// receipt work, which must never be satisfied by capacity sanctioned for
-// customer execution. Declared on the side we ORIGINATE, so no supplier can
-// author it and the refusal is decided at admission rather than after ranking.
-fn floor_execution_requirements() -> ExecutionRequirements {
-  ExecutionRequirements {
-    capacity_class: ControlPlaneCapacity,
-    shape: Shape {
-      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
-      envelope: unstated_envelope(),
-    },
-    capabilities: "gunbc.capabilities.linux-rust-toolchain",
-    trust_domain: "gunbc.trust.internal-fleet",
-    isolation: floor_isolation_requirement(),
-  }
-}
-
 // THE SOURCE ROOTS ARE NOT THIS MODULE'S FACT. gunbc.ci_layer_roots witness_layer_roots is the
 // authority -- the live workflow already folds it into its --source-root flags -- so a list here
 // was a fork of it, the violation one level above the one review 53848 caught. Consumed, not
@@ -510,6 +454,10 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // A SINGLE ARGV, NOT TWO. Two hand-built invocations would be two spellings of the binary path,
 // mode flag and source roots, free to drift as #8629 removed once already; the lane is a
 // parameter of one command.
+// THE RECEIPT FLAG HAS ONE SPELLING, HERE, so any consumer that must recognise it does so by identity
+// rather than by a copied string.
+data measurement_receipt_flag: String = "--measurement-receipt"
+
 fn required_ci_lane_command(lane: String, measurement_receipt: String) -> ArgvCommand {
   claim_executor_command(
     mode_flag: "--required-ci",
@@ -522,7 +470,7 @@ fn required_ci_lane_command(lane: String, measurement_receipt: String) -> ArgvCo
       if measurement_receipt == "" {
         ["--required-lane", lane]
       } else {
-        ["--required-lane", lane, "--measurement-receipt", measurement_receipt]
+        ["--required-lane", lane, measurement_receipt_flag, measurement_receipt]
       },
     ),
   )

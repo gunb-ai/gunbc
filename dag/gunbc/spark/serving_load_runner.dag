@@ -1,0 +1,315 @@
+module gunbc.spark.serving_load_runner
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { second }
+import std.optional { Present, Absent }
+import v2.std.collection { list_at_optional }
+import product.host_identity { HostIdentity }
+import extdeps.tools.curl { curl_bounded_get_argv }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.docker.cli { docker_exec_command }
+import extdeps.exec.command { argv_words }
+import extdeps.vllm.server { vllm_route_path, vllm_route_metrics }
+import extdeps.vllm.bench_serve { VllmBenchServeRequest, vllm_bench_serve_arguments }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable,
+}
+import gunbc.spark.serving_rank_observe {
+  observed_rank_subject, observe_rank_container, RankInspected, RankInspectRefused,
+  observed_rank_incarnation, ObservedRankIncarnation,
+}
+import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
+import extdeps.vllm.kv_layout { AdmissionCost }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubjectStanding }
+import gunbc.spark.serving_load_probe {
+  SamePrincipal, ProbeWindowStanding, BenchServeExecution, ClientRateQualificationFrontier, ServingLoadObservation,
+  serving_load_observation, serving_load_observation_text,
+  drain_from_queue, window_from_drain, counter_continuity,
+  occupancy_trace_from_endpoint_scrapes,
+  bench_serve_from_remote, bench_serve_bucket_peak, bench_serve_itl, client_itl_text, client_bucket_peak_text,
+  WindowIsolated, WindowIsolationNotEstablished,
+  ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
+  DrainObservedIdle, DrainNotIdle, DrainUnread,
+}
+//
+// ONE serving-load runner for every served model (operator ruling 2026-09-30: GLM and V4.1 share all
+// load-test engineering). A model contributes a ServingLoadSubject and a list of load steps; the
+// runner owns scrape-before -> vllm bench serve -> scrape-after -> serving_load_observation per step.
+// The observation vocabulary is gunbc.spark.serving_load_probe's; this module adds none.
+//
+// The access realization is bound at each model's entry: the entry opens its own access bracket and
+// hands the runner the SparkMaterializeContext it produced, so the dispatch that selects a
+// realization stays peripheral (DESIGN §3). Per-model numbers (protocols, thresholds) arrive as
+// the steps and never live here.
+
+type ServingLoadSubject {
+  host: HostIdentity
+  host_address: String
+  group: FabricGroup
+  container: NonEmptyStr
+  base_url: NonEmptyStr
+  served_alias: NonEmptyStr
+  standing: ServingPerformanceSubjectStanding
+  admission: AdmissionCost
+  qualification_frontier: ClientRateQualificationFrontier
+  principal: NonEmptyStr
+  receipt_heading: NonEmptyStr
+  receipt_path: String
+}
+
+// One metrics scrape keeps the remote run's arms: a refusal is never a body a parser can read.
+type MetricsScrape
+  = ScrapeBody { body: String }
+  | ScrapeUnreachable { step: String, cause: String }
+  | ScrapeExitedNonZero { step: String, exit_code: Int, stdout: String, stderr: String }
+
+// One step's record: the request it ran, the observation, the receipt text it contributes, and the
+// model's own host reading taken immediately before the bench and immediately after the after-scrape.
+// H is the model's reading type; the runner brackets it and never interprets it.
+type ServingLoadStepRecord<H> {
+  request: VllmBenchServeRequest
+  observation: ServingLoadObservation
+  before_body: String
+  after_body: String
+  bench: BenchServeExecution
+  host_before: H
+  host_after: H
+  text: String
+}
+
+// One step's result, or the refusal that stops the line.
+type ServingLoadStepRun<H>
+  = ServingLoadStepObserved { record: ServingLoadStepRecord<H> }
+  | ServingLoadStepRefused { reason: String }
+
+// A whole run: every step's record in order, or the first refusal.
+type ServingLoadRunOutcome<H>
+  = ServingLoadRunObserved { records: List<ServingLoadStepRecord<H>> }
+  | ServingLoadRunRefused { reason: String }
+
+// The reading of a model that brackets no host reading around its steps.
+type NoHostReading = | NoHostReading
+
+fn no_host_reading(ctx: SparkMaterializeContext) -> NoHostReading {
+  NoHostReading
+}
+
+fn metrics_url(subject: ServingLoadSubject) -> String {
+  join([subject.base_url as String, vllm_route_path(r: vllm_route_metrics) as String], "")
+}
+
+fn curl_metrics_argv(subject: ServingLoadSubject) -> List<String> {
+  curl_bounded_get_argv(url: metrics_url(subject: subject), connect_timeout: second(count: 2), max_time: second(count: 15))
+}
+
+fn bench_exec_argv(subject: ServingLoadSubject, req: VllmBenchServeRequest) -> List<String> {
+  argv_words(command: docker_exec_command(
+    name: subject.container,
+    env: [],
+    argv: concat(["vllm"], vllm_bench_serve_arguments(req: req)),
+  ))
+}
+
+fn scrape_metrics(ctx: SparkMaterializeContext, subject: ServingLoadSubject, step: String) -> MetricsScrape {
+  match spark_remote_run(ctx: ctx, argv: curl_metrics_argv(subject: subject)) {
+    RemoteUnreachable { cause: c, reach: _ } => ScrapeUnreachable { step: step, cause: c }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        ScrapeExitedNonZero { step: step, exit_code: code, stdout: out, stderr: err }
+      } else {
+        ScrapeBody { body: out }
+      }
+  }
+}
+
+fn scrape_refusal_text(s: MetricsScrape) -> String {
+  match s {
+    ScrapeBody { body: _ } => "scrape produced a body"
+    ScrapeUnreachable { step: st, cause: c } => join(["UNREACHABLE ", st, " ", c], "")
+    ScrapeExitedNonZero { step: st, exit_code: code, stdout: out, stderr: err } =>
+      join(["FAILED ", st, " exit=", to_string(code), " stderr=", err, " stdout=", out], "")
+  }
+}
+
+fn inspect_incarnation(ctx: SparkMaterializeContext, subject: ServingLoadSubject) -> ObservedRankIncarnation?
+{
+  let s = observed_rank_subject(host: subject.host, container: subject.container)
+  match observe_rank_container(ctx: ctx, subject: s) {
+    RankInspectRefused { refusal: _ } => none
+    RankInspected { subject: rs, container: c } => observed_rank_incarnation(subject: rs, c: c)
+  }
+}
+
+// A step whose request addresses a different endpoint or alias than the subject would measure one
+// server while scraping another; it refuses before any remote run.
+fn step_subject_mismatch(subject: ServingLoadSubject, req: VllmBenchServeRequest) -> String? {
+  if (req.base_url as String) != (subject.base_url as String) {
+    Present { value: join(["step base_url ", req.base_url as String, " is not the subject's ", subject.base_url as String], "") }
+  } else {
+    if (req.model as String) != (subject.served_alias as String) {
+      Present { value: join(["step model ", req.model as String, " is not the subject's served alias ", subject.served_alias as String], "") }
+    } else {
+      none
+    }
+  }
+}
+
+// The pure half of a step: from the readings a step captured to its observation and receipt text.
+// Witnesses supply the readings here; serving_load_step is the one route that captures them.
+fn serving_load_step_observation(
+  subject: ServingLoadSubject,
+  window: ProbeWindowStanding,
+  before: String,
+  after: String,
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
+  bench: BenchServeExecution,
+) -> ServingLoadObservation {
+  let before_launch = harness_launch_from_body(group: subject.group, address: subject.host_address, body: before)
+  let after_launch = harness_launch_from_body(group: subject.group, address: subject.host_address, body: after)
+  serving_load_observation(
+    subject: subject.standing,
+    window: window,
+    continuity: counter_continuity(before: before_launch, after: after_launch),
+    occupancy: occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after),
+    before_body: before,
+    after_body: after,
+    before_incarnation: before_incarnation,
+    after_incarnation: after_incarnation,
+    bench: bench,
+    admission: subject.admission,
+    qualification_frontier: subject.qualification_frontier,
+    provenance: SamePrincipal { principal: join([subject.principal as String, " ssh session on ", subject.host as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
+  )
+}
+
+fn serving_load_observation_receipt_text(obs: ServingLoadObservation, bench: BenchServeExecution) -> String {
+  join([
+    serving_load_observation_text(o: obs),
+    "client itl (bench stdout): ", client_itl_text(d: bench_serve_itl(e: bench)), "\n",
+    "client bucket peak (bench stdout): ", client_bucket_peak_text(p: bench_serve_bucket_peak(e: bench)), "\n",
+  ], "")
+}
+
+fn serving_load_step_text(
+  subject: ServingLoadSubject,
+  window: ProbeWindowStanding,
+  before: String,
+  after: String,
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
+  bench: BenchServeExecution,
+) -> String {
+  serving_load_observation_receipt_text(
+    obs: serving_load_step_observation(subject: subject, window: window, before: before, after: after, before_incarnation: before_incarnation, after_incarnation: after_incarnation, bench: bench),
+    bench: bench,
+  )
+}
+
+fn serving_load_step<H>(ctx: SparkMaterializeContext, subject: ServingLoadSubject, req: VllmBenchServeRequest, host_read: fn(SparkMaterializeContext) -> H) -> ServingLoadStepRun<H>
+{
+  match step_subject_mismatch(subject: subject, req: req) {
+    Present { value: m } => ServingLoadStepRefused { reason: m }
+    Absent => {
+    let before_scrape = scrape_metrics(ctx: ctx, subject: subject, step: "metrics-before")
+    match before_scrape {
+      ScrapeUnreachable { step: _, cause: _ } => ServingLoadStepRefused { reason: scrape_refusal_text(s: before_scrape) }
+      ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => ServingLoadStepRefused { reason: scrape_refusal_text(s: before_scrape) }
+      ScrapeBody { body: before } => {
+      let drain = drain_from_queue(q: harness_queue_from_body(body: before))
+      let window = window_from_drain(drain: drain)
+      match window {
+        WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
+          ServingLoadStepRefused { reason: "an isolated window is not this arm's inhabitance path" }
+        ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
+          ServingLoadStepRefused { reason: "attributed foreign traffic is not this arm's inhabitance path" }
+        ForeignTrafficNotObserved { drain: _ } =>
+          ServingLoadStepRefused { reason: "foreign-traffic-not-observed is not this arm's inhabitance path" }
+        ForeignTrafficUnread { cause: c, drain: _ } => ServingLoadStepRefused { reason: c as String }
+        WindowIsolationNotEstablished { cause: c, drain: d } =>
+          match d {
+            DrainNotIdle { running: _ } => ServingLoadStepRefused { reason: c as String }
+            DrainUnread { cause: u } => ServingLoadStepRefused { reason: u as String }
+            DrainObservedIdle => {
+      let before_incarnation = inspect_incarnation(ctx: ctx, subject: subject)
+      let host_before = host_read(ctx)
+      let bench = bench_serve_from_remote(protocol: req, remote: spark_remote_run(ctx: ctx, argv: bench_exec_argv(subject: subject, req: req)))
+      let after_scrape = scrape_metrics(ctx: ctx, subject: subject, step: "metrics-after")
+      match after_scrape {
+        ScrapeUnreachable { step: _, cause: _ } => ServingLoadStepRefused { reason: scrape_refusal_text(s: after_scrape) }
+        ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => ServingLoadStepRefused { reason: scrape_refusal_text(s: after_scrape) }
+        ScrapeBody { body: after } => {
+            let host_after = host_read(ctx)
+            let after_incarnation = inspect_incarnation(ctx: ctx, subject: subject)
+            let obs = serving_load_step_observation(
+              subject: subject, window: window, before: before, after: after,
+              before_incarnation: before_incarnation, after_incarnation: after_incarnation, bench: bench,
+            )
+            ServingLoadStepObserved { record: ServingLoadStepRecord {
+              request: req, observation: obs, before_body: before, after_body: after, bench: bench,
+              host_before: host_before, host_after: host_after,
+              text: serving_load_observation_receipt_text(obs: obs, bench: bench),
+            } }
+        }
+      }
+            }
+          }
+      }
+      }
+    }
+    }
+  }
+}
+
+// Steps run in order; the first refusal stops the line and no later step runs (DESIGN §5).
+fn serving_load_steps<H>(ctx: SparkMaterializeContext, subject: ServingLoadSubject, steps: List<VllmBenchServeRequest>, host_read: fn(SparkMaterializeContext) -> H, index: Nat, acc: List<ServingLoadStepRecord<H>>) -> ServingLoadRunOutcome<H>
+{
+  match list_at_optional(xs: steps, index: index) {
+    Absent => ServingLoadRunObserved { records: acc }
+    Present { value: req } =>
+      match serving_load_step(ctx: ctx, subject: subject, req: req, host_read: host_read) {
+        ServingLoadStepRefused { reason: r } =>
+          ServingLoadRunRefused { reason: join(["step ", to_string(index), ": ", r], "") }
+        ServingLoadStepObserved { record: rec } =>
+          serving_load_steps(ctx: ctx, subject: subject, steps: steps, host_read: host_read, index: index + 1, acc: concat(acc, [rec]))
+      }
+  }
+}
+
+// Every step's record, for a model that folds them into its own measurement (V4.1's staircase).
+// An empty step list refuses: a run with no step observes nothing.
+fn serving_load_records<H>(ctx: SparkMaterializeContext, subject: ServingLoadSubject, steps: List<VllmBenchServeRequest>, host_read: fn(SparkMaterializeContext) -> H) -> ServingLoadRunOutcome<H>
+{
+  if length(steps) == 0 {
+    ServingLoadRunRefused { reason: "a serving-load run with no load step observes nothing" }
+  } else {
+    serving_load_steps(ctx: ctx, subject: subject, steps: steps, host_read: host_read, index: 0, acc: [] as List<ServingLoadStepRecord<H>>)
+  }
+}
+
+// The receipt body: the subject's heading, then each step's text in order.
+fn serving_load_receipt_body<H>(subject: ServingLoadSubject, records: List<ServingLoadStepRecord<H>>, extra: String) -> String {
+  join([subject.receipt_heading as String, " at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n", join(map(records, r => r.text), ""), extra], "")
+}
+
+fn write_serving_load_receipt(subject: ServingLoadSubject, body: String) -> ProcessExit {
+  let w = Filesystem.Write(path: subject.receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+// The runner's entry for a model whose receipt is its steps' observations and nothing more (GLM).
+fn serving_load_run(ctx: SparkMaterializeContext, subject: ServingLoadSubject, steps: List<VllmBenchServeRequest>) -> ProcessExit
+{
+  match serving_load_records(ctx: ctx, subject: subject, steps: steps, host_read: no_host_reading) {
+    ServingLoadRunRefused { reason: r } => exit_failure(reason: r)
+    ServingLoadRunObserved { records: rs } => write_serving_load_receipt(subject: subject, body: serving_load_receipt_body(subject: subject, records: rs, extra: ""))
+  }
+}

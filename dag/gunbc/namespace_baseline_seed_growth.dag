@@ -1,0 +1,71 @@
+module gunbc.namespace_baseline_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed-growth obligation for v1_compiler.namespace_baseline (2026-09-19). The module is the
+// NON-GATE RESIDUE of v1_compiler.namespace_wave_admission, which was deleted with the
+// wave-admission wall by operator ruling 2026-09-19 (gunbc.rung_drop
+// namespace_wave_admission_wall_removed): the wall's adjudication, disposition vocabulary,
+// transition-admission roster loading and refusal verdicts are gone, and what remains is the
+// machinery the required floor and the joint claim join already shared -- the base-side index
+// reconstruction over a diff window, the git acquisition helpers it runs on, and the
+// parse-environment-of-a-revision loader that keeps a base readable under its own grammar.
+//
+// WHY THE RESIDUE IS JUSTIFIED AT ALL rather than deleted with the wall: the required floor's
+// arm-set-consumer planning row (gunbc.floor_arm_set_consumer_seed_growth, gunbc#11194) reads
+// its base side through reconstruct_base_index, and joint_claim_join parses base-side sources
+// through base_records. Those consumers predate the deletion and survive it unchanged; deleting
+// the machinery with the wall would have been a second, unruled removal smuggled inside the
+// ruled one.
+//
+// WHAT THIS ROW DOES NOT COVER: the seven declarations whose admitting purpose is the floor's
+// stale-match planning (BaselineReconstruction, reconstruct_base_index and the five arm-set
+// consumer items). They stay rostered in gunbc.floor_arm_set_consumer_seed_growth, with only
+// their module_path re-pointed, because their justification is that feature's and did not change
+// when the file was renamed.
+
+data namespace_baseline_seed_growth_note: String = "Seed-growth obligation for v1_compiler.namespace_baseline: the base-side declaration-index reconstruction over a diff window (gunbc#11194's floor planning row, joint_claim_join, behavioral_receipt_host's git leg), plus the parse-environment-of-a-revision loader. Declared 2026-09-19 when the wave-admission wall around this machinery was deleted by operator ruling; the wall's own justification (gunbc.namespace_wave_admission namespace_wave_admission_seed_growth_justification) is deleted with its module, and its seven floor-purpose items remain admitted by gunbc.floor_arm_set_consumer_seed_growth under their new module path."
+
+data namespace_baseline_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "KERNEL_DECLARATION_IDENTITY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "module_prefix_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "declaring_candidates", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "declarer_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "git_stdout", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "in_sweep_scope", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "diff_sides", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "base_records", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ENVIRONMENT_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ENVIRONMENT_ITEM", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ENVIRONMENT_MODULE_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "DAG_SOURCE_ROOT", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "EnvironmentLoadRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "environment_load_refusal_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "git_capture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "blob_id_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "materialize_environment_closure_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "materialize_revision_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "decode_environment_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "evaluate_environment_in", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "load_parse_environment_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "load_parse_environment_with_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "environment_closure_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "EnvironmentAgreement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "environment_agreement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "KERNEL_TYPES_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "kernel_set_serves_both", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "KERNEL_TYPES_ITEM", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "kernel_names_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "evaluate_owned_item_in", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "revision_scratch_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "closure_paths_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "as_kernel_set_refusal", field: WholeDeclaration },
+  ],
+  reason: "The required floor's stale-match planning (gunbc#11194) needs the base revision's declaration index reconstructed from the head index with the diff applied in reverse, read under the base's own parse environment; joint_claim_join needs base-side records and the diff's two sides for its own join; behavioral_receipt_host needs one checked git invocation. None of that is the deleted wall's adjudication: no delta is computed here and no verdict is issued. WHY RUST RATHER THAN .dag: the input carrier is the host-only ModuleDeclarationRecord (gunbc.declaration_index_seed_growth CLASS A) and the acquisition is git over the object store, the scm lane's CLASS B boundary. THREE PROVENANCES, NOT ONE. (1) RENAMED CARRYOVER: every declaration from KERNEL_DECLARATION_IDENTITY through kernel_set_serves_both existed in namespace_wave_admission.rs on main, admitted under the wall's own justification, and moved unchanged when that module was deleted -- except kernel_set_serves_both, whose body the kernel-set repair below rewrote. (2) THE KERNEL-SET READER, NEW SEMANTIC SURFACE: KERNEL_TYPES_ITEM, kernel_names_at and as_kernel_set_refusal were added when kernel_set_serves_both stopped comparing the whole dag/std/types.dag blob (a byte proxy that refused every edit to that file) and began comparing the base revision's evaluated kernel_type_set names to this binary's. (3) SHARED EXTRACTIONS: evaluate_owned_item_in, closure_paths_of and revision_scratch_root were lifted out of evaluate_environment_in, environment_closure_paths and load_parse_environment_with_closure in that same change so the kernel reader reuses the environment loader's route instead of copying it; they add no behaviour of their own.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "The reconstruction and the selector follow gunbc.declaration_index_seed_growth's first step: when the per-module declaration record is a .dag carrier, these are ordinary folds over it. The git and revision-materialization legs follow the scm lane: a typed repository-read transport supplying a file's text at a ref dissolves git_stdout, diff_sides, materialize_revision_paths and the environment loader's acquisition half. The environment decode dissolves when the parse environment is a typed value the toolchain hands to its consumers rather than a value this binary re-derives by evaluation. The kernel-set reader (kernel_names_at, as_kernel_set_refusal, KERNEL_TYPES_ITEM) dissolves when the base reconstruction carries distinct base and head kernel sets from versioned declaration facts, so no revision's set is re-derived by evaluation and no single compiled-in set is consulted for both sides.",
+  current_boundary: "Reachable from the required floor's planning row (run_required_floor, witnesses lane; the kernel-set reader only when dag/std/types.dag differs between base and head), the joint_claim_join bin, behavioral_receipt_host's git leg, and tests/parse_environment_decode_roundtrip.rs. Computes no delta and decides no verdict: the wave-admission adjudication that consumed this machinery is deleted, and no caller here can refuse a merge over a namespace change."
+}

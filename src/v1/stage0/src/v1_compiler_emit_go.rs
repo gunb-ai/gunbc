@@ -26,19 +26,20 @@ pub use crate::v1_compiler_emit::{
     emit_typed_string_interp_unified, emit_unary_op, emit_unified_init_block_stmts,
     emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
     emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
-    empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
-    is_null_coalesce, is_tco_eligible, lookup_item_by_identity, module_emit_scope,
-    order_typed_call_args, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_decls, test_file_path,
+    emit_unrealized_rest_result_refusal, empty_emit_scope, escape_go_interp_text,
+    extract_string_interp_parts, has_nested_records_node, is_null_coalesce, is_tco_eligible,
+    lookup_item_by_identity, module_emit_scope, order_typed_call_args, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_decls, test_file_path,
 };
 pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
-    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
-    is_leaf_type_item, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
-    is_type_def_item, is_upper, language_spec, make_indent, module_filename_collision_diagnostics,
-    module_to_filename, sanitize_service_name, service_var_name, test_function_name, to_lower_char,
-    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
+    capitalize_first, emitted_symbol_collision_diagnostics, escape_json_string,
+    escape_string_literal_body, extract_test_projections, is_leaf_type_item, is_type_alias_item,
+    is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
+    make_indent, module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
+    service_var_name, test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string,
+    to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -94,8 +95,7 @@ pub use crate::v1_std_core::{
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    transport_auth_header_name, transport_env, transport_has_auth, transport_headers,
-    with_required_cardinality,
+    transport_env, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
@@ -125,6 +125,18 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
+                emitted_edges: Rc::new(vec![]),
+            });
+        }
+        let symbol_collisions =
+            crate::v1_compiler_emit_core_support::emitted_symbol_collision_diagnostics(
+                typed.clone(),
+            );
+        if ((symbol_collisions.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: symbol_collisions.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let registry = typed.item_registry.clone();
@@ -186,6 +198,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         Rc::new(EmitResult {
             files: files.clone(),
             diagnostics: Rc::new(vec![]),
+            emitted_edges: Rc::new(vec![]),
         })
     }
 }
@@ -404,13 +417,14 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
         let struct_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             projection.service_name.clone(),
         );
-        let indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         let mock_setup = Rc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_go_mock_prop_setup(
                     mp.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     projection.source_indices.clone(),
                 ));
             }
@@ -488,8 +502,7 @@ pub fn emit_go_module(
             __result
         })
         .join(&"\n\n".to_string());
-        let mod_dir =
-            crate::v1_compiler_emit_core_support::module_to_filename(mod_name_str.clone());
+        let mod_dir = crate::gunbc_rust_emitted_edge::module_to_filename(mod_name_str.clone());
         let filename = mod_dir.clone();
         let content = v1_rt::concat(
             v1_rt::concat(
@@ -616,7 +629,7 @@ pub fn emit_go_imports(
             let mut __result = Vec::new();
             for imp in imports.iter().cloned() {
                 __result.push({
-                    let mod_name = crate::v1_compiler_emit_core_support::module_to_filename(
+                    let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
                         crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
                     );
                     v1_rt::concat(
@@ -1422,7 +1435,12 @@ pub fn emit_go_transport_body(
         source_indices.clone(),
         depth.clone(),
         RenderTarget::Go,
-        |n, t, d, si| emit_go_rest_call(n.clone(), t.clone(), d.clone(), si.clone()),
+        |n, t, d, si| {
+            crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(
+                n.clone(),
+                RenderTarget::Go,
+            )
+        },
         |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
         |n, d| emit_go_local_call(n.clone(), d.clone()),
     )
@@ -1526,100 +1544,6 @@ pub fn emit_go_service_struct(
                 "\n}".to_string(),
             )
         }
-    }
-}
-
-pub fn emit_go_rest_call(
-    op_name: String,
-    transport: Rc<Node>,
-    depth: i64,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
-        let url_line = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(prefix.clone(), "url := fmt.Sprintf(\"%s/".to_string()),
-                crate::v1_compiler_emit_core_support::to_snake(op_name.clone()),
-            ),
-            "\", c.BaseURL)".to_string(),
-        );
-        let body_line = v1_rt::concat(
-            prefix.clone(),
-            "reqBody := bytes.NewBuffer(nil)".to_string(),
-        );
-        let req_line = v1_rt::concat(
-            v1_rt::concat(
-                prefix.clone(),
-                "req, err := http.NewRequest(\"POST\", url, reqBody)\n".to_string(),
-            ),
-            "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}"
-                .to_string(),
-        );
-        let auth_line =
-            if crate::v1_std_core::transport_has_auth(transport.clone(), source_indices.clone()) {
-                {
-                    let header_name = match crate::v1_std_core::transport_auth_header_name(
-                        transport.clone(),
-                        source_indices.clone(),
-                    ) {
-                        Some(h) => h.clone(),
-                        std::option::Option::None => "Authorization".to_string(),
-                    };
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(prefix.clone(), "req.Header.Set(\"".to_string()),
-                            header_name.clone(),
-                        ),
-                        "\", c.AuthToken)".to_string(),
-                    )
-                }
-            } else {
-                "".to_string()
-            };
-        let hdrs = crate::v1_std_core::transport_headers(transport.clone(), source_indices.clone());
-        let header_lines = Rc::new({
-            let mut __result = Vec::new();
-            for h in hdrs.iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(prefix.clone(), "req.Header.Set(\"".to_string()),
-                                crate::v1_std_core::field_init_node_name_at(
-                                    h.clone(),
-                                    source_indices.clone(),
-                                ),
-                            ),
-                            "\", ".to_string(),
-                        ),
-                        crate::v1_compiler_emit::emit_simple_expr(
-                            crate::v1_std_core::field_init_node_value(h.clone()),
-                            RenderTarget::Go,
-                            source_indices.clone(),
-                        ),
-                    ),
-                    ")".to_string(),
-                ));
-            }
-            __result
-        });
-        let send_lines = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prefix.clone(), "resp, err := http.DefaultClient.Do(req)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"sending request: %w\", err)\n}\n".to_string()), "defer resp.Body.Close()\n".to_string()), "body, err := io.ReadAll(resp.Body)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"reading response: %w\", err)\n}\n".to_string()), "var result interface{}\n".to_string()), "if err := json.Unmarshal(body, &result); err != nil {\n".to_string()), "\treturn nil, fmt.Errorf(\"decoding response: %w\", err)\n}\n".to_string()), "return result, nil".to_string());
-        let all_lines = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    Rc::new(vec![url_line.clone(), body_line.clone(), req_line.clone()]),
-                    if (auth_line.clone() == "".to_string()) {
-                        Rc::new(vec![])
-                    } else {
-                        Rc::new(vec![auth_line.clone()])
-                    },
-                ),
-                header_lines.clone(),
-            ),
-            Rc::new(vec![send_lines.clone()]),
-        );
-        all_lines.clone().join(&"\n".to_string())
     }
 }
 

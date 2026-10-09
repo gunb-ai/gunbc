@@ -1,14 +1,25 @@
 module gunbc.durable_cas_file_store
 
-import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.algebra { trim }
+import std.decimal { decimal_digits_only }
+import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.checked_arithmetic { int_inclusive_max }
+import v2.std.algebra { skip }
+import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
-  FilesystemFailureKind, filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence,
 }
+
+data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
 
 // The first production realization of std.durable_compare_and_set: one keyed
 // slot backed by generation-suffixed files, exclusion supplied by O_EXCL.
@@ -212,23 +223,76 @@ fn admit_cas_attempt_for_derived_payload(
 // The path a slot's generation occupies. The generation is IN the path, which
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
+fn cas_file_slot_name(key: NonEmptyStr, generation: CasGeneration) -> String {
+  concat(concat(key as String, "."), cas_generation_count(g: generation) as String)
+}
+
 fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
-  concat(concat(concat(concat(root as String, "/"), key as String), "."), cas_generation_count(g: generation) as String)
+  concat(concat(root as String, "/"), cas_file_slot_name(key: key, generation: generation))
 }
 
 // HOW THE SLOT IS OBSERVED, AND THE BOUND IS PART OF THE CONTRACT.
 //
-// Generations are contiguous and append-only, so the head is found by probing
-// upward from 1 until a generation is absent. That needs only Read, no
-// directory listing and no parsing of names back into numbers -- a filesystem
-// layout that had to be re-parsed to be understood would be a second identity
-// authority beside the key.
+// Generations are contiguous and append-only -- a generation N+1 is published only by a writer that
+// observed head N, and this store offers no delete -- so presence is a PREFIX of the generation line:
+// every generation at or below the head exists and none above it does. The head is therefore the
+// boundary of a monotone predicate, and it is found by GALLOPING (read 1, 2, 4, 8 ... until one is
+// absent) and then BISECTING between the last present and the first absent generation. The head
+// search needs only Read and no parsing of names back into numbers -- a filesystem layout that had to
+// be re-parsed to be understood would be a second identity authority beside the key. The one listing
+// this store takes is cas_first_generation_absent's, on the single arm where generation 1 reads absent,
+// to tell an EMPTY slot from an UNINITIALIZED store; it establishes absence, it never finds a head.
 //
-// THE PROBE IS BOUNDED AND THE BOUND REFUSES RATHER THAN TRUNCATING. Running off
-// the end returns a typed refusal, not "the head is wherever I stopped looking":
-// a walk that silently reported its own patience as the answer would be the
-// bound-shaped closure DESIGN names, where a real number satisfies a question it
-// never measured.
+// WHY NOT A LINEAR WALK FROM 1, which is what this was. The walk read every superseded generation on
+// every observation, so its cost grew with the slot's whole history, and its bound was denominated in
+// GENERATIONS: past 4096 of them every observation of the slot refused, permanently, for a slot whose
+// head was perfectly well formed. The first consumer that advances a slot once per request --
+// gunbc.auth.approval_assertion_counter, one generation per admitted App Attest assertion -- turned
+// that into an availability cliff: an operator phone stopped being able to read after ~4096 admitted
+// requests, and only re-enrolment recovered it. Raising the bound would have moved that cliff and
+// kept it. Nothing reads a superseded generation -- the interface's fact is the HEAD, and
+// std.durable_compare_and_set promises a monotone version, not a history -- so the walk was paying,
+// per observation, for information no consumer demands.
+//
+// WHY THE CHAIN ITSELF STAYS. The chain is not an obligation of the interface; it is THIS
+// realization's exclusion mechanism. An in-place conditional overwrite is not honestly available on a
+// plain filesystem: rename replaces unconditionally, so a compare-then-rename is a check-then-act race
+// that only a lock closes, and flock is exactly the single-host exclusion the interface module exists
+// to replace. O_EXCL on a DISTINCT name per generation is what lets the OS decide the race, so the
+// generations are the price of the exclusion and are kept. What was an artifact is only the READ.
+//
+// THE SEARCH IS TOTAL OVER THE WHOLE GENERATION LINE, SO IT HAS NO OBSERVATION BOUND. CasGeneration is
+// realized as a machine Int, so the line is 1 ..= int_inclusive_max. The gallop doubles while doubling
+// stays inside that range; past half of it, it probes the maximum itself instead of doubling. Every
+// step is overflow-free: the doubling is taken only at or below max / 2, and the bisection midpoint
+// is lo + (hi - lo) / 2. So an observation reads at most ~2 x 63 generations and ALWAYS answers --
+// absent, a head, or a typed read refusal -- and there is no ProbedBeyondBound arm left to produce.
+// The end of the line is a WRITE fact, not a read fact: a head at the maximum is readable, and the
+// write that would follow it refuses with CasGenerationSpaceExhausted (std.durable_compare_and_set
+// cas_generation_successor), because that head has no successor to publish.
+//
+// THE CONTRACT IS LINEARIZABILITY: an observation returns the head the slot held AT SOME INSTANT
+// DURING THE INVOCATION, not merely some generation that was once committed. It follows from two
+// facts this store guarantees. Presence is a prefix (a generation is published only after its
+// predecessor was observed, and nothing is deleted), and presence is never retracted. So the head,
+// as a function of time, is non-decreasing and moves in steps of exactly one generation.
+//
+// The search ends with generation h read present at some instant t1 and h+1 read absent at some
+// instant t2, both inside the invocation. At t1 the head is at least h. At t2 the head is at most h,
+// because h+1 is absent and presence is a prefix. Whichever read came first, the head moves through
+// every integer between those two values, so there is an instant between t1 and t2 at which the head
+// is exactly h. An empty answer is one read of generation 1 absent, which is the head at that
+// instant. The value reported is generation h's content, which is written once and never rewritten.
+// test.claim.approval_assertion_counter_wet_witness_test places an append between the search's reads
+// and shows the reported head is a real generation and the stale writer is refused by the exclusive
+// create.
+//
+// WHAT THE SEARCH NO LONGER OBSERVES: superseded generations it does not land on. The linear walk
+// read every one and would refuse on an unreadable generation below the head; this reads O(log n) of
+// them. No consumer reads a superseded generation, so none of this store's answers depends on them.
+// A HISTORY-INTEGRITY instrument -- every generation present, readable and well formed -- is
+// therefore a separate concern with its own subject, not a side effect of reading the head, and this
+// store does not claim to provide it.
 //
 // READ CLASSIFICATION IS THE HOST KIND CHANNEL, NEVER THE ERROR TEXT.
 // filesystem_exact_read already partitions NotFound from PermissionDenied /
@@ -238,54 +302,272 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // and a decision caller would try to occupy it.
 type CasSlotProbe
   = ProbedAbsent
+  | ProbedAbsenceUnestablished { cause: String }
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
-  | ProbedBeyondBound { bound: Int }
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
   | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
+  | ProbedWindowHeadUnsettled { attempts: Int }
 
-data cas_max_generation_probe: Int = 4096
+// One generation read, classified: present with its content, absent, or a typed refusal.
+type CasGenerationRead
+  = GenerationPresent { content: NonEmptyStr }
+  | GenerationAbsent
+  | GenerationRefused { probe: CasSlotProbe }
 
-fn cas_probe_from(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration, previous: NonEmptyStr) -> CasSlotProbe {
-  if cas_generation_count(g: generation) > cas_max_generation_probe {
-    ProbedBeyondBound { bound: cas_max_generation_probe }
-  } else {
-    let path = cas_file_slot_path(root: root, key: key, generation: generation)
-    let read = Filesystem.Read(path: path)
-    cas_probe_from_exact(
-      root: root,
-      key: key,
-      generation: generation,
-      previous: previous,
-      exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
-    )
+fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead {
+  let path = cas_file_slot_path(root: root, key: key, generation: generation)
+  let read = Filesystem.Read(path: path)
+  cas_classify_generation_read(
+    generation: generation,
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+  )
+}
+
+fn cas_classify_generation_read(generation: CasGeneration, exact: FilesystemExactRead) -> CasGenerationRead {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } => GenerationPresent { content: c as NonEmptyStr }
+    FilesystemExactPathAbsent { path: _ } => GenerationAbsent
+    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
+      GenerationRefused { probe: ProbedUnreadable { generation: generation, kind: k } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
+      GenerationRefused { probe: ProbedReadKindUnrecognized { generation: generation, observed: o } }
   }
 }
 
-fn cas_probe_from_exact(
-  root: NonEmptyStr,
-  key: NonEmptyStr,
-  generation: CasGeneration,
-  previous: NonEmptyStr,
-  exact: FilesystemExactRead,
-) -> CasSlotProbe {
-  match exact {
-    FilesystemExactPathRead { path: _, content: c } =>
-      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
-    FilesystemExactPathAbsent { path: _ } =>
-      if cas_generation_count(g: generation) == 1 {
-        ProbedAbsent
-      } else {
-        ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
-      }
-    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
-      ProbedUnreadable { generation: generation, kind: k }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
-      ProbedReadKindUnrecognized { generation: generation, observed: o }
+// INVARIANT: `present` was read present. Double until a generation reads absent; past half of the
+// Int range, probe the maximum instead of doubling, so no step overflows.
+fn cas_probe_gallop(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr) -> CasSlotProbe {
+  let p = cas_generation_count(g: present)
+  if p >= int_inclusive_max() {
+    ProbedHead { generation: present, value: present_value }
+  } else {
+    let next = if p <= int_inclusive_max() / 2 { p * 2 } else { int_inclusive_max() }
+    match cas_read_generation(root: root, key: key, generation: next) {
+      GenerationRefused { probe: r } => r
+      GenerationPresent { content: c } =>
+        cas_probe_gallop(root: root, key: key, present: next, present_value: c)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: next)
+    }
+  }
+}
+
+// INVARIANT: `present` read present, `absent` read absent, present < absent. The head is the last
+// present generation, reached when the two are adjacent.
+fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, absent: CasGeneration) -> CasSlotProbe {
+  let lo = cas_generation_count(g: present)
+  let hi = cas_generation_count(g: absent)
+  if hi - lo <= 1 {
+    ProbedHead { generation: present, value: present_value }
+  } else {
+    let mid = lo + (hi - lo) / 2
+    match cas_read_generation(root: root, key: key, generation: mid) {
+      GenerationRefused { probe: p } => p
+      GenerationPresent { content: c } =>
+        cas_probe_bisect(root: root, key: key, present: mid, present_value: c, absent: absent)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: mid)
+    }
+  }
+}
+
+// AN ABSENT FIRST GENERATION IS AN EMPTY SLOT ONLY IN AN ESTABLISHED STORE. The host answers
+// NotFound for the generation path both when the file is missing and when the slot ROOT is
+// (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent disclaims the directory), so reading
+// that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every reader saw "no
+// holder" and a decision caller admitted against a store it had never observed -- the absorbing
+// fallback DESIGN section 5 names, which hid fleet-converge run 35818578751's missing fabric store
+// until the first write.
+//
+// Absence is established by the filesystem authority's own route, not a second one beside it:
+// a listing of the slot root, asked through filesystem_entry_presence, is the only producer of
+// FilesystemEstablishedAbsence. A root that cannot be listed carries the host's cause into the
+// refusal; a listing that NAMES the generation the read just missed is two instants disagreeing,
+// and is refused rather than resolved in either direction. The listing is taken only on this arm
+// -- a slot with any generation never reaches it.
+fn cas_first_generation_absent(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
+  let name = cas_file_slot_name(key: key, generation: cas_generation_first())
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_entry_presence(listing: filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error), name: name) {
+    FilesystemEntryAbsent(_) => ProbedAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntryListed { directory: d, name: n } =>
+      ProbedAbsenceUnestablished { cause: join(["the read of ", n, " answered not found while the listing of ", d as String, " names it; the slot moved while it was being observed"], "") }
+  }
+}
+
+fn cas_absence_unestablished(cause: String) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: join(["an absent first generation is not an empty slot here: ", cause], "") as NonEmptyStr
   }
 }
 
 fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
-  cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
+  let first = cas_generation_first()
+  match cas_read_generation(root: root, key: key, generation: first) {
+    GenerationRefused { probe: p } => p
+    GenerationAbsent => cas_first_generation_absent(root: root, key: key)
+    GenerationPresent { content: c } =>
+      cas_probe_gallop(root: root, key: key, present: first, present_value: c)
+  }
+}
+
+// SLOT RETENTION IS DECLARED PER SLOT, AND THE DEFAULT IS TODAY'S BEHAVIOUR.
+//
+// Every slot above keeps its whole generation line, and several callers read that line as their
+// audit trail (authorization claims, approval receipts and device redemption, the SCM repository
+// slot, compute attempt lifecycles, secret-access admission, the fabric storage heads). Those keep
+// KeepAllGenerations, which each declares at its own call site rather than inheriting it -- a
+// default would let a future slot opt into deletion by omission.
+//
+// KeepGenerationWindow exists for a slot whose history is NOT evidence: a mutable index whose only
+// fact is its head (extdeps.realization.materialization_store_local's occupancy index is the first).
+// Its live generations are a contiguous WINDOW ending at the head; a writer, after its OWN commit,
+// deletes the generations that fell out of it, so the slot's file count stays bounded by the window
+// rather than by the number of commits. Because the window starts above 1, the gallop above cannot
+// find its head; a window read takes the head from a listing of the slot root and then VERIFIES it
+// -- the head must read present and head+1 absent -- and a reading that moved under it re-reads, up
+// to a bound, and otherwise refuses. It never guesses a head. Exclusion is unchanged: commits are
+// still create-new of head+1, so a losing writer still re-reads and retries and nothing waits on a
+// hold (which is why this, and not gunbc.durable_exclusive_hold_file_store, bounds the index).
+//
+// docs/plans/fabric-storage.md names the head-probe bound this shape also lifts, and assigns its
+// remedy to compaction -- a head that starts from a snapshot object. A window is that same
+// head-starting-above-1 shape for a slot whose history needs no snapshot. The fabric storage heads
+// are deliberately NOT opted in here: their history is their record, and that is their lane's call.
+//
+// k >= 2 is construction, not a check at use: CasGenerationWindow has one constructor, reached
+// only through cas_generation_window, so a narrower window cannot be written. Two is the floor
+// because a reader that listed head N while a writer committed N+1 must still find N present.
+type CasGenerationWindow sole_constructor {
+  k: Int
+}
+
+type CasGenerationWindowAdmission
+  = CasGenerationWindowAdmitted { window: CasGenerationWindow }
+  | CasGenerationWindowTooNarrow { k: Int }
+
+fn cas_generation_window(k: Int) -> CasGenerationWindowAdmission {
+  if k >= 2 { CasGenerationWindowAdmitted { window: CasGenerationWindow { k: k } } } else { CasGenerationWindowTooNarrow { k: k } }
+}
+
+type CasSlotRetention
+  = KeepAllGenerations
+  | KeepGenerationWindow { window: CasGenerationWindow }
+
+// A window read that keeps observing a moving head stops here and refuses with the attempt count.
+data cas_window_observation_attempt_bound: Int = 8
+
+// "<digits>" -> the generation it names; none for anything else, for zero, and for a value past the
+// Int maximum. The multiplication is pre-checked (std.checked_arithmetic: check before, never after).
+fn cas_generation_of_digits(s: String) -> CasGeneration? {
+  if !cas_name_is_digits(s: s) { none } else {
+    let parsed = fold(s |> chars, init: Present { value: 0 }, f: (acc, c) => match acc {
+      Absent => none
+      Present { value: n } =>
+        if n > (int_inclusive_max() - (c - 48)) / 10 { none } else { Present { value: n * 10 + (c - 48) } }
+    })
+    match parsed {
+      Absent => none
+      Present { value: n } => if n >= 1 { Present { value: n } } else { none }
+    }
+  }
+}
+
+// THIS key's generations named by a listing of the slot root. The listing is the same filesystem
+// authority cas_first_generation_absent consults, and a root that cannot be listed carries its cause.
+type CasWindowGenerations
+  = CasWindowGenerationsListed { generations: List<CasGeneration> }
+  | CasWindowGenerationsUnlisted { cause: String }
+
+fn cas_key_generation_of_name(key: NonEmptyStr, name: String) -> CasGeneration? {
+  let prefix = concat(key as String, ".")
+  if !starts_with(s: name, prefix: prefix) { none } else {
+    cas_generation_of_digits(s: substring(s: name, start: string_length(s: prefix), end: string_length(s: name)))
+  }
+}
+
+fn cas_window_generations(root: NonEmptyStr, key: NonEmptyStr) -> CasWindowGenerations
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_window"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_reclaim_below"),
+  ]
+{
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasWindowGenerationsUnlisted { cause: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => CasWindowGenerationsUnlisted { cause: e }
+    FilesystemDirectoryListed(listed) =>
+      CasWindowGenerationsListed {
+        generations: fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_generation_of_name(key: key, name: trim(s: n)) {
+          Absent => acc
+          Present { value: g } => acc |> list_push(g)
+        })
+      }
+  }
+}
+
+fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration? {
+  fold(generations, init: none, f: (best, g) => match best {
+    Absent => Present { value: g }
+    Present { value: b } => if cas_generation_count(g: g) > cas_generation_count(g: b) { Present { value: g } } else { best }
+  })
+}
+
+fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr, attempt: Int) -> CasSlotProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_window"),
+  ]
+{
+  if attempt > cas_window_observation_attempt_bound {
+    ProbedWindowHeadUnsettled { attempts: cas_window_observation_attempt_bound }
+  } else {
+    match cas_window_generations(root: root, key: key) {
+      CasWindowGenerationsUnlisted { cause: c } => ProbedAbsenceUnestablished { cause: c }
+      CasWindowGenerationsListed { generations: gs } =>
+        match cas_window_max_generation(generations: gs) {
+          Absent => ProbedAbsent
+          Present { value: head } =>
+            match cas_read_generation(root: root, key: key, generation: head) {
+              GenerationRefused { probe: p } => p
+              GenerationAbsent => cas_observe_window(root: root, key: key, attempt: attempt + 1)
+              GenerationPresent { content: c } =>
+                match cas_generation_successor(g: head) {
+                  CasSuccessorExhausted { head: _ } => ProbedHead { generation: head, value: c }
+                  CasSuccessorGeneration { generation: next } =>
+                    match cas_read_generation(root: root, key: key, generation: next) {
+                      GenerationRefused { probe: p } => p
+                      GenerationAbsent => ProbedHead { generation: head, value: c }
+                      GenerationPresent { content: _ } => cas_observe_window(root: root, key: key, attempt: attempt + 1)
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE ONE PLACE A SLOT'S RETENTION SELECTS ITS OBSERVATION.
+fn cas_observe_retained_slot(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> CasSlotProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_retained"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_owner_only_failed_publication"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+  ]
+{
+  match retention {
+    KeepAllGenerations => cas_observe_slot(root: root, key: key)
+    KeepGenerationWindow { window: _ } => cas_observe_window(root: root, key: key, attempt: 1)
+  }
+}
+
+fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: concat(concat("the window head moved during ", attempts as String), " observations and was not settled; a head is never guessed") as NonEmptyStr
+  }
 }
 
 // THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
@@ -309,12 +591,6 @@ fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasRea
       value: value,
     }
   }
-}
-
-// ONE AUTHORITY FOR WHAT BOUND EXHAUSTION IS. Three sites spelled it independently, twice as a
-// malformed head, and a fourth spelling would have arrived with the next caller.
-fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
-  CasUnreadableObservationBoundExceeded { bound: bound }
 }
 
 // AN UNREADABLE GENERATION IS A SLOT-OBSERVATION REFUSAL, NEVER AN ABSENT SLOT.
@@ -345,13 +621,13 @@ fn cas_generation_read_kind_unrecognized(generation: CasGeneration, observed: St
 
 fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyStr> {
   match probe {
-    ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
     ProbedUnreadable { generation: g, kind: k } =>
       CasObservedUnreadable { cause: cas_generation_unreadable(generation: g, kind: k) }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasObservedUnreadable { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedAbsenceUnestablished { cause: c } => CasObservedUnreadable { cause: cas_absence_unestablished(cause: c) }
+    ProbedWindowHeadUnsettled { attempts: a } => CasObservedUnreadable { cause: cas_window_head_unsettled(attempts: a) }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -371,9 +647,43 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
 // been narrowed out of existence. A caller must not read "the slot holds
 // nothing" from a store that could not tell it anything and then choose the
 // remedy for an empty cell.
-fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
-  cas_probe_as_observation(probe: cas_observe_slot(root: root, key: key))
+//
+// THE READ VERB ASKS THE SAME SLOT-ADDRESSABILITY QUESTION THE WRITE VERB ASKS (review 69793 of
+// gunbc#12000). cas_file_slot_path interpolates the key on reads exactly as on writes, and the
+// first route to hand a request-supplied identity to a read -- the device routes -- made a key
+// carrying a separator a probe of a path outside the root whose 404/503 answer discriminated
+// existence there. The refusal is the store's, before any filesystem read, so no caller re-argues it
+// and no host detail is minted for a key that never named a slot.
+fn observe_cas_slot_state_retained(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> CasSlotObservation<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_windowed"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_commit_at"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_retained"),
+  ]
+{
+  if !cas_key_is_slot_addressable(key: key) {
+    CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
+  } else {
+    cas_probe_as_observation(probe: cas_observe_retained_slot(root: root, key: key, retention: retention))
+  }
 }
+
+fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state_retained(root: root, key: key, retention: KeepAllGenerations)
+}
+
+fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
+  ]
+{
+  observe_cas_slot_state_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
+}
+
+data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-addressable: it carries a path separator"
+
 
 // ACCESS MODE AND CONDITIONAL PUBLICATION ARE TWO FACTS, AND THIS STORE HELD THEM AS ONE.
 //
@@ -415,8 +725,9 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 // So what is owed is a limitation with a restoration trigger, which is what this is. Caught by
 // external review of the drop row itself.
 //
-// THE POPULATION IS ONE CALLER, AND IT IS NAMED. `gunbc.srv3.srv3_boot_once_cd` publishes authorization
-// claim state under `/var/lib/gunbc/authorization-claims`, and that root is a bare path constant: no
+// THE POPULATION IS TWO CALLERS, AND THEY ARE NAMED. `gunbc.srv3.srv3_boot_once_cd` and
+// `gunbc.machine_intake_mtcollins1_boot_run` publish authorization claim state under
+// `authorization_claim_store_root`, and that root is a bare path constant: no
 // modeled directory ownership or mode authority stands beside it. Mode 0600 on the generation file is
 // therefore the ONLY confidentiality that state has, including for free-form abort-cause text, so
 // flipping it to the atomic binding would trade a durable-state hazard for a real privacy regression.
@@ -433,9 +744,16 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 // coproduct collapses to the single admitted publication operation. It is retired by that and by
 // nothing else; in particular it is NOT retired by a failure-atomic mode-carrying write, which would
 // be a different and larger capability than this population needs.
+// DeclaredModeCreateOnly is DefaultAccessCreateOnly's publication -- staged, synced, hard-linked,
+// so equally failure-atomic -- with the published mode declared by the store's own model rather than
+// left to whatever umask the writing process runs under. A store with more than one declared reader
+// needs it: under a `umask 077` step every generation publishes 0600 and the other reader is locked
+// out (gunbc.fabric_storage_placement). It is not a confidentiality binding; that remains
+// OwnerOnlyCreateOnly's, with its declared limitation above.
 type CasGenerationPublication
   = DefaultAccessCreateOnly
   | OwnerOnlyCreateOnly
+  | DeclaredModeCreateOnly { mode: FileMode }
 
 // THE ACTUATOR TAKES AN ADMITTED PUBLICATION, NOT A PATH AND SOME BYTES.
 //
@@ -458,6 +776,7 @@ type CasGenerationPublication
 type AdmittedCasPublication sole_constructor {
   root: NonEmptyStr
   publication: CasGenerationPublication
+  retention: CasSlotRetention
   attempt: CasAttempt<NonEmptyStr>
   target: CasGeneration
 }
@@ -482,7 +801,16 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
         attempt: attempt,
         target: target,
         created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
-        post: observe_cas_slot_state(root: root, key: attempt.key),
+        post: observe_cas_slot_state_retained(root: root, key: attempt.key, retention: admitted.retention),
+      )
+    }
+    DeclaredModeCreateOnly { mode } => {
+      let write = Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: file_mode_bits(mode: mode))
+      cas_outcome_from_create(
+        attempt: attempt,
+        target: target,
+        created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
+        post: observe_cas_slot_state_retained(root: root, key: attempt.key, retention: admitted.retention),
       )
     }
     OwnerOnlyCreateOnly => {
@@ -492,7 +820,7 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
           committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
         }
       } else {
-        cas_owner_only_failed_publication(root: root, attempt: attempt, target: target, detail: write.error)
+        cas_owner_only_failed_publication(root: root, retention: admitted.retention, attempt: attempt, target: target, detail: write.error)
       }
     }
   }
@@ -570,11 +898,16 @@ fn cas_occupied_publication_outcome(
 // distinction, so this says what happened.
 fn cas_owner_only_failed_publication(
   root: NonEmptyStr,
+  retention: CasSlotRetention,
   attempt: CasAttempt<NonEmptyStr>,
   target: CasGeneration,
   detail: String,
-) -> CasOutcome<NonEmptyStr> {
-  let probe = cas_observe_slot(root: root, key: attempt.key)
+) -> CasOutcome<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_commit_at"),
+  ]
+{
+  let probe = cas_observe_retained_slot(root: root, key: attempt.key, retention: retention)
   match probe {
     ProbedHead { generation: h, value: v } =>
       if cas_generation_count(g: h) >= cas_generation_count(g: target) {
@@ -586,43 +919,15 @@ fn cas_owner_only_failed_publication(
         cas_publication_refused(detail: detail)
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
-    ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
+    ProbedAbsenceUnestablished { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
-  }
-}
-
-// THE BOUND ARM CANNOT SAY THE STORE REFUSED TO PUBLISH, AND A FIRST CUT SAID IT ANYWAY.
-//
-// It routed `ProbedBeyondBound` to the publication refusal along with the other two, on the reasoning
-// that the write had failed and the target had not appeared. The second half does not follow. Consider
-// a slot whose head is 4095 and two writers targeting 4096:
-//
-//   the other writer wins 4096; this writer's create fails
-//   the re-observation reads 4096 successfully and probes 4097
-//   4097 exceeds the bound, so the probe answers ProbedBeyondBound
-//
-// Another writer DID publish. Reporting a publication refusal there invents the wrong cause -- the
-// same fabrication the lost-race repair one screen up exists to remove, reappearing in the arm that
-// repair did not consider. Found by external review.
-//
-// SO THIS ANSWERS WHAT IS ACTUALLY KNOWN: the slot could not be observed. It is a slot-observation
-// refusal, not a publication refusal and not a precondition failure, because the probe no longer holds
-// a readable head to report as the winner. The ordinary two-writer control runs far below the bound
-// and cannot discriminate this arm, so it has its own control.
-//
-// AND THE CAUSE IS BOUND EXHAUSTION, NOT A MALFORMED HEAD, which the first version of this repair got
-// wrong in the other direction: it stopped claiming the publication failed and then said the slot's
-// contents were garbage. A slot holding 4096 contiguous, perfectly well formed generations is not
-// malformed, and telling an operator it is sends them to repair bytes that are fine. Found by external
-// review, on this function's own repair.
-fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
-  CasStoreRefused {
-    cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: bound) }
+    ProbedWindowHeadUnsettled { attempts: a } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
   }
 }
 
@@ -639,30 +944,35 @@ fn cas_publication_refused(detail: String) -> CasOutcome<NonEmptyStr> {
 // EXPECTATION. That is the whole correction: an expectation is a claim about the
 // store, and deriving the write target from the claim rather than from the store
 // is what let an attempt expecting generation 7 commit against an empty slot.
-fn file_compare_and_set(
+fn cas_compare_and_set_outcome(
   root: NonEmptyStr,
   publication: CasGenerationPublication,
+  retention: CasSlotRetention,
   verified: VerifiedCasAttempt,
-) -> CasOutcome<NonEmptyStr> {
+) -> CasOutcome<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
+  ]
+{
   let attempt = verified.attempt
-  let probe = cas_observe_slot(root: root, key: attempt.key)
+  let probe = cas_observe_retained_slot(root: root, key: attempt.key, retention: retention)
   match probe {
-    ProbedBeyondBound { bound: b } =>
-      CasStoreRefused {
-        cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: b) }
-      }
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
+    ProbedAbsenceUnestablished { cause: c } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
+    ProbedWindowHeadUnsettled { attempts: a } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>
           cas_commit_at(
             admitted: AdmittedCasPublication {
-              root: root, publication: publication, attempt: attempt,
+              root: root, publication: publication, retention: retention, attempt: attempt,
               target: cas_generation_first(),
             }
           )
@@ -675,15 +985,162 @@ fn file_compare_and_set(
           CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
-            cas_commit_at(
-              admitted: AdmittedCasPublication {
-                root: root, publication: publication, attempt: attempt,
-                target: cas_generation_next(g: h),
-              }
-            )
+            match cas_generation_successor(g: h) {
+              CasSuccessorExhausted { head: last } => cas_generation_exhausted(head: last)
+              CasSuccessorGeneration { generation: next } =>
+                cas_commit_at(
+                  admitted: AdmittedCasPublication {
+                    root: root, publication: publication, retention: retention, attempt: attempt,
+                    target: next,
+                  }
+                )
+            }
           } else {
             CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
           }
       }
+  }
+}
+
+// RECLAMATION FOLLOWS THE WRITER'S OWN COMMIT, AND IT CANNOT FAIL THE COMMIT.
+//
+// Only a KeepGenerationWindow slot reclaims, and only after this writer's CasCommitted: it deletes
+// THIS key's generations at or below head-k, so head-k+1 .. head stay readable for a racing reader.
+// A delete the host refuses is REPORTED in the write's receipt and counted there -- the commit has
+// already happened and is the answer -- and the next committed write retries the same names, so a
+// transient refusal does not grow the slot past the next successful reclamation.
+// The host's own refusal text, carried verbatim: Filesystem.Delete answers success and error but no
+// error kind, so the text is the most this receipt can say and it is never replaced by a summary.
+type CasGenerationReclaimFailure {
+  generation: CasGeneration
+  host_error: String
+}
+
+// One delete, observed once: the receipt is split from these, never re-derived by searching.
+type CasGenerationDeleteAttempt {
+  generation: CasGeneration
+  success: Bool
+  error: String
+}
+
+type CasWindowReclamation
+  = CasReclamationNotDeclared
+  | CasReclamationNotCommitted
+  | CasReclaimed { removed: List<CasGeneration> }
+  | CasReclamationIncomplete { removed: List<CasGeneration>, failed: List<CasGenerationReclaimFailure> }
+  | CasReclamationUnlisted { cause: String }
+
+type CasFileWrite {
+  outcome: CasOutcome<NonEmptyStr>
+  reclamation: CasWindowReclamation
+}
+
+fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, head: CasGeneration) -> CasWindowReclamation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
+  ]
+{
+  match cas_window_generations(root: root, key: key) {
+    CasWindowGenerationsUnlisted { cause: c } => CasReclamationUnlisted { cause: c }
+    CasWindowGenerationsListed { generations: gs } => {
+      let floor = cas_generation_count(g: head) - window.k
+      let attempts = gs |> filter(g => cas_generation_count(g: g) <= floor) |> map(g => {
+        let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
+        CasGenerationDeleteAttempt { generation: g, success: d.success, error: d.error }
+      })
+      let removed = attempts |> filter(t => t.success) |> map(t => t.generation)
+      let failed = attempts |> filter(t => !t.success) |> map(t => CasGenerationReclaimFailure { generation: t.generation, host_error: t.error })
+      if count(failed) == 0 { CasReclaimed { removed: removed } } else { CasReclamationIncomplete { removed: removed, failed: failed } }
+    }
+  }
+}
+
+// THE STORE-OWNED COMPARE-AND-SET, WITH THE SLOT'S DECLARED RETENTION. Every caller names its slot's
+// retention here; KeepAllGenerations callers read .outcome and lose nothing, because their
+// reclamation is CasReclamationNotDeclared by construction.
+fn file_compare_and_set_retained(
+  root: NonEmptyStr,
+  publication: CasGenerationPublication,
+  retention: CasSlotRetention,
+  verified: VerifiedCasAttempt,
+) -> CasFileWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_commit"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_commit"),
+  ]
+{
+  let outcome = cas_compare_and_set_outcome(root: root, publication: publication, retention: retention, verified: verified)
+  match retention {
+    KeepAllGenerations => CasFileWrite { outcome: outcome, reclamation: CasReclamationNotDeclared }
+    KeepGenerationWindow { window: w } =>
+      match outcome {
+        CasCommitted { committed: v } =>
+          CasFileWrite { outcome: outcome, reclamation: cas_reclaim_below(root: root, key: verified.attempt.key, window: w, head: v.generation) }
+        CasPreconditionFailed { expected: _, observed: _ } => CasFileWrite { outcome: outcome, reclamation: CasReclamationNotCommitted }
+        CasStoreRefused { cause: _ } => CasFileWrite { outcome: outcome, reclamation: CasReclamationNotCommitted }
+      }
+  }
+}
+
+fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  file_compare_and_set_retained(root: root, publication: publication, retention: KeepAllGenerations, verified: verified).outcome
+}
+
+fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_settled"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "run_cas_in"),
+  ]
+{
+  file_compare_and_set_retained(root: root, publication: publication, retention: KeepGenerationWindow { window: window }, verified: verified)
+}
+
+// ── Which slots exist ────────────────────────────────────────────────────────────────────────
+// THE STORE OWNS BOTH DIRECTIONS OF ITS LAYOUT. cas_file_slot_path renders "<root>/<key>.<n>", so
+// the inverse over a directory listing strips exactly one trailing ".<digits>" -- the generation
+// is always the LAST dotted component and always numeric, so a key that itself contains "." reads
+// back unchanged. This is the one place a name is parsed back into a key, beside the function
+// that made the name; a consumer that split file names itself would be the second identity
+// authority the head-probe note above refuses. The listing answers WHICH keys have a slot; each
+// key's standing is still read through observe_cas_slot_state.
+type CasSlotKeys
+  = CasSlotKeysListed { keys: List<NonEmptyStr> }
+  | CasSlotKeysListingRefused { root: NonEmptyStr, detail: String }
+  | CasSlotKeysSubjectRefused { root: NonEmptyStr, cause: String }
+
+fn cas_name_is_digits(s: String) -> Bool {
+  s != "" && decimal_digits_only(s: s)
+}
+
+// "<key>.<n>" -> key, or none for a name that is not a slot file.
+fn cas_key_of_slot_name(name: String) -> NonEmptyStr? {
+  let parts: List<String> = name.split(delimiter: ".")
+  if count(parts) < 2 { none } else {
+    let last = match first(skip(parts, count(parts) - 1)) {
+      Absent => ""
+      Present { value: p } => p
+    }
+    if !cas_name_is_digits(s: last) { none } else {
+      let key = join(parts |> take(count(parts) - 1), ".")
+      if key == "" { none } else { Present { value: key as NonEmptyStr } }
+    }
+  }
+}
+
+fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
+    FilesystemDirectoryListed(listed) => {
+      let keys = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+        Absent => acc
+        Present { value: k } => acc |> list_push(k)
+      })
+      CasSlotKeysListed { keys: distinct_by_key(xs: keys, key: fn(k) { k as String }) }
+    }
   }
 }

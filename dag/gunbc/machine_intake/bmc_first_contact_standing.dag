@@ -1,0 +1,19 @@
+module gunbc.machine_intake_bmc_first_contact_standing
+
+import std.types { NonEmptyStr }
+import extdeps.bmc.endpoint { BmcFirmwareFamily }
+
+// INTAKE FIRST CONTACT IS FAMILY-NEUTRAL. gunbc.tools.bmc_first_contact writes the OpenBMC factory
+// login and calls authenticated GetSystem. That is the srv1/srv2 OpenBMC path. It is not the
+// producer for an unknown used machine: Mt. Collins had no Redfish, and Mt. Jade cites MegaRAC or
+// OpenBMC until the controller answers. Transport presence (HTTPS, Redfish JSON, IPMI) is not a
+// family. Matching discriminator prose is not a family either.
+//
+// There is no function from Redfish presence to this type (review 67792): ProbeServiceRoot
+// records an HTTP surface and does not mint OpenBMC versus MegaRAC. Authenticated first contact
+// is selected from an OBSERVED BmcFirmwareFamily in gunbc.bmc_implementation_dispatch — factory
+// login, protocols, host-storage visibility, rotation route — not from a pair of intake Bools.
+
+type BmcFirmwareFamilyStanding
+  = FamilyObserved { family: BmcFirmwareFamily }
+  | FamilyUnobserved { discriminator: NonEmptyStr }

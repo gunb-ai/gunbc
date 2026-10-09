@@ -1,9 +1,12 @@
 module extdeps.automation.playwright
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int, List, brand }
+import std.optional { Present, Absent }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.algebra { Cons, Empty }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,7 +36,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.automation.playwright.extdeps_external_authority_anchor,
-  further_citations: [extdeps.automation.playwright.playwright_browser_provisioning_authority]
+  further_citations: [
+    extdeps.automation.playwright.playwright_browser_provisioning_authority,
+    extdeps.automation.playwright.playwright_browsers_json_authority,
+    extdeps.automation.playwright.playwright_native_deps_authority,
+    extdeps.automation.playwright.playwright_npm_registry_authority,
+    extdeps.automation.playwright.playwright_core_npm_registry_authority,
+  ]
 }
 
 type PlaywrightVersion = NonEmptyStr where brand("PlaywrightVersion")
@@ -53,3 +62,197 @@ type PlaywrightBrowserBinaryProvenance
   = | PlaywrightManagedChromiumDownload
 
 data playwright_identity_boundary_note: NonEmptyStr = "PlaywrightBuild names the automation dependency. PlaywrightManagedChromiumDownload says only that Playwright provisioned and launched the tested Chromium binary; it does not reclassify that binary as Google Chrome or establish behavior for any browser distribution." as NonEmptyStr
+
+// THE DISTRIBUTED PACKAGES, AS THE npm REGISTRY PUBLISHES THEM. playwright@1.62.1 declares exactly
+// one runtime dependency, playwright-core@1.62.1 (fsevents is an optional macOS-only dependency), and
+// both declare engines.node ">=20". The registry publishes each tarball's integrity as an SRI sha512
+// (dist.integrity at registry.npmjs.org/<name>/1.62.1), which is the digest a consumer verifies --
+// it is upstream's published figure, so it lives here, cited, rather than as a receipt downstream.
+data playwright_npm_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "registry.npmjs.org/playwright/1.62.1"
+  }
+}
+
+data playwright_core_npm_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "registry.npmjs.org/playwright-core/1.62.1"
+  }
+}
+
+type PlaywrightNpmPackageName = NonEmptyStr where brand("PlaywrightNpmPackageName")
+
+// integrity IS THE SRI WIRE EXACTLY AS THE REGISTRY PUBLISHES IT ("sha512-<base64>"); extdeps.npm
+// npm_decode_integrity is the one decoder of that wire, so it is not re-rendered as hex here.
+type PlaywrightNpmTarball {
+  package: PlaywrightNpmPackageName
+  build: PlaywrightBuild
+  tarball_url: NonEmptyStr
+  integrity: NonEmptyStr
+  node_engine_floor_major: Int
+  published_by: ExternalAuthority
+}
+
+data playwright_1_62_1_npm_tarball: PlaywrightNpmTarball = PlaywrightNpmTarball {
+  package: "playwright" as PlaywrightNpmPackageName,
+  build: playwright_1_62_1,
+  tarball_url: "https://registry.npmjs.org/playwright/-/playwright-1.62.1.tgz",
+  integrity: "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==",
+  node_engine_floor_major: 20,
+  published_by: extdeps.automation.playwright.playwright_npm_registry_authority,
+}
+
+data playwright_core_1_62_1_npm_tarball: PlaywrightNpmTarball = PlaywrightNpmTarball {
+  package: "playwright-core" as PlaywrightNpmPackageName,
+  build: playwright_1_62_1,
+  tarball_url: "https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.1.tgz",
+  integrity: "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==",
+  node_engine_floor_major: 20,
+  published_by: extdeps.automation.playwright.playwright_core_npm_registry_authority,
+}
+
+// An npm tarball wraps its tree in one `package/` directory; installing it as node_modules/<name>
+// strips exactly that one component.
+data playwright_npm_tarball_strip_components: Int = 1
+
+// THE BROWSER BUILDS THIS PLAYWRIGHT PINS, from packages/playwright-core/browsers.json at the
+// pinned source revision: `chromium` and `chromium-headless-shell` both at revision 1234, both
+// browserVersion 151.0.7922.34 (the ChromiumBuild row), both installByDefault. Headless launches
+// use the headless shell; the full build is what `headless: false` or `channel: "chromium"`
+// launches. Both are provisioned because the pair is what `playwright install chromium` installs.
+data playwright_browsers_json_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/microsoft/playwright/blob/26a9e470a7b3c7822084b09fb7f13902c5f37b51/packages/playwright-core/browsers.json"
+  }
+}
+
+type PlaywrightBrowserName
+  = PlaywrightChromium
+  | PlaywrightChromiumHeadlessShell
+
+type PlaywrightBrowserRevision = NonEmptyStr where brand("PlaywrightBrowserRevision")
+
+// A HOST PLATFORM IN PLAYWRIGHT'S OWN VOCABULARY (hostPlatform.ts). Only the one the fleet runs is
+// modeled; another is a new arm, never a string.
+type PlaywrightHostPlatform
+  = | PlaywrightUbuntu2404Arm64
+
+// install_directory is where Playwright's registry resolves the build under PLAYWRIGHT_BROWSERS_PATH
+// (the browser name with '-' replaced by '_', a dash, the revision; registry/index.ts), and
+// executable_relative is EXECUTABLE_PATHS["<name>"]["linux-arm64"] within it.
+type PlaywrightBrowserDownload {
+  browser_name: PlaywrightBrowserName
+  build: ChromiumBuild
+  revision: PlaywrightBrowserRevision
+  platform: PlaywrightHostPlatform
+  url: NonEmptyStr
+  install_directory: NonEmptyStr
+  executable_relative: NonEmptyStr
+}
+
+// THE DOWNLOAD HOST IS PLAYWRIGHT'S CDN (registry/index.ts DOWNLOAD_PATHS, "builds/chromium/%s/
+// chromium-linux-arm64.zip" and "builds/chromium/%s/chromium-headless-shell-linux-arm64.zip" for
+// ubuntu24.04-arm64). Upstream publishes NO digest beside these archives: the sha256 a converge
+// verifies against is this repository's observation and lives downstream as a receipt
+// (gunbc.runner_browser_toolchain), not here.
+data playwright_chromium_1234_linux_arm64: PlaywrightBrowserDownload = PlaywrightBrowserDownload {
+  browser_name: PlaywrightChromium,
+  build: chromium_151_0_7922_34,
+  revision: "1234" as PlaywrightBrowserRevision,
+  platform: PlaywrightUbuntu2404Arm64,
+  url: "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1234/chromium-linux-arm64.zip",
+  install_directory: "chromium-1234",
+  executable_relative: "chrome-linux/chrome",
+}
+
+data playwright_chromium_headless_shell_1234_linux_arm64: PlaywrightBrowserDownload = PlaywrightBrowserDownload {
+  browser_name: PlaywrightChromiumHeadlessShell,
+  build: chromium_151_0_7922_34,
+  revision: "1234" as PlaywrightBrowserRevision,
+  platform: PlaywrightUbuntu2404Arm64,
+  url: "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1234/chromium-headless-shell-linux-arm64.zip",
+  install_directory: "chromium_headless_shell-1234",
+  executable_relative: "chrome-linux/headless_shell",
+}
+
+// Playwright resolves its browser cache from this variable when set (registry/index.ts).
+data playwright_browsers_path_env: NonEmptyStr = "PLAYWRIGHT_BROWSERS_PATH"
+
+// THE HOST LIBRARY PREREQUISITES `playwright install-deps chromium` WOULD PULL, transcribed from
+// packages/playwright-core/src/server/registry/nativeDeps.ts at the pinned revision:
+// deps["ubuntu24.04-arm64"].chromium, which that file defines as the ubuntu24.04-x64 list. The
+// soname rows are that file's lib2package entries for exactly the sonames the two Chromium
+// executables leave unresolved on a host without them (measured with ldd against both binaries of
+// revision 1234 on a bare Debian arm64 container, 2026-09-28), so a missing library is named by the
+// package that provides it rather than by guess.
+data playwright_native_deps_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/microsoft/playwright/blob/26a9e470a7b3c7822084b09fb7f13902c5f37b51/packages/playwright-core/src/server/registry/nativeDeps.ts"
+  }
+}
+
+type PlaywrightHostLibraryPackage = NonEmptyStr where brand("PlaywrightHostLibraryPackage")
+
+type PlaywrightSonamePackage {
+  soname: NonEmptyStr
+  package: PlaywrightHostLibraryPackage
+}
+
+fn playwright_host_library_package(name: String) -> PlaywrightHostLibraryPackage {
+  (name as NonEmptyStr) as PlaywrightHostLibraryPackage
+}
+
+data playwright_chromium_install_deps_ubuntu2404_arm64: List<PlaywrightHostLibraryPackage> = map([
+  "libasound2t64", "libatk-bridge2.0-0t64", "libatk1.0-0t64", "libatspi2.0-0t64", "libcairo2",
+  "libcups2t64", "libdbus-1-3", "libdrm2", "libgbm1", "libglib2.0-0t64", "libnspr4", "libnss3",
+  "libpango-1.0-0", "libx11-6", "libxcb1", "libxcomposite1", "libxdamage1", "libxext6",
+  "libxfixes3", "libxkbcommon0", "libxrandr2",
+], p => playwright_host_library_package(name: p))
+
+fn playwright_soname_row(soname: String, package: String) -> PlaywrightSonamePackage {
+  PlaywrightSonamePackage { soname: soname as NonEmptyStr, package: playwright_host_library_package(name: package) }
+}
+
+data playwright_chromium_lib2package_ubuntu2404_arm64: List<PlaywrightSonamePackage> = [
+  playwright_soname_row(soname: "libglib-2.0.so.0", package: "libglib2.0-0t64"),
+  playwright_soname_row(soname: "libgobject-2.0.so.0", package: "libglib2.0-0t64"),
+  playwright_soname_row(soname: "libgio-2.0.so.0", package: "libglib2.0-0t64"),
+  playwright_soname_row(soname: "libnspr4.so", package: "libnspr4"),
+  playwright_soname_row(soname: "libnss3.so", package: "libnss3"),
+  playwright_soname_row(soname: "libnssutil3.so", package: "libnss3"),
+  playwright_soname_row(soname: "libsmime3.so", package: "libnss3"),
+  playwright_soname_row(soname: "libatk-1.0.so.0", package: "libatk1.0-0t64"),
+  playwright_soname_row(soname: "libatk-bridge-2.0.so.0", package: "libatk-bridge2.0-0t64"),
+  playwright_soname_row(soname: "libatspi.so.0", package: "libatspi2.0-0t64"),
+  playwright_soname_row(soname: "libdbus-1.so.3", package: "libdbus-1-3"),
+  playwright_soname_row(soname: "libcups.so.2", package: "libcups2t64"),
+  playwright_soname_row(soname: "libdrm.so.2", package: "libdrm2"),
+  playwright_soname_row(soname: "libgbm.so.1", package: "libgbm1"),
+  playwright_soname_row(soname: "libasound.so.2", package: "libasound2t64"),
+  playwright_soname_row(soname: "libcairo.so.2", package: "libcairo2"),
+  playwright_soname_row(soname: "libpango-1.0.so.0", package: "libpango-1.0-0"),
+  playwright_soname_row(soname: "libX11.so.6", package: "libx11-6"),
+  playwright_soname_row(soname: "libxcb.so.1", package: "libxcb1"),
+  playwright_soname_row(soname: "libXcomposite.so.1", package: "libxcomposite1"),
+  playwright_soname_row(soname: "libXdamage.so.1", package: "libxdamage1"),
+  playwright_soname_row(soname: "libXext.so.6", package: "libxext6"),
+  playwright_soname_row(soname: "libXfixes.so.3", package: "libxfixes3"),
+  playwright_soname_row(soname: "libXrandr.so.2", package: "libxrandr2"),
+  playwright_soname_row(soname: "libxkbcommon.so.0", package: "libxkbcommon0"),
+]
+
+fn playwright_package_in(rows: List<PlaywrightSonamePackage>, soname: String) -> PlaywrightHostLibraryPackage? {
+  match rows {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if (row.soname as String) == soname { Present { value: row.package } } else { playwright_package_in(rows: rest, soname: soname) }
+  }
+}
+
+fn playwright_package_for_soname(soname: String) -> PlaywrightHostLibraryPackage? {
+  playwright_package_in(rows: playwright_chromium_lib2package_ubuntu2404_arm64, soname: soname)
+}

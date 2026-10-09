@@ -1,0 +1,47 @@
+module gunbc.resolver_cost_frontier
+
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
+
+// THE RESOLVER-COST LANE'S DECLARED FRONTIERS: work the v1 seed resolver still does eagerly or
+// retains, plus evidence the lane's landed changes still owe, each named with the capability whose
+// arrival retires it. Rostered through
+// gunbc.census_closure_frontier so the dissolution census reads them.
+data resolver_cost_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "census_bare_fill_with_resolved_fn_sigs"),
+    reason: "bare-fill signature upgrade is eager over every bare name of the tree, while a closure's typecheck reads only the names it looks up (gunbc#12716)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this bare lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so a global_bare key can be upgraded on demand without a lazy cell or a new refusal arm in frozen v1"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "symbol_index_with_bare_fill"),
+    reason: "every closure's typecheck composes its root's whole-tree bare census (tree_bare_census_for_root) and that census's variant base before any lookup, while the closure reads only the names it looks up; a closure whose names all resolve through imports pays the whole tree. Measured by the gunbc run pre-entry rows reconcile_root_bare_underlay and reconcile_root_variant_base (gunbc#12864)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this bare lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so the tree layer is produced per demanded name with its full candidate list, without a restricted-domain refusal arm in frozen v1"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "symbol_index_with_qualified_fill"),
+    reason: "every closure's typecheck composes the whole-pool qualified fill (pool_qualified_fill) before any lookup, while the closure reads only the qualified names it looks up. Measured by the gunbc run pre-entry row reconcile_pool_qualified_fill (gunbc#12864)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this qualified lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so a pool entry is produced on demand without a restricted-domain refusal arm in frozen v1"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.parse", decl_name: "parse_heads_with_table"),
+    reason: "every gunbc run demands the full heads reading (tokenize plus heads parse) of every pool file: the module path index is its first demander and pool_parse projects the same memoized reading for the pool name set, the closure name census and the tree bare census. Narrowing the index to module declarations alone would move this cost to pool_census_parse, not remove it, while those whole-pool consumers stay eager. Measured by the gunbc run pre-entry rows pool_source_tokenize, pool_source_newline_index and pool_heads_parse, recorded at the producer whichever walk demands a file first, and pool_census_parse (gunbc#12864). For whoever takes M1: the index also refuses a malformed item head anywhere in the pool, a second authority for what run_dag_parse_sweep owns in required CI, but the CLI and local routes do not run the sweep, so retiring that refusal is an authority question to settle per route, not a cost one",
+    dissolution: unbound_dissolution(description: "demand identity for 'this name, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so no consumer of a closure run demands a whole-pool heads reading and the module path index can read module declarations alone"),
+  ),
+  frontier_row_path(
+    path: "src/v1/stage0/src/cli_run/required_floor_runner.rs",
+    reason: "the pure-producer warm builds and drops one WHOLE-CLOSURE evaluation frame per producer module (WarmFrameSlot), held one at a time so the freed frames no longer grow the allocator arena, while a warm reads only a small share of the frame index (the frame-demand reading on gunbc#12890). Holding them one at a time moved their drop into the warm and costs more per frame than holding them together: a CPU residual on the floor accepted as a stated trade against the peak saving (gunbc#12890, lane manager selection of 2026-10-01)",
+    dissolution: unbound_dissolution(description: "the demand-sized frame consumes the (name, namespace) declarer pool of PR-2 (docs/plans/type-env-single-authority-design.md): a runtime scope resolves each demanded name from the pool-level declarer index that surface_pool_admit admits in the runtime-item namespace, so no frame materializes the indexes of its whole closure"),
+  ),
+  frontier_row_path(
+    path: "src/v1/stage0/src/cli_run/pool_acquire.rs",
+    reason: "HeadsReading.module is retained for the process: every MultiEntryIndex whose pool contains the file projects it, and a run builds its indexes on demand by phase routing, so no release point is known when the first census projects it (gunbc#12768)",
+    dissolution: unbound_dissolution(description: "the set of MultiEntryIndex constructions that will demand each pool file is derivable before the first projection, so the heads module node is released after the last demanding index projects it rather than re-parsed"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.runtime_rust", decl_name: "rt_collection_ops"),
+    reason: "the EMITTED route of list_at_optional (the get primitive realized as v1_rt::list_get_optional, authored in rt_collection_ops) is unwitnessed by execution: list_at_equivalence_test executes the seed interpreter's native read against list_at_reference, but no claim emits, builds and runs a program that reads a list through list_get_optional. gunbc#12944 merged before the operator decided whether to extend the emit_host_identity_cast_native scaffold's population to carry that fixture (escalation msg_7bdba37a), so this row declares the gap instead of leaving it silent",
+    dissolution: unbound_dissolution(description: "an executing emit-build-run route covers list_get_optional, comparing in-range, end, past-end and negative indices against explicit expected values, with Absent identical on both routes: for example the operator approving the identity-cast fixture fn f(i: Int) -> Int over list_at_optional, or the TargetModel host-entrypoint grammar that dissolves that scaffold"),
+  ),
+]

@@ -1,0 +1,40 @@
+module gunbc.rung_drop.app_attest_verifier_enrolment_dead_band_observed_only
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for the enrolment margin over EXACTLY TWO App Attest verifier claims whose
+// honest CPU lies in the gate's dead band (margin, per-subject line] (DESIGN 4b(3); side-chat ruling on
+// gunbc#11989, PR comment 5795659115; precedent `long_home_enrolment_margin_observed_only`).
+//
+// WHAT IS LOST IS THE ENROLMENT-MARGIN DECISION, AND ONLY THAT. The two claims stay test fns and
+// execute on every required floor that plans them; a semantic red, a runtime error, a route gap, a wall
+// interruption, a missing terminal and an eval-step overrun are other gates' and stay armed. For these
+// two identities, an exact observed CPU strictly above the margin and at or under the line is reported
+// and does not block. Every other reading keeps its blocking result, and the authority is
+// self-staling on both sides: at or under the margin it blocks as enrolment_dead_band_stale, and
+// above the line as enrolment_dead_band_wrong_ground.
+//
+// THIS IS NOT "NOT EXECUTED". The previous proposal (ordinary functions, off the floor) would have
+// been that, and it was refused.
+data app_attest_verifier_enrolment_dead_band_observed_only: RungDrop = RungDrop {
+  identity: "app_attest_verifier_enrolment_dead_band_observed_only" as NonEmptyStr,
+
+  subject: "the enrolment-margin decision over exactly two App Attest verifier claims whose honest CPU lies in (margin, per-subject line]: they execute, and an exact reading inside the band is reported rather than decided",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a general dead-band standing in v2.workflow.floor_enrolment_margin, or these two identities executing with stable headroom below the margin" },
+    population: [
+      "test.claim.app_attest_verifier_witness_test.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id",
+      "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions",
+    ],
+    restoration_trigger: "THE CAPABILITY, EITHER OF TWO: (a) these EXACT two identities execute on a named native route (the gunbc test instrument row gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names) with stable headroom below the enrolment margin across the envelope floor_enrolment_margin derives; or (b) a general repair of the dead-band policy in v2.workflow.floor_enrolment_margin gives every newly enrolled identity in the band a representable standing (gunbc.recurring_failure_mode enrolment_dead_band_has_no_representable_standing). MachineWidth<N> reification or the native frontier ALONE does not retire this row: what must hold is that the two readings are under the margin with headroom, or that the policy no longer needs an exact-identity authority. v2.workflow.floor_enrolment_dead_band and this row then delete together.",
+  }
+}

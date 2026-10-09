@@ -1,0 +1,293 @@
+module gunbc.spark.arm_group_launch_dispatch
+
+import product.host_identity { HostIdentity }
+import std.types { String, List, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, exit_failure }
+import gunbc.fleet_multi_principal_probe { env_var_nonempty }
+import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet, group_arm_occupancy_observe_session }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4 }
+import gunbc.spark.group_checkpoint_materialize { CheckpointMaterialization, checkpoint_materialize_wet }
+import gunbc.spark.runtime_image_produce_dispatch { runtime_image_env, runtime_image_options, runtime_image_choice_of_wire, runtime_image_held_of }
+import gunbc.spark.glm53_staircase_load { glm53_step_load, Glm53StepLoadReady, Glm53StepLoadRefused, glm53_step_load_session }
+import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ExitSuccess }
+import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session, v41_group_a_deployment_env }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { Second, second, second_count }
+import std.types { Duration }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.glm53_arm_staircase { glm53_step_deployment_env, Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
+
+// ── WHICH ARM A GROUP-LAUNCH MODE RUNS, FROM CLOSED WORKFLOW INPUTS (deforking cut 8a) ────────────
+//
+// THE DISPATCH THAT SELECTS A REALIZATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral
+// to both arms and to the one launch path: gunbc.spark.group_arm_launch knows no arm, each arm module
+// knows only itself, and this module is the only place that knows the roster. The workflow modes
+// spark_arm_group_launch_plan and spark_arm_group_launch (gunbc.fleet.fleet_converge_workflow) call
+// the two entries below; the arm, the staircase step and the declared incumbent are dispatch inputs
+// whose options are the wires of the closed types they parse into, so an unknown word refuses and names
+// the vocabulary rather than being typed through.
+//
+// V4.1 TAKES NO STEP AND NO INCUMBENT. Its shape is the capacity measurement's and it refuses every
+// occupied host, so a step or an incumbent supplied for it is a dispatch that asked for something this
+// arm does not have, and it refuses rather than ignoring the input.
+type ArmGroupLaunchChoice
+  = ArmV41GroupA
+  | ArmGlm53GroupAStep { step: Glm53StaircaseStep, incumbent: Glm53IncumbentChoice }
+
+type ArmGroupLaunchSelection
+  = ArmGroupLaunchSelected { choice: ArmGroupLaunchChoice }
+  | ArmGroupLaunchSelectionRefused { cause: String }
+
+data arm_group_launch_arm_env: NonEmptyStr = "GUNBC_ARM_LAUNCH" as NonEmptyStr
+data arm_group_launch_step_env: NonEmptyStr = "GUNBC_ARM_STAIRCASE_STEP" as NonEmptyStr
+data arm_group_launch_incumbent_env: NonEmptyStr = "GUNBC_ARM_INCUMBENT" as NonEmptyStr
+
+data arm_group_launch_arm_v41: String = "v41-group-a"
+data arm_group_launch_arm_glm53: String = "glm53-group-a"
+
+fn arm_group_launch_arm_options() -> List<String> {
+  [arm_group_launch_arm_v41, arm_group_launch_arm_glm53]
+}
+
+fn arm_group_launch_step_options() -> List<String> {
+  map(glm53_staircase_steps, s => glm53_step_wire(s: s) as String)
+}
+
+fn arm_group_launch_incumbent_options() -> List<String> {
+  map(glm53_incumbent_choices, c => glm53_incumbent_choice_wire(c: c) as String)
+}
+
+// THE DECISION, SEPARATED FROM THE ENVIRONMENT READ SO IT IS WITNESSABLE AT ALL. An absent input is the
+// empty word.
+fn arm_group_launch_select(arm: String, step: String, incumbent: String) -> ArmGroupLaunchSelection {
+  if arm == arm_group_launch_arm_v41 {
+    if step != "" || incumbent != "" {
+      ArmGroupLaunchSelectionRefused { cause: join(["the V4.1 Group A arm takes no staircase step and no declared incumbent (its shape is the capacity measurement's and it refuses every occupied host); got step `", step, "` incumbent `", incumbent, "`"], "") }
+    } else {
+      ArmGroupLaunchSelected { choice: ArmV41GroupA }
+    }
+  } else if arm == arm_group_launch_arm_glm53 {
+    match glm53_step_of_wire(word: step) {
+      Absent => ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_step_env as String, "=`", step, "` is not a GLM staircase step; the steps are ", join(arm_group_launch_step_options(), ", ")], "") }
+      Present { value: s } =>
+        match glm53_incumbent_choice_of_wire(word: incumbent) {
+          Absent => ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_incumbent_env as String, "=`", incumbent, "` is not an incumbent choice; the choices are ", join(arm_group_launch_incumbent_options(), ", ")], "") }
+          Present { value: c } => ArmGroupLaunchSelected { choice: ArmGlm53GroupAStep { step: s, incumbent: c } }
+        }
+    }
+  } else {
+    ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_arm_env as String, "=`", arm, "` is not an arm; the arms are ", join(arm_group_launch_arm_options(), ", ")], "") }
+  }
+}
+
+fn env_word(name: NonEmptyStr) -> String {
+  match env_var_nonempty(name: name) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn arm_group_launch_selection_from_env() -> ArmGroupLaunchSelection {
+  arm_group_launch_select(arm: env_word(name: arm_group_launch_arm_env), step: env_word(name: arm_group_launch_step_env), incumbent: env_word(name: arm_group_launch_incumbent_env))
+}
+
+fn arm_group_launch_dry_plan_of(c: ArmGroupLaunchChoice) -> ArmDryPlan {
+  match c {
+    ArmV41GroupA => v41_group_a_dry_plan()
+    ArmGlm53GroupAStep { step: s, incumbent: i } => glm53_step_dry_plan(s: s, choice: i)
+  }
+}
+
+fn arm_group_launch_wet_session_of(c: ArmGroupLaunchChoice) -> ArmWetSession {
+  match c {
+    ArmV41GroupA => v41_group_a_wet_session()
+    ArmGlm53GroupAStep { step: s, incumbent: i } => glm53_step_wet_session(s: s, choice: i)
+  }
+}
+
+data arm_group_launch_plan_path: String = "target/arm-group-launch-plan.txt"
+data arm_group_launch_receipt_path: String = "target/arm-group-launch-receipt.txt"
+
+// THE DRY-PLAN ENTRY (mode spark_arm_group_launch_plan): reaches no host except the authority log's
+// read; exits zero only when the plan is ADMITTED, and writes the report either way.
+fn arm_group_launch_plan_ci() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => group_arm_dry_plan_write(title: "arm group launch", plan: arm_group_launch_dry_plan_of(c: c), path: arm_group_launch_plan_path)
+  }
+}
+
+// THE WET ENTRY (mode spark_arm_group_launch): exits zero only when the arm COMMITTED.
+fn arm_group_launch_ci_wet() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => group_arm_launch_wet(arm: arm_group_launch_wet_session_of(c: c), receipt_path: arm_group_launch_receipt_path)
+  }
+}
+
+// THE OBSERVE NEEDS ONLY THE ARM'S GROUP, so it parses only the arm word: a step or an incumbent is
+// a launch's input, and an observation that demanded one would ask the operator for a value it never
+// reads.
+type ArmGroupOfWord
+  = ArmGroupNamed { group: FabricGroup }
+  | ArmGroupWordRefused { cause: String }
+
+fn arm_group_of_word(arm: String) -> ArmGroupOfWord {
+  if arm == arm_group_launch_arm_v41 { ArmGroupNamed { group: FabricGroupA } }
+  else if arm == arm_group_launch_arm_glm53 { ArmGroupNamed { group: FabricGroupA } }
+  else { ArmGroupWordRefused { cause: join([arm_group_launch_arm_env as String, "=`", arm, "` is not an arm; the arms are ", join(arm_group_launch_arm_options(), ", ")], "") } }
+}
+
+data arm_group_observe_receipt_path: String = "target/arm-group-observe-receipt.txt"
+
+// THE READ-ONLY OBSERVE ENTRY (mode spark_arm_group_observe): the chosen arm's GROUP, every host's
+// running units, containers and GPU processes with their owning cgroups.
+fn arm_group_observe_ci() -> ProcessExit {
+  match arm_group_of_word(arm: env_word(name: arm_group_launch_arm_env)) {
+    ArmGroupWordRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupNamed { group: g } => group_arm_launch_wet(arm: group_arm_occupancy_observe_session(group: g), receipt_path: arm_group_observe_receipt_path)
+  }
+}
+
+// ── WHICH CHECKPOINT THE MATERIALIZE MODE ACQUIRES, FOR WHICH ARM ─────────────────────────────────
+//
+// The GLM arm's two staircase checkpoints, by a closed word (mode spark_arm_checkpoint_materialize,
+// dispatch input `checkpoint`). V4.1 materializes through its own mode (spark_v41_checkpoint_materialize,
+// gunbc.spark.v41_checkpoint_materialize), so a V4.1 arm here refuses rather than being routed silently.
+data arm_checkpoint_env: NonEmptyStr = "GUNBC_ARM_CHECKPOINT" as NonEmptyStr
+data arm_checkpoint_glm53_fp8: String = "glm53-native-fp8"
+data arm_checkpoint_glm53_nvfp4: String = "glm53-flash-nvidia-nvfp4"
+
+fn arm_checkpoint_options() -> List<String> {
+  [arm_checkpoint_glm53_fp8, arm_checkpoint_glm53_nvfp4]
+}
+
+// THE SEED HOST OF EACH GLM CHECKPOINT ON GROUP A, AS A MODELED FACT (operator ruling, 2026-10-03: the Hub
+// seed is chosen explicitly, never inferred from "no admissible peer"). srv7 holds the produced image and fetched
+// the FP8 snapshot first; it seeds both checkpoints, and srv5, srv6 and srv8 replicate from it over the rail.
+data glm53_checkpoint_seed_host: HostIdentity = "srv7" as HostIdentity
+
+data arm_checkpoint_receipt_path: String = "target/arm-checkpoint-materialize-receipt.txt"
+
+fn arm_checkpoint_materialize_ci() -> ProcessExit {
+  let arm = env_word(name: arm_group_launch_arm_env)
+  let word = env_word(name: arm_checkpoint_env)
+  if arm != arm_group_launch_arm_glm53 {
+    exit_failure(reason: join([arm_group_launch_arm_env as String, "=`", arm, "`: only the ", arm_group_launch_arm_glm53, " arm materializes through this mode; V4.1 has its own (spark_v41_checkpoint_materialize)"], ""))
+  } else {
+    match runtime_image_choice_of_wire(word: env_word(name: runtime_image_env)) {
+      Absent => exit_failure(reason: join([runtime_image_env as String, " names the image the Hub CLI runs in, and must be one of ", join(runtime_image_options(), ", ")], ""))
+      Present { value: choice } =>
+        match runtime_image_held_of(c: choice) {
+          Absent => exit_failure(reason: "that image has no recorded production, so no tag and configuration digest exist to run the Hub CLI in; produce it first (mode spark_runtime_image_produce) or name a recorded one")
+          Present { value: held } =>
+            if word == arm_checkpoint_glm53_fp8 {
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, image: held.subject, seed: glm53_checkpoint_seed_host }, receipt_path: arm_checkpoint_receipt_path)
+            } else if word == arm_checkpoint_glm53_nvfp4 {
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, image: held.subject, seed: glm53_checkpoint_seed_host }, receipt_path: arm_checkpoint_receipt_path)
+            } else {
+              exit_failure(reason: join([arm_checkpoint_env as String, "=`", word, "` is not a checkpoint of this arm; the checkpoints are ", join(arm_checkpoint_options(), ", ")], ""))
+            }
+        }
+    }
+  }
+}
+
+// ── THE LOAD ENTRY (mode spark_arm_group_load) ──────────────────────────────────────────────────
+//
+// The GLM staircase step named by the closed inputs, loaded at its floor and its ceiling from its head.
+// SPARK_CONVERGE_TARGET must be that head -- the bench and the scrape address its loopback -- and any
+// other host refuses. Exit zero means every load ran and was judged; the step's verdict and calibration
+// receipt are in the receipt, not the exit. V4.1 loads through its own mode (spark_v41_serving_load),
+// so a V4.1 arm here refuses rather than being routed silently.
+data arm_group_load_receipt_path: String = "target/arm-group-load-receipt.txt"
+
+fn arm_group_load_ci() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => match c {
+      ArmV41GroupA => exit_failure(reason: "the V4.1 arm loads through its own mode (spark_v41_serving_load), not this one")
+      ArmGlm53GroupAStep { step: s, incumbent: _ } =>
+        match glm53_step_load(s: s) {
+          Glm53StepLoadRefused { cause: why } => exit_failure(reason: why)
+          Glm53StepLoadReady { subject: subject, performance: _, roster: _, inputs: _ } =>
+            match spark_converge_target_selection(execute_apply: true) {
+              SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+              SparkConvergeTargetAllObserveOnly => exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: the load opens its session on the step's head, and it refuses rather than choosing one")
+              SparkConvergeTargetSingle { host: h } =>
+                if (h as String) != (subject.host as String) {
+                  exit_failure(reason: join(["SPARK_CONVERGE_TARGET ", h as String, " is not the step's head ", subject.host as String, "; the bench and the scrape address the head's loopback"], ""))
+                } else {
+                  let run_id = join(["glm53-staircase-load-", probed_at_word(reading: clock_now_probed_at()) as String], "") as NonEmptyStr
+                  match with_spark_build_host(
+                    host: subject.host,
+                    attempt_raw: "arm-group-load",
+                    identity_file_name: "gunbc-arm-group-load-admin-password" as NonEmptyStr,
+                    use: fn(target, context, ctx) { glm53_step_load_session(s: s, run_id: run_id, ctx: ctx) },
+                  ) {
+                    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
+                    SparkBuildHostRan { work: work, endpoint: _, executor: _, trust_receipt: _ } => {
+                      let w = Filesystem.Write(path: arm_group_load_receipt_path, content: work.receipt)
+                      if !w.success { exit_failure(reason: join(["load receipt write failed: ", w.error, "\n", work.receipt], "")) }
+                      else if work.converged { ExitSuccess }
+                      else { exit_failure(reason: work.receipt) }
+                    }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── THE LAUNCH STEP'S TIMEOUT IS DERIVED, NOT A LITERAL (gunbc.recurring_failure_mode
+// a_step_timeout_shorter_than_the_wait_it_encloses; nvfp4-8, fleet-converge 37190290418) ─────────────
+//
+// The transaction encloses a front-door wait bounded by each arm's own VLLM_ENGINE_READY_TIMEOUT_S, read by
+// the SAME reader the front door uses (gunbc.spark.arm_memory_fit engine_ready_timeout_for over the arm's
+// deployment env) -- one authority. The step must outlast the longest of those plus the transaction's work
+// before the wait (preflight, preserve, head-first apply, container readback) and its rollback after it.
+// Those two budgets are declared, not measured from one run: the apply-to-readback span measured 10-14 min
+// on Group A (launches 37178826027, 37181793223, 37185803198, 37187675945) and a four-host rollback ~15 min.
+// THE BUDGETS ARE DURATIONS (std.measure Second), and so is the derivation: the minute unit appears only
+// at the workflow Step, whose timeout_minutes field is minutes by GitHub's own schema (review 76345).
+data arm_launch_apply_budget: Second = second(count: 1800)
+data arm_launch_rollback_budget: Second = second(count: 1200)
+
+// AN UNREADABLE TIMEOUT REFUSES THE DERIVATION; IT DOES NOT CONTRIBUTE ZERO (review 76374). The
+// derivation is the only check guarding the step's literal timeout, so an arm whose
+// VLLM_ENGINE_READY_TIMEOUT_S cannot be read must make the derivation refuse by name -- a zero would
+// shrink the budget and let the check pass over exactly the arm it cannot account for.
+type ArmLaunchStepNeed
+  = ArmLaunchStepNeedDerived { need: Second }
+  | ArmLaunchStepNeedRefused { causes: List<String> }
+
+// Every arm the step can launch: the GLM staircase's steps and the V4.1 arm.
+fn arm_launch_step_needed() -> ArmLaunchStepNeed {
+  let envs = concat(map(glm53_staircase_steps, s => glm53_step_deployment_env(s: s)), [v41_group_a_deployment_env()])
+  let read = map(envs, e => engine_ready_timeout_for(env: e))
+  let causes = flat_map(read, r => match r {
+    EngineReadyTimeoutResolved { timeout: _ } => [] as List<String>
+    EngineReadyTimeoutUnreadable { cause: c } => [c as String]
+  })
+  if count(causes) > 0 { ArmLaunchStepNeedRefused { causes: causes } }
+  else {
+    let longest = fold(map(read, r => match r { EngineReadyTimeoutResolved { timeout: t } => second_count(s: t)  EngineReadyTimeoutUnreadable { cause: _ } => second_count(s: second(count: 0)) }), init: second_count(s: second(count: 0)), f: fn(a, m) { if m > a { m } else { a } })
+    ArmLaunchStepNeedDerived { need: second(count: longest + second_count(s: arm_launch_apply_budget) + second_count(s: arm_launch_rollback_budget)) }
+  }
+}
+
+// THE STEP'S TIMEOUT IS A LITERAL ONLY BECAUSE THE LANGUAGE CANNOT YET CONSTRUCT A Duration FROM A
+// COMPUTED Int: std.types Duration is `Int where range(min: 0)` and std.coercion's refinement-cast wall
+// refuses an Int-to-refinement cast (no declared conversion route exists), so the derivation above cannot
+// flow into the workflow Step's timeout_minutes field. Until it can, this literal is CHECKED against the
+// derivation -- test.claim.spark.group_arm_launch_witness w_the_launch_step_timeout_covers_every_arms_readiness
+// and drifts loudly. The check compares in seconds: the literal's minutes times sixty against arm_launch_step_needed. NEXT TRIGGER: a declared Int-to-Duration conversion (range-checked, refusing a
+// negative), at which point this row is the derivation itself.
+data arm_launch_step_timeout_minutes: Duration = 110

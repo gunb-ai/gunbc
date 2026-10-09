@@ -1,0 +1,138 @@
+module extdeps.zhipu.glm_5_3
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
+
+// GLM-5.3 -- THE BASE MODEL, NOT GLM-5.3-FLASH. The two are independently published Z.ai
+// checkpoints with different architecture classes (this one declares GlmMoeDsaForCausalLM, Flash
+// declares Glm5NextForConditionalGeneration), different shapes and different manifests, so under
+// DESIGN section 3's external-decomposition rule each is its own module authority. This module
+// exists because a THIRD PARTY's quantized redistribution of it (extdeps.radixark.glm_5_3_nvfp4)
+// needs a base to cite: the architecture class and the MoE shape are facts about the model Z.ai
+// published, which the redistribution inherits rather than owns.
+data glm_5_3_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "zai-org/GLM-5.3" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: glm_5_3_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.zhipu.glm_5_3",
+      decl_name: "glm_5_3_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE ARCHITECTURE CLASS IS THE STRING A RUNTIME'S REGISTRY IS ASKED FOR, read from `architectures`
+// (its sole entry) in config.json at the pinned revision below. Every consumer that needs to know
+// whether an image can load this model -- or any quantization of it -- asks for THIS declaration,
+// never a spelling of its own.
+data glm_5_3_architecture_class: NonEmptyStr = "GlmMoeDsaForCausalLM" as NonEmptyStr
+
+// ── THE MoE SHAPE, AS config.json STATES IT ──────────────────────────────────────────────────
+//
+// THESE ARE THE FACTS A FOOTPRINT DERIVATION NEEDS AND THEY ARE THE MODEL'S, NOT A CHECKPOINT'S. A
+// quantized redistribution changes how many bytes each parameter occupies; it does not change how
+// many parameters a routed expert has, how many experts a token visits, or which layers are dense.
+// So the shape is carried once, here, and the redistribution's byte accounting is derived from it.
+//
+// THE FIELD NAMES ARE config.json's OWN. Renaming `first_k_dense_replace` to something friendlier
+// would be a second name for one upstream fact, and the next reader diffing this row against the
+// file would have to translate.
+type GlmMoeDsaShape sole_constructor {
+  num_hidden_layers: Nat
+  first_k_dense_replace: Nat
+  hidden_size: Nat
+  intermediate_size: Nat
+  moe_intermediate_size: Nat
+  n_routed_experts: Nat
+  num_experts_per_tok: Nat
+  n_shared_experts: Nat
+  num_nextn_predict_layers: Nat
+  vocab_size: Nat
+  kv_lora_rank: Nat
+  q_lora_rank: Nat
+  max_position_embeddings: TokenCount
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_shape: GlmMoeDsaShape = GlmMoeDsaShape {
+  num_hidden_layers: 78,
+  first_k_dense_replace: 3,
+  hidden_size: 6144,
+  intermediate_size: 12288,
+  moe_intermediate_size: 2048,
+  n_routed_experts: 256,
+  num_experts_per_tok: 8,
+  n_shared_experts: 1,
+  num_nextn_predict_layers: 1,
+  vocab_size: 154880,
+  kv_lora_rank: 512,
+  q_lora_rank: 2048,
+  max_position_embeddings: token_count(count: 1048576),
+  read_by: "config.json fetched from the Hub at revision aca966e4e02791568aa6a4ced368624b3d897f42 on 2026-09-18, each field copied under its own key; the same keys in RadixArk/GLM-5.3-NVFP4's config.json at 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a were diffed against these and agree" as NonEmptyStr,
+}
+
+// THE MoE LAYER COUNT IS DERIVED, NOT STATED. config.json says how many layers there are and how
+// many leading ones are dense; the count of layers that carry routed experts is the difference, and
+// a hand-written 75 beside those two rows would be the third spelling of one fact. The nextn
+// predictor layer (index num_hidden_layers) is NOT a hidden layer and is not in this count: it is
+// carried separately by whichever checkpoint materialises it.
+//
+// A DENSE PREFIX LONGER THAN THE STACK IS A MALFORMED SHAPE, AND THE ANSWER IS A REFUSAL, NOT ZERO.
+// Zero MoE layers would be a plausible number that no consumer could tell from a real dense model,
+// so the fold is partial and every consumer carries the absence through.
+fn glm_5_3_moe_layer_count(s: GlmMoeDsaShape) -> Nat? {
+  if s.num_hidden_layers >= s.first_k_dense_replace {
+    Present { value: s.num_hidden_layers - s.first_k_dense_replace }
+  } else {
+    none
+  }
+}
+
+// ONE ROUTED EXPERT IS THREE PROJECTIONS -- gate, up and down -- each hidden_size by
+// moe_intermediate_size. The three is not a guess about the architecture: the redistribution
+// module's representative expert carries exactly three weight tensors of exactly those shapes, and
+// its witness checks this product against the bytes the shard header declares for them.
+fn glm_5_3_routed_expert_projection_count() -> Nat {
+  3
+}
+
+fn glm_5_3_routed_expert_params(s: GlmMoeDsaShape) -> Nat {
+  glm_5_3_routed_expert_projection_count() * s.hidden_size * s.moe_intermediate_size
+}
+
+// THE EXPERTS ONE TOKEN VISITS ACROSS THE WHOLE STACK: num_experts_per_tok in each MoE layer. This
+// is the multiplicity an expert-offload scheme would have to stream per decoded token, and it is
+// the reason such a scheme is refused on unified-memory hardware (gunbc.spark.serving_fit_projection).
+fn glm_5_3_routed_expert_visits_per_token(s: GlmMoeDsaShape) -> Nat? {
+  match glm_5_3_moe_layer_count(s: s) {
+    Absent => none
+    Present { value: layers } => Present { value: s.num_experts_per_tok * layers }
+  }
+}
+
+// ── THE NATIVE CHECKPOINT MANIFEST AT AN EXACT REVISION ──────────────────────────────────────
+//
+// Z.ai's own artifact is native FP8 (config.json: quant_method fp8, weight_block_size [128, 128]).
+// It is carried so a redistribution can state what it quantized FROM, and so a consumer can see
+// that the 465 GB NVFP4 artifact is a compression of a 756 GB one rather than a different model.
+data glm_5_3_native_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
+  revision: "aca966e4e02791568aa6a4ced368624b3d897f42" as NonEmptyStr,
+  safetensors_shard_count: 141,
+  safetensors_bytes: byte_size(count: 755632050320),
+  repository_total_bytes: byte_size(count: 755663689206),
+  read_by: "the Hub model API for zai-org/GLM-5.3 with blobs enabled, summed over the 141 safetensors siblings of its 155 files, read 2026-09-18. The response's own sha is the revision above and its lastModified was 2026-09-04T06:41:23Z" as NonEmptyStr,
+)

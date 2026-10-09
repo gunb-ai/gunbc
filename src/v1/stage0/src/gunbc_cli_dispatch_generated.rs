@@ -49,9 +49,11 @@ pub enum Commands {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// Entry function to execute (default: "main")
-        #[arg(long, default_value = "main")]
-        function: String,
+        /// Entry function to execute, repeatable: every named function runs in ONE process over
+        /// ONE load of the entry's closure, in the order given. Absent, an ordinary run executes
+        /// `main`; a --claim-run executes every `test fn` the entry module declares.
+        #[arg(long = "function")]
+        functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
@@ -115,6 +117,10 @@ pub enum Commands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Listen on this unix socket INSTEAD of --host/--port. Each request's
+        /// kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user.
+        #[arg(long)]
+        unix_socket: Option<String>,
         /// Release revision this process serves, bound ONCE at startup and
         /// immutable for the process lifetime.
         #[arg(long)]
@@ -142,13 +148,17 @@ pub enum Commands {
         #[arg(long)]
         measurement_child: bool,
     },
-    /// Run one target by its absolute label and report the standing its own
-    /// producer answers in. The label is exact: a target PATTERN refuses, and
-    /// an unbound or unknown target refuses rather than reporting a pass.
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to
+    /// its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is
+    /// admitted and refused with status 2: it runs only through the native test
+    /// route, never the interpreter. A form the pattern grammar does not admit, or
+    /// an unbound or unknown target, refuses rather than reporting a pass.
     Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
+        /// Absolute label of one target, or a pattern denoting a set:
+        /// `//gunbc/instruments:heads-reading-differential`,
+        /// `//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`.
+        #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
 }
@@ -168,7 +178,7 @@ pub trait CliDispatchHost {
     fn run_verb(
         &self,
         source_roots: Vec<String>,
-        function: String,
+        functions: Vec<String>,
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
@@ -180,6 +190,7 @@ pub trait CliDispatchHost {
         function: String,
         host: String,
         port: u16,
+        unix_socket: Option<String>,
         release_revision: String,
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
@@ -225,13 +236,13 @@ pub fn dispatch<H: CliDispatchHost>(
         (
             Commands::Run {
                 source_roots,
-                function,
+                functions,
                 entry,
                 claim_run,
                 args,
             },
             _,
-        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
+        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, functions, entry, claim_run, args),
         (Commands::Build { .. }, true) => {
             eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
             std::process::exit(2);
@@ -284,6 +295,7 @@ pub fn dispatch<H: CliDispatchHost>(
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 eval_budget_cpu_ms,
                 eval_budget_wall_ms,
@@ -295,6 +307,7 @@ pub fn dispatch<H: CliDispatchHost>(
             function,
             host,
             port,
+            unix_socket,
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,

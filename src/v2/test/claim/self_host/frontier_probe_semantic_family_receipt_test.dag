@@ -8,7 +8,6 @@ import v2.compiler.self_host.frontier_probe_semantic_family_receipt {
   shard_count,
   shards_naming_body_lowering_beneath_the_mask
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // What these claims can and cannot do, stated so the coverage is not overread. The rows are

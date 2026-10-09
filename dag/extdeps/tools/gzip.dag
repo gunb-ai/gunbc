@@ -1,0 +1,60 @@
+module extdeps.tools.gzip
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import std.types { Bool, Int, NonEmptyStr, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+
+// GNU gzip, as its manual documents it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/gzip/manual/gzip.html"
+  }
+}
+
+fn gzip_program() -> ProgramIdentity = cataloged_program(invocation: "gzip")
+
+data gzip_cli_tool: CliTool = CliTool {
+  program: gzip_program(),
+  min_version: none,
+  installable_via: [SourceApt { package: "gzip", bin_dir: "/usr/bin" }],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.gzip",
+      decl_name: "gzip_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.gzip.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE FILE'S CONTENT, DECODED IF IT IS GZIP AND UNCHANGED IF IT IS NOT: `--decompress --stdout --force`.
+// The manual's --force: "If the input data is not in a format recognized by gzip, and if the option
+// --stdout is also given, copy the input data without change to the standard output: let zcat behave as
+// cat." So one read answers for a served file whether or not the server compressed it, and the file on
+// disk is never modified (--stdout).
+service gzip.Gzip {
+  operation DecodeToStdout {
+    requires none
+    input { path: NonEmptyStr }
+    output {
+      text: String from "stdout"
+      stderr: String from "stderr"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["gzip", "--decompress", "--stdout", "--force", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "gzip decode failed"
+    }
+  }
+}

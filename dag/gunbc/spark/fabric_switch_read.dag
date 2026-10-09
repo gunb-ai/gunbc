@@ -1,0 +1,135 @@
+module gunbc.spark.fabric_switch_read
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.mikrotik.crs812 {
+  Crs812EthernetWire,
+  Crs812LaneSpeedFromWire, LaneSpeedParsed, LaneSpeedWireUnmodelled, crs812_lane_speed_from_wire,
+  Crs812FecModeFromWire, FecModeParsed, FecModeWireUnmodelled, crs812_fec_mode_from_wire,
+  Crs812WireBool, WireBoolTrue, WireBoolFalse, WireBoolUnmodelled, crs812_wire_bool,
+}
+import gunbc.spark.fabric_switch_assessment {
+  Crs812LaneReading, LaneReadingTaken,
+  Crs812SwitchSubject, crs812_switch_subject,
+}
+import gunbc.spark.fabric_switch_desired { Crs812SwitchIntent }
+
+// TURNING THE SWITCH'S REST RESPONSE INTO ASSESSMENT READINGS. This is the workflow-layer decode:
+// extdeps.mikrotik.crs812 owns what each wire STRING means (the inverse parsers this consumes), and
+// this module owns the POLICY facts -- which interfaces are our fabric legs, and how a per-lane
+// wire record becomes the Crs812LaneReading the assessment already consumes. It is the producer
+// gunbc.spark.fabric_switch_assessment was written to receive: `fabric_switch_subject` passes
+// `readings: []` today, so every lane resolves to unknown; this closes that gap on the READ side.
+//
+// THE PURE READ CHAIN LANDS HERE; ONLY THE FETCH IS A FRONTIER. Everything from wire records to a
+// built Crs812SwitchSubject is pure and network-free, so it lands now and is consumed end to end:
+// crs812_fabric_lane_read_outcomes -> crs812_fabric_read -> fabric_switch_subject_from_wire. What is
+// NOT here is the one step that needs the network -- producing the List<Crs812EthernetWire> by
+// fetching and decoding the switch's REST response -- which is blocked on the same capability
+// extdeps.bmc.http declared as debt (redfish_http_hardwired_transport_dissolution_trigger: the
+// shared `transport rest` machinery does not yet realize transport-level basic auth). So
+// fabric_switch_subject_from_wire is the terminal of the pure chain and a DECLARED FRONTIER: its one
+// consumer is that live-read entry, which lands when the basic-auth REST transport does. Splitting
+// the fetch from the join is also the right seam -- the same join serves a live read and a replayed
+// fixture without branching.
+
+// THE COMMENT ROUTEROS CARRIES ON EACH FABRIC LEG, set on the switch to mark the eight breakout
+// lanes. It is the discriminator between our legs and every other interface in the GET response.
+data crs812_fabric_leg_comment: NonEmptyStr = "gunbc fabric leg" as NonEmptyStr
+
+fn crs812_wire_is_fabric_leg(w: Crs812EthernetWire) -> Bool {
+  w.comment == (crs812_fabric_leg_comment as String)
+}
+
+// A LANE EITHER DECODES TO A READING OR REFUSES AT THE FIELD THAT DID NOT PARSE. There is no third
+// arm that guesses: an unmodelled speed, FEC or boolean is a located refusal naming the interface,
+// the field and the raw wire, so a switch that reports something the corpus has not seen stops the
+// read loudly instead of being coerced to the nearest known value (DESIGN §5, fail-closed).
+type Crs812LaneReadOutcome
+  = LaneReadOk { reading: Crs812LaneReading }
+  | LaneReadWireRefused { interface: NonEmptyStr, field: NonEmptyStr, wire: String }
+
+fn crs812_lane_read_one(w: Crs812EthernetWire) -> Crs812LaneReadOutcome {
+  match crs812_lane_speed_from_wire(w: w.speed) {
+    LaneSpeedWireUnmodelled { wire: s } =>
+      LaneReadWireRefused { interface: w.name, field: "speed" as NonEmptyStr, wire: s }
+    LaneSpeedParsed { speed: sp } =>
+      match crs812_fec_mode_from_wire(w: w.fec_mode) {
+        FecModeWireUnmodelled { wire: f } =>
+          LaneReadWireRefused { interface: w.name, field: "fec-mode" as NonEmptyStr, wire: f }
+        FecModeParsed { fec: fc } =>
+          match crs812_wire_bool(w: w.disabled) {
+            WireBoolUnmodelled { wire: d } =>
+              LaneReadWireRefused { interface: w.name, field: "disabled" as NonEmptyStr, wire: d }
+            WireBoolTrue =>
+              LaneReadOk { reading: LaneReadingTaken { interface: w.name, speed: sp, fec: fc, enabled: false } }
+            WireBoolFalse =>
+              LaneReadOk { reading: LaneReadingTaken { interface: w.name, speed: sp, fec: fc, enabled: true } }
+          }
+      }
+  }
+}
+
+// The fabric legs of a full ethernet GET, each decoded. Filtering by the leg comment is what keeps
+// the denominator OUR eight lanes rather than every interface the switch has -- the same expected
+// roster the assessment's intent declares, read from the switch's own marking rather than a second
+// hardcoded interface list.
+fn crs812_fabric_lane_read_outcomes(wires: List<Crs812EthernetWire>) -> List<Crs812LaneReadOutcome> {
+  map(filter(wires, w => crs812_wire_is_fabric_leg(w: w)), w => crs812_lane_read_one(w: w))
+}
+
+fn crs812_lane_read_outcome_refused(o: Crs812LaneReadOutcome) -> Bool {
+  match o {
+    LaneReadWireRefused { interface: _, field: _, wire: _ } => true
+    LaneReadOk { reading: _ } => false
+  }
+}
+
+// THE JOIN: wire records -> the readings the assessment already consumes, or a whole-read refusal.
+// It is fail-closed at the read grain: if ANY lane's wire did not parse, the read refuses and names
+// the offending lanes rather than handing the assessment a denominator quietly short of the legs
+// the switch actually reported. crs812_switch_subject takes exactly List<Crs812LaneReading>, so a
+// FabricReadTaken feeds it with no adaptation.
+type Crs812FabricRead
+  = FabricReadTaken { readings: List<Crs812LaneReading> }
+  | FabricReadWireRefused { refused: List<Crs812LaneReadOutcome> }
+
+fn crs812_fabric_read(wires: List<Crs812EthernetWire>) -> Crs812FabricRead {
+  let outcomes = crs812_fabric_lane_read_outcomes(wires: wires)
+  let refused = filter(outcomes, o => crs812_lane_read_outcome_refused(o: o))
+  if refused.length() == 0 {
+    FabricReadTaken {
+      readings: flat_map(outcomes, o => match o {
+        LaneReadOk { reading: r } => [r]
+        LaneReadWireRefused { interface: _, field: _, wire: _ } => []
+      }),
+    }
+  } else {
+    FabricReadWireRefused { refused: refused }
+  }
+}
+
+// THE TERMINAL OF THE PURE READ CHAIN, AND A DECLARED FRONTIER (DESIGN §3c). It builds the exact
+// Crs812SwitchSubject the assessment's inspect_fabric_switch consumes, from a switch identity, a lane
+// intent, and the wire records a read produced -- or refuses as a whole if the read did. Its ONE
+// consumer is the live-read entry that fetches /rest/interface/ethernet and decodes the JSON body
+// into List<Crs812EthernetWire>. That entry is NOT in this diff: it needs transport-level basic auth,
+// the capability extdeps.bmc.http declared as debt. TRIGGER: the `transport rest` machinery realizes
+// basic-auth GET (extdeps.bmc.http redfish_http_hardwired_transport_dissolution_trigger); the fetch
+// entry then produces the wires this consumes, at which point fabric_switch_subject() can read live
+// instead of passing readings: []. SUFFICIENT FOR: replacing the empty-readings subject on a live
+// converge with a subject read from the switch.
+type Crs812FabricSubjectRead
+  = FabricSubjectBuilt { subject: Crs812SwitchSubject }
+  | FabricSubjectReadRefused { refused: List<Crs812LaneReadOutcome> }
+
+fn fabric_switch_subject_from_wire(
+  switch: NonEmptyStr,
+  intent: Crs812SwitchIntent,
+  wires: List<Crs812EthernetWire>,
+) -> Crs812FabricSubjectRead {
+  match crs812_fabric_read(wires: wires) {
+    FabricReadWireRefused { refused: rs } => FabricSubjectReadRefused { refused: rs }
+    FabricReadTaken { readings: rd } =>
+      FabricSubjectBuilt { subject: crs812_switch_subject(switch: switch, intent: intent, readings: rd) }
+  }
+}

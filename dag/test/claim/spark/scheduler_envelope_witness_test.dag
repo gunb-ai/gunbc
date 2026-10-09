@@ -1,0 +1,230 @@
+module test.claim.spark.scheduler_envelope_witness_test
+
+import std.types { Bool, List, String, NonEmptyStr }
+import gunbc.spark.serving_arm { glm53_native_launch_policy }
+import std.nat { Nat }
+import std.measure { token_count, basis_point, basis_point_count }
+import std.optional { Present, Absent }
+import extdeps.vllm.server { vllm_source_revision }
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted,
+  VllmSchedulerAdmissionRequest, VllmFullInputAdmissionRequest, VllmKvWatermarkRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
+  KvWatermarkOmitted, KvWatermarkExplicit,
+  vllm_scheduler_admission_argv,
+  vllm_argv_full_input_admission, FullInputAdmissionReadOmitted, FullInputAdmissionReadExplicit, FullInputAdmissionReadConflict,
+  vllm_argv_kv_watermark, KvWatermarkReadOmitted, KvWatermarkReadExplicit, KvWatermarkReadUnread,
+}
+import extdeps.vllm.runtime_defaults {
+  VllmDefaultsKnown, Vllm8d09804, Vllm1967a5627, vllm_runtime_defaults_for,
+  resolve_vllm_scheduler_admission, SchedulerAdmissionResolved, SchedulerAdmissionUnresolvable,
+  ExplicitArgument, ExpectedFromClaimedSourceRevision, PredictedForBoundImage,
+}
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats,
+  SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope,
+  envelope_at_cold_floor, envelope_hard_max_num_seqs, envelope_admission, envelope_above_floor, profile_for_envelope,
+  envelope_guaranteed_cold_seats, envelope_best_effort_seats,
+}
+import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
+
+// THE SUBJECT IS ONE INVARIANT AND ITS GATE: cold seats <= the sequence ceiling, and a ceiling above
+// the floor is admitted only with the engine's full-input KV gate ON and a watermark STATED -- zero
+// is admissible, because the seats above the floor are best-effort and preemption is permitted. The
+// supplied cold intent is eight seats at 262,144 tokens with a 2,048-token batch -- group B's own
+// shape -- built here rather than read off group_b_serving_capacity, so these witnesses do not move
+// when that row's directive does.
+fn w_cold_eight() -> ServingCapacityIntent? {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 8, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => Present { value: i }
+    ServingCapacityIntentRefused { cause: _ } => none
+  }
+}
+
+fn w_gate_on_five_percent() -> VllmSchedulerAdmissionRequest {
+  VllmSchedulerAdmissionRequest {
+    full_input_admission: FullInputAdmissionExplicit { enabled: true },
+    kv_watermark: KvWatermarkExplicit { fraction: basis_point(count: 500) },
+  }
+}
+
+fn w_admits(cold: ServingCapacityIntent, hard: Nat, admission: VllmSchedulerAdmissionRequest) -> Bool {
+  match scheduler_envelope(cold: cold, hard_max_num_seqs: hard, admission: admission) {
+    SchedulerEnvelopeAdmitted { envelope: _ } => true
+    SchedulerEnvelopeRefused { cause: _ } => false
+  }
+}
+
+fn w_gate(full: VllmFullInputAdmissionRequest, watermark: VllmKvWatermarkRequest) -> VllmSchedulerAdmissionRequest {
+  VllmSchedulerAdmissionRequest { full_input_admission: full, kv_watermark: watermark }
+}
+
+fn w_on() -> VllmFullInputAdmissionRequest { FullInputAdmissionExplicit { enabled: true } }
+fn w_wm(bp: Nat) -> VllmKvWatermarkRequest { KvWatermarkExplicit { fraction: basis_point(count: bp) } }
+
+// ── THE POSITIVE CONTROL: fourteen over a floor of eight, gate on, 5% held back ─────────────────
+test fn w_an_above_floor_ceiling_with_the_gate_stated_is_admitted() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } =>
+      match scheduler_envelope(cold: cold, hard_max_num_seqs: 14, admission: w_gate_on_five_percent()) {
+        SchedulerEnvelopeRefused { cause: _ } => false
+        SchedulerEnvelopeAdmitted { envelope: e } =>
+          envelope_hard_max_num_seqs(e: e) == 14 && envelope_above_floor(e: e)
+          && envelope_guaranteed_cold_seats(e: e) == 8 && envelope_best_effort_seats(e: e) == 6
+          && vllm_scheduler_admission_argv(r: envelope_admission(e: e)) == ["--scheduler-reserve-full-isl", "--watermark", "0.05"]
+      }
+  }
+}
+
+// PREEMPTION IS PERMITTED FOR BEST-EFFORT SEATS, SO A STATED ZERO WATERMARK IS ADMITTED: the
+// watermark red below is about inheritance, not about the value.
+test fn w_an_above_floor_ceiling_with_a_stated_zero_watermark_is_admitted() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => w_admits(cold: cold, hard: 14, admission: w_gate(full: w_on(), watermark: w_wm(bp: 0)))
+  }
+}
+
+// ── THE DISCRIMINATING REDS: each removes exactly one condition of the positive control ──────────
+test fn w_an_above_floor_ceiling_with_the_gate_inherited_is_refused() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => !w_admits(cold: cold, hard: 14, admission: w_gate(full: FullInputAdmissionOmitted, watermark: w_wm(bp: 500)))
+  }
+}
+
+test fn w_an_above_floor_ceiling_with_the_gate_off_is_refused() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => !w_admits(cold: cold, hard: 14, admission: w_gate(full: FullInputAdmissionExplicit { enabled: false }, watermark: w_wm(bp: 500)))
+  }
+}
+
+test fn w_an_above_floor_ceiling_with_the_watermark_unstated_is_refused() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => !w_admits(cold: cold, hard: 14, admission: w_gate(full: w_on(), watermark: KvWatermarkOmitted))
+  }
+}
+
+test fn w_a_ceiling_below_the_cold_floor_is_refused() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => !w_admits(cold: cold, hard: 7, admission: w_gate_on_five_percent())
+  }
+}
+
+// ── AT THE FLOOR NOTHING CHANGES: the profile every existing row renders ─────────────────────────
+test fn w_the_floor_envelope_reproduces_the_pre_split_profile() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } => {
+      let e = envelope_at_cold_floor(cold: cold)
+      let p = profile_for_envelope(
+        envelope: e,
+        policy: glm53_native_launch_policy,
+        decided_gpu_memory_basis_points: basis_point(count: 8567),
+        serve_port: 30000,
+        served_alias: "glm-5.3-flash" as NonEmptyStr,
+        prefix_caching: PrefixCachingExplicit { enabled: true },
+      )
+      p.max_num_seqs == 8 && !envelope_above_floor(e: e) && envelope_best_effort_seats(e: e) == 0
+      && vllm_scheduler_admission_argv(r: envelope_admission(e: e)) == []
+    }
+  }
+}
+
+// ── THE WIRE ROUND-TRIPS, AND A MIS-ASSEMBLED ARGV REFUSES ───────────────────────────────────────
+test fn w_the_admission_flags_read_back_as_rendered() -> Bool {
+  let argv = vllm_scheduler_admission_argv(r: w_gate_on_five_percent())
+  (match vllm_argv_full_input_admission(argv: argv) {
+    FullInputAdmissionReadExplicit { enabled: e } => e
+    FullInputAdmissionReadOmitted => false
+    FullInputAdmissionReadConflict { cause: _ } => false
+  })
+  && (match vllm_argv_kv_watermark(argv: argv) {
+    KvWatermarkReadExplicit { fraction: bp } => basis_point_count(bp: bp) == 500
+    KvWatermarkReadOmitted => false
+    KvWatermarkReadUnread { cause: _ } => false
+  })
+  && (match vllm_argv_full_input_admission(argv: []) {
+    FullInputAdmissionReadOmitted => true
+    FullInputAdmissionReadExplicit { enabled: _ } => false
+    FullInputAdmissionReadConflict { cause: _ } => false
+  })
+}
+
+test fn w_both_spellings_of_the_gate_refuse_rather_than_take_the_last() -> Bool {
+  match vllm_argv_full_input_admission(argv: ["--scheduler-reserve-full-isl", "--no-scheduler-reserve-full-isl"]) {
+    FullInputAdmissionReadConflict { cause: _ } => true
+    FullInputAdmissionReadExplicit { enabled: _ } => false
+    FullInputAdmissionReadOmitted => false
+  }
+}
+
+// ── EACH REVISION ANSWERS FOR ITSELF ─────────────────────────────────────────────────────────────
+//
+// The deployed runtime (8d09804) defaults the gate ON and the watermark to zero, and an omission
+// resolves to those values with the SOURCE as their origin, never as this repository's choice.
+test fn w_an_omitted_gate_on_the_deployed_revision_resolves_on_from_source() -> Bool {
+  match resolve_vllm_scheduler_admission(
+    request: VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionOmitted, kv_watermark: KvWatermarkOmitted },
+    defaults: VllmDefaultsKnown { revision: Vllm8d09804 },
+  ) {
+    SchedulerAdmissionUnresolvable { cause: _ } => false
+    SchedulerAdmissionResolved { full_input_admission: fa, full_input_origin: fo, watermark: w, watermark_origin: _ } =>
+      fa && basis_point_count(bp: w) == 0
+      && (match fo {
+        ExpectedFromClaimedSourceRevision { source_revision: _, field: _ } => true
+        ExplicitArgument { field: _ } => false
+        PredictedForBoundImage { image_digest: _, source_revision: _, binding_evidence: _, field: _ } => false
+      })
+  }
+}
+
+// 1967a5627 declares no watermark field: requesting one there is an argument the engine rejects.
+test fn w_a_watermark_on_a_revision_without_the_field_is_unresolvable() -> Bool {
+  match resolve_vllm_scheduler_admission(
+    request: w_gate_on_five_percent(),
+    defaults: VllmDefaultsKnown { revision: Vllm1967a5627 },
+  ) {
+    SchedulerAdmissionUnresolvable { cause: _ } => true
+    SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => false
+  }
+}
+
+test fn w_an_omitted_gate_on_an_unmodelled_revision_is_unresolvable() -> Bool {
+  match resolve_vllm_scheduler_admission(
+    request: VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionOmitted, kv_watermark: KvWatermarkOmitted },
+    defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    )),
+  ) {
+    SchedulerAdmissionUnresolvable { cause: _ } => true
+    SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => false
+  }
+}
+
+test fn w_a_watermark_at_or_above_unity_is_unresolvable() -> Bool {
+  match resolve_vllm_scheduler_admission(
+    request: VllmSchedulerAdmissionRequest {
+      full_input_admission: FullInputAdmissionExplicit { enabled: true },
+      kv_watermark: KvWatermarkExplicit { fraction: basis_point(count: 10000) },
+    },
+    defaults: VllmDefaultsKnown { revision: Vllm8d09804 },
+  ) {
+    SchedulerAdmissionUnresolvable { cause: _ } => true
+    SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => false
+  }
+}
+
+// EVERY ENVELOPE PASSES THE ARGUMENT VALIDATOR, AT AND ABOVE THE FLOOR (review on #12975): a watermark of
+// 1.0 is outside upstream's [0.0, 1.0) and refuses here, even at a floor ceiling, rather than at init.
+test fn w_an_out_of_range_watermark_refuses_the_envelope_even_at_the_floor() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } =>
+      !w_admits(cold: cold, hard: 8, admission: w_gate(full: w_on(), watermark: w_wm(bp: 10000)))
+        && !w_admits(cold: cold, hard: 14, admission: w_gate(full: w_on(), watermark: w_wm(bp: 10000)))
+  }
+}

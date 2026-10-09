@@ -1,5 +1,7 @@
 module test.claim.ci_budget_tree_witness
 
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.session_reservation_policy { session_reservation_bytes, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished }
 import gunbc.ci_runner_placement { resolve_session_slice }
 import gunbc.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }
 import gunbc.ci_budget_tree {
@@ -9,6 +11,7 @@ import gunbc.ci_budget_tree {
   srv1_fixed_overhead_bytes,
   srv1_floor_memory_budget,
   host_overhead_bytes,
+  host_ram_of,
   host_budget_tree_at,
   witness_floor_budget_equals_selected_target_budget,
 }
@@ -37,9 +40,22 @@ test fn witness_live_trees_conserve() -> Bool {
     && node_conserves(node: srv3_budget_tree)
 }
 
+// THE LIVE POOLS FOLLOW THE ARM srv1's SESSION RESERVATION ACTUALLY RESOLVES TO. This claim asserted
+// the Unestablished arm unconditionally (runner pool 0, session pool = all allocatable), which was
+// the fail-closed answer while srv1 had no reservation sizing. srv1 now resolves ReservationBytes
+// (gunbc.session_reservation_policy), so a positive runner pool is the CORRECT derivation and the
+// claim was red for a premise that had stopped holding. Each arm's relation is asserted instead,
+// so the fail-closed half still bites the day srv1 falls back to Unestablished.
 test fn witness_live_is_fail_closed() -> Bool {
-  byte_size_count(b: srv1_gha_runner_pool_budget()) == 0
-    && byte_size_count(b: srv1_dashboard_session_pool_budget()) == byte_size_count(b: host_allocatable_bytes(offer: srv1_offer))
+  let alloc = byte_size_count(b: host_allocatable_bytes(offer: srv1_offer))
+  let gha = byte_size_count(b: srv1_gha_runner_pool_budget())
+  let sess = byte_size_count(b: srv1_dashboard_session_pool_budget())
+  match session_reservation_bytes(host: srv1_offer.supply.physical.identity) {
+    ReservationBytes { bytes: b } =>
+      sess == byte_size_count(b: b) && gha == alloc - byte_size_count(b: b) && gha > 0
+    ReservationBytesNotApplicable => sess == 0 && gha == alloc
+    ReservationBytesUnestablished { cause: _ } => gha == 0 && sess == alloc
+  }
 }
 
 test fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
@@ -68,6 +84,11 @@ test fn witness_three_way_conservation_live() -> Bool {
   overhead + gha + dash <= byte_size_count(b: srv1_host_ram())
 }
 
+// srv1 AND srv2 SHARE ONE OVERHEAD (the legacy allowance; witness_managed_hosts_share_one_overhead_
+// and_legacy_hosts_share_another) BUT NOT ONE AMOUNT OF RAM: srv1 was rebuilt to 8 x 64 GiB on
+// 2026-08-22 and srv2 was not, and the trees read OS-usable RAM per host since #11625. So equal pools
+// stopped being true; what symmetry still means is that the two pools differ by EXACTLY the RAM
+// difference -- same overhead, same slice, nothing else charged differently.
 test fn witness_srv2_symmetric_to_srv1() -> Bool {
   let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let s2 = host_budget_tree_at(name: "srv2", offer: srv2_offer, session_slice: byte_size(fitting_slice()))
@@ -79,7 +100,8 @@ test fn witness_srv2_symmetric_to_srv1() -> Bool {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
   }
-  p1 == p2 && p1 > 0
+  let ram_gap = byte_size_count(b: host_ram_of(offer: srv1_offer)) - byte_size_count(b: host_ram_of(offer: srv2_offer))
+  p2 > 0 && (p1 - p2) == ram_gap
 }
 
 test fn witness_two_pools_present() -> Bool {
@@ -137,6 +159,10 @@ test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
 // bound and srv3 the legacy allowance — which is the same bug with the hosts transposed and is
 // precisely the failure a bare inequality cannot see.
 
+// THE GAP NOW INCLUDES THE USABLE-RAM DIFFERENCE. Since #11625 each tree reads its own host's
+// OS-usable RAM, and srv1 and srv3 -- same board, same DIMMs -- differ by firmware reservation
+// (host_ram_of names the instrument; the figure is not transcribed here). The claim assumed equal
+// usable RAM, so it was off by exactly that difference. Both terms are read from the producers rather than transcribed.
 test fn witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap() -> Bool {
   let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let s3 = host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
@@ -149,7 +175,8 @@ test fn witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap() -> Bool {
     BudgetChildMissing => 0
   }
   let gap = byte_size_count(b: host_overhead_bytes(offer: srv1_offer)) - byte_size_count(b: host_overhead_bytes(offer: srv3_offer))
-  p3 > p1 && p3 > 0 && (p3 - p1) == gap && gap > 0
+  let ram_gap = byte_size_count(b: host_ram_of(offer: srv3_offer)) - byte_size_count(b: host_ram_of(offer: srv1_offer))
+  p3 > p1 && p3 > 0 && (p3 - p1) == gap + ram_gap && gap > 0
 }
 
 test fn witness_managed_hosts_share_one_overhead_and_legacy_hosts_share_another() -> Bool {
@@ -159,3 +186,4 @@ test fn witness_managed_hosts_share_one_overhead_and_legacy_hosts_share_another(
   let managed4 = byte_size_count(b: host_overhead_bytes(offer: srv4_offer))
   legacy1 == legacy2 && managed3 == managed4 && legacy1 > managed3
 }
+

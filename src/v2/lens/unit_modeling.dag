@@ -1,12 +1,14 @@
 module v2.lens.unit_modeling
 
+import v2.std.node { Authored, StructuralLabel }
+
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
 import v2.std.witness { Holds }
-import v2.std.node_query { edge_field_type_name }
+import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
-import v2.std.optional { optional_absent, optional_present, optional_prefer_first_present }
+import std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
 type UnitFieldRow {
   field: Symbol
@@ -60,7 +62,8 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
 fn field_name_has_known_carrier(name: Symbol) -> Bool {
   match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
-    _ => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -80,7 +83,8 @@ fn exemption_marker_set() -> Map<Symbol, Symbol> {
 fn name_is_exempt(name: Symbol) -> Bool {
   match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
-    _ => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -90,16 +94,21 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
-    Named { name: nm } =>
-      if type_is_flat_scalar(target: edge.target) {
-        if name_is_exempt(name: nm) {
-          optional_absent()
-        } else {
-          optional_present(value: unit_modeling_diagnostic(carrier: carrier, name: nm))
-        }
-      } else {
-        optional_absent()
+    Authored { name: nm } =>
+      match member_edge_type_node(e: edge) {
+        Absent => optional_present(value: member_not_a_binder_diagnostic(e: edge))
+        Present { value: t } =>
+          if type_is_flat_scalar(target: t) {
+            if name_is_exempt(name: nm) {
+              optional_absent()
+            } else {
+              optional_present(value: unit_modeling_diagnostic(carrier: carrier, name: nm))
+            }
+          } else {
+            optional_absent()
+          }
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }

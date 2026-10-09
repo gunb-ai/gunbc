@@ -1,5 +1,6 @@
 module v2.test.claim.staged_front_end
 
+import std.types { List }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
   FrontEndRefused,
@@ -13,11 +14,9 @@ import v2.compiler.staged_front_end {
   run_front_end,
   run_front_end_to
 }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

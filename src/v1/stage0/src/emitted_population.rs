@@ -7,6 +7,7 @@
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
 // src/extdeps_filesystem_rust_realization.rs
+// src/extdeps_ietf_http_semantics.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
 // src/extdeps_languages_dag_types.rs
@@ -22,6 +23,7 @@
 // src/extdeps_languages_rust_representation.rs
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
+// src/extdeps_posix_clock_gettime.rs
 // src/extdeps_units_dimensionless.rs
 // src/extdeps_units_iec_80000_13.rs
 // src/extdeps_units_iso8601.rs
@@ -33,10 +35,14 @@
 // src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
+// src/gunbc_reference_derived_candidate.rs
+// src/gunbc_rust_crate_package_ident.rs
 // src/gunbc_rust_decl_type_overlay.rs
+// src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
+// src/gunbc_stage0_emitted_edge_admission.rs
 // src/gunbc_stage0_emitted_population_manifest.rs
 // src/gunbc_stage0_executable_assembly_generated.rs
 // src/gunbc_stage0_partition_package_graph.rs
@@ -62,11 +68,11 @@
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
+// src/std_kernel_type_name.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs
 // src/std_machine_constraints.rs
-// src/std_magnitude.rs
 // src/std_measure.rs
 // src/std_nat.rs
 // src/std_node.rs
@@ -75,6 +81,7 @@
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
 // src/std_operator_realization.rs
+// src/std_optional.rs
 // src/std_primitive_projection.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
@@ -147,6 +154,8 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_generic_identity_census.rs
+// src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs

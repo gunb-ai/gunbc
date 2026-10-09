@@ -1,11 +1,12 @@
 module gunbc.fleet_converge_plan_manifest
 
+import gunbc.fleet_converge_scope { FleetConvergeScope }
+
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
 import gunbc.fleet_converge_plan {
-  FleetConvergeScope,
   ScopeDecoded,
   ScopeUndecodable,
   fleet_converge_scope_of_wire,
@@ -20,7 +21,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_prior_generation_path,
   fleet_converge_plan_generation_path,
   fleet_converge_parse_nonneg_generation_text,
-  fleet_converge_plan_bundle_digest_hex,
+  fleet_converge_plan_bundle_digest_hex
 }
 
 // EVERY VALUE APPLY TRUSTS, JUDGED IN ONE PLACE AGAINST ONE RUN-BOUND ANCHOR.

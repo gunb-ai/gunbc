@@ -159,6 +159,7 @@ import gunbc.fabric.engram_materialization {
   ax_route_refill_cost_on_host_loss, ax_route_failure_domain_breadth, ax_route_local_storage_bytes,
   project_route_candidate, component_route_assessment,
 }
+import extdeps.uri { uri_https }
 
 
 // ── FIXTURE SCAFFOLDING FOR THE TWO CONTROLS THAT NEED A SETTLED SUBJECT ───────────────────────
@@ -170,7 +171,7 @@ import gunbc.fabric.engram_materialization {
 // and constraints with a fixture assessment whose closure IS settled -- which is a fixture standing
 // in for the one missing input, not a second selection path.
 data fixture_authority: ExternalAuthority = ExternalAuthority {
-  uri: "https://example.invalid/fixture-cost-model" as NonEmptyStr,
+  uri: uri_https(locator: "example.invalid/fixture-cost-model" as NonEmptyStr),
 }
 
 data fixture_term_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_term")

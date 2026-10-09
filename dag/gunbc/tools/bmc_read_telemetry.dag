@@ -2,7 +2,6 @@ module gunbc.tools.bmc_read_telemetry
 
 
 fn bmc_read_telemetry() -> ProcessExit
-  uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   netrc = shell.Env.Get(name: "BMC_NETRC_FILE")

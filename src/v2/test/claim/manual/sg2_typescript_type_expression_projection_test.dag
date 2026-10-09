@@ -1,10 +1,8 @@
 module v2.test.manual.sg2_typescript_type_expression_projection
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_serialize_source_from_model
-}
+import v2.compiler.translate { translate_type_expression_project }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.typescript {
   ts_sg2_arrow_labeled_xy_emitted,
   ts_sg2_arrow_malformed_source_type_node,
@@ -30,7 +28,6 @@ import v2.std.compilers.target_model {
   TargetTypeExprArrowPositionalWire
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v2.std.text { String }
 
@@ -236,14 +233,6 @@ test fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
   row.instantiation_form.open == ^ts_token_lt &&
     row.instantiation_form.separator == ^ts_token_comma &&
     row.instantiation_form.close == ^ts_token_gt
-}
-
-test fn witness_ts_sg2_projected_serialize_holds() -> Bool {
-  ts_sg2_projection_matches_golden()
-    && ts_sg2_arrow_projected_serialize_matches_expected()
-    && ts_sg2_conj_projected_serialize_matches_expected()
-    && ts_sg2_instantiation_projected_serialize_matches_expected()
-    && ts_sg2_disj_projected_serialize_matches_expected()
 }
 
 test fn ts_sg2_arrow_projection_matches_golden() -> Bool {

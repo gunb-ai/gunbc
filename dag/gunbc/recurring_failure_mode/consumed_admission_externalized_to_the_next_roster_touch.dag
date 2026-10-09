@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.consumed_admission_externalized_to_the_next_roster_touch
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data consumed_admission_externalized_to_the_next_roster_touch: RecurringFailureMode = RecurringFailureMode {
+  identity: "consumed_admission_externalized_to_the_next_roster_touch" as NonEmptyStr,
+
+  receipts: [
+    "**a permission carried in the tree is required at its owner's gate and consumed the moment the owner lands, so every owner lands a dead row and the next change to touch the roster pays for its deletion** (DESIGN section 5, externalization: the cost is caused by one change and paid by another principal who must read a stranger's change to know the deletion is safe).",
+
+    "THE INVALID STATE: a namespace transition admission resident on main whose admitted motion main already carries. Such a row can never match a delta again, so it is dead weight at best and, under any rule that refuses consumed rows, a red on some later unrelated change.",
+
+    "WHY IT IS THE DEFAULT AND NOT A SLIP. The row is REQUIRED at instant N (its owner's own gate, where base lacks the motion and head has it) and CONSUMED at instant N+1 (every later run, where base and head both carry it). Any carrier that lives in the tree lands the row with the change it admits, so the consumed state is reached by EVERY correct use, not by forgetting. A gate that measures against the merge base cannot see it at the owner's run -- the row is working exactly as designed there -- and main stays green because nothing on main compares anything.",
+
+    "RECEIPTS, THREE IN THREE DAYS. gunbc#11587 left 40 consumed rows (billed to #11623, discharged on main 2026-09-19); gunbc#11660 left 1 (the enrollment_id_for_code binding; deleted by #11623 and #11666 independently -- two lanes each paying for one stranger's row); gunbc#11681 left 13 (deleted by #11696). The history before the directory roster is the same class at a coarser grain: eight roster generations of the const roster each needed a dissolution PR (#9797 the seventh, #9820 the eighth).",
+
+    "EVERY PRIOR REPAIR MOVED THE BILL AND KEPT THE DEBT. gunbc#9824 split consumed from stale so bystanders stopped going red, and charged the deletion to the roster's next touch; lane ruling C (2026-09-13) charged it to the owner as a mandatory deletion follow-up pull request; operator ruling gunbc#11481 removed that charge as not worth its cost and declared the loss (gunbc.rung_drop.consumed_row_owner_charge_unenforced, gunbc.rung_drop.owner_deletion_follow_up_charge_removed). Each asked WHO pays for a consumed row on main; none asked why a consumed row could reach main at all.",
+
+    "RUNG FOUND AT: 2, mechanically preventable, and only on the roster-touching run -- on the required path a consumed row refused nowhere until someone edited the roster directory. BRIEFLY AT 2 ON EVERY REQUIRED RUN, THEN BACK TO NOTHING. gunbc#11704 (2026-09-19) moved admissions onto the change that needs them -- read base..head from its own commit messages -- and refused any file under dag/gunbc/namespace/transition_admission/ at the owner's own gate, which held the class at rung 2 on every required run rather than only on a roster-touching one. gunbc#11774 (2026-09-20) then DELETED the namespace-wave-admission wall outright on an operator ruling: the phase, the carrier, the roster and the types are gone, so NO mechanism refuses this class today and nothing in the tree can. CEILING: 4, structurally impossible. NEXT-RUNG TRIGGER, and it is not this row's to fire: the wall's own restoration, gunbc.rung_drop.namespace_wave_admission_wall_removed, whose trigger names both a debt-collection design that never charges bystanders and a landing-time enforcement run -- the carrier gunbc#11704 built is the first half of it, kept in history rather than in the tree. THE CLASS IS RECORDED HERE BECAUSE IT RECURS WHEREVER A PERMISSION OUTLIVES ITS CHANGE, not because this roster still exists.",
+
+    "THE RECOGNITION RULE, BEYOND THIS ROSTER: a permission, waiver or admission whose subject is ONE CHANGE but whose carrier outlives that change. Ask where the permission lives after the change lands. If the answer is the tree, the permission is consumed-on-landing by construction and somebody later owns its deletion. Carry it on the change -- the commit, the pull request, the queue entry -- so its lifetime is the change's.",
+
+    "DISTINCT FROM ITS NEIGHBOURS. A stale admission (authored wrong, matches no delta at any instant) is an author error and refuses its own author; this class is the CORRECT row outliving its purpose. And it is not closed by a cheaper deletion charge: every charge relocates the cost to some principal, which is the section 5 shape this row names.",
+  ],
+
+  evidence: [],
+}

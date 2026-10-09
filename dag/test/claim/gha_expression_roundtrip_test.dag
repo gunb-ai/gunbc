@@ -95,6 +95,8 @@ fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
     neq_op: default_expression_spellings.neq_op,
     interp_open: default_expression_spellings.interp_open,
     interp_close: default_expression_spellings.interp_close,
+    group_open: default_expression_spellings.group_open,
+    group_close: default_expression_spellings.group_close,
     index_open: default_expression_spellings.index_open,
     index_close: default_expression_spellings.index_close,
   }
@@ -273,3 +275,22 @@ test fn witness_string_false_and_zero_are_truthy() -> Bool {
     }
 }
 
+
+// PRECEDENCE: an operand whose operator binds looser than its parent's is grouped, and nothing else
+// is. RED before the grouping rule: (a || b) && c rendered as `a || b && c`, which reads back as
+// a || (b && c) -- a different expression for the same tree.
+test fn witness_looser_operand_is_grouped_under_a_tighter_operator() -> Bool {
+  let a = ContextAccess { context: Github, path: ["a"] }
+  let b = ContextAccess { context: Github, path: ["b"] }
+  let c = ContextAccess { context: Github, path: ["c"] }
+  serialize_expression(expression: LogicalAnd { left: LogicalOr { left: a, right: b }, right: c }) == "(github.a || github.b) && github.c"
+    && serialize_expression(expression: Equals { left: LogicalAnd { left: a, right: b }, right: c }) == "(github.a && github.b) == github.c"
+}
+
+test fn witness_tighter_operand_is_not_grouped() -> Bool {
+  let a = ContextAccess { context: Github, path: ["a"] }
+  let b = ContextAccess { context: Github, path: ["b"] }
+  let c = ContextAccess { context: Github, path: ["c"] }
+  serialize_expression(expression: LogicalOr { left: LogicalAnd { left: a, right: b }, right: c }) == "github.a && github.b || github.c"
+    && serialize_expression(expression: LogicalAnd { left: Equals { left: a, right: b }, right: c }) == "github.a == github.b && github.c"
+}

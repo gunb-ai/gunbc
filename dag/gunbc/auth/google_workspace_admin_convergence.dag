@@ -1,0 +1,148 @@
+module gunbc.auth.google_workspace_admin_convergence
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalAssessmentRefused, GoalInspection, GoalObservationRefused, GoalInspected, assess_by_deviations }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import extdeps.google.workspace {
+  WorkspaceAdminSubject, WorkspaceAdminValue, WorkspaceAdminControl, WorkspaceAdminReadSurface,
+  AuthPlatformClient, AuthPlatformAudience, WorkspaceClientAccess, WorkspaceDirectorySharing, WorkspacePhotoEditing,
+  RegisteredWebClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
+  workspace_admin_control, workspace_admin_value_control, workspace_admin_read_surface, ConsoleReadbackRequired, PolicyApiReadSupported,
+}
+import v2.std.algebra { any }
+
+// A manual action is an outstanding obligation. It is never an API mutation or a completed
+// convergence merely because a login or a profile fetch succeeded. Values and receipts contain
+// no client secret; provisioning that secret uses the existing deployment/Secret Manager path.
+type WorkspaceIdentityBinding {
+  customer: NonEmptyStr
+  project: NonEmptyStr
+  client: NonEmptyStr
+  top_org_unit: NonEmptyStr
+  redirect_uri: NonEmptyStr
+  desired_revision: NonEmptyStr
+}
+
+type WorkspaceAdminObligation {
+  subject: WorkspaceAdminSubject
+  desired: WorkspaceAdminValue
+  desired_revision: NonEmptyStr
+  rationale: NonEmptyStr
+}
+
+type DirectoryDiscoveryPolicy
+  = BasicSignInOnly
+  | OrganizationDiscoveryRequired { rationale: NonEmptyStr }
+
+fn workspace_identity_admin_obligations(binding: WorkspaceIdentityBinding, discovery: DirectoryDiscoveryPolicy) -> List<WorkspaceAdminObligation> {
+  [
+    WorkspaceAdminObligation { subject: AuthPlatformClient { project: binding.project, client: binding.client },
+      desired: RegisteredWebClient { redirect_uris: [binding.redirect_uri] }, desired_revision: binding.desired_revision, rationale: "Register the tracker web client; provision its secret separately through the existing secret path." },
+    WorkspaceAdminObligation { subject: AuthPlatformAudience { project: binding.project }, desired: InternalAudience,
+      desired_revision: binding.desired_revision, rationale: "The tracker is an internal organization application." },
+    WorkspaceAdminObligation { subject: WorkspaceClientAccess { customer: binding.customer, client: binding.client, org_unit: binding.top_org_unit },
+      desired: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile"] } }, desired_revision: binding.desired_revision,
+      rationale: "Admit this client to basic sign-in scopes without granting unrelated Google data." },
+    WorkspaceAdminObligation { subject: WorkspaceDirectorySharing { customer: binding.customer },
+      desired: DirectorySharing { policy: match discovery { BasicSignInOnly => RequesterBasicProfileOnly OrganizationDiscoveryRequired { rationale: _ } => OrganizationDirectoryData } },
+      desired_revision: binding.desired_revision, rationale: match discovery { BasicSignInOnly => "Only the authenticated user's basic profile is required." OrganizationDiscoveryRequired { rationale } => rationale } },
+    WorkspaceAdminObligation { subject: WorkspacePhotoEditing { customer: binding.customer, org_unit: binding.top_org_unit },
+      desired: PhotoEditing { allowed: true }, desired_revision: binding.desired_revision,
+      rationale: "Allow profile photo editing under the declared organization policy; read back effective child overrides separately." }
+  ]
+}
+
+type WorkspaceReadbackSource
+  = AdminConsoleReadback { administrator: PrincipalRef, evidence: NonEmptyStr }
+  | WorkspacePolicyApiReadback { policy_resource: NonEmptyStr, setting_type: NonEmptyStr, evidence: NonEmptyStr }
+
+type WorkspacePolicyCoverage
+  = EffectiveAtDeclaredScope
+  | EffectiveWithUnresolvedOverrides { reason: NonEmptyStr }
+
+type WorkspaceAdminReadback {
+  subject: WorkspaceAdminSubject
+  observed: WorkspaceAdminValue
+  source: WorkspaceReadbackSource
+  observed_at_epoch: Int
+  valid_until_epoch: Int
+  coverage: WorkspacePolicyCoverage
+}
+
+type WorkspaceAdminObservation
+  = WorkspaceAdminRead { receipt: WorkspaceAdminReadback }
+  | WorkspaceAdminNotObserved { reason: NonEmptyStr }
+  | WorkspaceAdminReadRefused { reason: NonEmptyStr }
+
+type WorkspaceAdminEvidence { desired_revision: NonEmptyStr, receipt: WorkspaceAdminReadback }
+type WorkspaceAdminDifference { expected: WorkspaceAdminValue, observed: WorkspaceAdminValue }
+
+// Receipt admission is subject-bound and freshness-bound. The approver/reader is an existing
+// stable principal. A console receipt cannot stand in for the supported Policy API observation.
+// A whole-customer claim cannot be derived from a top-OU value with unread child overrides.
+fn workspace_admin_inspect(goal: WorkspaceAdminObligation, observation: WorkspaceAdminObservation,
+  admitted_admins: List<PrincipalRef>, now_epoch: Int) -> GoalInspection<WorkspaceAdminSubject, WorkspaceAdminObligation, WorkspaceAdminReadSurface, WorkspaceAdminReadback, WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String, String> {
+  let request = workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject))
+  match observation {
+    WorkspaceAdminNotObserved { reason } => GoalObservationRefused { subject: goal.subject, goal: goal, request: request, cause: concat("not observed: ", reason as String) }
+    WorkspaceAdminReadRefused { reason } => GoalObservationRefused { subject: goal.subject, goal: goal, request: request, cause: concat("read refused: ", reason as String) }
+    WorkspaceAdminRead { receipt } => GoalInspected { subject: goal.subject, goal: goal, request: request, observed: receipt,
+      assessment: workspace_admin_assess(goal: goal, receipt: receipt, admitted_admins: admitted_admins, now_epoch: now_epoch) }
+  }
+}
+
+fn workspace_admin_assess(goal: WorkspaceAdminObligation, receipt: WorkspaceAdminReadback,
+  admitted_admins: List<PrincipalRef>, now_epoch: Int) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
+      if receipt.subject != goal.subject { GoalAssessmentRefused { cause: "readback belongs to another customer/project/client/OU" } }
+      else if workspace_admin_control(subject: goal.subject) != workspace_admin_value_control(value: goal.desired)
+        || workspace_admin_control(subject: receipt.subject) != workspace_admin_value_control(value: receipt.observed) {
+        GoalAssessmentRefused { cause: "setting value belongs to another control" }
+      } else if receipt.observed_at_epoch > now_epoch || receipt.valid_until_epoch <= now_epoch
+        || receipt.valid_until_epoch <= receipt.observed_at_epoch { GoalAssessmentRefused { cause: "readback is future-dated, expired, or has no bounded lifetime" } }
+      else { match receipt.coverage {
+        EffectiveWithUnresolvedOverrides { reason } => GoalAssessmentRefused { cause: reason as String }
+        EffectiveAtDeclaredScope => {
+          let admitted = match receipt.source {
+            AdminConsoleReadback { administrator, evidence } => evidence as String != "" && any(admitted_admins, p => principal_ref_eq(a: p, b: administrator))
+              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { ConsoleReadbackRequired { documentation: _ } => true PolicyApiReadSupported { setting_type: _, documentation: _ } => false }
+            WorkspacePolicyApiReadback { policy_resource, setting_type: observed_setting, evidence } => starts_with(s: policy_resource as String, prefix: "policies/") && evidence as String != ""
+              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { PolicyApiReadSupported { setting_type, documentation: _ } => setting_type == observed_setting ConsoleReadbackRequired { documentation: _ } => false }
+          }
+          if !admitted { GoalAssessmentRefused { cause: "readback source is not admitted for this setting" } }
+          else { assess_by_deviations(evidence: WorkspaceAdminEvidence { desired_revision: goal.desired_revision, receipt: receipt },
+            deviations: if workspace_admin_values_equal(a: receipt.observed, b: goal.desired) { [] } else { [ WorkspaceAdminDifference { expected: goal.desired, observed: receipt.observed } ] }) }
+        }
+      } }
+}
+
+// URI and scope lists are sets in the external policy, not a presentation-order contract.
+fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) -> Bool {
+  match a {
+    RegisteredWebClient { redirect_uris: left } => match b {
+      RegisteredWebClient { redirect_uris: right } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
+      InternalAudience => false
+      ExternalAudience => false
+      ClientAccess { access: _ } => false
+      DirectorySharing { policy: _ } => false
+      PhotoEditing { allowed: _ } => false
+    }
+    ClientAccess { access: AppSpecificGoogleData { scopes: left } } => match b {
+      ClientAccess { access: AppSpecificGoogleData { scopes: right } } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
+      ClientAccess { access: AppTrusted } => false
+      ClientAccess { access: AppLimited } => false
+      ClientAccess { access: AppBlocked } => false
+      RegisteredWebClient { redirect_uris: _ } => false
+      InternalAudience => false
+      ExternalAudience => false
+      DirectorySharing { policy: _ } => false
+      PhotoEditing { allowed: _ } => false
+    }
+    ClientAccess { access: AppTrusted } => a == b
+    ClientAccess { access: AppLimited } => a == b
+    ClientAccess { access: AppBlocked } => a == b
+    InternalAudience => a == b
+    ExternalAudience => a == b
+    DirectorySharing { policy: _ } => a == b
+    PhotoEditing { allowed: _ } => a == b
+  }
+}

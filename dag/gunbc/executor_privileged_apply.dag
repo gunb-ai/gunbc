@@ -2,15 +2,14 @@ module gunbc.executor_privileged_apply
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, SingleAuthority }
-import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, executor_privileged_operation_argv,
+  ExecutorPrivilegedOperation, executor_privileged_operation_elevated_command,
 }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 
-data executor_privileged_apply_disposition: Disposition = SingleAuthority
+data executor_privileged_apply_disposition: ConstructionMechanism = SingleAuthority
 
 // THE OPERATIONS WERE AUTHORIZED AND NEVER APPLIED, AND THAT GAP WAS FOUND BY BEING ASKED.
 //
@@ -43,8 +42,7 @@ data executor_privileged_apply_disposition: Disposition = SingleAuthority
 // environment ACROSS the privilege boundary, a security claim this applier has no reason to make
 // when every argv it runs is already absolute; and it deliberately omits -n, so it can prompt.
 fn executor_privileged_operation_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
-  let elevated = sudo_elevate(command: map(executor_privileged_operation_argv(op: op), w => w as String))
-  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+  executor_privileged_operation_elevated_command(op: op)
 }
 
 fn executor_privileged_operation_commands(ops: List<ExecutorPrivilegedOperation>) -> List<ArgvCommand> {

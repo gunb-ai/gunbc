@@ -1,0 +1,403 @@
+module gunbc.machine_intake_megarac_ui_features
+
+import extdeps.tools.sha256sum
+import extdeps.tools.gzip
+import std.algebra { trim }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
+
+// THE FEATURE LIST THE VENDOR UI HANDS ITS KVM VIEWER, READ FROM THE UI'S OWN BYTES (eager-owl-205,
+// 2026-09-30; operator rule: derived, never hand-typed). The served viewer.min.js (fleet-converge crawl
+// run 36787375313) initialises its KVM view with UNGUARDED sessionStorage.features.indexOf(...) reads
+// (KVM_SESSION_RECONNECT, VMEDIA_MAX_COUNT_FOR_KVM, HOST_CURSOR_ENABLED_DEFAULT): with `features` unset
+// it throws, the view never initialises, and /kvm is never opened -- KVM probe run 36788605665 journalled
+// exactly that page error and no WebSocket. The real UI stores JSON.stringify of its
+// project-configurations collection, which is seeded from the STATIC `features` module compiled into
+// source.min.js:
+//   o("features",[],function(){var e=[{feature:"RMEDIA_MULTI_IMAGE_SUPPORT"},...];return e})
+// so the list is parsed out of those bytes, and only out of the build this unit's facts are keyed on:
+// the served source.min.js must digest to the 2026-09-27 read's sha256, or nothing is read.
+//
+// THE LIST IS AN OBSERVATION RECEIPT, NOT A DERIVED FACT IN GIT (review 73613; operator decision via
+// eager-owl-205, 2026-10-01). The bundle it is read from is AMI's proprietary MegaRAC UI and is not
+// redistributable, so it is not committed and no CI job can reach it: a CI-diffed gate is unavailable,
+// and that is a DECLARED BOUNDARY, not a below-ceiling choice (DESIGN 4b, outside the modeled guarantee;
+// 4d, the typed bet). The receipt names what was read -- the firmware build, the bundle's sha256, the
+// run that retained it -- and carries TranscribedUncited with its read obligation: the route that
+// re-derives it. What gates it is that route: megarac_ui_bundle_rows_emit refuses any bundle whose
+// digest is not the pinned one, so a later fetch either reproduces these names from these bytes or
+// refuses, and never silently diverges from them.
+data megarac_ui_features_module_open: String = "o(\"features\",[],function()\{var e=["
+
+data megarac_ui_features_module_close: String = "];return e}"
+
+data megarac_ui_feature_key: String = "feature:\""
+
+// THE NAMES IN THE MODULE, IN ITS ORDER: every `feature:"NAME"` between the module's opening and its
+// `];return e}`. Absent when the module is not in the text, or holds no name.
+fn megarac_ui_features_of_bundle(text: String) -> List<String>? {
+  match split(s: text, delimiter: megarac_ui_features_module_open).skip(n: 1).first() {
+    Absent => none
+    Present { value: after } => {
+      let body = match split(s: after, delimiter: megarac_ui_features_module_close).first() { Present { value: b } => b  Absent => "" }
+      let names = map(split(s: body, delimiter: megarac_ui_feature_key).skip(n: 1), rest => match split(s: rest, delimiter: "\"").first() { Present { value: n } => n  Absent => "" })
+      if count(names) == 0 { none } else { Present { value: names } }
+    }
+  }
+}
+
+// A FEATURE NAME IS THE VENDOR'S IDENTIFIER SHAPE: upper-case letters, digits and underscores, nonempty.
+// Anything else is refused rather than written into a JSON string it could escape from.
+data megarac_ui_feature_name_characters: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+fn megarac_ui_feature_name_admitted(name: String) -> Bool {
+  name != "" && all(split(s: name, delimiter: ""), c => c == "" || string_contains(s: megarac_ui_feature_name_characters, pattern: c))
+}
+
+
+type MegaRacUiFeatures
+  = MegaRacUiFeaturesRead { names: List<String>, source_sha256: NonEmptyStr }
+  | MegaRacUiFeaturesUnread { cause: NonEmptyStr }
+
+// THE READING FROM ALREADY-DECODED BUNDLE TEXT AND ITS DIGEST: refused unless the digest is the pinned
+// build's and the module yields only admitted names.
+fn megarac_ui_features_reading(observed_sha256: String, text: String) -> MegaRacUiFeatures {
+  if observed_sha256 != (megarac_source_min_js_sha256_2026_09_27 as String) {
+    MegaRacUiFeaturesUnread { cause: concat(concat("source.min.js digests to ", observed_sha256), concat(", not the pinned ", megarac_source_min_js_sha256_2026_09_27 as String)) as NonEmptyStr }
+  } else {
+    match megarac_ui_features_of_bundle(text: text) {
+      Absent => MegaRacUiFeaturesUnread { cause: "the features module was not found in source.min.js, or holds no name" }
+      Present { value: names } =>
+        if all(names, n => megarac_ui_feature_name_admitted(name: n)) {
+          MegaRacUiFeaturesRead { names: names, source_sha256: megarac_source_min_js_sha256_2026_09_27 }
+        } else {
+          MegaRacUiFeaturesUnread { cause: concat("the features module holds a name outside the vendor identifier shape: ", join(filter(names, n => !megarac_ui_feature_name_admitted(name: n)), " ")) as NonEmptyStr }
+        }
+    }
+  }
+}
+
+type MegaRacUiFeaturesReceipt {
+  firmware: BmcFirmwareReleaseIdentity
+  bundle_sha256: NonEmptyStr
+  producing_run: NonEmptyStr
+  names: List<NonEmptyStr>
+  standing: CitedFigureStanding
+}
+
+// The names, as megarac_ui_bundle_rows_emit wrote them from run 36787375313's retained source.min.js.
+data megarac_ui_features_0_32: List<NonEmptyStr> = [
+  "RMEDIA_MULTI_IMAGE_SUPPORT",
+  "BIOS_SUPPORT",
+  "KVM_SESSION_RECONNECT",
+  "SYSTEM_FIREWALL",
+  "OEM_PROPRIETARY_LEVEL_SUPPORT",
+  "HTML5_KVM",
+  "DUAL_BIOS_FLASH_SUPPORT",
+  "IPV6_SUPPORT",
+  "ALLOW_NON_SECURE_COMMUNICATION",
+  "SET_SENSOR_THRESHOLDS",
+  "REPLACE_OEM_LOGO",
+  "EXTENDEDLOG",
+  "AUTO_RESIZE_KVM_CLIENT_WINDOW",
+  "SERVICES",
+  "RMEDIA",
+  "AUTOVDORECORD_REMOTE",
+  "CAPTURE_BSOD_JPEG",
+  "RADIUS_SUPPORT",
+  "SYSTEM_FIREWALL_TIMEOUT",
+  "UARTLOG",
+  "RUNTIME_HOST_LOCK",
+  "SOL_SUPPORT",
+  "HPM_SUPPORT",
+  "ADVISER_SUPPORT",
+  "AD_SUPPORT",
+  "MULTIPLE_USER_VMEDIA",
+  "LDAP_SUPPORT",
+  "KVM_SESSION_TIMEOUT",
+  "FIRMWARE_FLASH_SUPPORT",
+  "CPLD_SUPPORT",
+  "PTP_SERVER_SUPPORT",
+  "BOOTFW_SUPPORT",
+  "HOST_LOCK_AUTO",
+  "BACKUP_CONFIG",
+  "SET_SENSOR_THRESHOLDS_RESET",
+  "SAVE_SELLOG",
+  "SESSION_MANAGEMENT",
+  "RMEDIA_MULTI_CD_SUPPORT",
+  "TSIG",
+  "IPV6_COMPLIANCE",
+  "CD_SERVER_APP",
+  "WEB_DASHBOARD_WIDGETS",
+  "FOLDER_REDIRECTION",
+  "CIRCULAR_SEL",
+  "FW_IMAGE",
+  "DISABLE_EMPTY_PASSWORD",
+  "KB_LANG_SELECT_SUPPORT",
+  "DYNAMIC_KCS_LAN_SUPPORT",
+  "LMEDIA",
+  "DUAL_BOOTFW_EEPROM_SUPPORT",
+  "BLOCK_ICMP_TIMESTAMP",
+  "SINGLE_PORT_APP",
+  "MDNS",
+  "NCSI_SUPPORT",
+  "IMG_REDIRECTION",
+  "HD_SERVER_APP",
+  "PAM_REORDERING",
+  "EXTENDED_PRIV",
+  "SNMP",
+  "WEB_APP_PROXY",
+  "LMEDIA_MULTI_IMAGE_SUPPORT",
+  "VMEDIA_MAX_COUNT_FOR_KVM",
+  "MEDIA_REDIR_READ_WRITE_ONLY",
+  "RMEDIA_SESSION_RECONNECT",
+  "PRESERVECONF",
+  "TIMEZONE_SUPPORT",
+  "RMEDIA_MULTI_HD_SUPPORT",
+  "AUTOVDORECORD",
+  "YES",
+  "VERSION_CMP_FLASH",
+  "BMC_RECOVERY",
+  "NWLINK",
+  "KVM_OR_MEDIA_AVAILABLE",
+]
+
+data megarac_ui_features_0_32_receipt: MegaRacUiFeaturesReceipt = MegaRacUiFeaturesReceipt {
+  firmware: megarac_firmware_0_32,
+  bundle_sha256: megarac_source_min_js_sha256_2026_09_27,
+  producing_run: "36787375313" as NonEmptyStr,
+  names: megarac_ui_features_0_32,
+  standing: TranscribedUncited { read_obligation: "re-derive by the fleet-converge mtcollins1_ui_bundle_observe mode, which retains the served source.min.js with its sha256 as the mtcollins1-ui-bundle artifact, then gunbc.machine_intake_megarac_ui_features megarac_ui_bundle_rows_emit over that file: it refuses unless the bytes digest to megarac_source_min_js_sha256_2026_09_27, and otherwise writes these names" as NonEmptyStr },
+}
+
+data megarac_ui_features_receipts: List<MegaRacUiFeaturesReceipt> = [megarac_ui_features_0_32_receipt]
+
+// THE LIST FOR A FIRMWARE BUILD: the receipt observed for that build, or none -- a build no receipt
+// covers has no list, and the observer does not drive its viewer.
+fn megarac_ui_features(firmware: BmcFirmwareReleaseIdentity) -> List<NonEmptyStr>? {
+  match filter(megarac_ui_features_receipts, r => bmc_firmware_release_identity_eq(a: r.firmware, b: firmware)).first() {
+    Present { value: r } => Present { value: r.names }
+    Absent => none
+  }
+}
+
+// THE REMOTE-MEDIA STOP REASONS, IN THE VENDOR'S OWN NAMES, AS AN OBSERVATION RECEIPT BESIDE THE FEATURE
+// LIST'S (same bundle, same boundary: AMI's proprietary UI, not committed, not reachable from CI). The
+// SP-X UI's rmedia view renders a stopped CD as its `halted` label ("Stopped") followed by the i18n
+// string rmedia:status_<code>, and only for 1 <= code <= 17 (changeInSingleImages:
+// `0==r&&l>=1&&17>=l`, r settings/media/general mount_cd, l its cd_error_code). Each row is one
+// rmedia:status_<code> entry of the English dictionary, " - " prefix removed; status_0 ("~") and
+// status_100 (" Starting..") are not stop reasons. The receipt CITES the feature receipt's firmware,
+// bundle digest and producing run rather than restating them: both lists are written by one emitter
+// from one digest-checked read, megarac_ui_bundle_rows_emit.
+type MegaRacRmediaStatus {
+  code: Int
+  name: NonEmptyStr
+}
+
+type MegaRacRmediaStatusReceipt {
+  firmware: BmcFirmwareReleaseIdentity
+  bundle_sha256: NonEmptyStr
+  producing_run: NonEmptyStr
+  rows: List<MegaRacRmediaStatus>
+  standing: CitedFigureStanding
+}
+
+// The rows, as megarac_ui_bundle_rows_emit wrote them from the same retained source.min.js.
+data megarac_rmedia_status_0_32: List<MegaRacRmediaStatus> = [
+  MegaRacRmediaStatus { code: 1, name: "Connection Accepted" },
+  MegaRacRmediaStatus { code: 2, name: "Connection Denied" },
+  MegaRacRmediaStatus { code: 3, name: "Login Failed" },
+  MegaRacRmediaStatus { code: 4, name: "MAX Session Reached" },
+  MegaRacRmediaStatus { code: 5, name: "Permission Denied" },
+  MegaRacRmediaStatus { code: 6, name: "Unknown Error" },
+  MegaRacRmediaStatus { code: 7, name: "Media Detach Stage" },
+  MegaRacRmediaStatus { code: 8, name: "All device instances are occupied" },
+  MegaRacRmediaStatus { code: 9, name: "Unable to Connect" },
+  MegaRacRmediaStatus { code: 10, name: "Invalid Image" },
+  MegaRacRmediaStatus { code: 11, name: "Mount Error" },
+  MegaRacRmediaStatus { code: 12, name: "Unable to Open" },
+  MegaRacRmediaStatus { code: 13, name: "Media License Expired" },
+  MegaRacRmediaStatus { code: 14, name: "Connection Lost" },
+  MegaRacRmediaStatus { code: 15, name: "Mount Cancelled By User" },
+  MegaRacRmediaStatus { code: 16, name: "Device Ejected" },
+  MegaRacRmediaStatus { code: 17, name: "Session Terminated" },
+]
+
+data megarac_rmedia_status_0_32_receipt: MegaRacRmediaStatusReceipt = MegaRacRmediaStatusReceipt {
+  firmware: megarac_ui_features_0_32_receipt.firmware,
+  bundle_sha256: megarac_ui_features_0_32_receipt.bundle_sha256,
+  producing_run: megarac_ui_features_0_32_receipt.producing_run,
+  rows: megarac_rmedia_status_0_32,
+  standing: megarac_ui_features_0_32_receipt.standing,
+}
+
+data megarac_rmedia_status_receipts: List<MegaRacRmediaStatusReceipt> = [megarac_rmedia_status_0_32_receipt]
+
+// A CODE THE BUILD'S TABLE NAMES, A CODE IT DOES NOT, OR A BUILD NO RECEIPT COVERS. The last two are
+// different facts: one is this firmware answering outside its own UI's vocabulary, the other is this
+// repository not having read that firmware's UI.
+type MegaRacRmediaStatusLookup
+  = RmediaStatusNamed { status: MegaRacRmediaStatus }
+  | RmediaStatusOutsideTable { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+  | RmediaStatusTableUnread { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+
+fn megarac_rmedia_status_of_wire(firmware: BmcFirmwareReleaseIdentity, wire: Int) -> MegaRacRmediaStatusLookup {
+  match filter(megarac_rmedia_status_receipts, r => bmc_firmware_release_identity_eq(a: r.firmware, b: firmware)).first() {
+    Absent => RmediaStatusTableUnread { firmware: firmware, wire: wire }
+    Present { value: r } =>
+      match filter(r.rows, st => st.code == wire).first() {
+        Present { value: st } => RmediaStatusNamed { status: st }
+        Absent => RmediaStatusOutsideTable { firmware: firmware, wire: wire }
+      }
+  }
+}
+
+// THE REMOTE-MEDIA STOP-REASON TABLE, READ FROM THE SAME BYTES (operator-approved 2026-10-01; rule:
+// derived, never hand-typed). The rmedia view names a stopped CD as "Stopped" + rmedia:status_<code>,
+// and its range check is compiled in beside the dictionary:
+//   0==r&&l>=1&&17>=l?(... a.t("rmedia:halted")+a.t("rmedia:status_"+l) ...)
+// The English rmedia dictionary opens once in the bundle -- rmedia:{home:"Home",... -- and a stop reason
+// is an entry status_<code>:" - <Name>"; status_0 ("~") and status_100 (" Starting..") carry no " - "
+// and are not reasons. Two readings of one fact are taken and must agree: the dictionary's entries are
+// exactly codes 1..N in order, and N is the upper bound the range check reads. A disagreement is a
+// build this parse does not understand, and refuses.
+data megarac_rmedia_dictionary_open: String = "rmedia:\{home:\"Home\","
+
+data megarac_rmedia_dictionary_close: String = "}"
+
+data megarac_rmedia_status_key: String = "status_"
+
+data megarac_rmedia_stop_reason_prefix: String = " - "
+
+data megarac_rmedia_status_bound_open: String = "0==r&&l>=1&&"
+
+data megarac_rmedia_status_bound_close: String = ">=l"
+
+// ONE DICTIONARY ENTRY that names a stop reason: status_<digits>:" - <Name>". Anything else in the
+// dictionary -- its other keys, status_0, status_100 -- is not a row.
+fn megarac_rmedia_status_entry(piece: String) -> MegaRacRmediaStatus? {
+  match split(s: piece, delimiter: ":\"").first() {
+    Absent => none
+    Present { value: key } =>
+      match parse_int(s: key) {
+        Absent => none
+        Present { value: code } => {
+          let value = match split(s: piece, delimiter: ":\"").skip(n: 1).first() { Present { value: v } => match split(s: v, delimiter: "\"").first() { Present { value: q } => q  Absent => "" }  Absent => "" }
+          if starts_with(s: value, prefix: megarac_rmedia_stop_reason_prefix) {
+            let name = join(split(s: value, delimiter: megarac_rmedia_stop_reason_prefix).skip(n: 1), megarac_rmedia_stop_reason_prefix)
+            if name == "" { none } else { Present { value: MegaRacRmediaStatus { code: code, name: name as NonEmptyStr } } }
+          } else { none }
+        }
+      }
+  }
+}
+
+// THE STOP REASONS IN THE ENGLISH rmedia DICTIONARY, IN ITS ORDER. Absent when the dictionary is not in
+// the text.
+fn megarac_rmedia_status_entries_of_bundle(text: String) -> List<MegaRacRmediaStatus>? {
+  match split(s: text, delimiter: megarac_rmedia_dictionary_open).skip(n: 1).first() {
+    Absent => none
+    Present { value: after } => {
+      let body = match split(s: after, delimiter: megarac_rmedia_dictionary_close).first() { Present { value: b } => b  Absent => "" }
+      Present { value: fold(split(s: body, delimiter: megarac_rmedia_status_key).skip(n: 1), init: [], f: (acc, p) => match megarac_rmedia_status_entry(piece: p) { Present { value: r } => acc.append(r)  Absent => acc }) }
+    }
+  }
+}
+
+// THE UPPER BOUND THE VIEW'S OWN RANGE CHECK READS. Absent when the check is not in the text.
+fn megarac_rmedia_status_bound_of_bundle(text: String) -> Int? {
+  match split(s: text, delimiter: megarac_rmedia_status_bound_open).skip(n: 1).first() {
+    Absent => none
+    Present { value: after } =>
+      match split(s: after, delimiter: megarac_rmedia_status_bound_close).first() {
+        Absent => none
+        Present { value: n } => parse_int(s: n)
+      }
+  }
+}
+
+type MegaRacRmediaStatusTable
+  = MegaRacRmediaStatusTableRead { rows: List<MegaRacRmediaStatus>, source_sha256: NonEmptyStr }
+  | MegaRacRmediaStatusTableUnread { cause: NonEmptyStr }
+
+// A NAME IS WRITTEN INTO A .dag STRING, so a quote or a backslash is refused rather than escaped.
+fn megarac_rmedia_status_name_admitted(name: String) -> Bool {
+  name != "" && !string_contains(s: name, pattern: "\"") && !string_contains(s: name, pattern: "\\")
+}
+
+// THE READING FROM ALREADY-DECODED BUNDLE TEXT AND ITS DIGEST: refused unless the digest is the pinned
+// build's, the dictionary and the range check are both present, the entries are exactly 1..bound in
+// order, and every name is admitted.
+fn megarac_rmedia_status_table_reading(observed_sha256: String, text: String) -> MegaRacRmediaStatusTable {
+  if observed_sha256 != (megarac_source_min_js_sha256_2026_09_27 as String) {
+    MegaRacRmediaStatusTableUnread { cause: concat(concat("source.min.js digests to ", observed_sha256), concat(", not the pinned ", megarac_source_min_js_sha256_2026_09_27 as String)) as NonEmptyStr }
+  } else {
+    match megarac_rmedia_status_entries_of_bundle(text: text) {
+      Absent => MegaRacRmediaStatusTableUnread { cause: "the English rmedia dictionary was not found in source.min.js" }
+      Present { value: rows } =>
+        match megarac_rmedia_status_bound_of_bundle(text: text) {
+          Absent => MegaRacRmediaStatusTableUnread { cause: "the rmedia view's stop-reason range check was not found in source.min.js" }
+          Present { value: bound } =>
+            if count(rows) != bound || count(rows) == 0 {
+              MegaRacRmediaStatusTableUnread { cause: join(["the rmedia dictionary names ", to_string(count(rows)), " stop reasons but the view's range check reads 1..", to_string(bound)], "") as NonEmptyStr }
+            } else if fold(rows, init: 1, f: (next, r) => if next > 0 && r.code == next { next + 1 } else { 0 }) != count(rows) + 1 {
+              MegaRacRmediaStatusTableUnread { cause: concat("the rmedia stop reasons are not codes 1..N in order: ", join(map(rows, r => to_string(r.code)), " ")) as NonEmptyStr }
+            } else if !all(rows, r => megarac_rmedia_status_name_admitted(name: r.name as String)) {
+              MegaRacRmediaStatusTableUnread { cause: "an rmedia stop-reason name carries a quote or a backslash" }
+            } else {
+              MegaRacRmediaStatusTableRead { rows: rows, source_sha256: megarac_source_min_js_sha256_2026_09_27 }
+            }
+        }
+    }
+  }
+}
+
+fn megarac_rmedia_status_row_text(rows: List<MegaRacRmediaStatus>) -> String {
+  concat(concat("data megarac_rmedia_status_0_32: List<MegaRacRmediaStatus> = [\n", join(map(rows, r => join(["  MegaRacRmediaStatus \{ code: ", to_string(r.code), ", name: \"", r.name as String, "\" },"], "")), "\n")), "\n]\n")
+}
+
+// THE ROWS' ONE EMITTER (the entry both receipts' read obligation names): read a RETAINED source.min.js as served -- the
+// mtcollins1-ui-bundle artifact of a crawl run -- refuse unless it digests to the pinned 2026-09-27
+// build, decode it ONCE, parse both tables, and write both rows' text to `out`. Either parse refusing writes nothing. Run:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/machine_intake/megarac_ui_features.dag
+//     --function megarac_ui_bundle_rows_emit --arg bundle=<retained source.min.js> --arg out=<file>
+fn megarac_ui_features_row_text(names: List<String>) -> String {
+  concat(concat("data megarac_ui_features_0_32: List<NonEmptyStr> = [\n", join(map(names, n => concat(concat("  \"", n), "\",")), "\n")), "\n]\n")
+}
+
+fn megarac_ui_bundle_rows_emit(bundle: String, out: String) -> ProcessExit {
+  let digest = sha256sum.Sha256.DigestFile(path: bundle as NonEmptyStr)
+  let observed = match split(s: trim(s: digest.line), delimiter: " ").first() { Present { value: d } => d  Absent => "" }
+  if !digest.success || observed == "" {
+    return exit_failure(reason: concat("megarac ui bundle rows: the retained bundle could not be digested: ", digest.line))
+  }
+  let decoded = gzip.Gzip.DecodeToStdout(path: bundle as NonEmptyStr)
+  if !decoded.success {
+    return exit_failure(reason: concat("megarac ui bundle rows: the retained bundle could not be decoded: ", trim(s: decoded.stderr)))
+  }
+  match megarac_ui_features_reading(observed_sha256: observed, text: decoded.text) {
+    MegaRacUiFeaturesUnread { cause: c } => exit_failure(reason: concat("megarac ui features: ", c as String))
+    MegaRacUiFeaturesRead { names: n, source_sha256: _ } =>
+      match megarac_rmedia_status_table_reading(observed_sha256: observed, text: decoded.text) {
+        MegaRacRmediaStatusTableUnread { cause: c } => exit_failure(reason: concat("megarac rmedia status table: ", c as String))
+        MegaRacRmediaStatusTableRead { rows: r, source_sha256: _ } => {
+          let w = Filesystem.Write(path: out, content: concat(megarac_ui_features_row_text(names: n), megarac_rmedia_status_row_text(rows: r)))
+          if w.success { ExitSuccess } else { exit_failure(reason: concat("megarac ui bundle rows: the rows could not be written: ", w.error)) }
+        }
+      }
+  }
+}
+
+fn megarac_ui_features_text(f: MegaRacUiFeatures) -> String {
+  match f {
+    MegaRacUiFeaturesRead { names: n, source_sha256: s } => join([to_string(count(n)), " features read from source.min.js sha256 ", s as String], "")
+    MegaRacUiFeaturesUnread { cause: c } => concat("features UNREAD: ", c as String)
+  }
+}

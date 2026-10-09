@@ -1,5 +1,8 @@
 module v2.test.execution.emit_host_complement_equals_eval
 
+import std.types { List }
+import v2.std.node_query { find_core_child }
+
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -20,20 +23,18 @@ import v2.extdeps.languages.dag {
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_test { rust_logic_complement_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present,
   optional_present,
   optional_absent
 }
-import v2.std.node { match_arm_body }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -46,17 +47,14 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
   Node,
   Symbol,
-  TypeNode
-}
-import v2.std.node_query {
-  find_named_child
+  TypeNode,
+  MatchArmBodyEdge,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -98,7 +96,7 @@ fn emit_complement_eval_generic_facts(node: Node) -> InferredFacts {
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension { measured: ^emit_complement_eval_generic_descent }
+        strict: v2.std.cardinality.RankingComponent { measured: ^emit_complement_eval_generic_descent }
       }
     }
   )
@@ -210,7 +208,7 @@ fn emit_complement_eval_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
 }
 
 fn emit_complement_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
-  match find_named_child(root: arm_wire, name: match_arm_body) {
+  match find_core_child(root: arm_wire, marker: MatchArmBodyEdge) {
     Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

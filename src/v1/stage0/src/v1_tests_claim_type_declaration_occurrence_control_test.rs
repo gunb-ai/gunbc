@@ -8,7 +8,6 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, ReferenceOccurrence,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source;
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
@@ -54,14 +53,14 @@ pub fn category_is_type(c: OccurrenceCategory) -> bool {
 
 pub fn type_declaration_count(source: String) -> i64 {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source("type_declaration_control.dag".to_string(), source.clone())).clone() {
-    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => (0 - 1),
+    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => v1_rt::int_sub(0, 1),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport: t, .. } => (Rc::new({ let mut __result = Vec::new(); for d in t.declarations.clone().iter().cloned() { if category_is_type(d.category.clone()) { __result.push(d); } } __result }).len() as i64),
 }
 }
 
 pub fn type_reference_count(source: String) -> i64 {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source("type_declaration_control.dag".to_string(), source.clone())).clone() {
-    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => (0 - 1),
+    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => v1_rt::int_sub(0, 1),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport: t, .. } => (Rc::new({ let mut __result = Vec::new(); for r in t.references.clone().iter().cloned() { if category_is_type(r.category.clone()) { __result.push(r); } } __result }).len() as i64),
 }
 }

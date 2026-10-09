@@ -1,6 +1,6 @@
 module gunbc.scm_compatibility_shape
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, brand }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,

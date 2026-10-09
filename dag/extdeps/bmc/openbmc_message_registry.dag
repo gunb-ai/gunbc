@@ -1,0 +1,130 @@
+module extdeps.bmc.openbmc_message_registry
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE OPENBMC MESSAGE REGISTRY ENTRIES THIS CORPUS READS, by their registry MessageId. bmcweb renders
+// a System Event Log entry's Message as the MessageId (with the entry's severity appended) on its
+// first line and the message arguments after it -- observed on the ASRock ALTRAD8UD OpenBMC 3.22
+// image 2026-09-18 as "OpenBMC.0.1.MemoryECCCorrectable.Critical \n 0,2,0,9". Only the ids this
+// corpus classifies are carried; every other entry is unclassified by the consumer, never guessed.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/bmcweb/blob/master/redfish-core/include/registries/openbmc_message_registry.hpp"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.openbmc_message_registry",
+      decl_name: "OpenBmcMemoryEccMessage",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "github.com/openbmc/phosphor-sel-logger/blob/master/include/threshold_event_monitor.hpp" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "github.com/ampere-openbmc/ampere-platform-mgmt" } },
+  ]
+}
+
+type OpenBmcMemoryEccMessage
+  = OpenBmcMemoryEccCorrectable
+  | OpenBmcMemoryEccUncorrectable
+
+data openbmc_memory_ecc_correctable_id: NonEmptyStr = "OpenBMC.0.1.MemoryECCCorrectable"
+data openbmc_memory_ecc_uncorrectable_id: NonEmptyStr = "OpenBMC.0.1.MemoryECCUncorrectable"
+
+// The id is matched as the whole first segment before the appended severity, not as a prefix of the
+// message, so MemoryECCCorrectableSomethingElse is not read as a correctable ECC record.
+fn openbmc_message_id_is(message: String, id: NonEmptyStr) -> Bool {
+  let first_line = match split(s: message, delimiter: "\n").first() { Present { value: l } => trim(s: l) Absent => "" }
+  first_line == id as String || starts_with(s: first_line, prefix: concat(id as String, "."))
+}
+
+fn openbmc_memory_ecc_message(message: String) -> OpenBmcMemoryEccMessage? {
+  if openbmc_message_id_is(message: message, id: openbmc_memory_ecc_correctable_id) {
+    Present { value: OpenBmcMemoryEccCorrectable }
+  } else if openbmc_message_id_is(message: message, id: openbmc_memory_ecc_uncorrectable_id) {
+    Present { value: OpenBmcMemoryEccUncorrectable }
+  } else {
+    none
+  }
+}
+
+// THE REST OF WHAT THE FLEET'S OPENBMC 3.22 LOG CARRIES, observed on srv3 2026-09-18 (1200 entries):
+// every entry is one of the four classes below, and an entry matching none stays unclassified for
+// the consumer. The Ampere OEM registry's AmpereWarning (DIMM_HOT) and the phosphor-sel-logger
+// threshold text are separate upstreams from bmcweb's OpenBMC registry and are cited beside it.
+data openbmc_memory_ecc_extended_data_id: NonEmptyStr = "OpenBMC.0.1.MemoryExtendedECCCEData"
+data ampere_warning_id: NonEmptyStr = "OpenBMC.0.1.AmpereWarning"
+data ampere_dimm_hot_prefix: String = "Event DIMM_HOT at "
+
+// MemoryExtendedECCCEData is the companion record the firmware emits beside each
+// MemoryECCCorrectable (90 of each on srv3), carrying the syndrome data of the same error. It is
+// its own class so a consumer cannot count one error twice.
+type OpenBmcEventClass
+  = OpenBmcMemoryEcc { ecc: OpenBmcMemoryEccMessage }
+  | OpenBmcMemoryEccDetail
+  | AmpereDimmHot { subject: NonEmptyStr, asserted: Bool }
+  | SelLoggerThreshold { sensor: NonEmptyStr, critical: Bool, high: Bool, asserted: Bool }
+
+fn second_line(message: String) -> String {
+  match split(s: message, delimiter: "\n").skip(n: 1).first() { Present { value: l } => trim(s: l) Absent => "" }
+}
+
+// "Event DIMM_HOT at DIMM0 of channel 2 of Socket 0,Asserted." -> subject "DIMM0 of channel 2 of
+// Socket 0", asserted. A body with any other shape is not this class.
+fn ampere_dimm_hot(message: String) -> OpenBmcEventClass? {
+  let body = second_line(message: message)
+  if !starts_with(s: body, prefix: ampere_dimm_hot_prefix) { none } else {
+    let rest = substring(s: body, start: ampere_dimm_hot_prefix.length(), end: body.length())
+    let parts = split(s: rest, delimiter: ",")
+    if count(parts) != 2 { none } else {
+      let subject = trim(s: match parts.first() { Present { value: p } => p Absent => "" })
+      let state = trim(s: match parts.skip(n: 1).first() { Present { value: p } => p Absent => "" })
+      if subject == "" { none }
+      else if state == "Asserted." { Present { value: AmpereDimmHot { subject: subject as NonEmptyStr, asserted: true } } }
+      else if state == "Deasserted." { Present { value: AmpereDimmHot { subject: subject as NonEmptyStr, asserted: false } } }
+      else { none }
+    }
+  }
+}
+
+// phosphor-sel-logger's threshold text: "<sensor> <warning|critical> <low|high> threshold
+// <assert|deassert>. Reading=<v> Threshold=<t>." The sensor name is the first word; the next four
+// words are fixed vocabulary, and anything else is not this class.
+fn word_at(words: List<String>, n: Int) -> String {
+  match words.skip(n: n).first() { Present { value: x } => x Absent => "" }
+}
+
+fn sel_logger_threshold(message: String) -> OpenBmcEventClass? {
+  let words = split(s: match split(s: message, delimiter: "\n").first() { Present { value: l } => trim(s: l) Absent => "" }, delimiter: " ")
+  if count(words) < 5 { none } else {
+    let sensor = word_at(words: words, n: 0)
+    let level = word_at(words: words, n: 1)
+    let side = word_at(words: words, n: 2)
+    let kind = word_at(words: words, n: 3)
+    let action = word_at(words: words, n: 4)
+    if sensor == "" || kind != "threshold" { none }
+    else if level != "warning" && level != "critical" { none }
+    else if side != "low" && side != "high" { none }
+    else if action != "assert." && action != "deassert." { none }
+    else { Present { value: SelLoggerThreshold { sensor: sensor as NonEmptyStr, critical: level == "critical", high: side == "high", asserted: action == "assert." } } }
+  }
+}
+
+fn openbmc_event_class(message: String) -> OpenBmcEventClass? {
+  match openbmc_memory_ecc_message(message: message) {
+    Present { value: ecc } => Present { value: OpenBmcMemoryEcc { ecc: ecc } }
+    none =>
+      if openbmc_message_id_is(message: message, id: openbmc_memory_ecc_extended_data_id) { Present { value: OpenBmcMemoryEccDetail } }
+      else if openbmc_message_id_is(message: message, id: ampere_warning_id) { ampere_dimm_hot(message: message) }
+      else { sel_logger_threshold(message: message) }
+  }
+}

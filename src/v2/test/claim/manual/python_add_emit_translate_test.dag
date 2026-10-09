@@ -1,6 +1,7 @@
 module v2.test.manual.python_add_emit_translate
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
@@ -16,10 +17,8 @@ import v2.compiler.eval {
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate,
-}
+import v2.compiler.translate { translate }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.python {
   python_facts_int,
   python_inhabitant_atom,
@@ -44,7 +43,7 @@ import v2.std.collection {
   Map,
   empty_map
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,
@@ -83,15 +82,7 @@ data python_add_forbidden_authority_source_text: String = "authority_source_text
 
 data python_add_int_inhabitant: Node = python_int_inhabitant_node()
 
-data python_add_emitted_root: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: python_add_int_inhabitant },
-    Edge { label: Positional, target: python_add_int_inhabitant },
-    Edge { label: Positional, target: python_add_int_inhabitant }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data python_add_emitted_root: Node = anonymous_signature_arrow(domain_types: [python_add_int_inhabitant, python_add_int_inhabitant], codomain: python_add_int_inhabitant, source: python_add_int_inhabitant)
 
 data python_add_int_facts_node: Node = python_integer_facts_node(facts: python_facts_int)
 

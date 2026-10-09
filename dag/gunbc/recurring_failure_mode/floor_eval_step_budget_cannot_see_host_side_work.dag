@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.floor_eval_step_budget_cannot_see_host_side_work
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data floor_eval_step_budget_cannot_see_host_side_work: RecurringFailureMode = RecurringFailureMode {
+  identity: "floor_eval_step_budget_cannot_see_host_side_work" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a cost defect lives in HOST work the interpreter does around evaluation -- memo key hashing, memo verification equality, value cloning, map and list primitives -- while the only gated cost measure for enrolling a witness is the eval-step count, which counts interpreted evaluation steps and nothing the host does between them. The defect is then invisible to the enrolment gate by construction: a claim built to catch it cannot fit the step budget at the size where it discriminates, and a claim that fits cannot discriminate. The per-claim CPU budget does see host work, but only where the claim is large enough to cross it, which is where the step gate refuses it.",
+    "HARM: a class of cost regressions has no authorable red on the merge path. A new control for it is refused at enrolment, and a control resized to pass enrolment passes both with and without the defect -- a green that reads as coverage. The next such defect then looks covered.",
+    "SPECIMEN (gunbc#12410, 2026-09-27): the 02_parse list-literal quadratic lived in v1_interpreter value_fast_eq, the seed memo's serve-time verification. The same claim (v2.test.parse.list_literal_parse_cost, a generated N-element list literal through the real prepared parse), measured by claim_batch --claim-run at the repaired head versus a mutant restoring top-level-only verification: N=4 70,150 eval steps, cpu 174ms vs 756ms; N=8 98,482 steps, 216ms vs 1,134ms; N=12 126,814 steps, 323ms vs 1,687ms. Eval steps are IDENTICAL in both arms at every N; only CPU separates them. The CPU red first appears at N=12 against the 1,552ms per-claim CPU budget, where steps already exceed the 72,300-step new-witness gate. The claim enrolled at N=3 (under the step gate with margin) as inhabitance only.",
+    "RUNG FOUND AT: mitigatable. The discriminator exists only as a Rust unit test, local-only under gunbc.rung_drop rust_unit_tests_off_the_merge_path, and the floor claim over the same route is structurally unable to discriminate.",
+    "ATTAINABLE CEILING: mechanically preventable. Host work is decidably countable, so a gated measure that sees it can exist. NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: a floor cost measure that counts host-side work -- CPU gated per claim at a margin SUFFICIENT FOR a claim below the step gate to go red when a host primitive's cost regresses by the specimen's factor, or a host work counter exposed to claims -- OR Rust unit tests restored to the merge path, which carries this class's current discriminators. Whichever lands first retires the local-only standing of those discriminators; only the first retires this row.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.test.parse.list_literal_parse_cost", decl_name: "lpc_list_literal_parses_on_prepared_route"),
+    decl_ref(module_path: "gunbc.rung_drop.rust_unit_tests_off_the_merge_path", decl_name: "rust_unit_tests_off_the_merge_path"),
+  ],
+}

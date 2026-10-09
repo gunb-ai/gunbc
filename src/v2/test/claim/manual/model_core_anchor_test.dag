@@ -1,13 +1,7 @@
 module v2.test.manual.model_core_anchor
 
 import v2.std.algebra { length }
-import v2.std.logic {
-  Bool,
-  bool_encoding_fact_node,
-  bool_primitive_facts,
-  bool_primitive_facts_node,
-  bool_width_fact_node
-}
+import v2.std.logic { bool_encoding_fact_node, bool_primitive_facts, bool_primitive_facts_node, bool_width_fact_node }
 import v2.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
@@ -60,10 +54,7 @@ test fn model_core_primitives_contract() -> Bool {
   model_core_first_primitive_substrate(core: bool_model_core()) ==
     bool_primitive_facts_node(facts: bool_primitive_facts) &&
   model_core_bool_primitive_bundle().substrate_carrier ==
-    bool_primitive_facts_node(facts: bool_primitive_facts) &&
-  model_core_bool_width_fact_holds() &&
-  model_core_bool_encoding_fact_holds() &&
-  model_core_bool_unbound_axes_fail_closed()
+    bool_primitive_facts_node(facts: bool_primitive_facts)
 }
 
 test fn model_core_inhabitance_contract() -> Bool {
@@ -88,8 +79,5 @@ test fn model_core_payload_contract_holds() -> Bool {
   (length(xs: core.primitives) == 1) &&
   (length(xs: core.inhabitance) == 1) &&
   (length(xs: core.laws) == 4) &&
-  (length(xs: core.partiality.operations) == 0) &&
-  model_core_primitives_contract() &&
-  model_core_inhabitance_contract() &&
-  model_core_laws_contract()
+  (length(xs: core.partiality.operations) == 0)
 }

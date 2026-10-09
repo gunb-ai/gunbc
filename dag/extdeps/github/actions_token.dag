@@ -16,7 +16,13 @@ import extdeps.github.app {
   GitHubAppPermissionAccess,
   AppAccessRead,
   AppAccessWrite,
-  permission_access_at_least
+  permission_access_at_least,
+  GitHubAccessSet,
+  GitHubAccessReadOrWrite,
+  GitHubAccessWriteOnly,
+  GitHubAccessReadOnly,
+  GitHubAccessNeither,
+  github_access_set_admits
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -110,54 +116,30 @@ fn axis_intrinsic_token_grant(axis: GitHubPermissionAxis) -> IntrinsicTokenGrant
   }
 }
 
-type ActionsAccessSet
-  = ActionsAccessReadOrWrite
-  | ActionsAccessWriteOnly
-  | ActionsAccessReadOnly
-  | ActionsAccessNotAvailable
-
-fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
+fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> GitHubAccessSet {
   match axis {
-    ActionsAxis => ActionsAccessReadOrWrite
-    ArtifactMetadataAxis => ActionsAccessReadOrWrite
-    AttestationsAxis => ActionsAccessReadOrWrite
-    ChecksAxis => ActionsAccessReadOrWrite
-    CodeQualityAxis => ActionsAccessReadOrWrite
-    ContentsAxis => ActionsAccessReadOrWrite
-    DeploymentsAxis => ActionsAccessReadOrWrite
-    DiscussionsAxis => ActionsAccessReadOrWrite
-    IdTokenAxis => ActionsAccessWriteOnly
-    IssuesAxis => ActionsAccessReadOrWrite
-    MetadataAxis => ActionsAccessNotAvailable
-    ModelsAxis => ActionsAccessReadOnly
-    PackagesAxis => ActionsAccessReadOrWrite
-    PagesAxis => ActionsAccessReadOrWrite
-    PullRequestsAxis => ActionsAccessReadOrWrite
-    RepositoryProjectsAxis => ActionsAccessNotAvailable
-    SecurityEventsAxis => ActionsAccessReadOrWrite
-    StatusesAxis => ActionsAccessReadOrWrite
-    VulnerabilityAlertsAxis => ActionsAccessReadOnly
-    WorkflowsAxis => ActionsAccessNotAvailable
-    AdministrationAxis => ActionsAccessNotAvailable
-    OrganizationSelfHostedRunnersAxis => ActionsAccessNotAvailable
-  }
-}
-
-fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionAccess) -> Bool {
-  match set {
-    ActionsAccessNotAvailable => false
-    ActionsAccessReadOrWrite => match access {
-      AppAccessRead => true
-      AppAccessWrite => true
-    }
-    ActionsAccessWriteOnly => match access {
-      AppAccessRead => false
-      AppAccessWrite => true
-    }
-    ActionsAccessReadOnly => match access {
-      AppAccessRead => true
-      AppAccessWrite => false
-    }
+    ActionsAxis => GitHubAccessReadOrWrite
+    ArtifactMetadataAxis => GitHubAccessReadOrWrite
+    AttestationsAxis => GitHubAccessReadOrWrite
+    ChecksAxis => GitHubAccessReadOrWrite
+    CodeQualityAxis => GitHubAccessReadOrWrite
+    ContentsAxis => GitHubAccessReadOrWrite
+    DeploymentsAxis => GitHubAccessReadOrWrite
+    DiscussionsAxis => GitHubAccessReadOrWrite
+    IdTokenAxis => GitHubAccessWriteOnly
+    IssuesAxis => GitHubAccessReadOrWrite
+    MetadataAxis => GitHubAccessNeither
+    ModelsAxis => GitHubAccessReadOnly
+    PackagesAxis => GitHubAccessReadOrWrite
+    PagesAxis => GitHubAccessReadOrWrite
+    PullRequestsAxis => GitHubAccessReadOrWrite
+    RepositoryProjectsAxis => GitHubAccessNeither
+    SecurityEventsAxis => GitHubAccessReadOrWrite
+    StatusesAxis => GitHubAccessReadOrWrite
+    VulnerabilityAlertsAxis => GitHubAccessReadOnly
+    WorkflowsAxis => GitHubAccessNeither
+    AdministrationAxis => GitHubAccessNeither
+    OrganizationSelfHostedRunnersAxis => GitHubAccessNeither
   }
 }
 
@@ -169,10 +151,10 @@ fn actions_token_may_declare_permission(name: GitHubPermissionAxis) -> Bool {
   match axis_actions_permissions_key(axis: name) {
     Absent => false
     Present { value: _ } => match axis_allowed_actions_access(axis: name) {
-      ActionsAccessNotAvailable => false
-      ActionsAccessReadOrWrite => true
-      ActionsAccessWriteOnly => true
-      ActionsAccessReadOnly => true
+      GitHubAccessNeither => false
+      GitHubAccessReadOrWrite => true
+      GitHubAccessWriteOnly => true
+      GitHubAccessReadOnly => true
     }
   }
 }
@@ -295,7 +277,7 @@ type ActionsGrantResolution
   | ActionsGrantDeclaredAccessInvalid {
       axis: GitHubPermissionAxis
       declared: GitHubAppPermissionAccess
-      allowed: ActionsAccessSet
+      allowed: GitHubAccessSet
     }
   | ActionsGrantForkPolicyUnobserved
 
@@ -335,7 +317,7 @@ fn resolve_declared_access(
   axis: GitHubPermissionAxis,
   declared: GitHubAppPermissionAccess
 ) -> ActionsGrantResolution {
-  if !actions_access_set_admits(set: axis_allowed_actions_access(axis: axis), access: declared) {
+  if !github_access_set_admits(set: axis_allowed_actions_access(axis: axis), access: declared) {
     ActionsGrantDeclaredAccessInvalid {
       axis: axis,
       declared: declared,

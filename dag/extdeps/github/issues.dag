@@ -1,13 +1,16 @@
 module extdeps.github.issues
 
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import std.string_type { String }
 import std.types { NonEmptyStr, Timestamp, Secret }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github_contracts { issue_state_wire_contract }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -165,6 +168,7 @@ service github.Issues {
   }
 
   operation ListForRepoRaw {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -192,6 +196,7 @@ service github.Issues {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -220,6 +225,7 @@ service github.Issues {
   }
 
   operation Update {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -249,6 +255,7 @@ service github.Issues {
   }
 
   operation CreateComment {
+    requires Network
     input {
       auth_token: Secret
       owner: String

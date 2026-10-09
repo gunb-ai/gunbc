@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.census_instrument_silently_drops_items
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data census_instrument_silently_drops_items: RecurringFailureMode = RecurringFailureMode {
+  identity: "census_instrument_silently_drops_items" as NonEmptyStr,
+  receipts: [
+    "**a census instrument whose parser silently drops items reports a smaller population, and a short count reads as success** (INVALID STATE: the reader accepts a file and returns an item population missing members it never recognized -- no refusal, no located diagnostic -- so every consumer downstream treats the shortfall as absence.",
+    "HARM: a seed-growth admission join over the short population reports fewer added and modified items than the change carries, and the shortfall is in the direction that admits. A hand-derived list and the instrument then agree on the smaller number, so the comparison that should expose the gap confirms it.",
+    "SPECIMEN (gunbc#12924): gunbc.rust_item_scan closed an item only on a line at the item's own indent. A `static NAME: T =` that rustfmt continues before its initializer puts the declaration's `;` one indent deeper, so the item stayed open and swallowed the following items until some column-0 `}` -- cli_run.rs `static PROVIDER_BOOTSTRAP_STORE_SKIPS` absorbed `fn record_provider_bootstrap_store_skip`, which was never an item, and an edit to it was attributed to the static. A trailing `// comment` after a one-line declaration did the same (resolved_graph_cache.rs PART_DESCRIPTOR_LEN over V3_HEADER_LEN). Measured on main against the corrected reader, 126 items across 22 hand files were never recorded (gunbc#12924 lists them by file), 7 of them in v1_interpreter.rs (record_builtin_time_inclusive, canonical_symbol_spelling, record_dag_fn_self_time among them).",
+    "DISTINGUISHING FACT, and why the obvious control does not catch it: every line of a swallowed item WAS attributed -- to the item that swallowed it. A line-coverage join (every scanned line inside exactly one item or a declared non-item region) passes. What the state violates is a HEADER-coverage join: every item header at a scope boundary begins exactly one recorded item. A swallowed header sits at the open item's own indent, where no item body ever puts one.",
+    "RUNG: structurally guaranteed for this reader. scan_step refuses an item header at the open item's own indent rather than reading it as body, so any construct that leaves an item open past its end -- continued initializer, trailing comment, ordinary multi-line string, and constructs not yet met -- stops the line at the first sibling header instead of shrinking the population. Measured with a line-for-line reference port of the reader (it agrees with the .dag reader extent-for-extent on v1_interpreter.rs, cli_run.rs and required_floor_runner.rs): the fixed reader refuses one hand file under the guard (bootstrap_witness.rs, Rust-looking text in an ordinary multi-line string, the reader's named residual); the prior reader with the guard added refuses at the original swallow sites in cli_run.rs and v1_interpreter.rs.",
+    "CEILING AND NEXT-RUNG TRIGGER: the guard is a structural refusal over a line recognizer, not construction. An item whose swallowed sibling is not at the open item's own indent (a swallow that ends inside a deeper scope) is outside it. The next rung is a modeled Rust lexer under extdeps.languages.rust, at which point extents are token-delimited and this recognizer deletes in its favour. For other census instruments the class is the same: an instrument's population is admitted only with a header-grain identity join against an independently recognized header set, and a count that merely shrank is never evidence.)",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.rust_item_scan_witness_test", decl_name: "an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_swallowed", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rust_item_scan_witness_test", decl_name: "a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_an_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rust_item_scan_witness_test", decl_name: "a_trailing_comment_does_not_hold_a_declaration_open", field: WholeDeclaration },
+  ],
+}

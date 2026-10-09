@@ -21,10 +21,20 @@ import extdeps.tools.sha256sum {
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
-import tools.self_host_curated_seed_linked_harness {
-  cssl_std_bridge_shims_rel,
-  cssl_v1_compiled_probe_lib_cargo_toml
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_program_readiness,
+  witness_bin_refusal_cause,
+  witness_bin_release_path,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusalReason
+}
+import tools.emitted_crate_harness_manifest {
+  derive_harness_manifest_in_place,
+  harness_manifest_derived,
+  ProbeLibTarget,
+  SeedLinked
 }
 import gunbc.emit_diagnostic_observation {
   GunbcDiagnostic,
@@ -133,7 +143,7 @@ type WorkingTreeStanding
 // The assembly step is a coproduct rather than a directory string so a second assembly mode becomes
 // a variant here rather than an unlabelled path difference between two measurements.
 type EmissionAssemblyMode
-  = SeedLinkedAssembly { std_bridge_dir: String }
+  = | SeedLinkedAssembly
 
 // THE SUBJECT IS A SCOPE, NOT AN ENTRY STRING, AND THE REASON IS A MEASURED DEFECT RATHER THAN
 // GENERALITY FOR ITS OWN SAKE. Three whole-corpus runs were taken on 2026-08-28 under
@@ -212,7 +222,7 @@ fn working_tree_standing_text(standing: WorkingTreeStanding) -> String {
 
 fn emission_assembly_mode_text(mode: EmissionAssemblyMode) -> String {
   match mode {
-    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked via ", d)
+    SeedLinkedAssembly => "seed-linked"
   }
 }
 
@@ -593,8 +603,7 @@ fn measure_cargo_half(
       args: [
         "--out-dir", out_dir,
         "--entry-dag", assembly_entry,
-        "--root", root,
-        "--std-bridge-dir", cssl_std_bridge_shims_rel
+        "--root", root
       ]
     )
     if !assemble.success || !string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS") {
@@ -606,9 +615,12 @@ fn measure_cargo_half(
         emitted_files: emitted_files
       }
     } else {
-      let manifest = Filesystem.Write(
-        path: concat(out_dir, "/Cargo.toml"),
-        content: cssl_v1_compiled_probe_lib_cargo_toml(root: root)
+      let manifest = harness_manifest_derived(
+        derivation: derive_harness_manifest_in_place(
+          crate_dir: out_dir,
+          target: ProbeLibTarget,
+          linkage: SeedLinked { root: root }
+        )
       )
       let channel = Filesystem.Read(path: concat(root, "/rust-toolchain.toml"))
       let channel_pin = if channel.success {
@@ -616,12 +628,12 @@ fn measure_cargo_half(
       } else {
         false
       }
-      let scaffold_incomplete = !manifest.success || !channel_pin
+      let scaffold_incomplete = !manifest || !channel_pin
       if scaffold_incomplete {
         EmissionCargoUnreached {
           subject: subject,
           stage: StageManifest,
-          cause: concat("could not write the probe crate manifest and toolchain channel pin under ", out_dir),
+          cause: concat("could not derive the probe crate manifest from the emitted Cargo.toml, or write the toolchain channel pin, under ", out_dir),
           emit_diagnostics: emit_diagnostics,
           emitted_files: emitted_files
         }
@@ -761,7 +773,7 @@ fn establish_subject(scope: EmissionScope, render_target: EmissionRenderTarget, 
                   working_tree: if status.entries_nul == "" { WorkingTreeClean } else { WorkingTreeDirty },
                   compiler: compiler,
                   assembler: assembler,
-                  assembly_mode: SeedLinkedAssembly { std_bridge_dir: cssl_std_bridge_shims_rel }
+                  assembly_mode: SeedLinkedAssembly
                 }
               }
           }
@@ -787,16 +799,35 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 //
 // That transport stages a SOURCE ROOT, and entry-admission refuses an entry outside the workspace
 // root; this function stages an OUTPUT CRATE, and cargo refuses a package inside a workspace it is
-// not a member of. The probe manifest cssl_v1_compiled_probe_lib_cargo_toml deliberately carries no
-// [workspace] table, so under target/ cargo stops with "current package believes it's in a
-// workspace when it's not" and exits before compiling anything. Measured on 2026-09-04 while taking
-// the first cargo reading of the src/v2/compiler/00_compile.dag closure.
+// not a member of. The hand-authored probe manifest this route used on 2026-09-04
+// carried no [workspace] table, so under target/ cargo stopped with "current package believes it's
+// in a workspace when it's not" and exited before compiling anything (measured while taking the
+// first cargo reading of the src/v2/compiler/00_compile.dag closure). The manifest is now derived
+// from the emitted one (tools.emitted_crate_harness_manifest), which does carry [workspace]; the
+// output crate still stages outside the repository.
 //
 // The reason it costs more than the ten minutes it costs: cargo's refusal arrives with zero
 // compiler messages, which is the same surface an emission that produced nothing would present, so
 // a reader looking for emitter defects reads a MANIFEST error as an EMISSION error. The
 // EmissionCargoUnreached arm this lands in does carry the cause, and this paragraph is what makes
 // the cause legible before someone re-derives it.
+// The instrument invokes the compiler it is measuring as a subprocess, so an unready binary is a
+// refusal and never a clean measurement. The cause carries WHICH binary refused, WHERE it was
+// looked for and WHY (tools.host_prelude WitnessBinRefusalReason), so an unbuilt gunbc reads
+// differently from a failed cssl_assemble build.
+fn emission_binaries_unestablished(
+  entry: String,
+  bin_name: String,
+  path: String,
+  reason: WitnessBinRefusalReason
+) -> EmissionMeasurement {
+  EmissionSubjectUnestablished {
+    entry: entry,
+    stage: StageBinaries,
+    cause: witness_bin_refusal_cause(bin_name: bin_name, path: path, reason: reason)
+  }
+}
+
 fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTarget) -> EmissionMeasurement {
   let entry = emission_scope_join_key(sc: scope)
   let root = git.Inspect.Toplevel()
@@ -808,28 +839,29 @@ fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTar
       cause: "could not create a temporary directory for the emitted crate"
     }
   } else {
-    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-    let cssl_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
-    if !gunbc_built || !cssl_built {
-      EmissionSubjectUnestablished {
-        entry: entry,
-        stage: StageBinaries,
-        cause: "the gunbc and cssl_assemble release binaries are not both buildable — the instrument invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
-      }
-    } else {
-      let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-      let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
-      match establish_subject(scope: scope, render_target: render_target, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
-        SubjectUnreadable { cause: c } =>
-          EmissionSubjectUnestablished { entry: entry, stage: StageSubject, cause: c }
-        SubjectRead { subject: subject } =>
-          measure_with_subject(
-            subject: subject,
-            root: root.path,
-            out_dir: out_dir.path,
-            gunbc_bin: gunbc_bin,
-            cssl_assemble_bin: cssl_assemble_bin
-          )
+    let binaries = witness_bin_program_readiness(
+      root: root.path,
+      prereqs: [witness_bin(var_name: "GUNBC", bin_name: "gunbc")],
+      invoke: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble")
+    )
+    match binaries {
+      WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+        emission_binaries_unestablished(entry: entry, bin_name: b, path: p, reason: r)
+      WitnessBinReady { path: _ } => {
+        let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+        let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+        match establish_subject(scope: scope, render_target: render_target, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
+          SubjectUnreadable { cause: c } =>
+            EmissionSubjectUnestablished { entry: entry, stage: StageSubject, cause: c }
+          SubjectRead { subject: subject } =>
+            measure_with_subject(
+              subject: subject,
+              root: root.path,
+              out_dir: out_dir.path,
+              gunbc_bin: gunbc_bin,
+              cssl_assemble_bin: cssl_assemble_bin
+            )
+        }
       }
     }
   }
@@ -1016,7 +1048,7 @@ fn emission_report_text(m: EmissionMeasurement) -> String {
 //     --arg entry=dag/extdeps/cpu/ampere.dag --arg report=/tmp/board.tsv
 //
 // The report is WRITTEN rather than returned because `gunbc run` maps a returned value to an exit
-// status and has no value-printing verb; the same wall tools.self_host_curated_probe_cargo records.
+// status and has no value-printing verb; the #8286 wall.
 // The typed measurement is what measure_entry_emission returns -- this wrapper only renders it.
 //
 // THE EXIT STATUS REPORTS THE INSTRUMENT, NOT THE SUBJECT. A completed measurement exits zero even

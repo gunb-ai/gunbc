@@ -1,0 +1,241 @@
+module v2.test.emit.typescript_produced_decl_emit
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production_tree }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_add_operator_node,
+  dag_arrow_with_body_node,
+  dag_binary_body_node,
+  dag_int_type_binding,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.typescript { ts_fn_add_lex, ts_target_model }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  invariant_port_locus
+}
+import v2.std.grammar {
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ParseTree,
+  Sequence,
+  StampClass,
+  StampLexeme,
+  Terminal,
+  grammar_empty_sync_tokens,
+  node_atom_identity_optional
+}
+import v2.std.integer { Int }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  node_synthetic
+}
+import std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ts_produced_decl_golden: String = "function renamed(left: number, right: number): number { return left + right; }"
+
+data ts_produced_decl_name: Symbol = ^renamed
+data ts_produced_decl_left: Symbol = ^left
+data ts_produced_decl_right: Symbol = ^right
+data ts_produced_decl_file: Symbol = ^typescript_produced_decl_emit_fixture_file
+data ts_produced_decl_function_production: Symbol = ^typescript_produced_decl_function
+data ts_produced_decl_emitted_marker: Symbol = ^typescript_produced_decl_emitted_marker
+
+type TsProducedDeclGrammarFold
+  = TsProducedDeclGrammarStart
+  | TsProducedDeclGrammarReady { expression: GrammarExpr }
+
+fn ts_produced_decl_domain() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(
+        name: ts_produced_decl_left,
+        type_node: dag_type_atom_node(identity: dag_int_type_binding())
+      ),
+      binder_edge(
+        name: ts_produced_decl_right,
+        type_node: dag_type_atom_node(identity: dag_int_type_binding())
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ts_produced_decl_arrow() -> Node {
+  dag_arrow_with_body_node(
+    domain: ts_produced_decl_domain(),
+    return_type_binding: dag_int_type_binding(),
+    body: dag_binary_body_node(
+      operator: dag_add_operator_node(),
+      left_binding: ts_produced_decl_left,
+      right_binding: ts_produced_decl_right
+    )
+  )
+}
+
+fn ts_produced_decl_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ts_produced_decl_name },
+        target: ts_produced_decl_arrow()
+      }
+    ]
+  )
+}
+
+fn ts_produced_decl_text() -> Outcome<String> {
+  match emit_produced_decl(decl: ts_produced_decl_node(), target: ts_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+fn ts_produced_decl_grammar_class(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn ts_produced_decl_grammar_identifier() -> GrammarExpr {
+  Terminal { token_class: ^ts_token_ident, stamp: StampLexeme }
+}
+
+fn ts_produced_decl_grammar_step(
+  acc: TsProducedDeclGrammarFold,
+  next: GrammarExpr
+) -> TsProducedDeclGrammarFold {
+  match acc {
+    TsProducedDeclGrammarStart => TsProducedDeclGrammarReady { expression: next }
+    TsProducedDeclGrammarReady { expression: accumulated } =>
+      TsProducedDeclGrammarReady { expression: Sequence { left: accumulated, right: next } }
+  }
+}
+
+fn ts_produced_decl_grammar_expression() -> GrammarExpr {
+  match fold_list(
+    xs: [
+      ts_produced_decl_grammar_class(token_class: ^ts_token_kw_function),
+      ts_produced_decl_grammar_identifier(),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_lparen),
+      ts_produced_decl_grammar_identifier(),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_colon),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_ty_number),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_comma),
+      ts_produced_decl_grammar_identifier(),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_colon),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_ty_number),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_rparen),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_colon),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_ty_number),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_lbrace),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_kw_return),
+      ts_produced_decl_grammar_identifier(),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_plus),
+      ts_produced_decl_grammar_identifier(),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_semicolon),
+      ts_produced_decl_grammar_class(token_class: ^ts_token_rbrace)
+    ],
+    empty: TsProducedDeclGrammarStart,
+    cons: fn(acc, next) { ts_produced_decl_grammar_step(acc: acc, next: next) }
+  ) {
+    TsProducedDeclGrammarStart =>
+      ts_produced_decl_grammar_class(token_class: ^ts_token_kw_function)
+    TsProducedDeclGrammarReady { expression: expression } => expression
+  }
+}
+
+// The production TypeScript grammar currently carries only ground function fixtures. This
+// test-local shape grammar recognizes the emitted two-parameter declaration and stamps each
+// identifier as a lexeme, so the parse tree exposes the names supplied by the generic row fold.
+fn ts_produced_decl_parse_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ts_produced_decl_function_production,
+    productions: [
+      GrammarProduction {
+        name: ts_produced_decl_function_production,
+        expression: ts_produced_decl_grammar_expression(),
+        emitted: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ts_produced_decl_emitted_marker } },
+          children: []
+        )
+      }
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn ts_produced_decl_parse(text: String) -> Outcome<ParseTree> {
+  let grammar = ts_produced_decl_parse_root()
+  let at = invariant_port_locus(
+    port: ^parse_stage_locus_port,
+    invariant: ^typescript_produced_decl_emit_test_grammar_contract
+  )
+  match tokenize(text: text, file: ^typescript_produced_decl_emit_fixture_file, rules: ts_fn_add_lex()) {
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar_validate_for_parse(root: grammar, at: at) {
+        Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+        Accepted { value: validated, diagnostics: _ } =>
+          parse_production_tree(
+            tokens: token_stream_remaining(stream: stream),
+            validated: validated,
+            production_name: grammar.start
+          )
+      }
+  }
+}
+
+fn ts_produced_decl_parse_identifier_count(root: ParseTree, identifier: Symbol) -> Int {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: 0,
+    cons: fn(acc, node) {
+      match node_atom_identity_optional(node: node) {
+        Present { value: identity } =>
+          if identity == identifier { acc + 1 } else { acc }
+        Absent => acc
+      }
+    }
+  )
+}
+
+test fn typescript_produced_decl_uses_shared_rows_and_round_trips_names() -> Bool {
+  match ts_produced_decl_text() {
+    Accepted { value: text, diagnostics: _ } =>
+      if text != ts_produced_decl_golden || text == "function add(x: number, y: number): number { return x + y; }" {
+        false
+      } else {
+        match ts_produced_decl_parse(text: text) {
+          Accepted { value: parsed, diagnostics: _ } =>
+            ts_produced_decl_parse_identifier_count(root: parsed, identifier: ts_produced_decl_name) == 1
+              && ts_produced_decl_parse_identifier_count(root: parsed, identifier: ts_produced_decl_left) == 2
+              && ts_produced_decl_parse_identifier_count(root: parsed, identifier: ts_produced_decl_right) == 2
+          Rejected { diagnostics: _ } => false
+        }
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

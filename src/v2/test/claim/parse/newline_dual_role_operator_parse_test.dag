@@ -1,0 +1,183 @@
+module v2.test.parse.newline_dual_role_operator_parse
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
+import v2.std.algebra { fold_list }
+import v2.std.collection { map_lookup }
+import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
+import v2.std.compilers.target_model {
+  EmitLineBreaks,
+  EmitSpellingConstant,
+  EmitSpellingIdentity,
+  EmitSpellingQuote,
+  EmitSpellingWrap
+}
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  bind_outcome,
+  diagnostics_fatal
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.parse_refusal_reason { NewlineBeforeDualRoleOperator, parse_refusal_reason_symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A `-` THAT BEGINS A LINE AFTER A COMPLETE OPERAND REFUSES, AS THE SEED REFUSES IT
+// (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary). `-` is infix and prefix, and the
+// dag grammar has no statement terminator, so `x` then a line `- 1` is either one subtraction or two
+// statements; v2 read it as one, silently, and since block forms became operands (#12817) a block
+// statement followed by a `-` line merged the same way. The dag grammar's additive continuation now
+// refuses a line-break-preceded `-` with NewlineBeforeDualRoleOperator at the `-`
+// (v2.extdeps.languages.dag dag_grammar_additive_expr_helper). Each side of the rule, through the
+// live prepared grammar on a lexed stream (which carries its layout): the next-line forms refuse at
+// the `-`, for a plain operand and for a block, and the same-line form parses. The
+// mutation that reds the refusals is test.claim.parse_test_newline_dual_role_operator_mutation.
+
+fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn n_refuses_at_minus(text: String, file: Symbol, start: Int, end: Int) -> Bool {
+  match n_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      (fatal.reason == parse_refusal_reason_symbol(reason: NewlineBeforeDualRoleOperator))
+        && match fatal.at {
+          SourcePortLocus { anchor: _, file: f, extent: extent } =>
+            (f == file)
+              && match extent {
+                ByteRange { start: s, end: e } => (s == start) && (e == end)
+                WholeFile => false
+              }
+          Textual { file: _, extent: _ } => false
+          NodeLocus { anchor: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
+  }
+}
+
+// One `data` declaration each: the rule is about an expression, and a declaration is its smallest
+// carrier, so each claim pays one tokenize and one parse of a few lines.
+// `-` at bytes 39..40.
+data newline_minus_after_operand_source: String = "module probe.nl_plain\n\ndata d: Int = x\n- 1\n"
+
+// `-` at bytes 58..59.
+data newline_minus_after_block_source: String = "module probe.nl_block\n\ndata d: Int = match w {\n  _ => 1\n}\n- 1\n"
+
+data same_line_minus_source: String = "module probe.nl_same\n\ndata d: Int = x - 1\n"
+
+test fn a_newline_minus_after_an_operand_refuses_holds() -> Bool {
+  n_refuses_at_minus(text: newline_minus_after_operand_source, file: ^probe_nl_plain, start: 39, end: 40)
+}
+
+test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
+  n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 58, end: 59)
+}
+
+// THE ROUTE, NOT ONLY THE VERDICT. The newline refusal is a not-predicate guard in sequence before
+// the additive operator, not a choice alternative beside subtraction (the 2026-10-02 zero-ambiguity
+// ruling: both arms began with `-`, so only order kept them apart). A same-line `-` must therefore
+// reach the subtraction route: its tree holds no NEGATION -- a unary_expr node with another
+// unary_expr beneath it (`-` then the operand's own unary layer), as opposed to the single unary layer
+// every operand passes through, which subtraction's two operands each hold side by side under the
+// binary node. A leading `-` takes the negation route and holds exactly one, which is the control
+// that the count discriminates the two routes at all. Each claim pays one parse.
+data leading_minus_source: String = "module probe.nl_neg\n\ndata d: Int = -1\n"
+
+fn n_is_unary(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: e } => e == ^dag_surface_unary_expr
+    Absent => false
+  }
+}
+
+fn n_holds_unary_below(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) { acc || n_is_unary(node: e.target) || n_holds_unary_below(node: e.target) })
+}
+
+fn n_count_negations(root: Node) -> Int {
+  let own = if n_is_unary(node: root) && n_holds_unary_below(node: root) { 1 } else { 0 }
+  fold(root.children, init: own, f: fn(acc, e) { acc + n_count_negations(root: e.target) })
+}
+
+fn n_negations(text: String, file: Symbol) -> Optional<Int> {
+  match n_tokenize_parse(text: text, file: file) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } => optional_present(value: n_count_negations(root: tree))
+  }
+}
+
+test fn a_same_line_minus_is_subtraction_holds() -> Bool {
+  match n_negations(text: same_line_minus_source, file: ^probe_nl_same) {
+    Present { value: n } => n == 0
+    Absent => false
+  }
+}
+
+test fn a_leading_minus_is_negation_holds() -> Bool {
+  match n_negations(text: leading_minus_source, file: ^probe_nl_neg) {
+    Present { value: n } => n == 1
+    Absent => false
+  }
+}
+
+// THE EMIT DIRECTION (DESIGN section 4: one grammar, read both ways). The refusal is ingest-only:
+// RefuseOnMatch derives no tree, so emit never selects it, and emit reads the formal productions, not
+// these rows. What must hold on the emit side is that the dag emitter never WRITES what ingest now
+// refuses -- a `-` that begins a line. Emitted text carries a line break only where a token class's
+// emit transform is EmitLineBreaks (v2.std.compilers.target_model target_text_line_breaks, the one
+// source of DocLine in a token fold), and no dag token class has one: the dag emitter never breaks a
+// line, so a line-break-preceded `-` is unwritable by construction. This control reds the moment a
+// dag class gains a line-breaking transform, which is when the emitter would have to be taught to keep
+// a `-` on its operand's line.
+fn dag_class_breaks_no_line(class: Symbol) -> Bool {
+  match map_lookup(m: dag_target_model().token_class_emit_transforms, key: class) {
+    Absent => true
+    Present { value: transform } =>
+      match transform {
+        EmitLineBreaks { before: _, after: _ } => false
+        EmitSpellingIdentity => true
+        EmitSpellingConstant { value: _ } => true
+        EmitSpellingWrap { prefix: _, suffix: _ } => true
+        EmitSpellingQuote { prefix: _, open: _, close: _, escapes: _ } => true
+      }
+  }
+}
+
+test fn no_dag_token_class_emits_a_line_break_holds() -> Bool {
+  fold_list(xs: lex_rule_set_matching_rules(rules: dag_lex_rules()), empty: true, cons: fn(acc, rule) {
+    acc && match lex_rule_token_class_optional(rule: rule) {
+      Present { value: c } => dag_class_breaks_no_line(class: c)
+      Absent => true
+    }
+  })
+}

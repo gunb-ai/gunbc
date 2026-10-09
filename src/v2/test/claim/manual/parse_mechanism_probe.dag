@@ -38,7 +38,8 @@ fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
               parse_production_memo_stats(
                 tokens: token_stream_remaining(stream: stream),
                 validated: validated,
-                production_name: validated.root.start
+                production_name: validated.root.start,
+                materialization: Memoize
               )
           }
       }

@@ -21,14 +21,14 @@ module gunbc.toolchain_workflow_steps
 // same fleet step and are fleet-build TUNING, not toolchain-home isolation. CARGO_BUILD_JOBS in
 // particular derives from the selected runner target's RAM-speed budget, so a consumer that
 // imported it would inherit a number computed for a different subject. They stay in
-// v2.workflow.ci_workflow_run_emit ci_fleet_build_tuning_steps, composed by the fleet prelude.
+// gunbc.fleet_workflow_steps ci_fleet_build_tuning_steps, composed by the fleet prelude.
 
 import extdeps.github.actions { Step, RunStep }
 import v2.workflow.ci_workflow_run_emit {
   ci_toolchain_home_isolation_script,
   ci_pin_rustup_default_script,
 }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 // THE STEP NAME IS NOT "Isolate toolchain dirs". That name is load-bearing elsewhere --
 // gunbc.ci_materialization ci_cost_floor_exempt_step_names_note keys the cost-floor exempt roster

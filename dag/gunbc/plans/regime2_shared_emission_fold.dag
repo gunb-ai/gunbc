@@ -7,7 +7,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`serialize_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },
+    BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`emit_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },
     h2(text: "1. The two regimes (why this is a clean split, not a fork)"),
     p(text: "Emission has two regimes, and keeping them separate is correct:"),
     ul(items: [
@@ -19,7 +19,7 @@ fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
       header: row(cells: [cell(text: "emitter"), cell(text: "file"), cell(text: "IR today"), cell(text: "serialize fn")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dag/extdeps/languages/yaml/types.dag` + `dag/extdeps/languages/yaml/emit.dag` + `dag/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent)")]),
+        row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dag/extdeps/languages/yaml/types.dag` + `dag/extdeps/languages/yaml/emit.dag` + `dag/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`emit_yaml` (named `serialize_yaml` when this was written) — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent), now total over a `YamlEmitResult`")]),
         row(cells: [cell(text: "gitignore"), cell(text: "`dag/gunbc/gitignore_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`serialize_gitignore` — hand fold over `IgnoreGroup`")]),
         row(cells: [cell(text: "runner_deploy"), cell(text: "`dag/gunbc/runner/runner_deploy_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`expected_runner_deploy_manifest` — hand fold over hosts")]),
       ],
@@ -48,7 +48,7 @@ fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
     ol(items: [
       li(text: "**`std` layout IR + `render` fold** — DFS first; mint the minimal faithful `Doc` + the single render fold; one witness that `render` is format-agnostic."),
       li(text: "**gitignore + runner_deploy** — the trivial line-oriented formats (no IR today). Project each to `Doc`, delete the hand fold, byte-identical witness."),
-      li(text: "**yaml (ci.yml)** — the heavy one (nesting, block/flow seq, scalar quoting). `project_yaml_to_doc` maps `YamlValue → Doc`, baking quoting into text nodes; delete `serialize_yaml`'s layout half, byte-identical witness against the committed `ci.yml`."),
+      li(text: "**yaml (ci.yml)** — the heavy one (nesting, block/flow seq, scalar quoting). `project_yaml_to_doc` maps `YamlValue → Doc`, baking quoting into text nodes; delete the writer's layout half, byte-identical witness against the committed `ci.yml`."),
       li(text: "**markdown — NOT here.** Markdown is regime-1-or-projection and is bright-stag's lane; this doc does not touch `std.markdown` / `roadmap_emit`. Flag the seam, don't cross it."),
     ]),
     h2(text: "6. Open / boundaries"),
@@ -65,6 +65,6 @@ data regime2_shared_emission_fold_plan: Plan = Plan {
   slug: "regime2-shared-emission-fold",
   title: "Regime-2 emission: one shared fold for the pure-projection formats",
   body: regime2_shared_emission_fold_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the three regime-2 pure-projection serializers (serialize_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest.")
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the three regime-2 pure-projection serializers (emit_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest.")
   }
 }

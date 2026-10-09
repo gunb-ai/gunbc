@@ -1,5 +1,6 @@
 module v2.test.claim.bash_program_fold_support
 
+import std.types { List }
 import tools.build_step { BuildArtifact, emit_verifications }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
@@ -25,9 +26,8 @@ import v2.workflow.bash_emit {
   BashEmitStmt,
   BashEmitTagged
 }
-import v2.std.algebra { list_append, list_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 

@@ -1,13 +1,14 @@
 module gunbc.design.scale
 
-import std.types { Int, String, Bool }
+import std.types { Int, String, Bool, List }
 import gunbc.design.material { CssDecl, decl, css_block }
 import extdeps.languages.css.values {
-  CssLength, css_px, css_length_wire,
+  CssLength, css_ch, css_px, css_length_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily,
   CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
   css_font_stack_wire,
 }
+import extdeps.fonts.google_fonts { roboto_source }
 
 // Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing,
 // type, font stack, plus the dimension tokens (radius, border width, measure, fixed element
@@ -102,17 +103,24 @@ data text_12: ScaleToken = length_token(prefix: "text", px: 12)
 data text_13: ScaleToken = length_token(prefix: "text", px: 13)
 data text_14: ScaleToken = length_token(prefix: "text", px: 14)
 data text_15: ScaleToken = length_token(prefix: "text", px: 15)
+data text_24: ScaleToken = length_token(prefix: "text", px: 24)
+
 data text_18: ScaleToken = length_token(prefix: "text", px: 18)
 
 data type_scale: List<ScaleToken> = [
-  text_10, text_11, text_12, text_13, text_14, text_15, text_18,
+  text_10, text_11, text_12, text_13, text_14, text_15, text_18, text_24,
 ]
 
-data font_sans: ScaleToken = font_token(name: "font-sans", families: [
-  NamedFamily { name: "Noto Sans" },
-  GenericFamily { kind: GenericSystemUi },
+// The body stack. Its first family is the self-hosted Roboto face (ruling R2; gunbc.site.web_fonts
+// serves it), named by the same upstream source row the served @font-face rule names
+// (extdeps.fonts.google_fonts roboto_source), so this token cannot ask for a family the stylesheet
+// does not declare. The fallbacks are the product's measured stack.
+data font_sans_families: List<CssFontFamily> = [
+  NamedFamily { name: roboto_source.family },
+  NamedFamily { name: "Arial" },
   GenericFamily { kind: GenericSansSerif },
-])
+]
+data font_sans: ScaleToken = font_token(name: "font-sans", families: font_sans_families)
 data font_mono: ScaleToken = font_token(name: "font-mono", families: [
   NamedFamily { name: "JetBrains Mono" },
   GenericFamily { kind: GenericMonospace },
@@ -120,10 +128,13 @@ data font_mono: ScaleToken = font_token(name: "font-mono", families: [
 
 data font_stack: List<ScaleToken> = [font_sans, font_mono]
 
-data radius_3: ScaleToken = length_token(prefix: "radius", px: 3)
+// UI polish decision 2026-10-03: retune the existing shared surface radius globally.
+data radius_surface: ScaleToken = named_length_token(name: "radius-surface", px: 12)
 data radius_999: ScaleToken = length_token(prefix: "radius", px: 999)
 data border_1: ScaleToken = length_token(prefix: "border", px: 1)
 data border_2: ScaleToken = length_token(prefix: "border", px: 2)
+data measure_prose: ScaleToken = ScaleToken { name: "measure-prose", value: LengthValue { length: css_ch(n: 80) } }
+
 data measure_page: ScaleToken = named_length_token(name: "measure", px: 960)
 
 // The tactile target height (remodel W1c, operator archetype 2026-07-24: the GitHub merge button —
@@ -146,6 +157,12 @@ data height_control: ScaleToken = named_length_token(name: "h-control", px: 40)
 data height_row: ScaleToken = named_length_token(name: "h-row", px: 24)
 data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
 
+// The taskbar's height (the 2026-09-21 title-in-bar redesign, owner-endorsed: "~56-64px tall task
+// rows, title rendered INSIDE the bar"). 56 is the low end of the owner's band: the bar carries a
+// title and at most one short second line over a subdued fill, and anything taller starts reading
+// as a card rather than a row. One token, consumed by the .taskbar rule alone.
+data height_taskbar: ScaleToken = named_length_token(name: "h-taskbar", px: 56)
+
 // A control's TRAVEL is a dimension, so it belongs on the dimension axis with every other length
 // rather than as a literal inside a transform value — otherwise the first raw pixel in the register
 // arrives through the one property nobody thought to look at, and the untokened-length census
@@ -160,17 +177,27 @@ data travel_lift: ScaleToken = named_length_token(name: "travel-lift", px: -1)
 data travel_press: ScaleToken = named_length_token(name: "travel-press", px: 1)
 
 data dimension_scale: List<ScaleToken> = [
-  radius_3, radius_999, border_1, border_2, measure_page,
-  height_control, height_row, width_status,
-  travel_lift, travel_press,
+  radius_surface, radius_999, border_1, border_2, measure_page, measure_prose,
+  height_control, height_compact_face, height_row, width_status, height_taskbar,
+  travel_lift, travel_press, graph_row_height, graph_rail_width,
 ]
+
+data graph_row_height_px: Int = 96
+data graph_rail_width_px: Int = 128
+data graph_row_height: ScaleToken = named_length_token(name: "dag-row-height", px: graph_row_height_px)
+data graph_rail_width: ScaleToken = named_length_token(name: "dag-rail-width", px: graph_rail_width_px)
+data layer_menu: Int = 20
+data layer_profile: Int = 30
 
 fn all_scale_tokens() -> List<ScaleToken> {
   concat(concat(spacing_scale, type_scale), concat(font_stack, dimension_scale))
 }
 
 fn scale_var_decls() -> List<CssDecl> {
-  map(all_scale_tokens(), t => scale_decl(t: t))
+  concat(map(all_scale_tokens(), t => scale_decl(t: t)), [
+    decl(prop: CustomProperty { name: "layer-menu" }, value: to_string(value: layer_menu)),
+    decl(prop: CustomProperty { name: "layer-profile" }, value: to_string(value: layer_profile)),
+  ])
 }
 
 // The token :root block. Emitted alongside theme_root_css so a page's stylesheet carries both
@@ -206,6 +233,15 @@ fn scale_well_formed() -> Bool {
   scale_names_distinct(tokens: all_scale_tokens())
     && all(all_scale_tokens(), t => t.name.length() > 0 && scale_value_wire(v: t.value).length() > 0)
     && spacing_scale.length() == 11
-    && type_scale.length() == 7
+    && type_scale.length() == 8
     && font_stack.length() == 2
+}
+
+// The second instrument closes the 2026-07-24 geometry trigger: visual density and
+// interaction target are distinct. The interaction target remains height_control; this carrier varies the visible face and corner only.
+type ControlDensity = CompactChoice | RichIdentity
+type ControlGeometry { face: ScaleToken, corner: ScaleToken }
+data height_compact_face: ScaleToken = named_length_token(name: "h-compact-face", px: 32)
+fn control_geometry(density: ControlDensity) -> ControlGeometry {
+  ControlGeometry { face: match density { CompactChoice => height_compact_face RichIdentity => height_control }, corner: radius_surface }
 }

@@ -1,10 +1,8 @@
 module v2.test.emit.semantic_decl_rules_parity_test
 
+import v2.compiler.emit_semantic_decl { produced_type_binding }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root
-}
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.extdeps.languages.rust {
   rust_enum_general_decl_productions_only_translation_rules
 }
@@ -15,16 +13,15 @@ import v2.std.compilers.semantic_decl_emission {
 }
 import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import std.algebra { Empty }
 
 fn bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
+      Edge { label: Authored { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Authored { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -52,7 +49,8 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
         projection: emission.surface,
         name: ^Bool,
         params: Empty,
-        coproduct: bool_coproduct()
+        coproduct: bool_coproduct(),
+        type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
       ) {
         Accepted { value: surface, diagnostics: _ } =>
           tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)

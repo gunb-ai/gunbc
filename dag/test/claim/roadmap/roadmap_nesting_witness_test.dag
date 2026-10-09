@@ -1,0 +1,137 @@
+module test.claim.roadmap_nesting_witness
+
+import std.types { Bool, String, List }
+import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
+import gunbc.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap_authority { declared_roadmap_nodes, roadmap_node, ticket, fields, in_project, admitted_root }
+import gunbc.roadmap.roadmap_lineage { lineage_walk, lineage_walk_in, lineage_walk_steps, LineageStep, lineage_index, lineage_root_ids, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic }
+import v2.std.collection { Map }
+import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, project_root_for_node, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+
+// The prerequisite is shared by two projects but belongs to neither by implication.
+test fn shared_prerequisite_does_not_assign_ownership() -> Bool {
+  let nesting = [RoadmapMembership { member: "task", project: "project-A", contribution: "fixture contribution" }]
+  match node_project_membership(node_id: "shared-prerequisite", memberships: nesting) { MembershipStandalone => true _ => false }
+    && project_member_ids(arc: "project-A", memberships: nesting) == ["task"]
+    && project_member_ids(arc: "project-B", memberships: nesting) == []
+}
+
+test fn nesting_is_recursive_without_type_labels() -> Bool {
+  let nesting = [RoadmapMembership { member: "task", project: "subproject", contribution: "fixture contribution" }, RoadmapMembership { member: "subproject", project: "root", contribution: "fixture contribution" }]
+  project_root_for_node(node_id: "task", memberships: nesting) == Present { value: "root" }
+    && project_root_for_node(node_id: "subproject", memberships: nesting) == Present { value: "root" }
+    && project_root_for_node(node_id: "root", memberships: nesting) == Present { value: "root" }
+}
+
+test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool {
+  project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "b", project: "a", contribution: "fixture contribution" }]) == none
+    && project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "a", project: "c", contribution: "fixture contribution" }]) == none
+}
+
+// THE DECLARED LINEAGE IS CLOSED AND ROOTED (operator ruling, 2026-09-30), over the LIVE authority:
+// every MemberOf names a declared node, every declared node that states a parent reaches the one
+// admitted root, and no parent walk is cyclic. RUNG, stated honestly: mechanically preventable
+// (DESIGN §4b rung 2) -- a row CAN still be written naming an undeclared project or a cycle; this
+// witness, executing in the floor, is what refuses it, and the model does not. The planted controls
+// below first prove each refusal fires on a constructed input, so a green over the live authority is
+// a reading and not an inert predicate.
+fn declared_node_ids() -> List<String> {
+  declared_roadmap_nodes() |> map(n => n.node as String)
+}
+
+fn member_of_targets() -> List<String> {
+  flat_map(declared_roadmap_nodes(), n => match n.parent {
+    Absent => []
+    Present { value: p } => match p {
+      MemberOf { project, contribution: _ } => [project]
+      AdmittedRoot => []
+      Closes { target } => [target]
+    }
+  })
+}
+
+fn stated_parent_nodes(nodes: List<RoadmapNode>) -> List<RoadmapNode> {
+  nodes |> filter(n => match n.parent { Present { value: _ } => true  Absent => false })
+}
+
+fn walks_to_root(id: String, index: Map<String, RoadmapNode>, fuel: Int) -> Bool {
+  match lineage_walk_in(node_id: id, index: index, fuel: fuel) {
+    LineageRooted { ids } => match ids.last() { Present { value: top } => top == "gunbc-project-root"  Absent => false }
+    LineageNoParent { walked: _, at: _ } => false
+    LineageUndeclared { walked: _, node_id: _ } => false
+    LineageCyclic { node_id: _ } => false
+  }
+}
+
+fn walk_is_cyclic(id: String, index: Map<String, RoadmapNode>, fuel: Int) -> Bool {
+  match lineage_walk_in(node_id: id, index: index, fuel: fuel) {
+    LineageCyclic { node_id: _ } => true
+    LineageRooted { ids: _ } => false
+    LineageNoParent { walked: _, at: _ } => false
+    LineageUndeclared { walked: _, node_id: _ } => false
+  }
+}
+
+fn walk_is_undeclared(id: String, nodes: List<RoadmapNode>) -> Bool {
+  match lineage_walk(node_id: id, nodes: nodes) {
+    LineageUndeclared { walked: _, node_id: _ } => true
+    LineageRooted { ids: _ } => false
+    LineageNoParent { walked: _, at: _ } => false
+    LineageCyclic { node_id: _ } => false
+  }
+}
+
+fn planted(id: String, parent: NodeParent?) -> RoadmapNode {
+  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "fixture", carriers: [], line: ticket(t: fields(
+    headline: id, boundary: "planted", displaced_cost: "none", first_slice: "none",
+    red_control: "none", out_of_scope: "none", handback: "none")), parent: parent)
+}
+
+// The planted controls: a rooted chain resolves; a cycle, an undeclared project and a parentless
+// ancestor each refuse, each by its own arm.
+test fn planted_lineage_controls_discriminate() -> Bool {
+  let root = planted(id: "gunbc-project-root", parent: admitted_root())
+  let mid = planted(id: "p-mid", parent: in_project(project: "gunbc-project-root", contribution: "planted"))
+  let leaf = planted(id: "p-leaf", parent: in_project(project: "p-mid", contribution: "planted"))
+  let cyc_a = planted(id: "p-cyc-a", parent: in_project(project: "p-cyc-b", contribution: "planted"))
+  let cyc_b = planted(id: "p-cyc-b", parent: in_project(project: "p-cyc-a", contribution: "planted"))
+  let dangling = planted(id: "p-dangling", parent: in_project(project: "p-nowhere", contribution: "planted"))
+  let nodes = [root, mid, leaf, cyc_a, cyc_b, dangling]
+  let index = lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  walks_to_root(id: "p-leaf", index: index, fuel: fuel)
+    && walk_is_cyclic(id: "p-cyc-a", index: index, fuel: fuel)
+    && walk_is_undeclared(id: "p-dangling", nodes: nodes)
+    && !walks_to_root(id: "p-cyc-a", index: index, fuel: fuel)
+    && !walks_to_root(id: "p-dangling", index: index, fuel: fuel)
+}
+
+test fn every_member_of_target_is_a_declared_node() -> Bool {
+  let ids = declared_node_ids()
+  count(member_of_targets()) > 0
+    && all(member_of_targets(), t => any(ids, i => i == t))
+}
+
+// The declared rows are derived once and every question reads them: roadmap_roots() is
+// lineage_root_ids over these rows, and lineage_walk(node_id, nodes) is lineage_walk_in over
+// lineage_index(nodes) at count(nodes) + 1 fuel, so the index is built once, not once per node. Every
+// stated node's walk is required to end LineageRooted at the root, which already excludes the
+// LineageCyclic arm (the walk returns one arm), so each node is walked once.
+test fn every_node_that_states_a_parent_reaches_the_one_admitted_root() -> Bool {
+  let nodes = declared_roadmap_nodes()
+  let index = lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  let stated = stated_parent_nodes(nodes: nodes)
+  lineage_root_ids(nodes: nodes) == ["gunbc-project-root"]
+    && count(stated) > 0
+    && all(stated, n => steps_to_root(id: n.node as String, index: index, fuel: fuel))
+}
+
+// The census reads the walk's own settled step (gunbc.roadmap.roadmap_lineage lineage_walk_steps,
+// the walk lineage_walk_in classifies): rooted is state 1, and the last walked id is the row that
+// declares AdmittedRoot -- lineage_walk_in's Closes post-processing drops the SECOND id only, so the
+// last id it reports is this one.
+fn steps_to_root(id: String, index: Map<String, RoadmapNode>, fuel: Int) -> Bool {
+  let walked = lineage_walk_steps(index: index, acc: LineageStep { current: id, ids: [id], state: 0, stop_at: "" }, fuel: fuel)
+  walked.state == 1 && match walked.ids.last() { Present { value: top } => top == "gunbc-project-root"  Absent => false }
+}

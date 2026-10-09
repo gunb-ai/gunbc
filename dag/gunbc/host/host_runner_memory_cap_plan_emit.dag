@@ -9,7 +9,7 @@ import std.layout {
 }
 import std.languages { SerializationKnobs, SerialField }
 import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
 import gunbc.host_runner_memory_provision {
   runner_memory_host_converge,
@@ -37,7 +37,12 @@ data runner_memory_cap_plan_emit_disclaimer: String = "RUNNER-MEMORY-CAP APPLY S
 fn memory_cap_plan_row_is_per_slot_memory_cap(knob: ConvergeKnob) -> Bool {
   match knob.target {
     PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
-    _ => false
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => false
+    RunnerWidth { instance_glob: _ } => false
+    JobserverTokens { env_file: _, env_key: _, service_unit: _ } => false
+    VerifyOnlyCap { slice_unit: _, property: _ } => false
+    GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => false
+    CodexRuntimeBundle { host_identity: _ } => false
   }
 }
 
@@ -60,7 +65,12 @@ fn memory_cap_plan_row_fields(host: HostIdentity, knob: ConvergeKnob) -> List<Se
           value: serial_scalar(text: memory_cap_dropin_stanza(property: prop, bytes_value: bytes))
         ),
       ]
-    _ => []
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => []
+    RunnerWidth { instance_glob: _ } => []
+    JobserverTokens { env_file: _, env_key: _, service_unit: _ } => []
+    VerifyOnlyCap { slice_unit: _, property: _ } => []
+    GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => []
+    CodexRuntimeBundle { host_identity: _ } => []
   }
 }
 

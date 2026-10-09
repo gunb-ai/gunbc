@@ -58,8 +58,14 @@ test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
   )
   (srv1.durations |> length) == 1
     && (srv2.durations |> length) == 1
-    && measure_count(m: srv1.durations |> skip(n: 0) |> first) == 600000
-    && measure_count(m: srv2.durations |> skip(n: 0) |> first) == 240000
+    && match srv1.durations |> skip(n: 0) |> first {
+      Present { value: d } => measure_count(m: d) == 600000
+      Absent => false
+    }
+    && match srv2.durations |> skip(n: 0) |> first {
+      Present { value: d } => measure_count(m: d) == 240000
+      Absent => false
+    }
 }
 
 test fn witness_runner_name_maps_to_host_prefix() -> Bool {

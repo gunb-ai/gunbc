@@ -134,14 +134,19 @@ import gunbc.scm.object_store {
   StoreOutcome,
   Stored,
   LocatorCollision,
-  SourceStoreOutcome,
-  SourceStored,
-  SourceLocatorCollision,
-  empty_store,
   insert_from_structure,
-  store_authored_source,
   object_id_eq,
   scm_object_identity,
+  scm_object_ref,
+  authored_source_object,
+  derived_node_object,
+  CorpusManifestObjectBuilt,
+  CorpusManifestObjectDuplicatePath,
+  corpus_manifest_object,
+  StoreAdmission,
+  empty_store_admission,
+  store_admission_admit,
+  store_admission_store,
   store_records_in_dependency_order,
 }
 import gunbc.scm.target_reference {
@@ -210,7 +215,7 @@ import extdeps.languages.json.parse {
 }
 import v2.std.node {
   EdgeLabel,
-  Named,
+  Authored, StructuralLabel, CoreMarker, ProductionEdge, core_edge_label_canonical_symbol,
   Positional,
   NodeKind,
   TypeNode,
@@ -230,10 +235,11 @@ import v2.std.node {
   Bind,
   Match,
   Symbol,
-}
-import v2.std.compilers.lexing {
-  symbol_lexeme,
   symbol_intern_lexeme,
+  symbol_lexeme,
+  core_edge_label,
+  core_edge_labels,
+  production_edge_label,
 }
 import v2.std.collection {
   Map,
@@ -265,6 +271,8 @@ type NodeEntryMemberContext
   | NodeEntryAtomKindMembers
   | NodeEntryComputationKindMembers
   | NodeEntryNamedEdgeMembers
+  | NodeEntryCoreMarkerEdgeMembers
+  | NodeEntryProductionEdgeMembers
   | NodeEntryPositionalEdgeMembers
 
 type NodeEntryDecodeRefusal
@@ -508,7 +516,11 @@ fn encode_connective(c: Connective) -> List<JsonKeyValue> {
         json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
         json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
       ]
-    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Conj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Disj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Arrow => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Cardinality => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Instantiation => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
   }
 }
 
@@ -533,10 +545,21 @@ fn encode_kind(k: NodeKind) -> JsonValue {
 
 fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
   match l {
-    Named { name: n } =>
+    Authored { name: n } =>
       [
         json_kv(key: "label", value: json_string(s: "named")),
         json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+      ]
+    StructuralLabel { label: CoreMarker { marker: m } } =>
+      [
+        json_kv(key: "label", value: json_string(s: "structural_core")),
+        json_kv(key: "marker", value: json_string(s: symbol_lexeme(sym: core_edge_label_canonical_symbol(marker: m)))),
+      ]
+    StructuralLabel { label: ProductionEdge { language: lang, edge: p } } =>
+      [
+        json_kv(key: "label", value: json_string(s: "structural_production")),
+        json_kv(key: "language", value: json_string(s: symbol_lexeme(sym: lang))),
+        json_kv(key: "edge", value: json_string(s: symbol_lexeme(sym: p))),
       ]
     Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
   }
@@ -848,7 +871,8 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
       MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
-      _ => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberArray { elements: _ } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberObject { value: _ } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
@@ -919,18 +943,21 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
         match read_string_member(v: kind_value, key: "connective") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
         KindDecodeFailed { cause: NodeEntryUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -968,8 +995,62 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
       match read_string_member(v: edge_value, key: "name") {
         MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
-          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+          LabelDecoded { label: Authored { name: symbol_intern_lexeme(lexeme: lexeme) } }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+      }
+  }
+}
+
+// A core marker travels as the marker's canonical symbol and comes back only as one of the closed
+// set's arms: a symbol no arm spells is an unknown label and refuses, never an Authored fallback.
+fn decode_core_marker_label(edge_value: JsonValue) -> LabelDecode {
+  match node_entry_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "marker", "target"],
+    context: NodeEntryCoreMarkerEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "marker") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+        MemberString { value: lexeme } => {
+          let sym = symbol_intern_lexeme(lexeme: lexeme)
+          fold(core_edge_labels(), init: LabelDecodeFailed { cause: NodeEntryUnknownLabelTag { found: lexeme } }, f: fn(acc, m) {
+            if core_edge_label_canonical_symbol(marker: m) == sym { LabelDecoded { label: core_edge_label(marker: m) } } else { acc }
+          })
+        }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+      }
+  }
+}
+
+fn decode_production_label(edge_value: JsonValue) -> LabelDecode {
+  match node_entry_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "language", "edge", "target"],
+    context: NodeEntryProductionEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "language") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+        MemberString { value: language } =>
+          match read_string_member(v: edge_value, key: "edge") {
+            MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+            MemberString { value: edge } =>
+              LabelDecoded {
+                label: production_edge_label(
+                  language: symbol_intern_lexeme(lexeme: language),
+                  edge: symbol_intern_lexeme(lexeme: edge)
+                )
+              }
+            MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+            MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+          }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
       }
   }
 }
@@ -991,12 +1072,17 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
     MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
+      } else if tag == "structural_core" {
+        decode_core_marker_label(edge_value: edge_value)
+      } else if tag == "structural_production" {
+        decode_production_label(edge_value: edge_value)
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
         LabelDecodeFailed { cause: NodeEntryUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -1102,13 +1188,25 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
                     edges: acc.edges,
                     refusal: Present { value: NodeEntryTargetReferenceRefused { cause: c } },
                   }
-                resolved =>
+                TargetContainedAt { reference: r } =>
                   PendingEdgeAcc {
-                    edges: concat([PendingEdge { label: label, target: resolved }], acc.edges),
+                    edges: concat([PendingEdge { label: label, target: TargetContainedAt { reference: r } }], acc.edges),
+                    refusal: acc.refusal,
+                  }
+                TargetUncontained { digest: d } =>
+                  PendingEdgeAcc {
+                    edges: concat([PendingEdge { label: label, target: TargetUncontained { digest: d } }], acc.edges),
                     refusal: acc.refusal,
                   }
               }
-            _ =>
+            MemberString { value: _ } =>
+              PendingEdgeAcc {
+                edges: acc.edges,
+                refusal: Present {
+                  value: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "target" } }
+                },
+              }
+            MemberArray { elements: _ } =>
               PendingEdgeAcc {
                 edges: acc.edges,
                 refusal: Present {
@@ -1220,8 +1318,16 @@ fn resolve_edge_in_node_table(
   }
 }
 
+// THE TABLE FOLD ADMITS THROUGH THE MAP-BACKED ACCUMULATOR, NOT BY INSERTING INTO A GROWING
+// STORE. The per-object store verbs recompute an identity per already-held object and copy the
+// object spine per append, so an entry-by-entry decode of a 7,051-object table pays the square
+// of the population (measured 2026-09-23: the project envelope's monolith read never completed,
+// over 50M interpreted identity compares at 100% CPU). The admission accumulator carries the
+// digest-keyed map the fold needs and reverses once at extraction; the admission rule —
+// present-and-equal idempotent, present-and-different a collision — is insert_admission's own,
+// consumed through store_admission_admit rather than re-derived here.
 type DecodeAcc {
-  store: ObjectStore
+  admission: StoreAdmission
   positions: DecodePositions
   next: Int
   refusal: ObjectTableDecodeRefusal?
@@ -1229,7 +1335,7 @@ type DecodeAcc {
 
 fn decode_acc_refused(acc: DecodeAcc, cause: ObjectTableDecodeRefusal) -> DecodeAcc {
   DecodeAcc {
-    store: acc.store,
+    admission: acc.admission,
     positions: acc.positions,
     next: acc.next,
     refusal: Present { value: cause },
@@ -1473,7 +1579,16 @@ fn decode_manifest_entry(
                       path: path as NonEmptyStr,
                       source_value: source_value,
                     )
-                  _ =>
+                  MemberString { value: _ } =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present {
+                        value: ObjectTableMemberReadRefused {
+                          cause: MemberReadWrongShape { key: "source" }
+                        }
+                      },
+                    }
+                  MemberArray { elements: _ } =>
                     ManifestEntryAcc {
                       entries: acc.entries,
                       refusal: Present {
@@ -1484,7 +1599,14 @@ fn decode_manifest_entry(
                     }
                 }
               }
-            _ =>
+            MemberArray { elements: _ } =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present {
+                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
+                },
+              }
+            MemberObject { value: _ } =>
               ManifestEntryAcc {
                 entries: acc.entries,
                 refusal: Present {
@@ -1497,7 +1619,7 @@ fn decode_manifest_entry(
 }
 
 // THE DECODER IS NOT A THIRD PRODUCER OF MANIFEST IDENTITIES EITHER, for the reason the authored-source
-// decode records below: it hands the entries to store_corpus_manifest, which derives the identity by
+// decode records below: the entries go to corpus_manifest_object, which derives the identity by
 // the one rule, so a document cannot assert a manifest identity it did not derive.
 fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> DecodeAcc {
   match fold(
@@ -1511,53 +1633,52 @@ fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> Deco
       match refusal {
         Present { value: c } => decode_acc_refused(acc: acc, cause: c)
         Absent =>
-          match store_corpus_manifest(store: acc.store, entries: reverse(reversed_entries)) {
-            CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
-              decode_acc_refused(
-                acc: acc,
-                cause: ObjectTableObjectCollision { identity: i },
-              )
-            CorpusManifestDuplicatePath { path: path } =>
+          match corpus_manifest_object(entries: reverse(reversed_entries)) {
+            CorpusManifestObjectDuplicatePath { path: path } =>
               decode_acc_refused(
                 acc: acc,
                 cause: ObjectTableManifestDuplicatePath { path: path as String },
               )
-            CorpusManifestStored { store: next_store, manifest: manifest } =>
-              DecodeAcc {
-                store: next_store,
-                positions: map_insert(
-                  m: acc.positions,
-                  key: position_reference(n: acc.next),
-                  value: CorpusManifestRef(manifest),
-                ),
-                next: acc.next + 1,
-                refusal: acc.refusal,
+            CorpusManifestObjectBuilt { object: object, reference: reference } =>
+              match store_admission_admit(admission: acc.admission, object: object) {
+                StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
+                  decode_acc_refused(
+                    acc: acc,
+                    cause: ObjectTableObjectCollision { identity: i },
+                  )
+                StoreAdmissionAdmitted { admission: next_admission } =>
+                  DecodeAcc {
+                    admission: next_admission,
+                    positions: map_insert(
+                      m: acc.positions,
+                      key: position_reference(n: acc.next),
+                      value: CorpusManifestRef(reference),
+                    ),
+                    next: acc.next + 1,
+                    refusal: acc.refusal,
+                  }
               }
           }
       }
   }
 }
 
-// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. It hands the bytes to
-// store_authored_source, which derives the identity by the one rule -- so an image cannot assert an
-// identity for a file any more than it can for a node, and the position map records what the store
-// derived rather than what the document said.
+// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. The object's identity is derived
+// by the one authority (gunbc.scm.object_store authored_source_object), and the position map
+// records the brand that construction derived, via the one projection, rather than anything the
+// document said.
 fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
-  match store_authored_source(store: acc.store, text: text) {
-    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+  let object = authored_source_object(text: text)
+  match store_admission_admit(admission: acc.admission, object: object) {
+    StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
+      decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
+    StoreAdmissionAdmitted { admission: next_admission } =>
       DecodeAcc {
-        store: acc.store,
-        positions: acc.positions,
-        next: acc.next,
-        refusal: Present { value: ObjectTableObjectCollision { identity: i } },
-      }
-    SourceStored { store: next_store, source: source } =>
-      DecodeAcc {
-        store: next_store,
+        admission: next_admission,
         positions: map_insert(
           m: acc.positions,
           key: position_reference(n: acc.next),
-          value: AuthoredSourceRef(source),
+          value: scm_object_ref(object: object),
         ),
         next: acc.next + 1,
         refusal: acc.refusal,
@@ -1599,13 +1720,21 @@ fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
                       NodeEntryShapeDecoded { kind: kind, edges: reverse(reversed_edges) }
                   }
               }
-            _ =>
+            MemberString { value: _ } =>
+              NodeEntryShapeRefused {
+                cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+              }
+            MemberObject { value: _ } =>
               NodeEntryShapeRefused {
                 cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
               }
           }
       }
-    _ =>
+    MemberString { value: _ } =>
+      NodeEntryShapeRefused {
+        cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+      }
+    MemberArray { elements: _ } =>
       NodeEntryShapeRefused {
         cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
       }
@@ -1632,22 +1761,24 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             ObjectTableEdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
               match edge_refusal {
                 Present { value: c } => decode_acc_refused(acc: acc, cause: c)
-                Absent =>
-                  match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
-                    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                Absent => {
+                  let object = derived_node_object(kind: kind, children: reverse(reversed_edges))
+                  match store_admission_admit(admission: acc.admission, object: object) {
+                    StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
                       decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
-                    Stored { store: next_store, node: node } =>
+                    StoreAdmissionAdmitted { admission: next_admission } =>
                       DecodeAcc {
-                        store: next_store,
+                        admission: next_admission,
                         positions: map_insert(
                           m: acc.positions,
                           key: position_reference(n: acc.next),
-                          value: SemanticNodeRef(node),
+                          value: scm_object_ref(object: object),
                         ),
                         next: acc.next + 1,
                         refusal: acc.refusal,
                       }
                   }
+                }
               }
           }
       }
@@ -1723,7 +1854,7 @@ fn decode_node_entry_into_node_table(acc: NodeDecodeAcc, object_value: JsonValue
 fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
   fold(
     object_values,
-    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    init: DecodeAcc { admission: empty_store_admission(), positions: empty_map(), next: 0, refusal: none },
     f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
   )
 }

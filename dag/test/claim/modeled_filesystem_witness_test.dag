@@ -1,0 +1,193 @@
+module test.claim.modeled_filesystem_witness_test
+
+import gunbc.build_cache_instance { ProcessIdentity }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, Write, ServiceOpTree, NamespacePosition,
+  ModeledRealization, LifecycleByConstruction, Grant, Envelope,
+}
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
+  OperationObserved, ShellObserved, DispatchObserved,
+  virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { second }
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFailureKindAdmitted, FilesystemAlreadyExists, admit_filesystem_failure_kind,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire, FileHoldAcquired, FileHoldOccupied,
+}
+import gunbc.managed_host_unit_hold { boot_run_owner }
+import gunbc.filesystem_model {
+  ModeledFilesystem, ModeledFile, filesystem_bindings, filesystem_operation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FILE ARM OF THE MODELED OPERATION REALIZATION, exercised through the real dispatcher and the
+// production durable-hold store. Every subject calls production code -- file_hold_acquire runs the
+// real compare-and-set fold (gunbc.durable_cas_file_store), which lists, reads and create-exclusively
+// writes its slot through extdeps.filesystem.filesystem_io -- and the model answers only the file
+// operations. The hold root is an ordinary path inside the modeled filesystem, so nothing touches
+// /var/lib on the host running the witness.
+data realization_identity: NonEmptyStr = "modeled-filesystem-witness" as NonEmptyStr
+
+data hold_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
+
+data hold_key: NonEmptyStr = "operator-host-mtcollins1" as NonEmptyStr
+
+fn filesystem_grant(verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: "Filesystem" }, path: [] }
+    binding: ModeledRealization { realization: realization_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn filesystem_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<ModeledFilesystem> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "modeled-filesystem-witness", kind: SharedStateFrame }
+      grants: [filesystem_grant(verb: Read), filesystem_grant(verb: Write)]
+    }
+    rest_fixtures: []
+    realization: Present { value: OperationRealization {
+      identity: realization_identity,
+      initial: initial,
+      epoch: virtual_clock_origin(),
+      bindings: filesystem_bindings(get: fn(fs) { fs }, put: fn(fs, next) { next }, cwd: fn(fs) { "/" }),
+      advance: fn(fs, now) { fs },
+    } }
+  }
+}
+
+fn empty_hold_store() -> ModeledFilesystem {
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [], refused_reads: [] }
+}
+
+fn route_operations(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => r.invocation.at.operation)
+}
+
+fn acquired(o: gunbc.durable_exclusive_hold_file_store.FileHoldAcquireOutcome) -> Bool {
+  match o {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
+    _ => false
+  }
+}
+
+fn occupied_by(o: gunbc.durable_exclusive_hold_file_store.FileHoldAcquireOutcome, owner: String) -> Bool {
+  match o {
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } => (h as String) == owner
+    _ => false
+  }
+}
+
+// THE REAL COMPARE-AND-SET, TWO CONTENDERS FOR ONE UNIT. The first acquire commits into the empty
+// store; the second, a different run for the SAME key in the SAME store, finds the committed slot and
+// is refused as occupied by the first run. Both go through file_hold_acquire unchanged, so the verdict
+// is the production fold's reading of what the model's filesystem holds, and the route shows the
+// second contender never wrote.
+test fn two_contenders_for_one_unit_get_one_hold() -> Bool {
+  let first_owner = boot_run_owner(run_id: "run-a" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 10, start_time: "1" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  let second_owner = boot_run_owner(run_id: "run-b" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 11, start_time: "2" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  let result = evaluate_in_witness_frame(
+    frame: filesystem_frame(initial: empty_hold_store()),
+    subject: fn(_scope) {
+      let first = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: first_owner)
+      let second = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: second_owner)
+      acquired(o: first) && occupied_by(o: second, owner: first_owner as String)
+    }
+  )
+  match result {
+    WitnessReturned { value, route, state } =>
+      value
+        && count(filter(route, r => r.invocation.at.service == "Filesystem")) == count(route)
+        && count(filter(route, r => starts_with(s: r.invocation.at.operation, prefix: "WriteCreateNew"))) == 1
+        && match state { Present { value: fs } => store_holds_one_slot(fs: fs) Absent => false }
+    _ => false
+  }
+}
+
+fn store_holds_one_slot(fs: ModeledFilesystem) -> Bool {
+  count(filter(fs.files, f => starts_with(s: f.path, prefix: hold_root as String))) == 1
+}
+
+// THE FAILURE KIND TRAVELS THE REAL CHANNEL. A create-exclusive write to an existing path answers
+// already_exists, and the operation's declared error_kind field, read by the production admission
+// admit_filesystem_failure_kind, decodes it to FilesystemAlreadyExists -- the same projection a host
+// io::Error reaches.
+test fn a_create_exclusive_write_over_an_existing_file_is_already_exists() -> Bool {
+  let seeded = ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/slot", content: "held" }], refused_reads: [] }
+  match evaluate_in_witness_frame(
+    frame: filesystem_frame(initial: seeded),
+    subject: fn(_scope) {
+      let w = Filesystem.WriteCreateNew(path: "/tmp/slot", content: "mine")
+      !w.success && match admit_filesystem_failure_kind(observed: w.error_kind) {
+        FilesystemFailureKindAdmitted { kind: k } => match k { FilesystemAlreadyExists => true _ => false }
+        _ => false
+      }
+    }
+  ) {
+    WitnessReturned { value, state } => value && match state { Present { value: fs } => untouched(fs: fs) Absent => false }
+    _ => false
+  }
+}
+
+fn untouched(fs: ModeledFilesystem) -> Bool {
+  all(fs.files, f => f.content == "held")
+}
+
+// A LISTING IS THE REALIZATION'S OWN CONTRACT: immediate children, sorted, one per line, files and
+// directories alike; a file listed as a directory is not_a_directory.
+test fn a_listing_is_sorted_immediate_children() -> Bool {
+  let fs = ModeledFilesystem {
+    directories: ["/", "/d", "/d/sub", "/d/sub/deeper"],
+    files: [ModeledFile { path: "/d/b", content: "" }, ModeledFile { path: "/d/a", content: "" }, ModeledFile { path: "/d/sub/c", content: "" }],
+    refused_reads: [],
+  }
+  match evaluate_in_witness_frame(
+    frame: filesystem_frame(initial: fs),
+    subject: fn(_scope) {
+      let listed = Filesystem.List(path: "/d")
+      let as_dir = Filesystem.List(path: "/d/a")
+      listed.success && listed.entries == "a\nb\nsub" && !as_dir.success && as_dir.error_kind == "not_a_directory"
+    }
+  ) {
+    WitnessReturned { value } => value
+    _ => false
+  }
+}
+
+// AN OBSERVATION OF THE WRONG TRANSPORT IS A HARNESS FAULT: a file operation answered with a shell
+// observation refuses rather than being read through either projection.
+test fn a_file_operation_answered_as_a_shell_run_refuses() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: empty_hold_store(),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding {
+      at: filesystem_operation(operation: "Read"),
+      handler: fn(s, c) { OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "x", stderr: "" } }, state: s, elapsed: second(count: 0) } },
+    }],
+    advance: fn(s, now) { s },
+  }
+  let frame = filesystem_frame(initial: empty_hold_store())
+  match evaluate_in_witness_frame(
+    frame: WitnessEvaluationFrame { envelope: frame.envelope, rest_fixtures: [], realization: Present { value: realization } },
+    subject: fn(_scope) { Filesystem.Read(path: "/x").success }
+  ) {
+    WitnessRefused { diagnostic } =>
+      string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "needs FileObserved")
+    _ => false
+  }
+}

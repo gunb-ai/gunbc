@@ -1,0 +1,250 @@
+module test.claim.fabric_blob
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.measure { byte_size, measure_count }
+import std.content_hash { sha256_hex_digest, Sha256Digest }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
+  fabric_blob_reading_size, fabric_blob_reading_digest,
+  FabricBlobPutAdmitted, FabricBlobPutTooLarge, fabric_blob_put_plan, fabric_blob_address_eq, fabric_blob_fits,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
+import gunbc.fabric.fabric_blob_r2 {
+  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target, resolve_fabric_blob_target_under,
+}
+import gunbc.cloudflare.r2_origin {
+  R2OriginAllocated, R2OriginBucket, R2JurisdictionDefault, OriginCredentialUnminted,
+  fabric_cache_blobs_read_access_key_id, fabric_cache_blobs_write_access_key_id,
+  fabric_cache_blobs_read_secret_id, fabric_cache_blobs_write_secret_id,
+  FabricCacheBlobs, bucket_purpose_lifecycle_rules, r2_default_multipart_abort_rule, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
+import extdeps.cloudflare.r2_lifecycle {
+  R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
+  r2_lifecycle_read_body, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire,
+}
+import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
+import std.decl_ref { decl_ref }
+import std.upsert_decision { Noop, Apply, Refuse }
+
+// READS THE LIVE TREE: a FabricBlobReading is sole_constructor, so the reading arms are taken through
+// read_staged_fabric_blob over a committed fixture. Under the hermetic route its two handlers replay
+// their mocks -- sha256sum's empty-input digest and stat's zero size -- so the fixture is the empty
+// file, and what this establishes is the mint's wiring (digest and size from the handlers into one
+// reading), not the hashing, which extdeps.crypto.hash's own witnesses own.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/empty.bin"
+data empty_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data key_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
+
+// A MISTYPED FIXTURE DIGEST FAILS THE CLAIM, never substitutes another digest.
+fn witness_address() -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: key_hex) {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
+  }
+}
+
+test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobRead { reading: r } =>
+      (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == 0
+    FabricBlobReadRefused { fault: _ } => false
+  }
+}
+
+// ── THE PUT PLAN: AN OBJECT OVER THE BOUND NEVER REACHES THE NETWORK ───────────────────────────
+
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: r } => {
+      let within = match witness_address() {
+        Absent => false
+        Present { value: addr } =>
+          match fabric_blob_put_plan(address: addr, reading: r, bound: fabric_cache_object_bound()) {
+            FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: addr)
+            FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
+          }
+      }
+      within && fabric_blob_fits(size: byte_size(count: 0), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 1), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 4 * 1024 * 1024 * 1024 + 1), bound: fabric_cache_object_bound())
+    }
+  }
+}
+
+test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
+  match witness_address() {
+    Present { value: addr } => (fabric_cache_blob_key(address: addr) as String) == concat("blobs/", key_hex)
+    Absent => false
+  }
+}
+
+// ── THE CACHE'S CREDENTIALS ARE PINNED, SO A TRANSFER REACHES THE CREDENTIAL STEP ───────────────
+
+test fn cache_blob_targets_resolve_with_the_pinned_access_key_ids() -> Bool {
+  let read = match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
+    FabricBlobTargetReady { target: t } =>
+      (t.access_key_id as String) == (fabric_cache_blobs_read_access_key_id as String)
+        && (t.token_value.secret as String) == (fabric_cache_blobs_read_secret_id as String)
+    FabricBlobTargetRefused { cause: _ } => false
+  }
+  let write = match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
+    FabricBlobTargetReady { target: t } =>
+      (t.access_key_id as String) == (fabric_cache_blobs_write_access_key_id as String)
+        && (t.token_value.secret as String) == (fabric_cache_blobs_write_secret_id as String)
+    FabricBlobTargetRefused { cause: _ } => false
+  }
+  read && write && (fabric_cache_blobs_read_access_key_id as String) != (fabric_cache_blobs_write_access_key_id as String)
+}
+
+// THE UNMINTED REFUSAL STAYS ENROLLED ON A SUPPLIED STANDING (DESIGN section 4b(4)): the declarations
+// no longer inhabit the arm, so the standing is constructed.
+test fn an_unminted_cache_credential_still_refuses_naming_its_mint_entry() -> Bool {
+  let standing = R2OriginAllocated {
+    bucket: R2OriginBucket {
+      bucket_name: "a-bucket",
+      jurisdiction: R2JurisdictionDefault,
+      location_hint: none,
+      purpose: FabricCacheBlobs {},
+      read_credential: OriginCredentialUnminted {
+        mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_read"),
+        secret_id: "witness-read",
+      },
+      write_credential: OriginCredentialUnminted {
+        mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_write"),
+        secret_id: "witness-write",
+      },
+    },
+  }
+  match resolve_fabric_blob_target_under(direction: FabricBlobReadDirection, key: "blobs/x" as NonEmptyStr, standing: standing) {
+    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "witness-read") && string_contains(s: c as String, pattern: "run_cache_object_read")
+    FabricBlobTargetReady { target: _ } => false
+  }
+}
+
+// ── LIFECYCLE: ONLY THE CACHE EXPIRES, AND A READ IT CANNOT DESCRIBE REFUSES ───────────────────
+
+test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
+  bucket_purpose_lifecycle_rules(purpose: FabricDurableOrigin {}).length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {}).length() == 0
+    && r2_lifecycle_rules_canonical(rules: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}))
+      == "Default Multipart Abort Rule enabled bucket-wide abortMultipartUploadsTransition max_age=604800\nfabric-cache-blobs-release enabled prefix=blobs/ deleteObjectsTransition max_age=604800"
+}
+
+data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}},{\"id\":\"Default Multipart Abort Rule\",\"enabled\":true,\"conditions\":{},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+// THE BODY A NEW BUCKET ANSWERS: Cloudflare's own default rule and nothing else, read verbatim from
+// gunbai-fabric-cache by fleet-converge r2_bucket_ensure run 37361093408 (2026-10-05).
+data lifecycle_new_bucket_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\": \"Default Multipart Abort Rule\", \"enabled\": true, \"conditions\": {}, \"abortMultipartUploadsTransition\": {\"condition\": {\"type\": \"Age\", \"maxAge\": 604800}}}]}}"
+data lifecycle_empty_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[]}}"
+data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Date\",\"date\":\"2027-01-01T00:00:00Z\"}}}]}}"
+
+// THE WORKSPACE NEVER INHERITS THE CACHE'S RELEASE. Its declared set is empty while the cache's is
+// not, and the classifier treats a bucket carrying the cache's seven-day rule as NOT converged on the
+// workspace's declaration -- so a workspace whose history were expiring could not read as held.
+test fn the_workspace_declares_no_release_and_the_cache_rule_is_not_its_convergence() -> Bool {
+  let workspace = bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {})
+  let cache_rule_differs = match classify_r2_lifecycle(desired: workspace, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
+    Apply { plan: _ } => true
+    _ => false
+  }
+  let empty_converges = match classify_r2_lifecycle(desired: workspace, read: r2_lifecycle_read_body(body: lifecycle_empty_body)).decision {
+    Noop => true
+    _ => false
+  }
+  workspace.length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}).length() > 0
+    && cache_rule_differs
+    && empty_converges
+}
+
+test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let converged = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
+    Noop => true
+    _ => false
+  }
+  let empty = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_empty_body)).decision {
+    Apply { plan: _ } => true
+    _ => false
+  }
+  converged && empty
+}
+
+test fn a_rule_this_model_cannot_describe_refuses_rather_than_being_replaced() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let unmodeled = match r2_lifecycle_read_body(body: lifecycle_unmodeled_body) {
+    R2LifecycleRulesUnmodeled { cause: _ } => true
+    _ => false
+  }
+  let refused = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_unmodeled_body)).decision {
+    Refuse { reason: _ } => true
+    _ => false
+  }
+  let unreadable = match r2_lifecycle_read_body(body: "not json") {
+    R2LifecycleReadRefused { cause: _ } => true
+    _ => false
+  }
+  unmodeled && refused && unreadable
+}
+
+// A NEW BUCKET'S DEFAULT RULE IS MODELED AND KEPT. The live body reads as one bucket-wide abort rule,
+// equal to r2_default_multipart_abort_rule; the cache's desired set is therefore NOT converged on it
+// (its release rule is missing), and the plan that applies carries the default beside the release
+// rule, so the PUT that replaces the whole set does not delete Cloudflare's default.
+test fn a_new_buckets_default_rule_is_read_and_kept_by_the_cache_plan() -> Bool {
+  let read = r2_lifecycle_read_body(body: lifecycle_new_bucket_body)
+  let reads_the_default = match read {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs) == r2_lifecycle_rules_canonical(rules: [r2_default_multipart_abort_rule()])
+    _ => false
+  }
+  let plan_keeps_default = match classify_r2_lifecycle(desired: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}), read: read).decision {
+    Apply { plan: p } => string_contains(s: r2_lifecycle_rules_canonical(rules: p.rules), pattern: "Default Multipart Abort Rule enabled bucket-wide abortMultipartUploadsTransition max_age=604800")
+      && string_contains(s: r2_lifecycle_rules_canonical(rules: p.rules), pattern: "fabric-cache-blobs-release")
+    _ => false
+  }
+  reads_the_default && plan_keeps_default
+}
+
+// THE WIRE ROUND-TRIPS: the PUT body the cache's desired set renders reads back as the same set.
+test fn the_desired_rule_set_round_trips_through_its_wire_form() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let body = concat(concat("{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":", r2_lifecycle_rules_wire(rules: desired)), "}}")
+  match r2_lifecycle_read_body(body: body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs) == r2_lifecycle_rules_canonical(rules: desired)
+    _ => false
+  }
+}
+
+// THE TWO BUCKET-WIDE SPELLINGS ARE ONE SCOPE. The live GET answered Cloudflare's default with
+// `conditions: {}`; the UPDATE reference writes bucket-wide as `prefix: ""`. Both must decode to the
+// same default rule, or a bucket whose readback normalizes to `""` would stay drifted forever.
+data lifecycle_empty_prefix_default_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"Default Multipart Abort Rule\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+
+test fn an_absent_and_an_empty_prefix_decode_to_the_same_bucket_wide_rule() -> Bool {
+  let absent = match r2_lifecycle_read_body(body: lifecycle_new_bucket_body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs)
+    _ => "unread"
+  }
+  let empty = match r2_lifecycle_read_body(body: lifecycle_empty_prefix_default_body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs)
+    _ => "unread"
+  }
+  absent == empty && absent == r2_lifecycle_rules_canonical(rules: [r2_default_multipart_abort_rule()])
+}
+
+// THE PUT WRITES BUCKET-WIDE IN THE DOCUMENTED FORM, and that form reads back converged.
+test fn the_put_writes_bucket_wide_as_an_empty_prefix_and_reads_back_converged() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let wire = r2_lifecycle_rules_wire(rules: desired)
+  let body = concat(concat("{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":", wire), "}}")
+  let converged = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: body)).decision {
+    Noop => true
+    _ => false
+  }
+  string_contains(s: wire, pattern: "\"conditions\": {\"prefix\": \"\"}") && converged
+}

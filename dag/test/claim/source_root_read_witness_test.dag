@@ -1,0 +1,23 @@
+module test.claim.source_root_read_witness_test
+
+import gunbc.source_root_read { source_root_candidate_is_file, source_root_child_path }
+
+// These discriminate the policy over observations. Native acquisition is exercised by
+// test/native_filesystem/controls.rs and the built CLI's walk_cli_door controls.
+test fn only_not_a_directory_admits_a_walked_file() -> Bool {
+  source_root_candidate_is_file(root: false, error_kind: "not_a_directory")
+    && !source_root_candidate_is_file(root: false, error_kind: "not_found")
+    && !source_root_candidate_is_file(root: false, error_kind: "permission_denied")
+    && !source_root_candidate_is_file(root: false, error_kind: "other")
+    && !source_root_candidate_is_file(root: false, error_kind: "unrecognized")
+}
+
+test fn a_file_is_not_a_directory_root() -> Bool {
+  !source_root_candidate_is_file(root: true, error_kind: "not_a_directory")
+}
+
+test fn child_paths_preserve_the_directory_spelling() -> Bool {
+  source_root_child_path(directory: "/", name: "a.dag") == "/a.dag"
+    && source_root_child_path(directory: "tree", name: "a.dag") == "tree/a.dag"
+    && source_root_child_path(directory: "tree/", name: "a.dag") == "tree/a.dag"
+}

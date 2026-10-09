@@ -12,11 +12,11 @@ fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> 
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: ^grammar_relation_field_emitted },
+              label: Authored { name: ^grammar_relation_field_emitted },
               target: emitted
             },
             Edge {
-              label: Named { name: ^grammar_relation_field_tokens },
+              label: Authored { name: ^grammar_relation_field_tokens },
               target: tokens_root
             }
           ],
@@ -31,8 +31,8 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
+      Edge { label: Authored { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
+      Edge { label: Authored { name: ^emit_ingest_fold_row_label_python }, target: python_row }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -97,7 +97,8 @@ fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: Node) -> Bool {
         init: true,
         f: fn(acc, edge) {
           match edge.label {
-            Named { name: _ } =>
+            StructuralLabel { label: _ } => acc
+            Authored { name: _ } =>
               acc
                 && emit_ingest_fold_row_selector_bijectivity_holds(
                   row: edge.target,

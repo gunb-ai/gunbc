@@ -471,7 +471,11 @@ fn ci_hold_cause_text(hold: SchedulerHold) -> String {
       concat("blocked on memory reclaim (pressure ", concat(ci_human_percent(bp: bp), ")"))
     CurrentHighWater { current: c, high_water: hw } =>
       concat("blocked on the memory high-water line (", concat(ci_human_bytes(b: c), concat(" of ", concat(ci_human_bytes(b: hw), ")"))))
-    _ => "blocked on scheduler admission"
+    WindowFull { active: _, target: _ } => "blocked on scheduler admission"
+    SwapGrowth { delta: _ } => "blocked on scheduler admission"
+    AwaitFirstCost { undigested: _ } => "blocked on scheduler admission"
+    InsufficientHeadroom { current: _, share: _, high_water: _ } => "blocked on scheduler admission"
+    AdmissionCeiling { current: _, ceiling: _ } => "blocked on scheduler admission"
   }
 }
 
@@ -609,6 +613,42 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
     glyph: StatusPulse,
     text: concat(label, concat(" — ", ci_measured_bytes_text(m: rss))),
     attention: Ambient
+  }
+}
+
+// FILESYSTEM HOST-EFFECT PROJECTION (the [file] retirement). The subject is the NAMED INTENT —
+// `Filesystem.Write`, `Filesystem.Read` — exactly the spelling extdeps.filesystem.filesystem_io
+// publishes in its operation roster and its mock corpus `operation_key`, so the intent vocabulary
+// is the operation authority's and this renderer coins nothing. The OPERAND is a separate
+// argument rather than a subject segment, and that is a measured decision, not a preference: no
+// segment in std.observation names a filesystem path (the path-shaped segments are entry
+// source_path, module_path, and the two identity segments), and `ci_subject_detail_text` renders
+// at most ONE of module/phase, so folding the path into the subject would have silently dropped
+// either the path or the intent. THE OPERAND IS NEVER DROPPED, because the pre-attempt trace is
+// load-bearing: gunbc.roadmap_dispatch_actuator records a measured incident (srv1, 2026-08-19)
+// where twelve publication receipts wrote into a directory that did not exist, and the
+// `[file] write <path>` line emitted BEFORE the attempt made every one of them log exactly like a
+// success. A projection that rendered "started Filesystem.Write" with no path would restore that
+// defect in the observation vocabulary.
+//
+// THE PAYLOAD CLAUSE ARRIVES ALREADY RENDERED, AND THAT IS THE ONE-STATE RULE. `clause` is the
+// parenthetical body -- "" for a path-only operation, "N bytes" or "N bytes, mode M" for a write --
+// so this renderer never holds a count beside a boolean that could disagree with it (DESIGN section
+// 5: a flag pair admitting `known = true, count = 0` is unwritable when the sum supplies the text).
+// gunbc.observation_seed_render derives it from the FileEffectPayload sum.
+
+fn ci_file_effect_line(event: ObservationEvent, operand: NonEmptyStr, clause: String) -> RenderedLine {
+  let presentation = observation_presentation(c: observation_event_class(event: event))
+  let subject = ci_subject_leaf_text(subject: event.subject)
+  let detail = if clause == "" { "" } else { concat(" (", concat(clause, ")")) }
+  match event.transition {
+    Begin =>
+      RenderedLine {
+        glyph: presentation.glyph,
+        text: concat("started ", concat(subject, concat(" ", concat(operand, detail)))),
+        attention: Ambient
+      }
+    _ => ci_event_line_at_attention(event: event, attention: Ambient)
   }
 }
 
@@ -896,6 +936,7 @@ type CiWitnessRuntimeCause
   | WitnessCauseTypeError
   | WitnessCauseCrossRepresentationEquality
   | WitnessCauseStringRealizationStraddle
+  | WitnessCauseVariantRealizationRefused
   | WitnessCausePoolRootContributesNothing
   | WitnessCausePatternMatchFailure
   | WitnessCauseDivisionByZero
@@ -908,7 +949,9 @@ type CiWitnessRuntimeCause
   | WitnessCauseArgvExceedsHostArgMax
   | WitnessCauseHostToolRelativePathAmbiguous
   | WitnessCauseShellOutputLimitExceeded
+  | WitnessCauseShellSpawnRefused
   | WitnessCauseCallContractMismatch
+  | WitnessCauseHostIoFailed
   | WitnessCauseMappedOutcomeEscaped
 
 // Stable kebab tokens, chosen so a reader extracts identity-and-cause pairs with a pattern that
@@ -924,6 +967,7 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseTypeError => "type-error"
     WitnessCauseCrossRepresentationEquality => "cross-representation-equality"
     WitnessCauseStringRealizationStraddle => "string-realization-straddle"
+    WitnessCauseVariantRealizationRefused => "variant-realization-refused"
     WitnessCausePoolRootContributesNothing => "pool-root-contributes-nothing"
     WitnessCausePatternMatchFailure => "pattern-match-failure"
     WitnessCauseDivisionByZero => "division-by-zero"
@@ -936,7 +980,9 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseArgvExceedsHostArgMax => "argv-exceeds-host-arg-max"
     WitnessCauseHostToolRelativePathAmbiguous => "host-tool-relative-path-ambiguous"
     WitnessCauseShellOutputLimitExceeded => "shell-output-limit-exceeded"
+    WitnessCauseShellSpawnRefused => "shell-spawn-refused"
     WitnessCauseCallContractMismatch => "call-contract-mismatch"
+    WitnessCauseHostIoFailed => "host-io-failed"
     WitnessCauseMappedOutcomeEscaped => "mapped-outcome-escaped"
   }
 }
@@ -1026,6 +1072,53 @@ fn ci_witness_claim_result_text(
   concat(padded, ci_witness_claim_suffix(verdict: verdict, wall: wall))
 }
 
+// WHERE A THROW WAS RAISED, as the declaration that was running. The ERROR row above names the
+// class (`cause=`) and nothing else, so a runtime error reached the floor unlocated: the message
+// was dropped at the verdict projection, and most interpreter error arms carry no source position
+// at their raise site anyway. What every arm CAN carry is the innermost declaration being
+// evaluated when the error was raised plus the call path out to the claim, each frame naming the
+// declaration and its own position (`decl@file:byte`, the declaration's span, not the raise
+// site's). That is what this frame is, and it says so rather than passing for a raise-site span.
+type CiRaiseFrame {
+  decl: String
+  file: String
+  start: Nat
+}
+
+fn ci_raise_frame_text(frame: CiRaiseFrame) -> String {
+  join([frame.decl, "@", frame.file, ":", to_string(frame.start)], "")
+}
+
+// A SEPARATE LINE, NOT A LONGER ROW. The ERROR row's bytes and its trailing `cause=` key stay as
+// they are, so every existing reader of that row is untouched; the location rides on its own line
+// that repeats the target label, so a reader pairs the two by identity and never by adjacency.
+// Every field is key-tagged and space-free except `message=`, which is last and runs to the end of
+// the line, with its newlines escaped so one throw stays one line. An empty frame list renders
+// `raised_in=unrecorded` -- loud, never a blank that reads as a location.
+fn ci_witness_runtime_error_detail_text(
+  subject: String,
+  function: String,
+  frames: List<CiRaiseFrame>,
+  elided: Nat,
+  message: String,
+) -> String {
+  let label = ci_witness_bazel_target_label(subject: subject, function: function)
+  let innermost = fold(frames, init: "", f: (acc, fr) =>
+    if acc == "" { ci_raise_frame_text(frame: fr) } else { acc })
+  let path = fold(frames, init: "", f: (acc, fr) =>
+    if acc == "" { ci_raise_frame_text(frame: fr) } else { join([acc, "<-", ci_raise_frame_text(frame: fr)], "") })
+  let raised = if innermost == "" { "unrecorded" } else { innermost }
+  let call_path = if path == "" { "unrecorded" } else { path }
+  let elided_field = if elided == 0 { "" } else { concat(" elided=", to_string(elided)) }
+  join([
+    label,
+    " error-at raised_in=", raised,
+    " call_path=", call_path,
+    elided_field,
+    " message=", replace(message, "\n", "\\n")
+  ], "")
+}
+
 // RETIRED 2026-08-20 with the warn tier itself. ci_witness_budget_warn_text rendered the floor
 // fold's [floor-witness-slow] line; the tier it served is deleted at its authority
 // (v2.workflow.required_floor, see the deletion note there), so the renderer has no subject. Its
@@ -1112,6 +1205,48 @@ fn ci_shared_fill_row_text(
               )
               )
             )
+          )
+        )
+      )
+    )
+  )
+}
+
+// WHICH FRAME A READ WITH NO OBSERVED FILL CAME FROM. The total line's unattributed_hits is an
+// aggregate nobody can disposition; these two arms split it by where the read happened, and the
+// per-key line below names the identity, so "does preparation read this producer?" is answered
+// by identity rather than by comparing two runs' wall time.
+type SharedFillUnattributedFrame
+  = UnattributedHitOutsideFold
+  | UnattributedHitInClaimWithoutFill
+
+fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> String {
+  match frame {
+    UnattributedHitOutsideFold => "outside-fold"
+    UnattributedHitInClaimWithoutFill => "in-claim-without-fill"
+  }
+}
+
+// One line per (frame, phase, cache, key). `phase` is the floor seam current when the read
+// happened (a preparation warm reads under its seam), or `claim` for an in-claim read.
+fn ci_shared_fill_unattributed_text(
+  frame: SharedFillUnattributedFrame,
+  phase: String,
+  cache: String,
+  key: String,
+  hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill-unattributed] frame=",
+    concat(
+      shared_fill_unattributed_frame_tag(frame: frame),
+      concat(
+        " phase=",
+        concat(
+          phase,
+          concat(
+            " cache=",
+            concat(cache, concat(" key=", concat(key, concat(" hits=", to_string(hits)))))
           )
         )
       )

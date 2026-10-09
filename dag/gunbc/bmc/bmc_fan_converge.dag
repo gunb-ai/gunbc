@@ -12,6 +12,9 @@ import extdeps.bmc.capability {
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   BmcFirmwareVersion,
+  BmcFirmwareVersionParsed,
+  BmcFirmwareVersionRefused,
+  bmc_firmware_version_from_wire,
   bmc_firmware_version_intent_verdict,
 }
 import extdeps.bmc.types {
@@ -175,8 +178,7 @@ import std.measure {
   second,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.state_durability { StatePerturbationGeneration }
 import std.types {
   Bool,
@@ -595,15 +597,22 @@ fn bmc_fan_parse_os_release_identity(
       reason: "BMC fan identity observer omitted target machine",
     }
   } else {
-    BmcFanLiveIdentityObserved {
-      identity: BmcFanLiveIdentity {
-        firmware: BmcFirmwareVersion {
-          family: OpenBmc,
-          version: unquoted_firmware as NonEmptyStr,
-        },
-        machine: unquoted_machine as NonEmptyStr,
-        stable_machine_id: stable_machine_id,
-      },
+    match bmc_firmware_version_from_wire(wire: unquoted_firmware) {
+      BmcFirmwareVersionRefused { wire: _ } =>
+        BmcFanLiveIdentityRefused {
+          reason: "BMC fan identity observer reported a firmware version that is not major.minor.patch",
+        }
+      BmcFirmwareVersionParsed { version: version } =>
+        BmcFanLiveIdentityObserved {
+          identity: BmcFanLiveIdentity {
+            firmware: BmcFirmwareVersion {
+              family: OpenBmc,
+              version: version,
+            },
+            machine: unquoted_machine as NonEmptyStr,
+            stable_machine_id: stable_machine_id,
+          },
+        }
     }
   }
 }
@@ -657,34 +666,36 @@ fn bmc_fan_build_curve_steps_rec(
   outputs: List<Percent>,
   built: List<BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
-  if readings.length() == 0 {
-    if outputs.length() == 0 {
-      CurveStepsParsed { steps: built }
-    } else {
-      CurveStepsParseRefused {
-        reason: "fan curve readings/outputs differ or are empty",
+  match readings.first() {
+    Absent =>
+      if outputs.length() == 0 {
+        CurveStepsParsed { steps: built }
+      } else {
+        CurveStepsParseRefused {
+          reason: "fan curve readings/outputs differ or are empty",
+        }
       }
-    }
-  } else if outputs.length() == 0 {
-    CurveStepsParseRefused {
-      reason: "fan curve readings and outputs have different cardinality",
-    }
-  } else {
-    let reading = readings.first()
-    let output = outputs.first()
-      bmc_fan_build_curve_steps_rec(
-        readings: readings.skip(n: 1),
-        outputs: outputs.skip(n: 1),
-        built: append(
-          built,
-          items: [
-            BmcFanCurveStep {
-              at_or_above: reading,
-              duty: output,
-            },
-          ],
-        ),
-      )
+    Present { value: reading } =>
+      match outputs.first() {
+        Absent =>
+          CurveStepsParseRefused {
+            reason: "fan curve readings and outputs have different cardinality",
+          }
+        Present { value: duty } =>
+          bmc_fan_build_curve_steps_rec(
+            readings: readings.skip(n: 1),
+            outputs: outputs.skip(n: 1),
+            built: append(
+              built,
+              items: [
+                BmcFanCurveStep {
+                  at_or_above: reading,
+                  duty: duty,
+                },
+              ],
+            ),
+          )
+      }
   }
 }
 
@@ -760,10 +771,10 @@ fn bmc_fan_observe_tach_health_rec(
   sensors: List<NonEmptyStr>,
   built: List<OpenBmcTachHealth>,
 ) -> BmcFanTachHealthListResult {
-  if sensors.length() == 0 {
-    BmcFanTachHealthListObserved { values: built }
-  } else {
-    match openbmc_tach_health(session: session, sensor: sensors.first()) {
+  match sensors.first() {
+    Absent => BmcFanTachHealthListObserved { values: built }
+    Present { value: sensor } =>
+    match openbmc_tach_health(session: session, sensor: sensor) {
       OpenBmcTachHealthRefused { reason } =>
         BmcFanTachHealthListRefused { reason: reason }
       OpenBmcTachHealthObserved { health } =>
@@ -1690,7 +1701,6 @@ fn bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
 ) -> ProcessExit
-  uses net: Network
 {
   match first_absent_password_session_host_cli_dependency() {
     Present { value: absence } =>
@@ -1773,7 +1783,6 @@ fn bmc_fan_run(
 // wants raw fan state regardless of intent wants a different operation, and it does not exist
 // here; naming that is the point of this block, because the two contracts share a verb.
 fn srv3_bmc_fan_observe() -> ProcessExit
-  uses net: Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1782,7 +1791,6 @@ fn srv3_bmc_fan_observe() -> ProcessExit
 }
 
 fn srv3_bmc_fan_converge() -> ProcessExit
-  uses net: Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1791,7 +1799,6 @@ fn srv3_bmc_fan_converge() -> ProcessExit
 }
 
 fn srv4_bmc_fan_observe() -> ProcessExit
-  uses net: Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1800,7 +1807,6 @@ fn srv4_bmc_fan_observe() -> ProcessExit
 }
 
 fn srv4_bmc_fan_converge() -> ProcessExit
-  uses net: Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1819,7 +1825,6 @@ fn srv4_bmc_fan_converge() -> ProcessExit
 // password on inherited fd 0.
 
 fn srv4_bmc_fan_rollback_previous() -> ProcessExit
-  uses net: Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,

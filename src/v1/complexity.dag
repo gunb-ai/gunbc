@@ -297,10 +297,9 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam, si: Map
     } else {
       let idx = pair.first
       let arg_node = pair.second
-      let matches_state = if arg_name_at(n: arg_node, source_indices: si) != "" {
-        arg_name_at(n: arg_node, source_indices: si) == state_param.name
-      } else {
-        idx == state_param.index
+      let matches_state = match arg_name_at(n: arg_node, source_indices: si) {
+        Present { value: label } => if label != "" { label == state_param.name } else { idx == state_param.index }
+        Absent => idx == state_param.index
       }
       if matches_state {
         Present { value: arg_value(n: arg_node) }
@@ -1737,7 +1736,7 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
 fn collect_field_binding_names(fb: Node, vars: Map<String, Bool>) -> Map<String, Bool> {
   match field_binding_pattern(n: fb) {
     Bind { declaration: declaration } => map_insert(vars, declaration.name, true)
-    VariantPattern { name: _, parent_enum: _, field_bindings: nested } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: nested, parent_identity: _ } =>
       nested |> fold(init: vars, f: (inner, nested_fb) =>
         collect_field_binding_names(fb: nested_fb, vars: inner)
       )
@@ -1772,7 +1771,7 @@ fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool
       if scrut_has_descent {
         let has_extraction = match_arm_nodes(texpr: val) |> any(arm_node =>
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
               let binding_names = bindings |> fold(init: empty_map(), f: (acc, fb) =>
                 collect_field_binding_names(fb: fb, vars: acc)
               )
@@ -1889,7 +1888,7 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       let with_patterns = if scrut_is_descent || scrut_is_param {
         match_arm_nodes(texpr: body) |> fold(init: vars, f: (acc, arm_node) =>
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
               bindings |> fold(init: acc, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
@@ -1980,7 +1979,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       let arms_ok = match_arm_nodes(texpr: body) |> all(arm_node =>
         let arm_vars = if scrut_is_descent || scrut_is_param {
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
               bindings |> fold(init: vars, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
@@ -2300,7 +2299,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         else {
           let arm_vars = if scrut_is_descent || scrut_is_param {
             match arm_pattern(n: arm_node) {
-              VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+              VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
                 bindings |> fold(init: vars, f: (inner, fb) =>
                   collect_field_binding_names(fb: fb, vars: inner)
                 )

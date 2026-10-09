@@ -47,14 +47,18 @@ import std.measure {
 // (resolve + infer) once per unique module, and per universe member Eval the named declaration,
 // reporting one typed verdict row per member. This is the driver the required-v2-native CI lane
 // executes; its contract is that every universe member reaches exactly one terminal observation,
-// never a silent remainder. The process re-derives its own exclusive wall partition on stderr
+// never a silent remainder. The process re-derives its own exclusive thread-CPU partition on stderr
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: the rows
 // NativeDriverExclusiveRows carries, over parent_span_nanos) plus one `[native-prepare-split]`
 // line per unique module that partitions prepare into resolve vs infer (the two halves
 // native_test_resolve_module / native_test_infer_resolved) and carries decls=. Its outcome names
 // which arm decided the module: accepted, infer_refused, resolve_refused, or context_refused --
 // the last for a module whose FILE this context already refused, which never enters the resolver,
-// so its resolve span is the refusal lookup and not a resolution it did not perform. The
+// so its resolve span is the refusal lookup and not a resolution it did not perform. Beside
+// each persisted population row that did not pass it prints one `[native-verdict]` line on
+// stderr -- gunbc.witness_v2_native_route native_route_member_row_text: the subject, the stage,
+// the fatal cause and the located diagnostic chain the failing stage produced -- so the operator
+// command that drains this stderr names WHERE a subject failed, not only that it did. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
 // not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
 // OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled
@@ -82,11 +86,65 @@ import std.measure {
 // them. It is the v2 -> v2 boundary's door -- the second generation the self-host instrument stops
 // short of -- and what it can do is exactly what its `.dag` entry declares.
 
+// NativeClaimDriver -- a PROGRAM WHOSE WHOLE JOB IS ONE DECIDED EXIT, and the smallest rendered main
+// this partition admits. Its `.dag` entry declares one fold, `native_claim_report() ->
+// NativeClaimReport`, which computes every case, renders one row per case identity and decides the
+// terminal;
+// the rendered main performs only the operations no fold can -- writing stdout and setting the
+// status -- and reads no argv. Its DECLARED RESOURCE SET is {Filesystem}: a report that reaches no
+// effect gets a synchronous main that binds nothing, and a report whose only demand is the
+// Filesystem service gets that service bound to the existing extdeps.filesystem.filesystem_io
+// handler, the binding NativeCliDriver's main already performs, with a transport error reported as
+// no observation. Any other demand is refused at emission in place of a main
+// (v1.compiler.emit_rust native_claim_report_effect_demand), so a claim cannot reach an effect this
+// driver has not declared. It exists because a claim that must EXECUTE natively has
+// no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
+// evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
+// is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two
+// meanings (DESIGN section 3). First consumer: gunbc.instruments.native_crypto_vectors, run by
+// `gunbc test //gunbc/instruments:native-crypto-vectors`, which executes the emitted .dag verifiers
+// over their published vectors.
+// WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided terminal,
+// as one value. They are one fact -- the rows ARE the observation the terminal summarizes -- so they
+// cross the host boundary together rather than through two calls that could disagree.
+//
+// THE TERMINAL IS CLOSED, NOT A ProcessExit (review 5311497200 of gunbc#12250). A ProcessExit
+// admits ExitFailure { code: 0 }, which crosses the process boundary as status 0 and would read as
+// held, and any other code, which bypasses gunbc test's 0/1/2 vocabulary. So the program chooses
+// among exactly the three outcomes the reader distinguishes, and the rendered main owns the one
+// mapping to a status: held 0, not held 1, no observation 2. There is no arm a program can write
+// that reaches a fourth status.
+type NativeClaimTerminal
+  = NativeClaimHeld
+  | NativeClaimNotHeld { reason: String }
+  | NativeClaimNoObservation { reason: String }
+
+type NativeClaimReport {
+  stdout: String
+  terminal: NativeClaimTerminal
+}
+
+// NativeServeDriver -- a NATIVELY EMITTED HTTP REQUEST/RESPONSE SERVICE, the native route for
+// every program `gunbc serve` (a seed verb, DESIGN section 7) serves today. Its `.dag` entry
+// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
+// ServeWireResponse` -- the seed's handler contract unchanged -- and imports gunbc.native_serve,
+// whose folds decide everything between the bytes: which address to bind and which release the
+// process is (argv in, a refusal before any bind), whether a request head is admissible and how
+// many body bytes follow, and whether the request is answered before the handler (/livez). The
+// rendered main performs only what no fold can -- read argv, bind and accept the TCP listener,
+// read the request line, header lines and exactly the body length it was handed within the
+// contract's byte limits and timeout, call the handler once per request, write the returned
+// value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
+// NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
+// served program's main shares nothing with the compile CLI's. Instrument:
+// `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
   | NativeCliDriver
+  | NativeClaimDriver
+  | NativeServeDriver
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end
@@ -130,9 +188,10 @@ type CompilerEntryDriver
 // BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
 // as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
 // defect this partition exists to catch.
-// THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
+// THE NATIVE DRIVER'S EXCLUSIVE CPU PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
-// single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
+// single thread's CPU time (the wall is printed beside it as an observation, never judged).
+// The grains are the driver's own, not a restatement of the resolve-split
 // rows, and THIS TYPE IS WHERE THEY ARE NAMED: the row set below is the grain, so prose that
 // re-lists the field names would be a second spelling of it that rots the moment a driver gains
 // a phase. The law is the same exclusive-sum law: exclusive rows must not exceed parent_span,
@@ -204,6 +263,39 @@ type CompilerEntryDriver
 // collection directly rather than going through the constructor. That residual is the same one
 // v1.compiler.emit_rust records for its own two-role split, and its next-rung trigger is the same
 // language capability -- a module-private function boundary -- not anything this change can build.
+// THE SCHEDULER'S OWN WORK IS A ROW, because it is work and the partition is exhaustive.
+// ExclusiveDemandScheduling measures what the demand engine spends deciding WHAT RUNS NEXT --
+// building the plan, selecting from the ready queue, looking up bindings, settling a transition,
+// recomputing readiness and collecting rows -- as distinct from what the demands themselves spend,
+// which ExclusivePrepare and ExclusiveEval already carry.
+//
+// IT EXISTS BECAUSE LEAVING IT OUT WAS A CORRECTNESS DEFECT AND NOT A REPORTING GAP. Review of
+// gunbc#12401 found the driver closing its scheduling span BEFORE calling the engine, so all of the
+// above fell into the parent residual. The partition's tolerance arm is a fixed 50ms, so a large
+// enough selected universe makes an otherwise VALID adjudication exit
+// NativeDriverCostRemainderExceedsTolerance -- a fail-closed refusal fired by correct input, which
+// is the wrong direction of wrong. The row is what makes the scheduler's cost attributable instead
+// of unattributed.
+//
+// IT IS NOT PREPARE. Adding this time to ExclusivePrepare would have been the cheaper edit and it
+// would double-count: the engine already reports its own prepare nanos, and the driver already adds
+// those. The overhead is the scheduling span MINUS what the engine attributed to demands, which is
+// why it needs a key of its own rather than a larger existing one.
+//
+// THE SCHEDULING SPAN IS THE WHOLE ENGINE CALL, AND THAT IS WHAT THE SENTENCE ABOVE ALWAYS SAID. The
+// first realization summed the engine's own bookkeeping spans (lookup, settle, select, plan) instead,
+// which left the engine's work BETWEEN those spans -- each step's transition and run-record rebuild
+// -- timed by no row. On a loaded host, once the clock was thread CPU, that gap was the whole
+// residual and it grew with the demand population. So the driver spans the engine call itself and
+// the row is that measured span minus the demand nanos the engine attributed; an attribution larger
+// than the span refuses rather than clamping. This makes untimed work INSIDE the engine call
+// scheduling by construction, which is what it is. The parent remainder still sees every CPU
+// nanosecond outside a named span, which is what the law judges.
+//
+// ExclusiveDriverCollection IS THE DRIVER'S OWN WORK AFTER THE CALL, NAMED FOR WHAT IT IS: copying the
+// run's rows into the population, collecting the prepare and eval samples and reading the run's
+// counters. It is not scheduling -- the engine has returned -- and folding it into that row would
+// change the row's meaning under the model's name (DESIGN section 3).
 type NativeDriverExclusiveRowKey
   = ExclusiveLoad
   | ExclusiveUniverseDerivation
@@ -214,6 +306,9 @@ type NativeDriverExclusiveRowKey
   | ExclusiveRowSerialization
   | ExclusiveModuleRelease
   | ExclusiveRelayEmit
+  | ExclusiveDemandScheduling
+  | ExclusiveDriverCollection
+  | ExclusiveOccurrenceCensus
 
 // THE ROSTER IS THE ONE PLACE A ROW IS ADDED, and it is the residual this reshape does not close.
 // A key absent here is absent from every constructed collection, from the sum and from the
@@ -231,6 +326,9 @@ fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
     ExclusiveRowSerialization,
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
+    ExclusiveDemandScheduling,
+    ExclusiveDriverCollection,
+    ExclusiveOccurrenceCensus,
   ]
 }
 
@@ -248,6 +346,9 @@ fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> String 
     ExclusiveRowSerialization => "row_serialization"
     ExclusiveModuleRelease => "module_release"
     ExclusiveRelayEmit => "relay_emit"
+    ExclusiveDemandScheduling => "demand_scheduling"
+    ExclusiveDriverCollection => "driver_collection"
+    ExclusiveOccurrenceCensus => "occurrence_census"
   }
 }
 
@@ -279,8 +380,17 @@ type NativeDriverCostAccounting
   | NativeDriverCostOverAttributed { sum_exclusive: Nanosecond, parent_span: Nanosecond }
   | NativeDriverCostRemainderExceedsTolerance { residual: Nanosecond, tolerance: Nanosecond }
 
-// Fifty milliseconds on the host monotonic wall Instant the driver uses. A remainder larger
-// than this is unattributed driver work, not a rounding crumb.
+// Fifty milliseconds of the driver thread's CPU time, the clock every row and the parent span are
+// read on (std.realization_measurement ObserveThreadCpuAtSubject). A remainder larger than this is
+// unattributed driver work, not a rounding crumb.
+//
+// THE CLOCK IS PART OF THE LAW, NOT A DETAIL OF ITS REALIZATION. What this accounting claims is that
+// the rows partition the driver's OWN work. It was once read on the monotonic wall, and a wall span
+// also holds every interval the host descheduled the thread -- work no phase performed and no row
+// could ever name -- so the residual, and therefore the verdict, varied with host contention for one
+// fixed subject (DESIGN section 5: a verdict is determined by its subject). The repair was the
+// measure, not this tolerance: on thread CPU the residual is uninstrumented driver work and only
+// that, so a busy loop outside every span still refuses here while a stall or sleep does not.
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {

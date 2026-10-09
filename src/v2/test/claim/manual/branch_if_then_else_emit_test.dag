@@ -20,16 +20,13 @@ import v2.extdeps.languages.dag {
   dag_pick_target_model
 }
 import v2.compiler.source_authority { source_authority_node_equal }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  target_serialize_source_from_model,
-  translate_emitted_node
-}
+import v2.compiler.translate { coerce_grounded_node, translate_emitted_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.collection {
   Map,
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent
@@ -41,7 +38,6 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.node_query {
   find_arrow_body_child,

@@ -180,6 +180,10 @@ fn emit_produced_sites(sites: List<BlockingSite>) -> List<BlockingSite> {
 // as a gate finds anything, so every later check NEVER RUNS. A count taken over emit is therefore
 // a PREFIX of the truth, stopping at whichever gate fired first, and the tell is wall time rather
 // than the counts -- emit runs LONGER once a gate is cleared, because it gets further.
+// `WorkflowParameterDefaultGate` NAMES A GATE THAT NO LONGER EXISTS, and stays because a recorded
+// reading below (`pristine_census`) stopped on it at its own revision: deleting the arm would make
+// that receipt unrepresentable rather than retire it. No reading taken after the derived workflow
+// CLI's deletion can observe this gate.
 type EmitGate
   = WorkflowParameterDefaultGate
   | AnonymousRecordLiteralGate
@@ -189,9 +193,9 @@ type EmitGate
 fn emit_gate_text(g: EmitGate) -> String {
   match g {
     WorkflowParameterDefaultGate =>
-      "workflow parameter-default gate (v1.compiler.emit_rust validate_workflow_param_defaults) -- the FIRST gate, so every later check is masked"
+      "workflow parameter-default gate (v1.compiler.emit_rust validate_workflow_param_defaults, which existed at the recorded census revision and was deleted with the derived workflow CLI) -- at that revision the FIRST gate, so every later check was masked"
     AnonymousRecordLiteralGate =>
-      "anonymous-record-literal gate (v1.compiler.emit_rust ambiguous_anonymous_record_literal_diagnostics) -- the SECOND gate, reached only once the first is clear"
+      "anonymous-record-literal gate (v1.compiler.emit_rust ambiguous_anonymous_record_literal_diagnostics) -- the first gate since the workflow parameter-default gate was deleted; the second at revisions that still carried it"
     EmitStoppedOnUpstreamCauses =>
       "the compile refused at emit over causes produced upstream of it -- how far emit_rust's own gates ran is unestablished"
     NoGateFired =>

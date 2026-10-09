@@ -8,6 +8,7 @@ import std.dissolution {
 import std.emit_model {
   SimpleMethodSpec
 }
+import std.syntax { BinOp }
 import std.trait_derive_shape {
   PairCompletionOp,
   PairCompletionOpNeg,
@@ -228,6 +229,46 @@ data rust_source_extension: String = ".rs"
 data rust_source_dir: String = "src/"
 data rust_visibility: String = "pub "
 
+// THE SUBSTRATE'S Int REFUSES ON OVERFLOW; RUST'S i64 OPERATORS DO NOT. The interpreter evaluates
+// `+ - * / %` and negation with checked arithmetic and refuses with IntegerOverflow or
+// DivisionByZero (v1.interpreter eval_int_binop, eval_unaryop). Rust's infix `+ - *` and prefix `-`
+// on i64 trap only under overflow-checks, and the EMITTED crate's release profile -- its own
+// manifest, independent of this workspace's, whose [profile.release] sets overflow-checks for the
+// seed and workspace members only -- leaves them off, so there they wrap in two's
+// complement: the fact extdeps.languages.rust.primitives records on the i64 row as
+// `overflow: TwoComplementWrap`. For those four the emitted program returns a fabricated value
+// where the interpreter refuses. `/` and `%` are a different partition: they were already terminal
+// in release on a zero divisor and on MIN / -1, MIN % -1, but under rustc's own text and
+// classification rather than the interpreter's DivisionByZero / IntegerOverflow split
+// (gunbc.recurring_failure_mode emitted_int_arithmetic_wraps_where_the_interpreter_refuses). Both
+// partitions route through the same rows:
+// one realization, and one refusal text, for every Int operator.
+//
+// A row answers only for the operand realization named by rust_refusing_int_target_type; the
+// helpers are realized by v1.compiler.runtime_rust rt_checked_int_ops.
+data rust_refusing_int_target_type: String = "i64"
+
+fn rust_refusing_int_operator_helper(op: BinOp) -> String? {
+  match op {
+    Add => Present { value: "v1_rt::int_add" }
+    Sub => Present { value: "v1_rt::int_sub" }
+    Mul => Present { value: "v1_rt::int_mul" }
+    Div => Present { value: "v1_rt::int_div" }
+    Mod => Present { value: "v1_rt::int_rem" }
+    Eq => none
+    Ne => none
+    Lt => none
+    Gt => none
+    Le => none
+    Ge => none
+    And => none
+    Or => none
+    NullCoalesce => none
+  }
+}
+
+data rust_refusing_int_negation_helper: String = "v1_rt::int_neg"
+
 type RuntimeFunction {
   name: String
   bridge_name: String
@@ -248,6 +289,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false, wraps_result: false },
   { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false, wraps_result: false },
   { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true,  wraps_result: false },
+  { name: "get",                bridge_name: "list_get_optional", passes_by_ref: true, wraps_result: false },
   { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false, wraps_result: false },
   { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false, wraps_result: false },
   { name: "empty_set",          bridge_name: "rc_empty_set",     passes_by_ref: false, wraps_result: false },
@@ -288,6 +330,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
   { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
   { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
+  { name: "observed_monotonic_nanos", bridge_name: "observed_monotonic_nanos", passes_by_ref: false, wraps_result: false },
+  { name: "observed_thread_cpu_nanos", bridge_name: "observed_thread_cpu_nanos", passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },
@@ -297,7 +341,10 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false },
 
   { name: "symbol_lexeme",        bridge_name: "symbol_lexeme",        passes_by_ref: false, wraps_result: false },
-  { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false }
+  { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false },
+  { name: "bytes_octets",         bridge_name: "bytes_octets",         passes_by_ref: false, wraps_result: false },
+  { name: "utf8_encode_bytes",    bridge_name: "utf8_encode_bytes",    passes_by_ref: false, wraps_result: false },
+  { name: "pure_dag_seam_unreachable", bridge_name: "pure_dag_seam_unreachable", passes_by_ref: false, wraps_result: false }
 ]
 
 fn rt_functions() -> Map<String, Bool> {
@@ -527,15 +574,6 @@ fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> 
     pair_completion_op_rows()
       |> map(row => rust_pair_completion_impl_render(row: row, carrier_param_needs_clone: carrier_param_needs_clone))
       |> join(separator: "")
-  )
-}
-
-fn rust_supplemental_impls_bool_coproduct() -> String {
-  concat(
-    "\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n",
-    "impl From<Bool> for bool {\n",
-    "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
-    "}\n"
   )
 }
 

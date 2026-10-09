@@ -3,7 +3,7 @@
 
 use self::CitationIndexCoverage::*;
 use self::DeclField::*;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -16,16 +16,7 @@ use std::rc::Rc;
 pub enum DeclField {
     WholeDeclaration,
     NamedField { field_name: NonEmptyStr },
-}
-impl DeclField {
-    pub fn field_name(&self) -> NonEmptyStr {
-        match self {
-            DeclField::WholeDeclaration => panic!("no field_name on unit variant"),
-            DeclField::NamedField {
-                field_name: __val, ..
-            } => __val.clone(),
-        }
-    }
+    TypeParameter { name: NonEmptyStr },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -33,6 +24,14 @@ pub struct DeclarationRef {
     pub module_path: NonEmptyStr,
     pub decl_name: NonEmptyStr,
     pub field: Rc<DeclField>,
+}
+
+pub fn declaration_ref_is_type_parameter(ref_: Rc<DeclarationRef>) -> bool {
+    match (*ref_.field.clone()).clone() {
+        DeclField::TypeParameter { name: _, .. } => true,
+        DeclField::WholeDeclaration => false,
+        DeclField::NamedField { field_name: _, .. } => false,
+    }
 }
 
 #[derive(
@@ -73,15 +72,36 @@ pub fn decl_field_ref(
     })
 }
 
+pub fn decl_type_parameter_ref(
+    module_path: String,
+    decl_name: String,
+    parameter: String,
+) -> Rc<DeclarationRef> {
+    Rc::new(DeclarationRef {
+        module_path: module_path.clone(),
+        decl_name: decl_name.clone(),
+        field: Rc::new(DeclField::TypeParameter {
+            name: parameter.clone(),
+        }),
+    })
+}
+
 pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
     match (*a.clone()).clone() {
         DeclField::WholeDeclaration => match (*b.clone()).clone() {
             DeclField::WholeDeclaration => true,
             DeclField::NamedField { field_name: _, .. } => false,
+            DeclField::TypeParameter { name: _, .. } => false,
         },
         DeclField::NamedField { field_name: fa, .. } => match (*b.clone()).clone() {
             DeclField::WholeDeclaration => false,
             DeclField::NamedField { field_name: fb, .. } => (fa.clone() == fb.clone()),
+            DeclField::TypeParameter { name: _, .. } => false,
+        },
+        DeclField::TypeParameter { name: pa, .. } => match (*b.clone()).clone() {
+            DeclField::WholeDeclaration => false,
+            DeclField::NamedField { field_name: _, .. } => false,
+            DeclField::TypeParameter { name: pb, .. } => (pa.clone() == pb.clone()),
         },
     }
 }
@@ -116,6 +136,16 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
                 v1_rt::concat(
                     ref_.decl_name.clone(),
                     v1_rt::concat("::".to_string(), f.clone()),
+                ),
+            ),
+        ),
+        DeclField::TypeParameter { name: t, .. } => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat(
+                "::".to_string(),
+                v1_rt::concat(
+                    ref_.decl_name.clone(),
+                    v1_rt::concat("::<".to_string(), v1_rt::concat(t.clone(), ">".to_string())),
                 ),
             ),
         ),

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.required_output_field_absent_for_an_empty_upstream_resource
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_output_field_absent_for_an_empty_upstream_resource: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_output_field_absent_for_an_empty_upstream_resource" as NonEmptyStr,
+
+  receipts: [
+    "required output field absent for an empty upstream resource: an extdeps operation declares an output field as required because every observed response carried it, and the upstream OMITS that field for the empty or initial state of the resource. The operation then refuses a perfectly ordinary 200. The defect is modelling a response shape from the populated instances that happened to be in front of the author, so the first read of a freshly created resource is the first read that fails.",
+
+    "SPECIMEN, 2026-09-17, extdeps.cloud.gcp.iam_admin GetServiceAccountIamPolicy. Declared `output { bindings: List<GcpBinding>, etag: String, version: Int }`. A service account created seconds earlier has no IAM policy at all, and the API answers 200 with an etag alone -- no bindings array, no version. The run refused with 'HTTP 200 body did not inhabit the declared output (null at bindings,version)', during the provisioning of the heal publisher's own account, which is precisely the moment an account is guaranteed to be empty.",
+
+    "THE REPAIR IS TWO DECISIONS IN TWO PLACES AND CONFLATING THEM IS THE DEEPER ERROR. extdeps declares the fields OPTIONAL, because the wire makes them optional -- that is a fact about the upstream, and DESIGN section 3 says model what the API actually returns. What an absent array MEANS is the CONSUMER'S decision: gunbc.auth.heal_publisher_provision reads absence as 'no bindings' and states why that is right for a caller about to add the first one, while noting that a caller AUDITING an existing policy would be entitled to read the same absence as a reason to stop. Defaulting inside extdeps would have taken that choice away from every future consumer and hidden it from all of them.",
+
+    "THE CLASS IS LATENT WHEREVER THE SAME SHAPE WAS WRITTEN. extdeps.cloud.gcp.secret_manager GetSecretIamPolicy declares the identical required triple and has not bitten only because every secret this corpus reads already carries bindings; it would fail on the first read of a secret whose policy is empty, which is exactly what gunbc.secret_provision_actuator create_secret_for_attempt produces. An instance that has not fired is not an instance that does not exist.",
+
+    "ATTAINABLE CEILING: mechanically preventable, and honestly not higher by modelling alone. Whether an upstream omits a field for an empty resource is an EXTERNAL fact -- DESIGN section 4b's outside-the-modelled-guarantee column -- so no constructor can make the wrong declaration unwritable. What CAN exist is a probe: for every operation whose output declares a required collection or count, a recorded fixture of that resource in its EMPTY state, decoded on the acceptance path. NEXT-RUNG TRIGGER: recorded empty-state response fixtures for extdeps operations returning collections, with a discriminating red (a required-field declaration refusing the empty fixture) executing in the required floor.",
+
+    "RECOGNITION RULE, CHEAP AND MECHANICAL: for each extdeps operation output, ask what the upstream returns for the resource with ZERO members -- an empty policy, an empty page, a repository with no branches, a run with no jobs. If the answer is 'the field is omitted' and the declaration is required, it is this class. The authoring tell is an output shape derived from a response captured against production data, where every collection happened to be non-empty.",
+  ],
+
+  evidence: [],
+}

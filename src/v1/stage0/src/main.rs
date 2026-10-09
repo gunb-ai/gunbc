@@ -46,13 +46,14 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
-    /// Run one target by its absolute label and report the standing its own producer
-    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
-    /// unknown target refuses rather than reporting a pass.
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to its
+    /// bound producer. A set form is admitted and refused with status 2: it runs only
+    /// through the native test route, never the interpreter. An unadmitted form or an
+    /// unknown target refuses.
     Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
+        /// Absolute label of one target, or a pattern denoting a set.
+        #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
 
@@ -61,9 +62,9 @@ enum RetainedCommands {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// Entry function to execute (default: "main")
-        #[arg(long, default_value = "main")]
-        function: String,
+        /// Entry function to execute, repeatable; absent, `main`, or every `test fn` under --claim-run
+        #[arg(long = "function")]
+        functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
@@ -94,6 +95,10 @@ enum RetainedCommands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
+        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
+        #[arg(long = "unix-socket")]
+        unix_socket: Option<String>,
         /// Release revision this process serves, bound ONCE at startup and immutable for the
         /// process lifetime. Required and validated before the listener binds: `gunbc serve`
         /// compiles its graph once, so the launch argument is the only fact describing what
@@ -388,7 +393,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
     fn run_verb(
         &self,
         source_roots: Vec<String>,
-        function: String,
+        functions: Vec<String>,
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
@@ -396,7 +401,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         retained_dispatch(
             RetainedCommands::Run {
                 source_roots,
-                function,
+                functions,
                 entry,
                 claim_run,
                 args,
@@ -422,6 +427,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         function: String,
         host: String,
         port: u16,
+        unix_socket: Option<String>,
         release_revision: String,
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
@@ -433,6 +439,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 eval_budget_cpu_ms,
                 eval_budget_wall_ms,
@@ -673,6 +680,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
                 census_only_sources: Rc::new(census_only_sources.into()),
+                corpus: v1_compiler_compile::CorpusScope::CorpusUnknown,
             });
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
@@ -758,13 +766,13 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // is named, its two halves exist, and the missing piece is the wiring between them.
         RetainedCommands::Run {
             source_roots,
-            function,
+            functions,
             entry,
             claim_run,
             args,
         } => run_verb(
             &source_roots,
-            &function,
+            &functions,
             entry.as_deref(),
             dry_run,
             claim_run,
@@ -777,7 +785,10 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // Deliberately no mode switch and no arm per instrument: which producer a label names is
         // decided by the registry in `target_invocation_host`, mirroring
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
-        // instrument adds a row there and nothing here.
+        // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
+        // is admitted by the same host's `parse_target_pattern` mirror and executed by the route
+        // whose universe contains it -- the native test route (`//v2/test/...`) or the claim
+        // route (`//test/claim/...`); outside both it is refused with status 2, never widened.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
         // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
@@ -785,7 +796,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
         RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,
@@ -823,6 +834,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             function,
             host,
             port,
+            unix_socket,
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
@@ -833,6 +845,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 cli_run::ServeEvaluationBudget {
                     cpu_limit_ms: eval_budget_cpu_ms,
@@ -1014,18 +1027,6 @@ mod tests {
     }
 
     #[test]
-    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
-        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
-            std::rc::Rc::new(im::vector![]),
-            "user-program".to_string(),
-            "".to_string(),
-            "".to_string(),
-        );
-        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
-        assert!(!rendered.contains("version ="));
-    }
-
-    #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
         let fixture =
             "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
@@ -1098,13 +1099,81 @@ impl Verdict {
         if let Some(message) = self.message {
             eprintln!("{message}");
         }
-        std::process::exit(self.status);
+        // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
+        // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
+        // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
+        // watcher (run 37102391062): 11.7 s between this line and the process ending under
+        // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
+        // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
+        // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
+        // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            let _ = std::io::stderr().flush();
+        }
+        // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
+        // after this point running.
+        unsafe { libc::_exit(self.status) }
     }
+}
+
+/// THE FUNCTIONS ONE `gunbc run` EXECUTES, decided before anything is loaded.
+///
+/// `--function` is repeatable (gunbc.cli_dispatch_surface): every name runs in ONE process over
+/// ONE resolve of the entry's closure, which is where ~90% of a run's wall clock goes. Absent, an
+/// ordinary run executes `main`; a `--claim-run` executes every `test fn` the entry module
+/// declares -- discovered from the RESOLVED graph's declaration markers, never by re-parsing the
+/// file or re-loading the corpus, so "run this witness" costs one load plus the claims' own work.
+fn functions_to_run(
+    functions: &[String],
+    claim_run: bool,
+    entry_file: &str,
+    graph: &v1_compiler::v1_compiler_compile::ResolvedGraph,
+) -> Result<Vec<String>, String> {
+    if !functions.is_empty() {
+        return Ok(functions.to_vec());
+    }
+    if !claim_run {
+        return Ok(vec!["main".to_string()]);
+    }
+    let entry_abs = std::fs::canonicalize(entry_file)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| entry_file.to_string());
+    let entry_module = graph.modules.iter().find(|m| {
+        let f = &m.module.span.file;
+        f == entry_file
+            || std::fs::canonicalize(f)
+                .map(|p| p.to_string_lossy().to_string() == entry_abs)
+                .unwrap_or(false)
+    });
+    let Some(module) = entry_module else {
+        return Err(format!(
+            "--claim-run with no --function: the resolved graph carries no module for {entry_file}, so its test fns cannot be enumerated"
+        ));
+    };
+    let names: Vec<String> = module
+        .items
+        .iter()
+        .filter(|item| {
+            item.module_item_kind
+                == v1_compiler::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                && item.declaration_marker
+                    == v1_compiler::v1_std_core::DeclarationMarker::TestMarked
+        })
+        .map(|item| item.name.clone())
+        .collect();
+    if names.is_empty() {
+        return Err(format!(
+            "--claim-run with no --function: {entry_file} declares no `test fn`, so there is no claim to run (name one with --function)"
+        ));
+    }
+    Ok(names)
 }
 
 fn run_verb(
     source_roots: &[String],
-    function: &str,
+    functions: &[String],
     entry: Option<&str>,
     dry_run: bool,
     claim_run: bool,
@@ -1115,6 +1184,36 @@ fn run_verb(
             status: 1,
             message: Some(format!("error: provide at least one --source-root")),
         };
+    }
+
+    // THE WORKSPACE ROOT IS BOUND HERE, AND IT IS BOUND FIRST.
+    //
+    // Everything downstream keys module-graph facts and content indices against it, so it must be
+    // decided before the first read rather than discovered on first use -- and it is decided HERE
+    // because this is the only place that holds the request's source roots. Discovery is the
+    // incumbent authority and is asked first, so a run inside a checkout resolves exactly as it
+    // always did; the request names the base only where there is no checkout to discover one from,
+    // and a run that can name no base at all refuses with a located cause instead of aborting
+    // inside a helper thirty frames down.
+    // THE CHOICE IS REPORTED, NOT INFERRED. Two rules can name the base and they key the module
+    // graph differently, so which one answered is a fact the operator of a run is entitled to see
+    // without reconstructing it from their own cwd. A selection nobody can observe is how a
+    // fall-through becomes indistinguishable from a silent widen.
+    let bound = cli_run::pre_entry_phase::timed(
+        "workspace_discovery",
+        cli_run::pre_entry_phase::PhaseScale::Closure,
+        || cli_run::bind_process_workspace_root(source_roots),
+    );
+    match bound {
+        Ok((root, basis)) => {
+            eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
+        }
+        Err(cause) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {cause}")),
+            };
+        }
     }
 
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
@@ -1149,7 +1248,14 @@ fn run_verb(
         };
     }
 
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+    let resolve_started = std::time::Instant::now();
+    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = match resolved {
         Ok(resolved) => resolved,
         Err(cause) => {
             return Verdict {
@@ -1184,22 +1290,153 @@ fn run_verb(
     };
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
-    match v1_compiler::v1_interpreter::run_in_context_with_args(
-        &ctx, function, &run_args, !claim_run,
-    ) {
+    let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
+        Ok(names) => names,
+        Err(message) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
+        }
+    };
+
+    // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
+    // executed one; the run's verdict is the first non-zero status, and every function still
+    // runs so a claim file reports all of its reds rather than the first. A non-claim run of
+    // several functions stops at the first failure, because a later function may depend on
+    // the effects of an earlier one.
+    let mut verdict = Verdict {
+        status: 0,
+        message: None,
+    };
+    let mut failures: Vec<String> = Vec::new();
+    for function in &to_run {
+        let one = run_one_function(&ctx, function, entry_file, &run_args, claim_run);
+        if one.status != 0 {
+            if let Some(m) = &one.message {
+                failures.push(m.clone());
+            }
+            if verdict.status == 0 {
+                verdict.status = one.status;
+            }
+            if !claim_run {
+                break;
+            }
+        } else if let Some(m) = &one.message {
+            // A claim's PASS line is the run's product and goes to stdout, as it did when one
+            // claim was one run; any other success message keeps its stderr channel.
+            if claim_run {
+                println!("{m}");
+            } else {
+                eprintln!("{m}");
+            }
+        }
+    }
+    if verdict.status != 0 {
+        verdict.message = Some(failures.join("\n"));
+    }
+    // THE VERDICT IS DECIDED, SO NOTHING IS FREED. `Verdict::apply` ends the process and the OS
+    // reclaims the loaded corpus whole; dropping it here first walked its Rc/Value graph (~6.6 GB
+    // RSS) AFTER the answer was known. Measured on the mtcollins1 SOL notice watcher, whose step
+    // trap bounds it by its exit (10 s allowance; run 37102391062 went red on it): 27 s from the
+    // decided verdict to process end before this change, 12.9 s with only this forget, ~1.5 s
+    // with the `_exit` in `Verdict::apply` as well. Nothing either value owns does work in Drop:
+    // every effect is performed synchronously during evaluation, and InterpContext holds only
+    // in-memory caches.
+    std::mem::forget(ctx);
+    std::mem::forget(graph);
+    verdict
+}
+
+/// Print the pre-entry phase receipt (`cli_run::pre_entry_phase`): the tree-scaled phases
+/// recorded where they ran, then the closure-scaled resolve stages from `ResolveStageNanos`,
+/// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
+/// refused, because a refusal after minutes of preparation is exactly the run whose cost
+/// the operator most needs attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = cli_run::resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    // Three reconcile sub-rows whose INPUT is the pool, not the closure: the whole-pool
+    // qualified fill, and per source root the same-tree bare underlay and its variant base.
+    // They sit inside reconcile but outside every closure row above, so without these lines a
+    // small-closure run reported seconds of tree-scale work as an unexplained gap between the
+    // phase sum and `resolve_entry_graph_inclusive`.
+    for (name, nanos) in [
+        ("reconcile_pool_qualified_fill", st.assembly_pool_fill),
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(name, PhaseScale::Tree, ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
+    // grew or because its work per input changed: the indexed pool (every module under every
+    // --source-root) against the files of the entry's resolved closure.
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            usage.ru_maxrss
+        );
+    }
+}
+
+fn run_one_function(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    function: &str,
+    entry_file: &str,
+    run_args: &[(Option<String>, v1_compiler::v1_interpreter::Value)],
+    claim_run: bool,
+) -> Verdict {
+    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, run_args, !claim_run)
+    {
         // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
         // claim run a Bool is an ordinary value and says nothing about success.
         Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
             status: 1,
             message: Some(format!("FAIL {function}")),
         },
-        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => {
-            println!("PASS {function}");
-            Verdict {
-                status: 0,
-                message: None,
-            }
-        }
+        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => Verdict {
+            status: 0,
+            message: Some(format!("PASS {function}")),
+        },
         // The verdict a `.dag` entry returns IS the run's outcome. `cli_run::classify_exit`
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
@@ -1217,7 +1454,7 @@ fn run_verb(
             //
             // A non-wire value falls through unchanged, so every existing `ProcessExit` entry
             // behaves exactly as it did.
-            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, &ctx), function) {
+            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, ctx), function) {
                 Some(outcome) => {
                     if let Some(bytes) = outcome.stdout {
                         use std::io::Write;
@@ -1247,7 +1484,7 @@ fn run_verb(
                 }
                 None => {
                     let (status, message) =
-                        exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+                        exit_status_for(cli_run::classify_exit(&value, ctx), function);
                     Verdict { status, message }
                 }
             }

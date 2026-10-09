@@ -1,0 +1,53 @@
+module gunbc.rung_drop.native_serve_request_budget_unrealized
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// THE NATIVE SERVE DOOR HAS NO PER-REQUEST BUDGET, AND THE SEED'S DOES (DESIGN 4b(3)).
+//
+// `gunbc serve` arms a CPU and wall deadline around every handler evaluation
+// (cli_run handle_serve, ctx.enter_evaluation_budget) and answers a crossing with a typed 500
+// naming the armed contract, so a request whose evaluation does not return cannot hold the serial
+// accept loop for every later request. A NativeServeDriver service runs its handler as compiled
+// code: there is no evaluator to interrupt, so a handler that does not return blocks the loop and
+// every later request -- /livez included -- waits behind it. That is a mitigation the seed route
+// has and the native route does not, on the same served program, so it is declared here rather
+// than left to be discovered by an approval that hangs.
+//
+// WHY THE TEMPORARY RUNG IS OUTSIDE THE LADDER: nothing refuses the stuck request and nothing
+// reports it; the process is alive and answers nobody. That is not a wrong answer, but it is not a
+// contained one either, and it is stated at the rung it actually sits at.
+//
+// THE TRIGGER NAMES THE CAPABILITY (ruling relayed by gentle-dove-36, 2026-10-03): a worker thread
+// or a pool is not the trigger; the restored wall is. And the approval broker's move off `gunbc
+// serve` is GATED on this row's retirement, because the interpreted broker has the mitigation today.
+// THE CAPABILITY IS BUILT AND NOT YET OBSERVED (gunbc#13278, 2026-10-05). gunbc.native_serve now
+// carries the deadline, the stuck-worker ceiling and both typed refusals, the rendered main enforces
+// them, and the native-serve probe carries the cases this trigger names. Measured over real TCP on a
+// scratch build of the fixture: a /spin handler that does not return is refused 500 at the deadline,
+// a later /hello on the same process answers 200, and past the ceiling the process refuses 503 and
+// exits. The row STAYS STANDING because the trigger is the INSTRUMENT observing it, and today
+// `gunbc test //gunbc/instruments:native-serve` stops before the probe runs: the emitted fixture
+// library refuses at rustc on three emitter and source defects owned by gunbc#13219, gunbc#13276 and
+// gunbc#13237. When those have landed and the instrument holds, this row retires with that run as
+// its receipt; a scratch build with hand patches is evidence, not the instrument.
+data native_serve_request_budget_unrealized: RungDrop = RungDrop {
+  identity: "native_serve_request_budget_unrealized" as NonEmptyStr,
+
+  subject: "the per-request evaluation budget on a NativeServeDriver service (std.compiler_entry NativeServeDriver, gunbc.native_serve): a compiled handler that does not return holds the serial loop",
+
+  declared: "2026-10-03",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "a NativeServeDriver budget wall: the native door refuses a non-returning or over-budget compiled request with a typed 500 and keeps serving later requests" },
+    population: [
+      "every NativeServeDriver service; at declaration gunbc.instruments.native_serve_fixture, the only one"
+    ],
+    restoration_trigger: "a non-returning or over-budget compiled request is refused with a typed 500 and cannot block later requests on the native door. SUFFICIENT FOR: the native-serve instrument carries a case whose handler does not return within the declared budget, observes the typed 500 for it, and observes a later request on the same process answered. A thread pool, a timeout knob, or a supervisor restart that drops the request without a typed answer does not retire this row"
+  }
+}

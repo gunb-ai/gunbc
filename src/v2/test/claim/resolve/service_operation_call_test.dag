@@ -1,0 +1,145 @@
+module v2.test.claim.resolve.service_operation_call
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
+import v2.std.algebra { fold_list_node }
+import v2.std.arrow_signature { declared_signature }
+import std.types { List }
+import v2.std.collection { empty_map }
+import v2.std.declaration_marker { test_code_index_empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A SERVICE OPERATION IS ADDRESSED AT ITS DECLARATION PATH THROUGH THE ONE QUALIFIED-REFERENCE DOOR, AND A
+// BARE SERVICE PREFIX REACHES NOTHING FROM ANOTHER MODULE (D13 b-pre). After the service spine (gunbc#12949) an operation is
+// declared at <module>.<service segments...>.<Op>; a call names that path, and its callee resolves through
+// the same door as any qualified reference -- there is no second resolver.
+//
+// WHERE EACH PART OF THE ROUTE RUNS FOR REAL (DESIGN section 3: a witness supplies the inputs of the one
+// interface it discriminates, and the real path keeps executing):
+//   - a dotted CALL reaching the qualified-reference door: v2.test.claim.reference_closure resolves
+//     `v2.test.rc_dotted.rc_dotted_fn(p: p)` end to end through ingest, normalize and resolve;
+//   - the operation INDEXED at its spine path: v2.test.claim.normalize.service_spine, through the real
+//     lowering and graft;
+//   - the door ON AN OPERATION PATH, and the scope bans: here, through the real resolve_node over an index the
+//     real symbol_index_fill builds from a module root of exactly the spine's shape.
+// A whole-module resolve of source text with the full language model measured ~360,000 eval steps per claim
+// (five times the new-witness budget), which is the fixed overhead this boundary removes, not coverage.
+
+fn soc_atom(sym: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn soc_spine(dotted: String) -> Node {
+  fold_list_node(xs: qualified_name_from_dotted_string(dotted: dotted), item_node: fn(sym) { soc_atom(sym: sym) })
+}
+
+fn soc_payload(edges: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: OccurrenceSynthetic }
+}
+
+fn soc_operation(name: Symbol) -> Edge {
+  let signature = declared_signature(params: [], source: soc_atom(sym: name))
+  Edge {
+    label: Authored { name: name },
+    target: Node {
+      kind: TypeNode { connective: Arrow },
+      children: [signature.domain, Edge { label: Positional, target: soc_payload(edges: []) }, signature.order],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+// module t.svc { service s.F { operation Run {} }  service s.E { operation Get {} } }, as the spine lowers
+// it: `s` is a marked namespace body holding F and E, each the payload of its operations.
+fn soc_service_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: soc_spine(dotted: "t.svc")),
+      Edge {
+        label: Authored { name: ^s },
+        target: namespace_graft_namespace_body_node(
+          edges: [
+            Edge { label: Authored { name: ^F }, target: soc_payload(edges: [soc_operation(name: ^Run)]) },
+            Edge { label: Authored { name: ^E }, target: soc_payload(edges: [soc_operation(name: ^Get)]) }
+          ],
+          source: soc_atom(sym: ^s)
+        )
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn soc_index() -> SymbolIndex {
+  symbol_index_fill_module_root(index: empty_symbol_index(), root: soc_service_root(), record_declarations: Empty, resource_declarations: Empty)
+}
+
+// Resolve one reference from the position of module `at` (which imports nothing).
+fn soc_resolves(at: String, reference: String) -> Bool {
+  let module_qn = qualified_name_from_dotted_string(dotted: at)
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: soc_index(),
+    module_qn: module_qn,
+    test_code: test_code_index_empty(),
+    declared_in: module_qn,
+    imported_origins: empty_map()
+  }
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: module_qn,
+      lm: dag_language_model_surface_empty_prelude(),
+      under_module_root: false,
+      declaring: NotDeclaring
+    },
+    n: soc_spine(dotted: reference)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn an_operation_resolves_at_its_declaration_path_holds() -> Bool {
+  soc_resolves(at: "t.caller", reference: "t.svc.s.F.Run")
+}
+
+test fn two_services_under_one_prefix_reach_distinct_operations_holds() -> Bool {
+  soc_resolves(at: "t.caller", reference: "t.svc.s.E.Get")
+}
+
+test fn an_operation_the_service_does_not_declare_refuses_RED() -> Bool {
+  !soc_resolves(at: "t.caller", reference: "t.svc.s.F.Get")
+}
+
+// THE NESTING/SHADOWING BAN, AS IT STANDS TODAY. A BARE service prefix (`s.F.Run`) resolves from no other
+// module -- not a sibling, and not a module nested under the service module's own path: neither a merged
+// namespace body nor a parent module path grants scope. These claims are about the BARE prefix only. They
+// do not claim that reaching an operation is gated by an import: a fully QUALIFIED path (`t.svc.s.F.Run`)
+// resolves from any module with or without an import (the claims above, at t.caller, import nothing). That
+// is pre-existing qualified-path behaviour, being recorded as its own recurring-failure-mode row; imports
+// never bind a service bare (a whole-module import binds only the module, qualified; a brace import of a
+// service refuses).
+test fn a_bare_service_prefix_does_not_resolve_from_a_sibling_module_RED() -> Bool {
+  !soc_resolves(at: "t.other", reference: "s.F.Run")
+}
+
+test fn a_bare_service_prefix_does_not_resolve_from_a_module_nested_under_the_service_module_RED() -> Bool {
+  !soc_resolves(at: "t.svc.inner", reference: "s.F.Run")
+}

@@ -1,0 +1,114 @@
+module test.claim.spark.fabric_blob_peer_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.tools.rsync { rsyncd_conf_text, rsync_daemon_foreground_argv, rsync_exit_status_is_unreachable }
+import extdeps.tools.curl { curl_exit_status_is_unreachable }
+import gunbc.artifact_acquisition { AcquisitionSource, SourceArgv, SourceUrl, ContentDigestSha256, UpstreamRevision }
+import gunbc.spark.fabric_reach { ReachFabricRail, spark_reach_endpoint }
+import gunbc.spark.spark_file_blob { spark_file_blob_status_is_unreachable }
+import v2.std.algebra { any }
+import gunbc.spark.fabric_blob_peer {
+  FabricBlobHolder, fabric_blob_rsync_module, fabric_blob_root, fabric_blob_path, fabric_blob_staging_path,
+  fabric_blob_peer_source, fabric_blob_subject, fabric_blob_rsyncd_conf_path,
+}
+
+// The host legs (serve, pull, load) are the fleet-converge distribution mode's to run; these claims
+// fix the shapes those legs are built from, each with the red that would mean the wrong bytes moved,
+// the wrong network carried them, or a reachable defect was read as a network blip.
+
+data fixture_hex: NonEmptyStr = "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as NonEmptyStr
+
+fn fixture_holder() -> FabricBlobHolder {
+  FabricBlobHolder { holder: "srv8" as HostIdentity, rail_address: "192.168.110.12" as NonEmptyStr }
+}
+
+// THE EXPORT IS READ-ONLY, UNLISTED AND ROOTED AT THE BLOB ROOT. A writable module would let any rail
+// host overwrite a blob another host is about to load.
+test fn the_daemon_exports_the_blob_root_read_only() -> Bool {
+  let conf = rsyncd_conf_text(module: fabric_blob_rsync_module)
+  string_contains(s: conf, pattern: "[blobs]\n")
+    && string_contains(s: conf, pattern: join(["path = ", fabric_blob_root as String, "\n"], ""))
+    && string_contains(s: conf, pattern: "read only = yes\n")
+    && string_contains(s: conf, pattern: "list = no\n")
+    && !string_contains(s: conf, pattern: "read only = no")
+}
+
+// THE DAEMON BINDS ONE ADDRESS AND STAYS IN THE FOREGROUND, so the rail address is the only place it
+// answers and the unit that started it owns its lifetime.
+test fn the_daemon_binds_the_rail_address_in_the_foreground() -> Bool {
+  let argv = rsync_daemon_foreground_argv(address: "192.168.110.12" as NonEmptyStr, port: 873, config_path: fabric_blob_rsyncd_conf_path)
+  argv.first() == "rsync"
+    && any(argv, w => w == "--daemon")
+    && any(argv, w => w == "--no-detach")
+    && any(argv, w => w == "--address=192.168.110.12")
+    && any(argv, w => w == "--port=873")
+    && !any(argv, w => w == "--address=0.0.0.0")
+}
+
+// THE CONFIGURATION SITS OUTSIDE THE EXPORTED ROOT, so the daemon never serves its own configuration.
+test fn the_daemon_configuration_is_outside_the_export() -> Bool {
+  !string_contains(s: fabric_blob_rsyncd_conf_path as String, pattern: join([fabric_blob_root as String, "/"], ""))
+}
+
+// THE PULL NAMES THE HOLDER'S RAIL ADDRESS AND THE DIGEST, AND WRITES THE STAGING PATH -- never the
+// install path, which only a digest-checked rename may write.
+test fn the_peer_source_pulls_the_digest_from_the_rail_into_staging() -> Bool {
+  let src = fabric_blob_peer_source(serving: fixture_holder(), hex: fixture_hex)
+  match src.locator {
+    SourceUrl { url: _ } => false
+    SourceArgv { argv: a } =>
+      a.first() == "rsync"
+        && any(a, w => w == "--partial")
+        && any(a, w => w == join(["rsync://192.168.110.12:873/blobs/", fixture_hex as String], ""))
+        && any(a, w => w == (fabric_blob_staging_path(hex: fixture_hex) as String))
+        && !any(a, w => w == (fabric_blob_path(hex: fixture_hex) as String))
+        && (src.identity as String) == "fabric-peer:srv8"
+  }
+}
+
+// THE BLOB IS KEYED BY ITS SHA256, so gunbc.spark.spark_file_blob can check it locally; a revision key
+// would hand verification to the transport, and an rsync peer vouches for nothing.
+test fn the_blob_subject_is_sha256_keyed_with_one_source_per_holder() -> Bool {
+  let s = fabric_blob_subject(identity: "image-tar fixture" as NonEmptyStr, hex: fixture_hex, holders: [fixture_holder(), FabricBlobHolder { holder: "srv5" as HostIdentity, rail_address: "192.168.110.11" as NonEmptyStr }])
+  let keyed = match s.key {
+    ContentDigestSha256 { hex: h } => (h as String) == (fixture_hex as String)
+    UpstreamRevision { revision: _ } => false
+  }
+  keyed
+    && (s.install_path as String) == join([fabric_blob_root as String, "/", fixture_hex as String], "")
+    && s.sources.length() == 2
+    && match s.sources.first() {
+      Absent => false
+      Present { value: first } => (first.identity as String) == "fabric-peer:srv8"
+    }
+}
+
+// THE RAIL ADDRESS IS THE FABRIC LANE'S, NOT THE MANAGEMENT LAN'S: a holder resolves to a
+// 192.168.110.x address, which is the whole reason the pull avoids the radio.
+test fn a_group_a_holder_resolves_to_a_rail_address() -> Bool {
+  match spark_reach_endpoint(host: "srv8" as HostIdentity, path: ReachFabricRail) {
+    Absent => false
+    Present { value: a } => string_contains(s: a, pattern: "192.168.110.")
+  }
+}
+
+// EXIT STATUSES ARE READ BY THE PROGRAM THAT PRODUCED THEM. rsync's 30 (I/O timeout) is the network;
+// its 23 (partial transfer, which includes a missing file) is the holder answering; curl's 7 is the
+// network; and the same number means different things to the two programs. A program the handler does
+// not know reads every failure as the source answering.
+test fn exit_statuses_are_classified_by_the_program_that_ran() -> Bool {
+  let rsync_src = fabric_blob_peer_source(serving: fixture_holder(), hex: fixture_hex)
+  let curl_src = AcquisitionSource { identity: "hub" as NonEmptyStr, locator: SourceArgv { argv: ["curl", "--fail", "https://example.invalid/x"] } }
+  let other_src = AcquisitionSource { identity: "cp" as NonEmptyStr, locator: SourceArgv { argv: ["cp", "a", "b"] } }
+  spark_file_blob_status_is_unreachable(origin: rsync_src, status: "30")
+    && spark_file_blob_status_is_unreachable(origin: rsync_src, status: "10")
+    && !spark_file_blob_status_is_unreachable(origin: rsync_src, status: "23")
+    && spark_file_blob_status_is_unreachable(origin: curl_src, status: "7")
+    && !spark_file_blob_status_is_unreachable(origin: curl_src, status: "22")
+    && !spark_file_blob_status_is_unreachable(origin: curl_src, status: "10")
+    && !spark_file_blob_status_is_unreachable(origin: other_src, status: "7")
+    && rsync_exit_status_is_unreachable(status: "35")
+    && curl_exit_status_is_unreachable(status: "35")
+}

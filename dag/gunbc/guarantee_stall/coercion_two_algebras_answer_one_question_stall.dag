@@ -1,0 +1,20 @@
+module gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data coercion_two_algebras_answer_one_question_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Two unrelated algebras answer one question -- whether one model inhabits another, and how the crossing is spelled at a target. std.coercion answers it as a NAME-KEYED CAST TABLE (CastRule, CastSyntax, dag_cast_rules, dag_can_cast); v2.std.coercion answers it as the HOMOMORPHISM FOLD coercion_fold, which is the form DESIGN section 4 specifies when it says coercion, ingest and emit are one total decision procedure asked in three directions. THE CAST SIDE EXECUTES ON THE LOAD-BEARING PATH: v1.compiler.infer calls dag_can_cast at three decision points -- kernel_value_declared_type_mismatch_bounded, application_type_names_compatible and validate_cast (explicit `as`). v2.test.claim.coercion.two_algebra_fork (#12055) now measures the two HELPER contracts and finds them disagreeing in both directions; it does not measure the production judgments, which admit name identity before consulting the table, and it carries no independent semantic oracle. WHY THIS IS RECORDED AS A STALL AND NOT AS DEFERRED: gunbc.plans.dag_v2_defork_audit already carries a coercion row whose verdict rests on the two modules SHARING ZERO TYPE NAMES, which is the right question for a resolver collision guard and the wrong one here -- zero shared names is exactly what makes a concept fork INVISIBLE rather than what makes it benign. A disposition that reads as adjudicated while answering a different question is worse than no row, which is how this stayed unrecorded.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+    "std.coercion.dag_can_cast",
+    "std.coercion.dag_cast_rules",
+    "std.coercion.is_dag_cast_domain_type",
+    "v2.std.coercion.coercion_fold",
+    "v1.compiler.coercion.can_cast",
+    "v1.compiler.infer"
+  ] },
+  next_rung_trigger: climbs_when(capability: "every consumer of the shared name-pair cast rosters asks ITS OWN judgment through that judgment's one authority, SUFFICIENT FOR dag_can_cast, dag_cast_rules and is_dag_cast_domain_type to have no remaining decision-making caller and be deleted or derived, and for the per-target CastSyntax cast_rules to be consumed by target realization rather than re-deciding legality. THE ROSTER IS NOT ONE QUESTION WITH ONE REPLACEMENT HOME: it is consulted inside declared-type compatibility (v1.compiler.infer kernel_value_declared_type_mismatch and application_type_names_compatible) and inside explicit `as` validation (validate_cast), while v1.compiler.coercion can_cast and the emitter's cast arm read a SEPARATE per-target roster. Literal introduction at a structural destination is already owned by std.literal_elaboration, and Int to Nat is already split between that literal homomorphism and a proof-requiring refinement cast (refinement_cast_rules); neither is a widening. So the homes are expected to be several -- declared-type inhabitance, literal elaboration, an explicit-conversion judgment, target realization -- and naming one fold here, v2.std.coercion coercion_fold or v2.std.inhabitance alike, would be an over-broad home that repointing callers could satisfy while a question stayed forked. The prerequisite is a consumer-by-judgment partition with context-discriminating probes (literal, arbitrary value at a formal, explicit cast, emitted) per admitted pair; if it shows several questions, this row is split per judgment rather than retired whole. Deleting the v1 seed does not fire this: four extdeps language types modules author per-target cast rows and survive v1.")
+}

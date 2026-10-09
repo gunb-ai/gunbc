@@ -2,6 +2,7 @@ module v2.test.claim.self_host.frontier_probe_cause_location_roundtrip
 
 import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
+  CauseLocationDeclaration,
   CauseLocationNodeNotSerializable,
   CauseLocationInvariantPort,
   CauseLocationSourcePort,
@@ -12,7 +13,6 @@ import v2.test.fixture.frontier_probe_cause_location_manifest_fixture {
   frontier_probe_cause_location_emitted_receipt
 }
 import v2.std.diagnostic { ByteRange, WholeFile }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // RELOAD half of the emit-reload round trip. The fixture beside this file is verbatim survey-bin
@@ -33,6 +33,7 @@ fn roundtrip_extent_start() -> Int {
           }
         CauseLocationSourcePort { port: _, file: _, extent: _ } => 0 - 4
         CauseLocationInvariantPort { port: _, invariant: _ } => 0 - 4
+        CauseLocationDeclaration { declaration: _ } => 0 - 6
         CauseLocationNodeNotSerializable => 0 - 5
       }
   }

@@ -12,7 +12,6 @@ import std.realization_schedule {
   runnable_eq,
 }
 import v2.std.algebra { bag_eq }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,
@@ -25,7 +24,8 @@ import v2.std.lens_verdict {
   Violation,
   lens_verdict_module_file,
 }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 type ScheduleLensViolation
@@ -122,6 +122,8 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
   }
 }
 
+// `first()` is an Optional: the count guards make its Absent arms unreachable, and each answers the
+// guard's own verdict rather than a fabricated batch.
 fn schedule_lens_verdict_for_ci_floor_ordinary(
   plan: RealizationPlan<Runnable>,
   compile_gate_fn: String,
@@ -136,45 +138,51 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
       diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
     }
   } else {
-    let batch0 = plan.schedule.first()
-    if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
-      Violation {
-        diagnostic: schedule_lens_violation_diagnostic(
-          kind: CompileGateInFirstBatch { expected: compile_gate_fn }
-        )
-      }
-    } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
-      Violation {
-        diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
-      }
-    } else if !schedule_lens_batch_has_any_cheap_gate(batch: batch0, cheap_gate_labels: cheap_gate_labels) {
-      Violation {
-        diagnostic: schedule_lens_violation_diagnostic(kind: CheapGatesMissingFromFirstBatch)
-      }
-    } else {
-      let batch1 = plan.schedule.skip(n: 1).first()
-      if (batch1.count() != 1) || !schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
-        Violation {
-          diagnostic: schedule_lens_violation_diagnostic(
-            kind: CompileGateNotSecond { expected: compile_gate_fn }
-          )
-        }
-      } else if schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
-        Violation {
-          diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
-        }
-      } else {
-        let has_parallel_rest = fold(plan.schedule.skip(n: 2), init: false, f: fn(found, batch) {
-          found || (batch.count() >= 2)
-        })
-        if !has_parallel_rest {
+    match plan.schedule.first() {
+      Absent => Violation { diagnostic: schedule_lens_violation_diagnostic(kind: EmptySchedule) }
+      Present { value: batch0 } =>
+        if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
           Violation {
-            diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
+            diagnostic: schedule_lens_violation_diagnostic(
+              kind: CompileGateInFirstBatch { expected: compile_gate_fn }
+            )
+          }
+        } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
+          }
+        } else if !schedule_lens_batch_has_any_cheap_gate(batch: batch0, cheap_gate_labels: cheap_gate_labels) {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: CheapGatesMissingFromFirstBatch)
           }
         } else {
-          Holds
+          match plan.schedule.skip(n: 1).first() {
+            Absent => Violation { diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly) }
+            Present { value: batch1 } =>
+              if (batch1.count() != 1) || !schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
+                Violation {
+                  diagnostic: schedule_lens_violation_diagnostic(
+                    kind: CompileGateNotSecond { expected: compile_gate_fn }
+                  )
+                }
+              } else if schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
+                Violation {
+                  diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
+                }
+              } else {
+                let has_parallel_rest = fold(plan.schedule.skip(n: 2), init: false, f: fn(found, batch) {
+                  found || (batch.count() >= 2)
+                })
+                if !has_parallel_rest {
+                  Violation {
+                    diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
+                  }
+                } else {
+                  Holds
+                }
+              }
+          }
         }
-      }
     }
   }
 }
@@ -182,7 +190,11 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
 fn on_success_runnable_is_admitted(runnable: Runnable) -> Bool {
   match on_success_runnable_disposition(runnable: runnable) {
     OnSuccessRunnableAdmitted => true
-    _ => false
+    OnSuccessDiscoveryRefused => false
+    OnSuccessKernelRefused => false
+    OnSuccessHeavyResolveRefused => false
+    OnSuccessHostCompilerRefused => false
+    OnSuccessSubstantialRefused => false
   }
 }
 
@@ -214,29 +226,30 @@ fn on_success_stage_has_duplicate(
   stage: List<Runnable>,
   later_stages: List<List<Runnable>>
 ) -> Bool {
-  if stage.count() == 0 {
-    false
-  } else if runnable_occurs_in(runnable: stage.first(), runnables: stage.skip(n: 1))
-    || runnable_occurs_in_stages(runnable: stage.first(), stages: later_stages) {
-    true
-  } else {
-    on_success_stage_has_duplicate(
-      stage: stage.skip(n: 1),
-      later_stages: later_stages
-    )
+  match stage.first() {
+    Absent => false
+    Present { value: head } =>
+      if runnable_occurs_in(runnable: head, runnables: stage.skip(n: 1))
+        || runnable_occurs_in_stages(runnable: head, stages: later_stages) {
+        true
+      } else {
+        on_success_stage_has_duplicate(
+          stage: stage.skip(n: 1),
+          later_stages: later_stages
+        )
+      }
   }
 }
 
 fn on_success_stages_have_duplicate(stages: List<List<Runnable>>) -> Bool {
-  if stages.count() == 0 {
-    false
-  } else if on_success_stage_has_duplicate(
-    stage: stages.first(),
-    later_stages: stages.skip(n: 1)
-  ) {
-    true
-  } else {
-    on_success_stages_have_duplicate(stages: stages.skip(n: 1))
+  match stages.first() {
+    Absent => false
+    Present { value: head } =>
+      if on_success_stage_has_duplicate(stage: head, later_stages: stages.skip(n: 1)) {
+        true
+      } else {
+        on_success_stages_have_duplicate(stages: stages.skip(n: 1))
+      }
   }
 }
 

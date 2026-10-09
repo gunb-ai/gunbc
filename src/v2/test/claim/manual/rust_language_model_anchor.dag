@@ -1,5 +1,6 @@
 module v2.test.manual.rust_language_model_anchor
 
+import v2.extdeps.languages.rust { rust_fn_add_language_model, rust_inhabitant_i32_node }
 
 type rust_anchor_language_model = Outcome<LanguageModel>
 

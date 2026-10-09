@@ -132,7 +132,7 @@ data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition =
   }
 }
 
-data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN ROADMAP shell-effectplan-to-bash binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
 
 data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
 
@@ -145,7 +145,7 @@ data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
+data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN ROADMAP shell-effectplan-to-bash binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
 
 // The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring
 // shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`,
@@ -336,17 +336,24 @@ fn ci_floor_wet_witness_row_outcome_receipt_if() -> PipelineStep {
   }
 }
 
+// THE POST SURFACE IS THE CALIBRATION READ ONLY. The floor's component receipts (phase journal,
+// wet-witness row outcomes) are their own pipeline: they share no step with the peak read, and
+// carrying them here made every claim about the calibration surface pay for two unrelated blocks.
 fn ci_floor_peak_post_pipeline() -> Pipeline {
   Pipeline {
-    steps: concat(
-      [
-        ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
-        ci_floor_phase_journal_if(),
-        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
-        ci_floor_wet_witness_row_outcome_receipt_if()
-      ],
-      concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()])
-    ),
+    steps: concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()]),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_component_receipts_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
+      ci_floor_phase_journal_if(),
+      ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
+      ci_floor_wet_witness_row_outcome_receipt_if()
+    ],
     on_failure: FailFast
   }
 }
@@ -361,4 +368,8 @@ fn ci_floor_peak_pre_script() -> String {
 
 fn ci_floor_peak_post_script() -> String {
   ci_floor_peak_emit_pipeline(p: ci_floor_peak_post_pipeline())
+}
+
+fn ci_floor_component_receipts_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_component_receipts_pipeline())
 }

@@ -19,7 +19,6 @@ import v2.std.diagnostic {
   outcome_rejected,
   textual_whole_file_diagnostic,
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
@@ -29,7 +28,7 @@ import v2.std.node {
   Disj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Path,
   Symbol,
@@ -46,7 +45,7 @@ data projection_test_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^projection_section_step },
+      label: Authored { name: ^projection_section_step },
       target: projection_test_section
     }
   ],
@@ -102,7 +101,7 @@ data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = Enfo
 }
 
 data projection_test_declaration: DeclarationId = DeclarationId {
-  path: Path { steps: [^projection_section_step] }
+  path: Path { steps: [Authored { name: ^projection_section_step }] }
 }
 
 test fn apply_lens_enforce_projection_claim_holds() -> Bool {

@@ -1,0 +1,3 @@
+module probe.brc.record_home
+
+type BrcRecordId { tag: Int }

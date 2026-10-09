@@ -184,13 +184,3 @@ test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
       ),
     )
 }
-
-test fn roadmap_execution_contract_keystone_holds() -> Bool {
-  dag_claim_derives_only_the_claim_runner()
-    && cargo_test_derives_cargo_and_rustc_once()
-    && cargo_fmt_derives_cargo_and_rustfmt_not_rustc()
-    && dispatch_platform_capabilities_join_at_admission_only()
-    && claim_validation_projects_exact_typed_argv()
-    && claim_contract_declares_exactly_one_claim_validation()
-    && non_agent_work_does_not_await_closing_validation_authoring()
-}

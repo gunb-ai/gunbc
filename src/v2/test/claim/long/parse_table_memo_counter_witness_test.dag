@@ -24,7 +24,8 @@ fn parse_memo_counter_stats_for_grammar(
               parse_production_memo_stats(
                 tokens: token_stream_remaining(stream: stream),
                 validated: validated,
-                production_name: validated.root.start
+                production_name: validated.root.start,
+                materialization: Memoize
               )
           }
         VoidGrammar =>

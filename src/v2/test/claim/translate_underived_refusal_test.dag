@@ -1,8 +1,10 @@
 module v2.test.claim.translate_underived_refusal
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_target_model }
 import v2.compiler.ingest { cross_language_compile }
@@ -23,7 +25,6 @@ import v2.extdeps.languages.rust {
 import v2.extdeps.languages.rust_test {
   rust_pick_binding_spellings,
   rust_pick_lex,
-  rust_pick_serialize_source_node,
   rust_pick_source_text,
   rust_pick_translation_rules_node
 }
@@ -36,7 +37,7 @@ import v2.std.compilers.target_model {
   target_model_emit_transforms_empty
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 import v2.std.collection { Map }
 import v2.std.diagnostic {
   Accepted,
@@ -45,6 +46,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   bind_outcome,
+  diagnostics_fatal_reason,
   outcome_accepted
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -57,10 +59,12 @@ import v2.std.node {
   Positional,
   TypeNode,
   Value,
+  ArrowEffectClaimsEdge,
+  core_edge,
   content_hash,
   node_rebuild,
 }
-import v2.std.optional { Absent, Optional, optional_absent }
+import std.optional { Absent, Optional, optional_absent }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
@@ -89,8 +93,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic
 // empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness.
 
+// THE FATAL IS THE GATE'S OWN REASON AND NEVER THE ADVISORY'S. The fatal of a rejection is its last
+// diagnostic (v2.std.diagnostic diagnostics_fatal); infer's frontier rows, when a real infer ran
+// in front of translate, sit before it spelled infer_grounding_not_derived. A gate that refused
+// with the advisory's spelling satisfied the old head-reason check here and left the chain
+// unreadable -- so this asserts both halves: the fatal is translate's, and it is not the advisory.
 fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
-  d.head.reason == ^infer_grounding_not_derived
+  diagnostics_fatal_reason(d: d) == ^translate_rejected_grounding_not_derived
+    && diagnostics_fatal_reason(d: d) != ^infer_grounding_not_derived
 }
 
 data translate_underived_value_specimen: Node = Node {
@@ -120,7 +130,7 @@ fn translate_underived_value_node() -> Node {
 }
 
 fn translate_underived_value_specimen_facts() -> Optional<InferredFacts> {
-  match infer(tree: translate_underived_value_specimen) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: translate_underived_value_specimen)) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
     Rejected { diagnostics: _ } => optional_absent()
@@ -176,7 +186,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
 }
 
 fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<InferredFacts> {
-  match infer(tree: python_emitted_add_fn_node()) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: python_emitted_add_fn_node())) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -239,6 +249,32 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<Inferr
   )
 }
 
+// THE SAME ARROW WITH THE SAME UNDERIVED PAYLOAD, CARRIED ON A CONTRACT EDGE (v2.std.node
+// arrow_effect_claims_label) instead of a Positional child. A contract edge is metadata infer never
+// judges (docs/plans/arrow-contract-edges.md), so the subtree gate does not walk it: the payload's
+// recorded GroundingNotDerived would refuse it if it did. The Positional twin above is the red control
+// -- the two trees differ only in the edge's label, so the accept is the metadata arm and not a lookup
+// miss.
+fn translate_bodied_arrow_contract_payload_tree() -> Outcome<InferredTree> {
+  bind_outcome(
+    o: table_fixture_add_arrow_with_body(),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: InferredTree {
+          root: node_rebuild(
+            n: arrow,
+            children: list_snoc_item(
+              xs: arrow.children,
+              item: core_edge(marker: ArrowEffectClaimsEdge, target: translate_underived_value_specimen)
+            )
+          ),
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+        }
+      )
+    }
+  )
+}
+
 fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node> {
   bind_outcome(
     o: translate_bodied_arrow_shortcut_root(),
@@ -283,10 +319,6 @@ fn translate_underived_grammar_match_bundle() -> Node {
         target: rust_pick_translation_rules_node()
       ),
       rust_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: rust_pick_serialize_source_node()
-      ),
-      rust_named_edge(
         name: ^target_model_edge_selection_policy,
         target: rust_selection_policy_node()
       )
@@ -306,7 +338,7 @@ data translate_underived_grammar_match_target: TargetModel = TargetModel {
 }
 
 fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) -> Bool {
-  match infer(tree: root) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: target) {
@@ -386,6 +418,17 @@ fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() 
   }
 }
 
+fn translate_accepts_bodied_arrow_contract_payload() -> Bool {
+  match translate_bodied_arrow_contract_payload_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: go_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
@@ -393,31 +436,13 @@ fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4). This was the pipeline-level frontier guard
-// `cross_language_compile_refuses_canonical_underived_holds`, asserting the python→typescript
-// compile refused headed by `infer_grounding_not_derived` while the python inhabitants sat on the
-// grounding frontier — the control the add-slice stall cited as confirming the refusal persisted.
-// The declared-inhabitant membership derivation widening to the closed ingest set
-// (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounded the python and
-// typescript inhabitant fact atoms, so the compile now ACCEPTS and emits the canonical typescript
-// add fn byte-identical to `ts_source_text` — verified by execution. It stands as the permanent
-// regression control for that acceptance; the translate-level grounding-gate refusal class stays
-// covered by the synthetic underived controls in this file.
-test fn cross_language_compile_python_to_typescript_round_trip_holds() -> Bool {
-  match python_grammar_parse_fixture() {
-    Accepted { value: parse_tree, diagnostics: _ } =>
-      match cross_language_compile(
-        parse_tree: parse_tree,
-        source_model: python_target_model(),
-        target_model: ts_target_model()
-      ) {
-        Accepted { value: source, diagnostics: _ } =>
-          source.carried == ts_source_text
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
+// The python->typescript acceptance control that stood here was deleted as a duplicate: it made the
+// same end-to-end compile and asserted the same bytes as
+// v2.test.long.inhabitant_neutralization_e2e_witness
+// inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds, which also
+// asserts the route (DESIGN section 3, a witness discriminates at one interface). The
+// translate-level grounding-gate refusal class stays covered by the synthetic underived controls in
+// this file.
 
 fn translate_accepts_derived_rust_add_tree() -> Bool {
   match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
@@ -475,6 +500,13 @@ test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> 
 
 test fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant_holds() -> Bool {
   translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant()
+}
+
+// The discriminator for the metadata arm: the Positional payload refuses and the contract payload is
+// accepted, on one Arrow and one facts map.
+test fn translate_gates_a_positional_payload_but_not_a_contract_payload_holds() -> Bool {
+  translate_refuses_bodied_arrow_shortcut_underived_descendant()
+    && translate_accepts_bodied_arrow_contract_payload()
 }
 
 test fn translate_accepts_synthetic_empty_facts_tree_holds() -> Bool {

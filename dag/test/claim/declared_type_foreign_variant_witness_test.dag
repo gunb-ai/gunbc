@@ -1,0 +1,46 @@
+module test.claim.declared_type_foreign_variant_witness_test
+
+// A VARIANT OF ONE DECLARED SUM STANDING WHERE A DIFFERENT DECLARED SUM IS REQUIRED.
+//
+// Rostered as gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel (specimen four). Given
+// `type FvAlpha = FvX | FvY` and `type FvBeta = FvZ | FvW`, `data fv_v: FvBeta = FvX` and a fn
+// declared `-> FvBeta` whose body is `FvX` were ACCEPTED with zero diagnostics, and the value
+// evaluated as an FvAlpha. The refusing authority is v1.compiler.infer
+// declared_type_conformance_diags consuming coproduct_payload_where_parent_required -- the relation
+// the record-literal field seam already owned (test.claim.coproduct_payload_soundness_witness_test)
+// -- at the data-annotation and declared-return positions.
+//
+// The positive controls carry the native arm at the same two positions, so the reds measure the
+// distinction and not a blanket refusal of bare variant references against a declared sum.
+
+fn fv_foreign_data_source() -> String {
+  "module fv.probe\n\ntype FvAlpha\n  = FvX\n  | FvY\n\ntype FvBeta\n  = FvZ\n  | FvW\n\ndata fv_v: FvBeta = FvX\n"
+}
+
+fn fv_foreign_return_source() -> String {
+  "module fv.probe\n\ntype FvAlpha\n  = FvX\n  | FvY\n\ntype FvBeta\n  = FvZ\n  | FvW\n\nfn fv_get() -> FvBeta {\n  FvX\n}\n"
+}
+
+fn fv_native_data_source() -> String {
+  "module fv.probe\n\ntype FvAlpha\n  = FvX\n  | FvY\n\ntype FvBeta\n  = FvZ\n  | FvW\n\ndata fv_v: FvBeta = FvZ\n"
+}
+
+fn fv_native_return_source() -> String {
+  "module fv.probe\n\ntype FvAlpha\n  = FvX\n  | FvY\n\ntype FvBeta\n  = FvZ\n  | FvW\n\nfn fv_get() -> FvBeta {\n  FvW\n}\n"
+}
+
+test fn fv_foreign_variant_in_declared_data_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(fv_foreign_data_source(), "src/fv_probe.rs", [], [])
+}
+
+test fn fv_foreign_variant_as_declared_return_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(fv_foreign_return_source(), "src/fv_probe.rs", [], [])
+}
+
+test fn fv_native_variant_in_declared_data_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(fv_native_data_source(), "src/fv_probe.rs", [], [])
+}
+
+test fn fv_native_variant_as_declared_return_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(fv_native_return_source(), "src/fv_probe.rs", [], [])
+}

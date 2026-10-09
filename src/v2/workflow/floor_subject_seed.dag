@@ -1,19 +1,23 @@
 module v2.workflow.floor_subject_seed
 
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
+import v2.std.algebra { any, filter, length }
+import extdeps.github.actions { github_event_name_merge_group }
 
 // WHY A MODULE IS IN THE REQUIRED FLOOR'S PREPARED SUBJECT, one ground per seed.
 //
-// THE CLASS THIS EXISTS FOR (gunbc#11194, found by a person reading arms): `check_match` refuses
-// a non-exhaustive match under `gunbc compile`, but the required floor prepares only the gate
-// closure plus what the diff names, so a match that was exhaustive when it landed goes stale when
-// its coproduct grows an arm in ANOTHER module -- the match site has an empty diff, no diff-keyed
-// selector can see it, and the module is never Strict-prepared. The class has two halves and
-// neither closes it alone: the DEPENDENCY direction (a touched file's own module is seeded, so an
-// edit beside a stale match reaches the checker) and the DEPENDENTS direction (the untouched
-// consumers of a coproduct whose arm set changed are seeded, so the arm growth reaches them).
+// THE CLASS THIS EXISTS FOR: the required floor prepares only the gate closure plus what the
+// diff names, so a module that read a declaration correctly when it landed goes invalid when that
+// declaration's INTERFACE changes in ANOTHER module -- the reader has an empty diff, no
+// diff-keyed selector can see it, and it is never Strict-prepared. Found twice, by accident both
+// times: a coproduct growing an arm under an exhaustive match (gunbc#11194, a person reading
+// arms), and a product field retyped and an alias re-branded under an untouched witness (#11751,
+// passed over again by #12002's floor, pulled in by the unrelated #12077 and repaired by #12120; `gunbc.recurring_failure_mode`
+// `changed_declaration_signature_consumer_unplanned`). One class, so one ground: an arm set is
+// one part of a declaration's interface, not a second mechanism beside it. The class has two
+// halves and neither closes it alone: the DEPENDENCY direction (a touched file's own module is
+// seeded, so an edit beside a stale read reaches the checker) and the DEPENDENTS direction (the
+// untouched readers of a declaration whose interface changed are seeded).
 // Both are grounds below, and both are consumed by ONE preparation path: a planned module that
 // nobody prepares is a planning change with no executed check behind it, the inert-lens tell.
 //
@@ -24,71 +28,190 @@ import v2.std.logic { Bool }
 // disposition reads it (`test.claim.namespace_` is a row there and is not a segment); every
 // other ground is an AUTHORED MODULE NAME and matches itself or a module it contains by name
 // (`a.b` seeds `a.b` and `a.b.c`, never `a.bc`).
+//
+// THE GATE ITSELF HAS BOTH KINDS (`v2.workflow.required_floor` `RequiredGateSelector`): a family
+// row is `SeedRequiredGatePrefix`, an authored-module row is `SeedRequiredGateAuthoredModule`
+// and takes the module-name rule -- the same rule site disposition applies to it, so a module
+// the gate names is prepared and planned under one reading.
 type PreparedSubjectSeedGround
   = SeedRequiredGatePrefix { prefix: String }
+  | SeedRequiredGateAuthoredModule { module_path: String }
   | SeedFloorRuntimeAuthority { module_path: String }
   | SeedChangedWitnessModule { module_path: String }
   | SeedLocalRepoWetSchedule { module_path: String }
   | SeedTouchedEntryModule { path: String, module_path: String }
-  | SeedArmSetChangedMatchConsumer {
+  | SeedCheckerSourceChanged { changed_checker_path: String, module_path: String }
+  | SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: String
       changed_declaration: String
       consumer_module_path: String
-      binding: ArmSetMatchConsumerBinding
+      binding: InterfaceConsumerBinding
     }
 
-// HOW A CONSUMER'S MATCH ARM WAS BOUND TO THE CHANGED COPRODUCT, decided from the arm's
-// declaring-candidate set (the consumption relation `namespace_wave_admission` already computes
+// WHY A DECLARATION'S INTERFACE CHANGED -- the host's `namespace_baseline`
+// `InterfaceChangeGround`, of which this is the authority. Its interface is its authored text
+// with the body elided (a type's fields and arms, an alias target and brand, a function's
+// parameters and result); a body-only edit is no change and plans nobody. Two grounds are
+// narrower than "every reader": pure arm GROWTH (no arm removed, no surviving payload changed)
+// can stale only an exhaustive match, so it plans match readers alone; and a caller roster
+// (`admit_callers:`) is not interface text at all -- growing it strands nobody, narrowing it
+// strands exactly the dropped callers, which are the only modules it plans. Roster transitions
+// are decided on PRESENCE first: absent -> present strands every reader the roster does not
+// name; present -> absent and present -> larger strand nobody; present -> smaller strands the
+// dropped callers. Pure growth also requires the residual interface outside the arms (name,
+// generic parameters) to be unchanged.
+type InterfaceChangeGround
+  = ArmSetGrown { arms_added: List<String> }
+  | ArmSetChanged { arms_added: List<String>, arms_removed: List<String> }
+  | SignatureChanged
+  | DeclarationRemoved
+  | AdmittedCallersNarrowed { removed_callers: List<String> }
+  | AdmissionIntroduced { admitted_callers: List<String> }
+  | PropagatedThrough { module_path: String, declaration: String }
+
+// WHICH READERS A CHANGE CAN STRAND, per ground -- the host's consumer loop is a projection of
+// this. A pure growth reaches only the match heads that name the coproduct's arms; a narrowed
+// roster reaches only the callers it dropped; every other change reaches every resolved reader.
+type InterfaceReaderPopulation
+  = EveryReader
+  | MatchReadersOnly
+  | DroppedCallersOnly { removed_callers: List<String> }
+  | EveryReaderExceptAdmitted { admitted_callers: List<String> }
+
+fn interface_reader_population(ground: InterfaceChangeGround) -> InterfaceReaderPopulation {
+  match ground {
+    ArmSetGrown { arms_added: _ } => MatchReadersOnly
+    ArmSetChanged { arms_added: _, arms_removed: _ } => EveryReader
+    SignatureChanged => EveryReader
+    DeclarationRemoved => EveryReader
+    AdmittedCallersNarrowed { removed_callers: removed } => DroppedCallersOnly { removed_callers: removed }
+    AdmissionIntroduced { admitted_callers: admitted } => EveryReaderExceptAdmitted { admitted_callers: admitted }
+    PropagatedThrough { module_path: _, declaration: _ } => EveryReader
+  }
+}
+
+// WHERE A READ OF A CHANGED DECLARATION SITS inside the reading declaration. Only an interface
+// read PROPAGATES -- through EITHER binding: a flat-channel interface read is the parser's own
+// type occurrence, the same read that plans its module, and refusing to propagate it would plan
+// B while leaving B's readers C unplanned under a population that reads as closed: a product whose field is a re-branded alias has itself changed, so ITS readers
+// are planned; a function whose body alone reads the changed type is planned and its callers are
+// not. That is the rule that keeps the dependents walk from becoming "every reverse importer".
+type InterfaceReadSite
+  = ReadInInterface
+  | ReadInBody
+
+fn interface_change_propagates(site: InterfaceReadSite, binding: InterfaceConsumerBinding) -> Bool {
+  match site {
+    ReadInInterface =>
+      match binding {
+        BoundToDeclaringModule => true
+        BoundThroughFlatBareChannel => true
+      }
+    ReadInBody => false
+  }
+}
+
+// WHO CONSUMES THE REACHED SET DECIDES WHETHER A BODY READ PROPAGATES, and it is the only fact
+// that differs between the two walks. Strict preparation asks "can this reader fail to
+// typecheck": a body-only change cannot make a caller's caller refuse, so the walk above stops
+// at interfaces. Claim execution asks "can this claim's VERDICT change": every body its
+// evaluation runs is an input, so a body read propagates exactly like an interface read.
+// gunbc#12361 is the specimen: body edits to `v2.std.node` `arrow_signature_edges_conform` and
+// `v2.compiler.eval` `eval_bind_arrow_params` changed ten claims' verdicts across untouched
+// files while no signature they spell moved, so the compile walk correctly planned none of them.
+// The read-binding rule (`interface_read_disposition`) is shared; only propagation is keyed.
+type ReachConsumer
+  = StrictPreparation
+  | ClaimExecution
+
+fn reach_propagates(
+  consumer: ReachConsumer,
+  site: InterfaceReadSite,
+  binding: InterfaceConsumerBinding,
+) -> Bool {
+  match consumer {
+    StrictPreparation => interface_change_propagates(site: site, binding: binding)
+    ClaimExecution => true
+  }
+}
+
+// WHICH CHANNEL SUPPLIED A READ. The parser's own type occurrences and match-arm heads are
+// genuine reads; a name occurrence from the tree walk also collects binders and labels, so an
+// UNRESOLVED name occurrence is not evidence of a read and does not plan its module -- otherwise
+// every module with a local spelled like a changed function would be planned. A CALL is not a
+// binder or a label: an unresolved call is the compiler's global-bare lookup of a unique top-level
+// fn after local and import lookup miss, so it IS a read. So is a VALUE occurrence -- an expression
+// variable the parser stamped as a value reference and no in-scope binder shadows: a function
+// passed as a value, a `data` read. One channel for both; a NameOccurrence (which also collects
+// declarations, binders and labels) stays unplanned. A call sits in a body, so it
+// plans its module and propagates nothing.
+type InterfaceReadChannel
+  = ParserTypeOccurrence
+  | MatchArmHead
+  | CallOccurrence
+  | ValueOccurrence
+  | NameOccurrence
+
+// HOW A CONSUMER'S READ WAS BOUND TO THE CHANGED DECLARATION, decided from the read's
+// declaring-candidate set (the consumption relation `namespace_baseline` already computes
 // from `ModuleDeclarationRecord`; no second relation is minted). Kept apart because the two are
 // planned alike and COUNTED apart: a bare read whose candidate set is empty at this grain is the
 // flat last-writer-wins channel the namespace cut is retiring, and absorbing it into the
 // resolved population would hide the deficit that ranks it for fixing (DESIGN 5).
-type ArmSetMatchConsumerBinding
+type InterfaceConsumerBinding
   = BoundToDeclaringModule
   | BoundThroughFlatBareChannel
 
-// THE DISPOSITION OF ONE MATCH-ARM READ AGAINST ONE CHANGED COPRODUCT. The third arm is the
-// one that keeps the selector from planning every module that spells the arm: a same-spelled
-// arm of ANOTHER coproduct (its candidate set names a different declarer) is a consumer of that
-// one and not of this one. It is not stale and it is not planned.
-type ArmSetMatchReadDisposition
-  = ArmReadPlanned { binding: ArmSetMatchConsumerBinding }
-  | ArmReadBoundToAnotherDeclarer
+// THE DISPOSITION OF ONE READ AGAINST ONE CHANGED DECLARATION (the declaration's own name, or
+// for a coproduct one of its arms). The two unplanned arms are what keep the selector from
+// planning every module that spells the name: a same-spelled name of ANOTHER declarer is a
+// consumer of that one and not of this one; and an unresolved name occurrence is not a read.
+type InterfaceReadDisposition
+  = ReadPlanned { binding: InterfaceConsumerBinding }
+  | ReadBoundToAnotherDeclarer
+  | ReadUnresolvedNameOccurrence
 
-fn arm_set_match_read_disposition(
+fn interface_read_disposition(
   declaring_candidates: List<String>,
   changed_module_path: String,
-) -> ArmSetMatchReadDisposition {
+  channel: InterfaceReadChannel,
+) -> InterfaceReadDisposition {
   if any(xs: declaring_candidates, predicate: fn(candidate) { candidate == changed_module_path }) {
-    ArmReadPlanned { binding: BoundToDeclaringModule }
+    ReadPlanned { binding: BoundToDeclaringModule }
   } else {
     if length(xs: declaring_candidates) == 0 {
-      ArmReadPlanned { binding: BoundThroughFlatBareChannel }
+      match channel {
+        ParserTypeOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        MatchArmHead => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        CallOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        ValueOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        NameOccurrence => ReadUnresolvedNameOccurrence
+      }
     } else {
-      ArmReadBoundToAnotherDeclarer
+      ReadBoundToAnotherDeclarer
     }
   }
 }
 
-// A MODULE IS PLANNED IF ANY of its reads of the coproduct's arms is planned, and it is a
+// A MODULE IS PLANNED IF ANY of its reads of the changed declaration is planned, and it is a
 // RESOLVED consumer if any read resolves to the declarer -- the flat count is for modules that
-// reach the coproduct by no other route. Stated as a fold over the reads so the host's join
+// reach the declaration by no other route. Stated as a fold over the reads so the host's join
 // is a projection of this rule rather than a second one. THE MODULE-GRAIN ANSWER HAS ITS OWN
-// TYPE: reusing the one-read disposition here would make `ArmReadBoundToAnotherDeclarer` mean
+// TYPE: reusing the one-read disposition here would make `ReadBoundToAnotherDeclarer` mean
 // "this module is not planned" -- one name, two contracts, the meaning fork DESIGN 3 refuses --
-// and the host already keeps the grains apart (`ArmSetMatchConsumer.binding` vs an absent
+// and the host already keeps the grains apart (`InterfaceChangedConsumer.binding` vs an absent
 // consumer), so the model must not be the one place they share a name (review 65426).
-type ModuleArmSetBinding
-  = ModulePlanned { binding: ArmSetMatchConsumerBinding }
+type ModuleInterfaceBinding
+  = ModulePlanned { binding: InterfaceConsumerBinding }
   | ModuleNotPlanned
 
-fn arm_set_match_consumer_binding(
-  reads: List<ArmSetMatchReadDisposition>,
-) -> ModuleArmSetBinding {
-  if any(xs: reads, predicate: fn(read) { arm_read_is_bound_to_declarer(read: read) }) {
+fn interface_consumer_binding(
+  reads: List<InterfaceReadDisposition>,
+) -> ModuleInterfaceBinding {
+  if any(xs: reads, predicate: fn(read) { read_is_bound_to_declarer(read: read) }) {
     ModulePlanned { binding: BoundToDeclaringModule }
   } else {
-    if any(xs: reads, predicate: fn(read) { arm_read_is_planned(read: read) }) {
+    if any(xs: reads, predicate: fn(read) { read_is_planned(read: read) }) {
       ModulePlanned { binding: BoundThroughFlatBareChannel }
     } else {
       ModuleNotPlanned
@@ -96,14 +219,14 @@ fn arm_set_match_consumer_binding(
   }
 }
 
-fn module_is_planned(binding: ModuleArmSetBinding) -> Bool {
+fn module_is_planned(binding: ModuleInterfaceBinding) -> Bool {
   match binding {
     ModulePlanned { binding: _ } => true
     ModuleNotPlanned => false
   }
 }
 
-fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
+fn module_is_resolved_consumer(binding: ModuleInterfaceBinding) -> Bool {
   match binding {
     ModulePlanned { binding: b } =>
       match b {
@@ -114,21 +237,23 @@ fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
   }
 }
 
-fn arm_read_is_planned(read: ArmSetMatchReadDisposition) -> Bool {
+fn read_is_planned(read: InterfaceReadDisposition) -> Bool {
   match read {
-    ArmReadPlanned { binding: _ } => true
-    ArmReadBoundToAnotherDeclarer => false
+    ReadPlanned { binding: _ } => true
+    ReadBoundToAnotherDeclarer => false
+    ReadUnresolvedNameOccurrence => false
   }
 }
 
-fn arm_read_is_bound_to_declarer(read: ArmSetMatchReadDisposition) -> Bool {
+fn read_is_bound_to_declarer(read: InterfaceReadDisposition) -> Bool {
   match read {
-    ArmReadPlanned { binding: b } =>
+    ReadPlanned { binding: b } =>
       match b {
         BoundToDeclaringModule => true
         BoundThroughFlatBareChannel => false
       }
-    ArmReadBoundToAnotherDeclarer => false
+    ReadBoundToAnotherDeclarer => false
+    ReadUnresolvedNameOccurrence => false
   }
 }
 
@@ -140,23 +265,25 @@ fn arm_read_is_bound_to_declarer(read: ArmSetMatchReadDisposition) -> Bool {
 type TouchedEntrySeedDisposition
   = TouchedEntrySeeded { path: String, module_path: String }
   | TouchedEntryOutsideFloorRoots { path: String, module_path: String }
-  | ArmSetConsumerOutsideFloorRoots { path: String, module_path: String }
+  | InterfaceConsumerOutsideFloorRoots { path: String, module_path: String }
 
 // THE WIRE NAME each receipt line carries, total over the coproduct so a new ground cannot be
 // added without naming how it prints.
 fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
   match ground {
     SeedRequiredGatePrefix { prefix: _ } => "SeedRequiredGatePrefix"
+    SeedRequiredGateAuthoredModule { module_path: _ } => "SeedRequiredGateAuthoredModule"
     SeedFloorRuntimeAuthority { module_path: _ } => "SeedFloorRuntimeAuthority"
     SeedChangedWitnessModule { module_path: _ } => "SeedChangedWitnessModule"
     SeedLocalRepoWetSchedule { module_path: _ } => "SeedLocalRepoWetSchedule"
     SeedTouchedEntryModule { path: _, module_path: _ } => "SeedTouchedEntryModule"
-    SeedArmSetChangedMatchConsumer {
+    SeedCheckerSourceChanged { changed_checker_path: _, module_path: _ } => "SeedCheckerSourceChanged"
+    SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
       consumer_module_path: _,
       binding: _,
-    } => "SeedArmSetChangedMatchConsumer"
+    } => "SeedDeclarationInterfaceChangedConsumer"
   }
 }
 
@@ -168,15 +295,219 @@ fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
 fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
   match ground {
     SeedRequiredGatePrefix { prefix: _ } => true
+    SeedRequiredGateAuthoredModule { module_path: _ } => false
     SeedFloorRuntimeAuthority { module_path: _ } => false
     SeedChangedWitnessModule { module_path: _ } => false
     SeedLocalRepoWetSchedule { module_path: _ } => false
     SeedTouchedEntryModule { path: _, module_path: _ } => false
-    SeedArmSetChangedMatchConsumer {
+    SeedCheckerSourceChanged { changed_checker_path: _, module_path: _ } => false
+    SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
       consumer_module_path: _,
       binding: _,
     } => false
+  }
+}
+
+// THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES. A module's Strict verdict is a function
+// of two inputs: its own .dag closure and the checker that reads it. Every other ground in this
+// module is keyed to the first input, so a change to the second reached no module at all. The
+// host treated a changed non-.dag path as structural-empty for the .dag frontier, which is true
+// of the frontier and false of the verdict. RECEIPT: gunbc#12441 (7299157) added a check to the
+// seed's infer (v1_compiler_infer.rs) that refuses a distinct type argument of one generic
+// coproduct at a declared return. Its landing run 36641740799 prepared 2342 of 7028 admitted
+// modules and left out v2.test.claim.type_param_binder_frame, which the new check refuses. That
+// module had been prepared green on gunbc#12432's own landing run 36585500472, so the red entered
+// main with the checker change and not with any .dag change. Class:
+// gunbc.recurring_failure_mode.checker_change_landing_subject_keyed_to_changed_files.
+//
+// THE EDGE IS COMPUTED, NOT GUESSED. The checker's inputs are the files its binary was compiled
+// from, which the build tool records (cargo dep-info beside the binary that runs the floor), plus
+// the build manifests that decide which of those files and crates are compiled. The host observes
+// that set; it never lists checker paths by hand, so a new infer helper, stage0 mirror or runtime
+// file enters the set by being compiled.
+//
+// THE ANSWER IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, NOT A FALLBACK (DESIGN section 5's
+// named neighbour). The observed grain is the whole binary, so an edit to any file it compiles
+// seeds every admitted module into Strict preparation. That is what the edge says at that grain,
+// and the run says which rule chose it. It is not the absorbing arm: that arm widens because
+// selection could not look. Here the one state in which the host cannot look refuses. Claims are
+// planned exactly as before; only preparation widens.
+type CheckerDependencyObservation
+  = CheckerDependenciesObserved { dependency_paths: List<String> }
+  | CheckerDependenciesUnavailable { reason: String }
+
+type CheckerSubjectRule
+  = CheckerInputsUnchanged
+  | EveryAdmittedModule { changed_checker_paths: List<String> }
+  | CheckerSubjectRefused { reason: String }
+
+fn checker_changed_paths(dependency_paths: List<String>, changed_paths: List<String>) -> List<String> {
+  filter(xs: changed_paths, predicate: fn(changed) {
+    any(xs: dependency_paths, predicate: fn(dependency) { dependency == changed })
+  })
+}
+
+// An EMPTY observed set refuses as well. A checker binary compiled from no file is an instrument
+// that failed to read its own dependency record, and treating it as "no checker input changed"
+// is the value this instrument would fail toward.
+fn checker_subject_rule(
+  observation: CheckerDependencyObservation,
+  changed_paths: List<String>,
+) -> CheckerSubjectRule {
+  match observation {
+    CheckerDependenciesUnavailable { reason: r } => CheckerSubjectRefused { reason: r }
+    CheckerDependenciesObserved { dependency_paths: deps } =>
+      if length(xs: deps) == 0 {
+        CheckerSubjectRefused {
+          reason: "the checker dependency record lists no file, so whether this change reaches the checker is unknown"
+        }
+      } else {
+        let changed = checker_changed_paths(dependency_paths: deps, changed_paths: changed_paths)
+        if length(xs: changed) == 0 {
+          CheckerInputsUnchanged
+        } else {
+          EveryAdmittedModule { changed_checker_paths: changed }
+        }
+      }
+  }
+}
+
+// THE HOST CALL. It returns the CheckerSubjectRule coproduct itself, and the host decodes that
+// by variant, so a renamed or added arm is an unknown variant the host refuses. An earlier
+// revision flattened the rule into a String tag with fields meaningful only for some tags, and
+// the host narrowed on any tag it did not recognise, which is the silent narrowing this module
+// exists to close (review 73329). `observed` is a Bool rather than an empty-string sentinel, so
+// an empty refusal reason cannot read as an observation.
+fn checker_subject_rule_from_host(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectRule {
+  if observed {
+    checker_subject_rule(
+      observation: CheckerDependenciesObserved { dependency_paths: dependency_paths },
+      changed_paths: changed_paths
+    )
+  } else {
+    checker_subject_rule(
+      observation: CheckerDependenciesUnavailable { reason: refusal_reason },
+      changed_paths: changed_paths
+    )
+  }
+}
+
+// WHETHER THE WIDENING IS APPLIED ON THE REQUIRED PATH. The edge above is modeled and decided on
+// every run. APPLYING it, meaning Strict-preparing every admitted module, was measured over the
+// per-PR runner class: gunbc#12761 on srv1 over main with gunbc#12765, 2142s wall and 43.66 GiB
+// peak against the 28 GiB class and the 30-minute line (neat-boar-16, 2026-09-30). So the widening
+// is withheld under the standing drop that already owns this loss,
+// gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure, and the amendment
+// gunbc.rung_drop_amendment.checker_edge_withheld_over_the_per_pr_runner_class says why. The
+// standing names the drop it is withheld under, so the host cannot withhold without citing one,
+// and every run prints the rule it would have applied. This is a declared, bounded rung drop and not
+// an escape hatch: there is no argument, environment variable or flag that changes it, and it is
+// retired only by the drop's trigger.
+type CheckerWideningStanding
+  = WideningApplied
+  | WideningWithheldUnderDrop { drop_identity: String }
+
+data checker_widening_standing: CheckerWideningStanding = WideningWithheldUnderDrop {
+  drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
+}
+
+type CheckerSubjectApplication
+  = NarrowSubject
+  | PrepareEveryAdmittedModule { changed_checker_paths: List<String> }
+  | EveryAdmittedModuleWithheld { changed_checker_paths: List<String>, drop_identity: String }
+  | CheckerSubjectApplicationRefused { reason: String }
+
+fn checker_subject_application(
+  rule: CheckerSubjectRule,
+  standing: CheckerWideningStanding,
+) -> CheckerSubjectApplication {
+  match rule {
+    CheckerInputsUnchanged => NarrowSubject
+    CheckerSubjectRefused { reason: r } => CheckerSubjectApplicationRefused { reason: r }
+    EveryAdmittedModule { changed_checker_paths: changed } =>
+      match standing {
+        WideningApplied => PrepareEveryAdmittedModule { changed_checker_paths: changed }
+        WideningWithheldUnderDrop { drop_identity: d } =>
+          EveryAdmittedModuleWithheld { changed_checker_paths: changed, drop_identity: d }
+      }
+  }
+}
+
+// THE HOST CALLS. The floor's call applies the DECLARED standing. The route control applies an
+// explicit one, so it can show what the edge prepares once the drop's trigger fires, without the
+// floor having any way to choose its own standing.
+fn checker_subject_application_under(
+  standing: CheckerWideningStanding,
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application(
+    rule: checker_subject_rule_from_host(
+      observed: observed,
+      dependency_paths: dependency_paths,
+      refusal_reason: refusal_reason,
+      changed_paths: changed_paths
+    ),
+    standing: standing
+  )
+}
+
+fn checker_subject_application_from_host(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: checker_widening_standing,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
+}
+
+// The route control's call, with the standing the drop's retirement would declare.
+fn checker_subject_application_when_applied(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: WideningApplied,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
+}
+
+// WHICH CI EVENTS PLAN THE REACH DIFFERENTIAL (operator ruling, 2026-10-01). Reach consumers, the
+// claims a change's body edits can move, are planned and executed on the MERGE GROUP only: PR runs
+// pay nothing, and the queue's run of the composed revision judges them, head against base. On any
+// other event the floor plans none and prints that the differential is deferred to the merge group,
+// so its absence is announced and never silent. This is the phase scoping DESIGN puts in the
+// binary rather than in the workflow YAML: the runner reads the event through the same authority
+// that chose its diff window (v2.workflow.floor_diff_observe), and this function decides.
+type ReachEventScope
+  = ReachOnEveryRequiredRun
+  | ReachOnMergeGroupOnly
+
+data reach_event_scope: ReachEventScope = ReachOnMergeGroupOnly
+
+fn reach_planned_for_event(event_name: String) -> Bool {
+  match reach_event_scope {
+    ReachOnEveryRequiredRun => true
+    ReachOnMergeGroupOnly => event_name == github_event_name_merge_group
   }
 }

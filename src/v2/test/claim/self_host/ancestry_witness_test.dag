@@ -1,9 +1,8 @@
 module v2.test.claim.self_host.ancestry_witness
 
 import std.content_hash { Sha512Digest, sha512_hex_digest }
-import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, symbol_identity_digest }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

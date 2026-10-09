@@ -1,0 +1,7 @@
+vllm.__version__ read from inside the running container on 192.168.1.236, 2026-09-16:
+0.1.dev1+g8d09804c8
+
+Command: docker exec glm-native-tp4 python3 -c 'import vllm;print(vllm.__version__)'
+
+This is the OBSERVED revision the KV lines were emitted by. It is the image saying
+which tree it was built from; it is not a comparison of its bytes against that tree.

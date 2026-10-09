@@ -1,0 +1,41 @@
+module gunbc.roadmap_nesting
+
+import std.types { String, List }
+import gunbc.roadmap_model { RoadmapNode, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_lineage { lineage_root_ids }
+
+// Nesting is independently authored. A blocking edge never assigns project ownership.
+// Both ends name the same recursive kind of work item; no Epic/Task type hierarchy exists.
+//
+// THE MEMBERSHIP LIST IS A PROJECTION OF THE ROWS, not a table (operator ruling, 2026-09-30). Each
+// row declares its own parent (gunbc.roadmap_model NodeParent) with the contribution argument on
+// the edge -- why the member's work advances THIS project -- so the former hand-kept roster
+// (declared_roadmap_memberships, keyed by member id) was deleted and every consumer reads this
+// projection instead. One row carries one parent, so a member claimed by two projects has no
+// constructor; derived closing-contract tasks carry Closes, which is lineage, not membership.
+type RoadmapMembership { member: String, project: String, contribution: String }
+
+fn roadmap_memberships_of(nodes: List<RoadmapNode>) -> List<RoadmapMembership> {
+  flat_map(nodes, n => match n.parent {
+    Absent => []
+    Present { value: p } => match p {
+      MemberOf { project, contribution } =>
+        [RoadmapMembership { member: n.node as String, project: project, contribution: contribution as String }]
+      AdmittedRoot => []
+      Closes { target: _ } => []
+    }
+  })
+}
+
+fn roadmap_memberships() -> List<RoadmapMembership> {
+  roadmap_memberships_of(nodes: declared_roadmap_nodes())
+}
+
+// THE ADMITTED ROOTS are exactly the rows declaring AdmittedRoot. A parent walk may end only at one
+// of these -- every other end means the chain never reached the top of the decomposition. DESIGN.md
+// is NOT here: it is the principles authority orthogonal to the hierarchy, reached as the chain's
+// terminal pointer, not as a project level.
+fn roadmap_roots() -> List<String> {
+  lineage_root_ids(nodes: declared_roadmap_nodes())
+}

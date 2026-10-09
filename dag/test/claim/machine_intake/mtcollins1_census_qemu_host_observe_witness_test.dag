@@ -1,0 +1,18 @@
+module test.claim.machine_intake.mtcollins1_census_qemu_host_observe_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import gunbc.runner_qemu_toolchain { qemu_toolchain_location, qemu_toolchain_archives, qemu_toolchain_recipe_identity }
+import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_install_dir, census_qemu_host_observe_receipt_path }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BINDING KEEPS THE TREE WHERE IT WAS PLACED: the census root on an executor is still
+// <home>/.local/share/gunbc-census-qemu/<recipe>, the path the first converge published, so moving the
+// toolchain to its executor-host home moved no tree a consumer holds paths into; and the receipt the
+// workflow uploads is still the one its steps name.
+test fn the_census_binding_keeps_the_placed_root_and_receipt() -> Bool {
+  (qemu_toolchain_location(home: "/home/ghrunner", install_dir: census_qemu_install_dir).root as String)
+    == join(["/home/ghrunner/.local/share/gunbc-census-qemu/", qemu_toolchain_recipe_identity(archives: qemu_toolchain_archives()) as String], "")
+    && census_qemu_host_observe_receipt_path == "target/mtcollins1-census-qemu-host.txt"
+}

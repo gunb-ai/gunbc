@@ -1,0 +1,53 @@
+module extdeps.network.mcx4121a_acat
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.storage.types { PcieLink, Gen3 }
+import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
+
+// NVIDIA/MELLANOX ORDERING PART NUMBER MCX4121A-ACAT. The cited ConnectX-4 Lx EN product brief
+// Table 1 (PCIe HHL) lists this OPN as 2x 25GbE SFP28, PCIe 3.0 x8. The NVIDIA ConnectX-4 Lx
+// Ethernet Adapter Cards User Manual restates the same OPN as legacy OPN for NVIDIA SKU
+// 900-9X4B0-0053-0T1: "25GbE dual-port SFP28, PCIe 3.0 x8, tall bracket".
+//
+// THIS IS NOT IBM FRU 01FT753. That FRU is IBM's independently governed Power feature
+// (FC EC2T/EC2U, CCIN 58FB) in extdeps.network.ibm_01ft753. Same silicon class and the same
+// host-link and port facts; two independently versioned products. DESIGN section 3's external
+// upstream decomposition forbids collapsing them. Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// SFP28 names the port connector; no Ethernet link mode or aggregate is inferred.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "network.nvidia.com/files/doc-2020/pb-connectx-4-lx-en-card.pdf",
+} }
+
+data mcx4121a_acat_user_manual: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "docs.nvidia.com/nvidia-connectx-4-lx-ethernet-adapter-cards-user-manual.pdf",
+} }
+
+type Mcx4121aAcat {
+  attachment: NicAttachmentClass
+  host_link: PcieLink
+  port_count: Nat
+  port_connector: NonEmptyStr
+  opn: NonEmptyStr
+}
+
+data mcx4121a_acat: Mcx4121aAcat = Mcx4121aAcat {
+  attachment: PcieCem,
+  host_link: PcieLink { generation: Gen3, lane_count: 8 },
+  port_count: 2,
+  port_connector: "SFP28",
+  opn: "MCX4121A-ACAT",
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.mcx4121a_acat", decl_name: "mcx4121a_acat", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [mcx4121a_acat_user_manual],
+}

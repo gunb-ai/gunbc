@@ -1,7 +1,7 @@
 module gunbc.instruments.fabric_capacity_standing
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
@@ -9,9 +9,15 @@ import std.measure { TokenCount, token_count, concurrent_request_hundredths, All
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
-import product.placement_supply { HostIdentity }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import product.host_identity { HostIdentity }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, pair_serving_capacity_subject,
+  CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
+}
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
 }
@@ -38,7 +44,7 @@ data observed_engine_revision_frontier: DissolutionCondition = unbound_dissoluti
 
 data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect inventory observes hash_block_size as its own TokenCount from the engine (not cache-config block_size, which is the scheduler minimum) and the live entry passes that Present into readings_from_fields. SUFFICIENT FOR: layout_from_fields stamps the observed hash size, and a scheduler size that happens to equal it is coincidence rather than a second name for the same reading. Until then none is the honest observation." as NonEmptyStr)
 
-data live_inventory_host_effect_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) or another modeled host-effect realizes remote inventory as typed argv/orchestration, and fabric_capacity_standing group_report consumes that realization. SUFFICIENT FOR: a live line-list reaches decode_probe from the entry point. Until then the entry refuses without ssh+bash -s." as NonEmptyStr)
+data live_inventory_host_effect_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect operation realizes remote inventory as typed argv/orchestration, and fabric_capacity_standing group_report consumes that realization. SUFFICIENT FOR: a live line-list reaches decode_probe from the entry point. Until then the entry refuses without ssh+bash -s." as NonEmptyStr)
 
 data layout_receipt_launch_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: group_report (once live_inventory_host_effect_frontier fires) calls launch_from_fields then readings_from_fields with that Present launch and a capture digest of the decoded bytes, so ProbeReadingsReady is only reachable through admit_kv_layout. SUFFICIENT FOR: live layout evidence is a VllmKvLayoutReceipt bound to a VllmServingLaunch, not a free ResolvedKvLayout. Until then the entry does not call readings_from_fields." as NonEmptyStr)
 
@@ -135,14 +141,22 @@ type CapacityProbeRead
   = ProbeFields { fields: CapacityProbeFields }
   | ProbeUnreadable { detail: String }
 
-fn field_at(lines: List<String>, n: Nat) -> String {
-  trim(s: lines.skip(n: n).first())
+// AN INDEX PAST THE END IS NOT A FIELD. `.first()` on the skipped remainder is honestly Optional,
+// and every caller here already carries an Absent arm (the roster slot, the split segment, the
+// fraction digits), so the absence is propagated to the arm that names what the missing field
+// MEANS rather than defaulted to "". Same shape as v2.workflow.floor_terminal_ledger_wire
+// ledger_wire_field_at and extdeps.bmc.ipmi_sdr sdr_field_at.
+fn field_at(lines: List<String>, n: Nat) -> String? {
+  match lines.skip(n: n).first() {
+    Absent => none
+    Present { value: s } => Present { value: trim(s: s) }
+  }
 }
 
 fn field_named(lines: List<String>, name: ProbeFieldName) -> String? {
   match slot_index(want: name) {
     Absent => none
-    Present { value: n } => Present { value: field_at(lines: lines, n: n) }
+    Present { value: n } => field_at(lines: lines, n: n)
   }
 }
 
@@ -271,7 +285,7 @@ fn after_startup_prefix(line: String, kind: VllmStartupLine) -> String? {
   if list_length(items: parts) < 2 {
     none
   } else {
-    Present { value: trim(s: field_at(lines: parts, n: 1)) }
+    field_at(lines: parts, n: 1)
   }
 }
 
@@ -279,7 +293,10 @@ fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
   match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
     Absent => none
     Present { value: after } =>
-      parse_int(s: replace(s: trim(s: split(s: after, delimiter: " ").first()), from: ",", to: ""))
+      match field_at(lines: split(s: after, delimiter: " "), n: 0) {
+        Absent => none
+        Present { value: head } => parse_int(s: replace(s: head, from: ",", to: ""))
+      }
   }
 }
 
@@ -291,7 +308,10 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
       if list_length(items: segs) < 2 {
         none
       } else {
-        hundredths_from_two_digit_x(lexeme: field_at(lines: segs, n: list_length(items: segs) - 1))
+        match field_at(lines: segs, n: list_length(items: segs) - 1) {
+          Absent => none
+          Present { value: lexeme } => hundredths_from_two_digit_x(lexeme: lexeme)
+        }
       }
     }
   }
@@ -313,23 +333,30 @@ fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
       if list_length(items: parts) != 2 {
         none
       } else {
-        let frac = field_at(lines: parts, n: 1)
-        if string_length(s: frac) != 2 {
-          none
-        } else {
-          match parse_int(s: field_at(lines: parts, n: 0)) {
-            Absent => none
-            Present { value: whole } =>
-              match parse_int(s: frac) {
+        match field_at(lines: parts, n: 1) {
+          Absent => none
+          Present { value: frac } =>
+            if string_length(s: frac) != 2 {
+              none
+            } else {
+              match field_at(lines: parts, n: 0) {
                 Absent => none
-                Present { value: fraction } =>
-                  if whole < 0 || fraction < 0 || fraction > 99 {
-                    none
-                  } else {
-                    Present { value: whole * 100 + fraction }
+                Present { value: whole_text } =>
+                  match parse_int(s: whole_text) {
+                    Absent => none
+                    Present { value: whole } =>
+                      match parse_int(s: frac) {
+                        Absent => none
+                        Present { value: fraction } =>
+                          if whole < 0 || fraction < 0 || fraction > 99 {
+                            none
+                          } else {
+                            Present { value: whole * 100 + fraction }
+                          }
+                      }
                   }
               }
-          }
+            }
         }
       }
     }
@@ -513,6 +540,32 @@ fn group_report(group: FabricGroup) -> GroupStanding {
 // point would leave the guard below reachable only by deleting the live row, so its refusal would be
 // unauthorable and the wall would carry no executed evidence. The controls that exercise both arms
 // live on test.claim.spark.fabric_capacity_standing_witness, against this seam rather than a copy.
+// A SUSPENDED GROUP IS A STANDING, NOT AN ABSENCE. The roster keeps its member through a replacement
+// transaction, so this instrument keeps its subject -- but probing a deliberately paused group and
+// refusing it for not answering reports a fleet defect where there is a fleet decision. The three
+// subjects of gunbc.spark.pair_serving_authority pair_serving_capacity_subject partition that, and
+// none of them is an empty population, which is the property the length guard below depends on: the
+// guard catches a roster that lost its subject, not a group that is deliberately quiet.
+//
+// RELEASED IS NOT SUSPENDED AND IS NOT ORDINARY. A released group's hosts are no longer ours, so this
+// instrument cannot stand for their capacity and says so rather than probing hardware we do not hold.
+fn standing_for_authority(a: PairServingGroupAuthority) -> GroupStanding {
+  match pair_serving_capacity_subject(a: a) {
+    CapacityOrdinarySubject { group: g } => group_report(group: g)
+    CapacitySuspendedSubject { group: g, reason: r } =>
+      refused_standing(text: join([
+        fabric_group_wire(g: g) as String,
+        ": serving authority is suspended, so this group is deliberately not admitting rather than failing to answer -- ",
+        r as String,
+      ], ""))
+    CapacityReleasedSubject { group: g } =>
+      refused_standing(text: join([
+        fabric_group_wire(g: g) as String,
+        ": released to the fleet, so this repository no longer claims these hosts and cannot stand for their capacity",
+      ], ""))
+  }
+}
+
 fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
   if length(standings) == 0 {
     exit_failure(reason: "fabric capacity standing: no serving group is claimed, so this instrument has no subject -- an empty roster is a missing subject rather than a passing fleet" as NonEmptyStr)
@@ -523,6 +576,44 @@ fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
   }
 }
 
-fn fabric_capacity_standing() -> ProcessExit {
-  capacity_standing_verdict(standings: map(spark_pair_serving_groups, g => group_report(group: g)))
+data fabric_capacity_unread_marker: String = ": serving authority could not be read at "
+
+// THE AUTHORITY IS READ FROM THE LOG, NOT THE SOURCE ROW. gunbc.spark.pair_serving_authority_log
+// folds the resting row through every recorded transition, so a group a transaction has suspended
+// is reported suspended here without a commit. An authority that could not be read is a refused
+// standing naming the read's step -- the instrument does not stand for a group whose state it
+// could not establish, and it does not fall back to the row.
+fn standing_for_current(c: CurrentAuthority) -> GroupStanding {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => standing_for_authority(a: a)
+    CurrentAuthorityUnread { group: g, step: s, reason: why } =>
+      refused_standing(text: join([fabric_group_wire(g: g) as String, fabric_capacity_unread_marker, s, ": ", why], ""))
+  }
+}
+
+// The verdict over a SUPPLIED current roster: the real group_report route for every read
+// authority, so a witness can hand in the resting row at generation 0 and still execute the
+// producer and the binding, while the live entry below hands in what the executor's log says.
+fn fabric_capacity_standing_current(current: List<CurrentAuthority>) -> ProcessExit {
+  capacity_standing_verdict(standings: map(current, c => standing_for_current(c: c)))
+}
+
+fn fabric_capacity_standing() -> ProcessExit
+{
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric capacity standing: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => exit_failure(reason: "fabric capacity standing: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
+        Present { value: at } => fabric_capacity_standing_for(executor: executor, at: at)
+      }
+  }
+}
+
+// THE ENTRY BELOW ITS TWO OBSERVATIONS: the executor and the instant are the only facts the live
+// entry reads from the host before the log, so this is the seam at which a witness supplies them.
+// A supplied host that declares no dashboard instance reaches the real store resolution and the
+// real per-group refusal on every runner, instead of depending on which host the claim landed on.
+fn fabric_capacity_standing_for(executor: String, at: EpochSecs) -> ProcessExit {
+  fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
 }

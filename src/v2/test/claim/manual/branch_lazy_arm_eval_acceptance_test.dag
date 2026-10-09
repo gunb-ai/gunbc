@@ -1,5 +1,7 @@
 module v2.test.manual.branch_lazy_arm_eval_acceptance
 
+import std.types { List }
+import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
@@ -21,13 +23,12 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional,
   map_get,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present,
@@ -48,7 +49,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
@@ -58,13 +58,15 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
   Value,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -465,21 +467,16 @@ fn lazy_arm_pick_call(callee: Node) -> Node {
 }
 
 fn lazy_arm_arrow_with_body(body: Node) -> Node {
+  let signature = declared_signature(params: [], source: lazy_arm_i64())
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          occurrence_id: OccurrenceSynthetic,
-          children: []
-        }
-      },
+      signature.domain,
       Edge { label: Positional, target: lazy_arm_i64() },
       Edge { label: Positional, target: lazy_arm_i64() },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   }
 }
@@ -489,8 +486,8 @@ fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^lazy_arm_actual }, target: call },
-      Edge { label: Named { name: ^lazy_arm_expected }, target: expected }
+      Edge { label: Authored { name: ^lazy_arm_actual }, target: call },
+      Edge { label: Authored { name: ^lazy_arm_expected }, target: expected }
     ]
   }
 }

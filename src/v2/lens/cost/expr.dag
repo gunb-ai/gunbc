@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   Unavailable,
   textual_whole_file_locus
 }
-import v2.std.nat { Nat, Succ, Zero, nat_lte }
+import std.nat { Nat, Succ, Zero }
 
 type SizeExpr
   = SizeConst { value: Nat }
@@ -67,22 +67,56 @@ fn cost_const(value: Nat) -> CostExpr {
 fn cost_expr_seq(a: CostExpr, b: CostExpr) -> CostExpr {
   match a {
     CostConst { value: Zero } => b
-    _ =>
-      match b {
-        CostConst { value: Zero } => a
-        _ => CostAdd { left: a, right: b }
-      }
+    CostConst { value: av } => cost_expr_seq_rhs(a: a, b: b)
+    CostAdd { left: _, right: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostMul { left: _, right: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostMax { left: _, right: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostSum { binder: _, upper: _, body: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostLog { base: _, argument: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostEffect { operation: _ } => cost_expr_seq_rhs(a: a, b: b)
+    CostRefused { cause: _ } => cost_expr_seq_rhs(a: a, b: b)
+  }
+}
+
+fn cost_expr_seq_rhs(a: CostExpr, b: CostExpr) -> CostExpr {
+  match b {
+    CostConst { value: Zero } => a
+    CostConst { value: bv } => CostAdd { left: a, right: b }
+    CostAdd { left: _, right: _ } => CostAdd { left: a, right: b }
+    CostMul { left: _, right: _ } => CostAdd { left: a, right: b }
+    CostMax { left: _, right: _ } => CostAdd { left: a, right: b }
+    CostSum { binder: _, upper: _, body: _ } => CostAdd { left: a, right: b }
+    CostLog { base: _, argument: _ } => CostAdd { left: a, right: b }
+    CostEffect { operation: _ } => CostAdd { left: a, right: b }
+    CostRefused { cause: _ } => CostAdd { left: a, right: b }
   }
 }
 
 fn cost_expr_par(a: CostExpr, b: CostExpr) -> CostExpr {
   match a {
     CostConst { value: Zero } => b
-    _ =>
-      match b {
-        CostConst { value: Zero } => a
-        _ => CostMax { left: a, right: b }
-      }
+    CostConst { value: av } => cost_expr_par_rhs(a: a, b: b)
+    CostAdd { left: _, right: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostMul { left: _, right: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostMax { left: _, right: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostSum { binder: _, upper: _, body: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostLog { base: _, argument: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostEffect { operation: _ } => cost_expr_par_rhs(a: a, b: b)
+    CostRefused { cause: _ } => cost_expr_par_rhs(a: a, b: b)
+  }
+}
+
+fn cost_expr_par_rhs(a: CostExpr, b: CostExpr) -> CostExpr {
+  match b {
+    CostConst { value: Zero } => a
+    CostConst { value: bv } => CostMax { left: a, right: b }
+    CostAdd { left: _, right: _ } => CostMax { left: a, right: b }
+    CostMul { left: _, right: _ } => CostMax { left: a, right: b }
+    CostMax { left: _, right: _ } => CostMax { left: a, right: b }
+    CostSum { binder: _, upper: _, body: _ } => CostMax { left: a, right: b }
+    CostLog { base: _, argument: _ } => CostMax { left: a, right: b }
+    CostEffect { operation: _ } => CostMax { left: a, right: b }
+    CostRefused { cause: _ } => CostMax { left: a, right: b }
   }
 }
 
@@ -132,7 +166,14 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
 fn cost_loop_expr(binder: SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
   match body {
     CostConst { value: Zero } => CostConst { value: Zero }
-    _ => CostSum { binder: binder, upper: iterations, body: body }
+    CostConst { value: v } => CostSum { binder: binder, upper: iterations, body: body }
+    CostAdd { left: _, right: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostMul { left: _, right: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostMax { left: _, right: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostSum { binder: _, upper: _, body: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostLog { base: _, argument: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostEffect { operation: _ } => CostSum { binder: binder, upper: iterations, body: body }
+    CostRefused { cause: _ } => CostSum { binder: binder, upper: iterations, body: body }
   }
 }
 
@@ -182,7 +223,7 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
     CostLog { base: b, argument: a } =>
-      if nat_lte(a: b, b: Succ { prev: Zero }) {
+      if b <= Succ { prev: Zero } {
         normalize_cost_expr_to_symbolic(
           expr: CostRefused {
             cause: InvalidLogBase {
@@ -194,15 +235,10 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
       } else {
         match a {
           SizeOf { variable: v } => LogCost { variable: v }
-          _ =>
-            normalize_cost_expr_to_symbolic(
-              expr: CostRefused {
-                cause: UngroundedLogArgument {
-                  argument: a,
-                  at: cost_expr_authority_locus()
-                }
-              }
-            )
+          SizeConst { value: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeLength { of: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeAdd { left: _, right: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeMax { left: _, right: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
         }
       }
     CostEffect { operation: op } =>
@@ -217,4 +253,15 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
     CostRefused { cause: c } =>
       UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
   }
+}
+
+fn normalize_cost_expr_to_symbolic_ungrounded_log(a: SizeExpr) -> SymbolicCost {
+  normalize_cost_expr_to_symbolic(
+    expr: CostRefused {
+      cause: UngroundedLogArgument {
+        argument: a,
+        at: cost_expr_authority_locus()
+      }
+    }
+  )
 }

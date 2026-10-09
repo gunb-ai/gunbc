@@ -1,0 +1,3 @@
+module test.fixture.unit_variant_binding.duplicate_arm_provider
+
+type Twice = Delta | Delta

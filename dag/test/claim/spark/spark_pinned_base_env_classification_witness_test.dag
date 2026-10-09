@@ -18,12 +18,17 @@ import gunbc.container.registry_image_config {
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   GrantDisclosureUnestablished,
+  GrantDisclosureSpecificationBounded,
   GrantReturnsNoHostData,
+  ReadFabricModuleEeprom,
+  spark_eeprom_grant_disclosure_specification,
+  spark_eeprom_grant_disclosure_residual,
   InspectServingContainer,
   RebootThisHost,
   spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_disclosure_standing,
 }
+import gunbc.spark.fabric_switch_observed { spark_fabric_leg_netdev }
 import gunbc.spark.pinned_base_env_classification {
   EnvSecretShapeUnmatched,
   EnvContainsSecretShapedEntry,
@@ -137,6 +142,7 @@ test fn inspect_grant_stays_unestablished_for_the_live_object() -> Bool {
     GrantDisclosureUnestablished { obligation: o } =>
       o as String == spark_inspect_grant_disclosure_unestablished_obligation as String
     GrantReturnsNoHostData => false
+    GrantDisclosureSpecificationBounded { specification: _, residual: _ } => false
   }
 }
 
@@ -148,7 +154,28 @@ test fn linger_and_reboot_still_return_no_host_data() -> Bool {
       match spark_managed_grant_disclosure_standing(grant: RebootThisHost) {
         GrantReturnsNoHostData => true
         GrantDisclosureUnestablished { obligation: _ } => false
+        GrantDisclosureSpecificationBounded { specification: _, residual: _ } => false
       }
+    GrantDisclosureUnestablished { obligation: _ } => false
+    GrantDisclosureSpecificationBounded { specification: _, residual: _ } => false
+  }
+}
+
+// THE EEPROM READ IS CLASSIFIED, AND IT IS CLASSIFIED AS NEITHER OF THE OTHER TWO. This claim
+// discriminates in both directions that matter: it would go red if the arm were widened to
+// GrantReturnsNoHostData (the under-assertion -- a grant that returns a module's vendor, serial and
+// coding bytes does return host data) and red if it were narrowed to GrantDisclosureUnestablished
+// (the over-prohibition -- withholding a read whose surface a published specification bounds, which
+// is what would keep the 100G question unanswerable). Both are the failures DESIGN §4d names, one
+// per direction.
+test fn fabric_eeprom_grant_is_specification_bounded_not_unestablished() -> Bool {
+  match spark_managed_grant_disclosure_standing(
+    grant: ReadFabricModuleEeprom { device: spark_fabric_leg_netdev },
+  ) {
+    GrantDisclosureSpecificationBounded { specification: sp, residual: r } =>
+      sp as String == spark_eeprom_grant_disclosure_specification as String
+        && r as String == spark_eeprom_grant_disclosure_residual as String
+    GrantReturnsNoHostData => false
     GrantDisclosureUnestablished { obligation: _ } => false
   }
 }
@@ -164,6 +191,7 @@ test fn pinned_base_classification_names_the_pin_and_does_not_replace_inspect() 
        ) {
          GrantDisclosureUnestablished { obligation: _ } => true
          GrantReturnsNoHostData => false
+         GrantDisclosureSpecificationBounded { specification: _, residual: _ } => false
        }
 }
 

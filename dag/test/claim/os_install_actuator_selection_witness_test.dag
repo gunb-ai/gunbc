@@ -4,8 +4,8 @@ module test.claim.os_install_actuator_selection
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  os_install_actuator_requirement_kinds.first() == BmcNetworkReach
-    && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
+  match os_install_actuator_requirement_kinds.first() { Present { value: first } => first == BmcNetworkReach  Absent => false }
+    && match os_install_actuator_requirement_kinds.skip(n: 1).first() { Present { value: first } => first == ActuatorToolchainGrant  Absent => false }
     && os_install_actuator_requirement_satisfied(
       kind: BmcNetworkReach,
       candidate: srv1_host,
@@ -26,8 +26,8 @@ test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
     && srv3_os_install_actuator_host_is_derived_srv1()
     && match srv3_os_install_actuator_tie_break_policy {
       OperatorHostPreference { order: order } =>
-        order.first() == operator_host_srv1
-          && order.skip(n: 1).first() == operator_host_srv2
+        match order.first() { Present { value: first } => first == operator_host_srv1  Absent => false }
+          && match order.skip(n: 1).first() { Present { value: first } => first == operator_host_srv2  Absent => false }
       _ => false
     }
 }
@@ -47,21 +47,37 @@ data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = Actu
   reason: "fixture: no candidate host satisfies the srv3 actuator requirement conjunction",
 }
 
+// A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
+// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
+
+// A SUPPLIED resolved image, so the actuator selection is the only thing here that can refuse.
+data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
+  built: ubuntu_seeded_install_media_built(
+    input: srv3_seeded_install_media_input_for(user_data_body: srv3_seeded_user_data_fixture),
+    output_digest: "abababababababababababababababababababababababababababababababab",
+  ),
+  path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
+}
+
 test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
-  match actuator_step_realization_under(
-    step: os_install_actuator_steps(
-      mechanism: NbdProxyVirtualMediaInstall,
-      export: srv3_nbd_proxy_export_placeholder,
-    ).first(),
-    selection: unsatisfiable_actuator_selection_fixture,
-  ) {
-    ActuatorStepRefused { cause: c } =>
-      match c {
-        ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
-          string_contains(s: why, pattern: "fixture: no candidate host")
-        ActuatorStepRealizationAbsent { step: _ } => false
+  match os_install_actuator_steps(mechanism: NbdProxyVirtualMediaInstall, export: srv3_nbd_proxy_export_placeholder).first() {
+    Absent => false
+    Present { value: first_step } =>
+      match actuator_step_realization_under(
+        step: first_step,
+        selection: unsatisfiable_actuator_selection_fixture,
+        image: srv3_resolved_image_fixture,
+      ) {
+        ActuatorStepRefused { cause: c } =>
+          match c {
+            ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
+              string_contains(s: why, pattern: "fixture: no candidate host")
+            ActuatorStepRealizationAbsent { step: _ } => false
+            ActuatorStepImageUnresolved { step: _, reason: _ } => false
+          }
+        ActuatorStepReady { intent: _ } => false
       }
-    ActuatorStepReady { intent: _ } => false
   }
 }
 

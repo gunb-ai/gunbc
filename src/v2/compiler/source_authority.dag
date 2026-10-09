@@ -1,5 +1,8 @@
 module v2.compiler.source_authority
 
+import std.types { List, NonEmptyStr }
+import gunbc.source_root_read { SourceRootFile }
+
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import v2.std.language_model { LanguageModel }
 
@@ -21,8 +24,8 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -41,20 +44,18 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
   optional_absent,
   optional_present
 }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
+import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet, DagTree, V2Tree }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
@@ -71,9 +72,10 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
   content_hash_of_value,
-  serialize_content_hash
+  serialize_content_hash,
+  Fnv1a64
 }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -503,7 +505,8 @@ fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
   let hashes_match =
     match compare_content_hash(left: left.content_hash, right: right.content_hash) {
       ContentHashEqual => true
-      _ => false
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
   paths_match && roots_match && hashes_match
 }
@@ -707,7 +710,17 @@ fn source_ir_artifact_provenance_from_model(
           )
         }
       )
-    _ =>
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
       outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
@@ -805,10 +818,18 @@ fn module_storage_binding_from_read_prepared(
           )
         }
       )
-    _ =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 
@@ -1297,7 +1318,7 @@ fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
 ) -> Witness<SemanticIrEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: original.tree.root, right: reparsed.tree.root) {
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -1421,13 +1442,13 @@ fn source_authority_round_trip_with_model(
           bind_outcome(
             o: target_serialize_source_from_model(
               target: canonical_source_target,
-              emitted: original_ir.tree
+              emitted: original_ir.tree.root
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
                   target: canonical_source_target,
-                  emitted: original_ir.tree
+                  emitted: original_ir.tree.root
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
@@ -1493,13 +1514,13 @@ fn canonical_dag_source_parse_print_law(
           bind_outcome(
             o: target_serialize_source_from_model(
               target: canonical_source_target,
-              emitted: original_ir.tree
+              emitted: original_ir.tree.root
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
                   target: canonical_source_target,
-                  emitted: original_ir.tree
+                  emitted: original_ir.tree.root
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
@@ -1532,4 +1553,15 @@ fn source_authority_round_trip(
     canonical_source_target: canonical_source_target,
     lm: dag_language_model()
   )
+}
+
+// The native filesystem fold supplies observed bytes; provenance is constructed at the same
+// authority as every other source witness. Neither rendered main owns this conversion.
+fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngest {
+  files |> map(file => DagSourceReadWitness {
+    source: Medium { carried: file.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
+    compilation_unit: file.path,
+    source_root: source_root_for_storage_path(path: file.path)
+  })
 }

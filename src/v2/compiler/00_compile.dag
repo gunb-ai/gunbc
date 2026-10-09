@@ -12,34 +12,104 @@ import gunbc.witness_v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
+  native_route_label_in_package,
+  native_route_module_package_text,
+  native_route_default_pattern,
   native_route_universe_member,
   required_v2_native_job_name
 }
+// THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
+// native_route_admission, and the emitted crate carries a module only when this closure reaches it.
+import gunbc.native_frontier_ratchet { native_frontier_verdict }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
   FloorDiscoveryWalkState,
   discover_floor_rows_for_source,
-  floor_discovery_finalize_source_outcomes
+  floor_discovery_finalize_source_outcomes,
+  floor_discovery_walk_state_zero
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import v2.std.logic { Bool }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
+import extdeps.bazel.target_pattern {
+  TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
+  SingleTarget, PackageTargets, SubtreeTargets,
+  parse_target_pattern, target_pattern_matches, target_pattern_refusal_text, render_target_pattern
+}
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
-import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.infer { InferredTree }
+import gunbc.instruments.type_declaration_use_census {
+  TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
+}
 import v2.compiler.name_resolve {
+  resolution_context_namespace,
+  closure_declarations_demand,
   Admission,
   ResolutionSubject,
   ResolutionContext,
   resolution_context,
-  resolve_with_admission_context_policy,
+  resolve_walk_in_context,
+  resolve_in_context,
   resolve_with_admission
 }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
+import v2.std.dependency { DataDependsOn, DependencyRelation }
+import v2.std.demand_engine {
+  DemandAdmitted,
+  DemandAvailable,
+  DemandEngine,
+  DemandIdentity,
+  DemandLeaseOffer,
+  DemandNotAdmitted,
+  DemandRefused,
+  DemandWaiting,
+  DemandReady,
+  DemandLeasePending,
+  DemandRunning,
+  DemandSuspended,
+  DemandCommitPending,
+  DemandBlocked,
+  DemandState,
+  DemandAdmission,
+  demand_engine_completion_keys,
+  demand_engine_empty,
+  demand_engine_entry,
+  demand_engine_next,
+  demand_engine_relate,
+  demand_engine_request,
+  demand_engine_seal,
+  demand_engine_settle,
+  demand_identity_eq,
+  demand_identity_key
+}
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
+import v2.std.source_position { source_line_col_at_byte }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
+import std.judgment_contract {
+  DeclaredInput,
+  JudgmentContract,
+  ResultContract,
+  Scoped,
+  SemanticOnly,
+  output_module_preparation_diagnostics,
+  output_module_test_verdicts,
+  persisted_output
+}
+import std.cache_identity {
+  native_module_occurrence_census_artifact_kind, native_module_infer_artifact_kind,
+  native_module_resolve_artifact_kind,
+  native_test_identity_artifact_kind
+}
+import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
+  program_assembly_ingest_scope_outcome,
+  program_assembly_phase_tokenize,
+  program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
-  program_assembly_read_to_normalized_root_prepared,
   ProgramAssemblyFoldState,
   ProgramAssemblyFoldOk,
   ProgramAssemblyFoldFailed
@@ -50,7 +120,19 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.compiler.native_test_vocabulary {
+  NativeTestFileAdvisories,
   NativeTestFileRefusal,
+  FileRefusalLink,
+  FileRefusalAt,
+  FileRefusalAtLine,
+  FileRefusalAtWholeFile,
+  FileRefusalAtOtherFile,
+  FileRefusalAtInvariant,
+  FileRefusalAtDeclaration,
+  FileRefusalAtUnresolvedNode,
+  native_test_file_advisories,
+  native_test_file_refusal_fatal_reason,
+  native_test_file_refusal_head_reason,
   NativeTestObservation,
   NativeTestPassed,
   NativeTestRefused,
@@ -61,13 +143,44 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestStagePrepare,
-  NativeTestVerdict
+  NativeTestVerdict,
+  native_test_refused_after,
+  native_test_refused_located
 }
-import v2.compiler.normalize { normalize }
-import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
-import v2.compiler.resolve { resolve, ResolvedTree }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.normalize { normalize, normalize_scoped }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact }
+import v2.compiler.dependency_demand_census {
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  AuthoredUsesFunction,
+  DemandCensusAuthoredReading,
+  DemandCensusModuleStanding,
+  DemandCensusReport,
+  DemandModuleResolveRefused,
+  DemandModuleResolved,
+  demand_census_authored_readings,
+  demand_census_exit,
+  demand_census_lines,
+  demand_census_module_facts,
+  demand_census_report,
+  demand_census_strip
+}
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings }
+import v2.compiler.parse { parse, parse_module_prepared_seeded, prepare_grammar, PreparedGrammar }
+import v2.compiler.resolve {
+  ResolveContext,
+  resolve_ctx_init,
+  ObservationComplete,
+  ObservationIncomplete,
+  ObservationCompleteness,
+  ResolveNodeWalk,
+  ResolveWalkAccepted,
+  ResolveWalkRefused,
+  resolve,
+  resolved_tree_of,
+  ResolvedTree
+}
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome, CacheProbe, Miss }
 import v2.compiler.materialization_carriers {
   cached_stage_realization,
@@ -93,14 +206,14 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
-import std.types { NonEmptyStr }
-import std.algebra { Cons, Empty, FreeMonoid, trim }
-import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
+import std.types { NonEmptyStr, List }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, trim, list_append, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
+  UserInputBoundary,
   Accepted,
   Diagnostic,
   Diagnostics,
@@ -109,6 +222,16 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Outcome,
   Some,
+  Textual,
+  WholeFile,
+  ByteRange,
+  Extent,
+  NodeLocus,
+  SourcePortLocus,
+  InvariantPortLocus,
+  DeclarationLocus,
+  declaration_locus,
+  diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
   Unavailable,
@@ -117,12 +240,14 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics
+  outcome_with_diagnostics,
+  diagnostics_fatal
 }
-import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
+import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -134,7 +259,10 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_runtime_bool_is_true
 }
 import v2.std.text { String }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -700,7 +828,7 @@ fn apply_compile_lens_introspect(
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
-        value: witness_violates(diagnostic: d.head),
+        value: witness_violates(diagnostic: diagnostics_fatal(d: d)),
         diagnostics: Some { diagnostics: d }
       )
   }
@@ -836,11 +964,11 @@ fn compile_inferred(
 }
 
 fn compile(
-  source: CoreNode,
+  source: ResolvedTree,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   bind_outcome(
-    o: infer(tree: source),
+    o: infer_and_discharge(tree: source),
     f: fn(inferred) {
       compile_inferred(inferred: inferred, mode: mode)
     }
@@ -895,12 +1023,12 @@ fn validated_from_compile_output(
 // registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
 // 4b(2), 5).
 fn validate_then_compile(
-  source: CoreNode,
+  source: ResolvedTree,
   lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
   bind_outcome(
-    o: infer(tree: source),
+    o: infer_and_discharge(tree: source),
     f: fn(inferred) {
       bind_outcome(
         o: run_required_lens_gates_on_subtree(
@@ -1139,26 +1267,34 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
   }
 }
 
+// A REFUSED STAGE ADMISSION REFUSES THE COMPILE. cached_stage_realization answers
+// Outcome<CachedStageRealization> because an unmet materialization obligation is not a licence
+// to run the stage unmemoized -- it is a typed cause, and this spine already speaks Outcome, so
+// it is returned as the stage outcome rather than absorbed into the recompute arm.
 fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
-  let lm = dag_language_model()
-  let pipeline = then_outcome(
-      f: stage_tokenize(lm: lm),
-      g: then_outcome(
-        f: stage_parse(lm: lm),
-        g: then_outcome(
-          f: stage_normalize(),
+  match cached_stage_realization() {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: realization, diagnostics: _ } =>
+      let lm = dag_language_model()
+      let pipeline = then_outcome(
+          f: stage_tokenize(lm: lm),
           g: then_outcome(
-            f: cached_stage_governed(
-              realization: cached_stage_realization(),
-              lookup: resolve_cache_miss,
-              stage: stage_resolve(lm: lm)
-            ),
-            g: stage_translate(target: target)
+            f: stage_parse(lm: lm),
+            g: then_outcome(
+              f: stage_normalize(),
+              g: then_outcome(
+                f: cached_stage_governed(
+                  realization: realization,
+                  lookup: resolve_cache_miss,
+                  stage: stage_resolve(lm: lm)
+                ),
+                g: stage_translate(target: target)
+              )
+            )
           )
         )
-      )
-    )
-  pipeline(source)
+      pipeline(source)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -1177,8 +1313,9 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // defect (a grammar that fails to prepare), never on corpus data. native_test_prepare_module
 // pays resolve + infer ONCE per module. native_test_eval_one pays entry resolution +
 // evaluation per declaration and NEVER rejects: every failure it can reach is a typed
-// NativeTestRefused verdict carrying the stage and the diagnostic's head reason, so a census
-// over observations has no silent remainder.
+// NativeTestRefused verdict carrying the stage and the failing stage's own diagnostics -- the
+// located chain, not one reason copied out of it -- so a census over observations has no
+// silent remainder and a row that refused says where.
 //
 // THE PREPARE GRAIN IS TWO HALVES, AND THE SEAM IS THE PORTABILITY BOUNDARY. A seed-interpreted
 // witness that drives this route evaluates in the required floor's per-claim frame, and the
@@ -1208,12 +1345,20 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // COMPILE door's corpus invariants; the floor's seed-interpreter route does not run them per
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
+// THIS IS NOT A MISSING PER-MODULE ROOT-LENS WIRING. A CompileLensRoot registration runs once
+// at the compile subject's tree root, through that one door. native_test_infer_resolved is
+// the prepare half of NativeTest evaluation; it is not a compile subject. That mandatory_tag
+// therefore does not fire on every native-universe module is the layering, not a hole:
+// corpus coverage of modules that never enter the door lives on v2.lens.mandatory_tag's
+// parse-grain witness, and native compile-door coverage climbs when admitted subjects enter
+// validate_then_compile (gunbc.v2_compile_obligation_census native_door_entry_trigger).
 
+// The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
+// per ingest as admission inputs); a second copy here would be two authorities for one fact.
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
-  index: SourceRootIndex
-  active_roots: FreeMonoid<SourceRootRef>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
 }
 
 type NativeTestPreparedModule {
@@ -1221,44 +1366,149 @@ type NativeTestPreparedModule {
   inferred: InferredTree
 }
 
+// `alloc` IS THE OCCURRENCE-ID MARK THIS FOLD HAS REACHED, and it is here for the reason
+// `std.occurrence_identity` `occurrence_identity_scope_law` gives: this fold walks a whole ingest,
+// so it IS "a production source graph", and such a graph "threads one allocator across every parsed
+// source" -- module-local allocator reset is a FORBIDDEN identity input. Before this field each
+// read restarted at #0, so the roots this state accumulates carried ids that collided across files
+// and the NativeTestContext could not tell two files' occurrence #3 apart.
+//
+// THAT IS NOT A LATENT PROBLEM HERE, IT IS A CONSUMED ONE: the SourceRootEval census
+// (`gunbc.compiler_frontend_program_status`) joins this route's refusals "to occurrence identity
+// where an id is minted", which is an occurrence-keyed join over a key that was not unique in the
+// scope it was joined across -- a silent wrong answer rather than a missing one (DESIGN section 5).
 type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
+  alloc: OccurrenceIdAllocator
 }
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
 // that rode along. Both are carried because ownership is keyed by grain.
-fn native_test_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
-  fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason })
-}
-
-fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
-  NativeTestFileRefusal {
-    path: path,
-    head_reason: d.head.reason,
-    fatal_reason: native_test_fatal_reason(d: d)
+// The module a refused file declares, as the typed name every other reader compares, parsed ONCE
+// here from the header line the lane's own scan reads.
+fn native_refused_file_module(content: String) -> Optional<QualifiedName> {
+  match native_lane_declared_module_name(content: content) {
+    Absent => optional_absent()
+    Present { value: dotted } => optional_present(value: qualified_name_from_dotted_string(dotted: dotted))
   }
 }
 
-fn native_test_context_fold_step(
+fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics, spans: SpanIndex, text: String) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: path,
+    module: module,
+    chain: FreeSemigroup {
+      head: native_file_refusal_link(d: d.head, path: path, spans: spans, text: text),
+      tail: fold_list(xs: d.tail, empty: Empty, cons: fn(acc, diag) {
+        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
+      })
+    }
+  }
+}
+
+// ONE LINK, RESOLVED HERE AND NOWHERE LATER. A node locus goes through THIS file's span index to
+// its textual extent; a textual extent in THIS file becomes a line and byte column against THIS
+// file's text (v2.std.source_position, which walks UTF-8 octets, never characters). Everything
+// else keeps its own typed reason for having no line.
+fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalLink {
+  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, text: text) }
+}
+
+fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalAt {
+  match at {
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+    DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+    NodeLocus { anchor: a } =>
+      match node_occurrence_id_optional(node: a.at) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: spans, id: id) {
+            Absent => FileRefusalAtUnresolvedNode
+            Present { value: resolved } =>
+              match resolved {
+                Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+                SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+                NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+                InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+                DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+              }
+          }
+      }
+  }
+}
+
+fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text: String) -> FileRefusalAt {
+  if file == path {
+    match extent {
+      WholeFile => FileRefusalAtWholeFile
+      ByteRange { start: st, end: _ } => {
+        let lc = source_line_col_at_byte(text: text, offset: st)
+        FileRefusalAtLine { line: lc.line, byte_column: lc.byte_column }
+      }
+    }
+  } else {
+    FileRefusalAtOtherFile { file: file }
+  }
+}
+
+// THE FILE'S ROOT, ABSORBED. This is the half of the per-file step that is NOT the front end:
+// the qualified-name read off the module node and the source-root index insertion, plus the two
+// refusal arms. It takes the root OUTCOME rather than the read, so the caller decides how the
+// front end was entered -- as one composed call (native_test_context_from_ingest below) or phase
+// by phase with a clock between them (std.compiler_entry.SourceRootEvalDriver). Neither caller
+// changes what is absorbed.
+// WHAT THIS ARM CARRIES, STATED AS THE CODE ACTUALLY BEHAVES (review 69819). Every arm stores the
+// mark `program_assembly_read_to_normalized_root_seeded` returned, and that producer does NOT
+// advance it uniformly: a read whose NORMALIZE or graft refused reports the mark its parse reached,
+// while a read whose TOKENIZE or PARSE refused reports the mark it was HANDED. An earlier revision
+// of this paragraph claimed the mark advances on every arm including the refusing ones. It does
+// not, and that sentence was the same defect this package exists to correct -- prose asserting a
+// behaviour the code does not have (DESIGN section 4c) -- written by the author who had just
+// corrected it elsewhere.
+//
+// WHY THE PARSE-REFUSAL ARM DOES NOT ADVANCE, AND WHAT THAT COSTS. A refused parse has minted ids:
+// `parse_prov_seeded` threads the allocator through the whole attempt. Those ids are reachable only
+// from values the refusal discards -- `ParseExprRejected` carries no provenance state, by
+// construction, because the parse core BACKTRACKS and a failed branch's mints are abandoned by
+// design. So the mark the attempt reached is not recoverable here without threading provenance out
+// of all 35 `ParseExprRejected` sites AND deciding what the allocator means across a backtrack,
+// which is a change to the parse core and its own package, not a fold-threading detail.
+//
+// THE CONSTRAINT THAT MAKES THE CURRENT ARM SAFE, NAMED RATHER THAN ASSUMED. Reusing a refused
+// parse's ids is sound exactly while nothing retains that parse's node loci. Today nothing does:
+// `native_test_vocabulary` `NativeTestFileRefusal` keeps `path` and a chain of links whose positions
+// are RESOLVED at the absorb (line and byte column, or a named port) -- no `Locus`, no occurrence id.
+// Widening it to carry the front end's raw loci WITHOUT FIRST ADVANCING THIS MARK REOPENS THE
+// COLLISION -- a refused file's retained `NodeLocus` would carry an
+// id the next file re-mints and records a span for, and `span_index_merge` is base-wins, so the
+// join would answer with a confident wrong file rather than refusing (DESIGN section 5). Whoever
+// widens that record owns this precondition, and it is written here because that is where the reuse
+// happens.
+fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  root_outcome: Outcome<NormalizedTree>,
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex
 ) -> NativeTestContextFoldState {
-  match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
+  match root_outcome {
     Rejected { diagnostics: d } =>
       NativeTestContextFoldState {
         roots: state.roots,
         index: state.index,
         file_refusals: list_snoc_item(
           xs: state.file_refusals,
-          item: native_test_file_refusal(path: read.compilation_unit, d: d)
-        )
+          item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
+        ),
+        accepted_file_advisories: state.accepted_file_advisories,
+        alloc: alloc
       }
-    Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: advisories } =>
       match qualified_name_from_module_node(root: root.root) {
         Rejected { diagnostics: d } =>
           NativeTestContextFoldState {
@@ -1266,69 +1516,204 @@ fn native_test_context_fold_step(
             index: state.index,
             file_refusals: list_snoc_item(
               xs: state.file_refusals,
-              item: native_test_file_refusal(path: read.compilation_unit, d: d)
-            )
+              item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
+            ),
+            accepted_file_advisories: state.accepted_file_advisories,
+            alloc: alloc
           }
         Accepted { value: qn, diagnostics: _ } =>
           NativeTestContextFoldState {
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
-            file_refusals: state.file_refusals
+            file_refusals: state.file_refusals,
+            accepted_file_advisories: native_test_accepted_advisories_absorb(
+              rows: state.accepted_file_advisories,
+              path: read.compilation_unit,
+              advisories: advisories
+            ),
+            alloc: alloc
           }
       }
   }
 }
 
-// One language model for the whole fold: dag_language_model() rebuilds the grammar, lex rules
-// and canonical-symbol set on every call, and calling it inside the cons closure paid that
-// once PER FILE — measured at ~0.3s/file of the context fold's wall time (2026-09-09,
-// v2-native route work), a pure recompute with no per-file dependency.
-fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+// The module-name projection is a pure read of the accepted root and mints no advisory of its own;
+// the file's advisories are the front end's, on `root_outcome`.
+fn native_test_accepted_advisories_absorb(
+  rows: FreeMonoid<NativeTestFileAdvisories>,
+  path: Symbol,
+  advisories: Diagnostics
+) -> FreeMonoid<NativeTestFileAdvisories> {
+  match advisories {
+    None => rows
+    Some { diagnostics: d } => list_snoc_item(xs: rows, item: native_test_file_advisories(path: path, d: d))
+  }
+}
+
+fn native_test_context_fold_step(
+  state: NativeTestContextFoldState,
+  read: DagSourceReadWitness,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  residue: Diagnostics,
+  scope: Fnv1a64Structural
+) -> NativeTestContextFoldState {
+  let result = program_assembly_read_to_normalized_root_seeded(
+    read: read,
+    lex: lex,
+    prepared: prepared,
+    residue: residue,
+    seed: state.alloc,
+    scope: scope
+  )
+  native_test_context_absorb(
+    state: state,
+    read: read,
+    root_outcome: result.produced,
+    alloc: result.alloc,
+    spans: result.spans
+  )
+}
+
+// THE ONCE-PER-FOLD INVARIANT, NAMED. dag_language_model() rebuilds the grammar, lex rules and
+// canonical-symbol set on every call and prepare_grammar runs the five validation checks and the
+// FIRST/nullable analysis; both are pure functions of nothing, so both are paid once here and
+// carried. Calling dag_language_model() inside the cons closure paid that once PER FILE --
+// measured at ~0.3s/file of the context fold's wall time (2026-09-09, required-v2-native lane
+// work), a pure recompute with no per-file dependency.
+//
+// IT IS A CARRIER BECAUSE THE PER-FILE SEAM NEEDS TO NAME IT. A driver that enters the front end
+// phase by phase hands the same prepared front end to each file; a second dag_language_model()
+// call on the driver side would be the same recompute re-introduced at the realization layer.
+type NativeTestFrontEnd {
+  lm: LanguageModel
+  lex: PreparedLexRules
+  prepared: PreparedGrammar
+  residue: Diagnostics
+}
+
+fn native_test_front_end_prepare() -> Outcome<NativeTestFrontEnd> {
   let lm = dag_language_model()
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } => {
-      let folded = fold_list(
-        xs: ingest,
-        empty: NativeTestContextFoldState {
-          roots: Empty,
-          index: source_root_index_empty(),
-          file_refusals: Empty
-        },
-        cons: fn(state, read) {
-          native_test_context_fold_step(
-            state: state,
-            read: read,
-            lm: lm,
-            prepared: prepared,
-            residue: residue
-          )
-        }
-      )
-      outcome_accepted(value: NativeTestContext {
-        resolution: resolution_context(lm: lm, roots: folded.roots),
-        index: folded.index,
-        active_roots: source_root_set_from_ingest(ingest: ingest),
-        file_refusals: folded.file_refusals
+    Accepted { value: prepared, diagnostics: residue } =>
+      outcome_accepted(value: NativeTestFrontEnd {
+        lm: lm,
+        lex: prepare_lex_rules(rules: lm.lex),
+        prepared: prepared,
+        residue: residue
+      })
+  }
+}
+
+fn native_test_context_state_empty() -> NativeTestContextFoldState {
+  NativeTestContextFoldState {
+    roots: Empty,
+    index: source_root_index_empty(),
+    file_refusals: Empty,
+    accepted_file_advisories: Empty,
+    alloc: occurrence_id_allocator_initial()
+  }
+}
+
+fn native_test_context_finish(
+  state: NativeTestContextFoldState,
+  front: NativeTestFrontEnd,
+  ingest: SourceRootIngest
+) -> NativeTestContext {
+  NativeTestContext {
+    resolution: resolution_context(
+      lm: front.lm,
+      roots: state.roots,
+      index: state.index,
+      active_roots: source_root_set_from_ingest(ingest: ingest),
+      policy: v2.std.resolution_policy.default_name_resolution_policy()
+    ),
+    file_refusals: state.file_refusals,
+    accepted_file_advisories: state.accepted_file_advisories
+  }
+}
+
+// The whole-ingest composition, retained as the single-call door: witnesses and any caller that
+// does not own a clock keep calling this, and it is DEFINED BY the same parts the driver enters
+// separately rather than restating the fold beside them.
+fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+  bind_outcome(
+    o: native_test_front_end_prepare(),
+    f: fn(front) {
+      bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      outcome_accepted(value: native_test_context_finish(
+        state: fold_list(
+          xs: ingest,
+          empty: native_test_context_state_empty(),
+          cons: fn(state, read) {
+            native_test_context_fold_step(
+              state: state,
+              read: read,
+              lex: front.lex,
+              prepared: front.prepared,
+              residue: front.residue,
+              scope: scope
+            )
+          }
+        ),
+        front: front,
+        ingest: ingest
+      ))
       })
     }
+  )
+}
+
+// EVERY PER-MODULE STEP OVER A NativeTestContext RETURNS THE CONTEXT IT ENDED WITH. The context's
+// resolution carries the module namespace provider (v2.compiler.name_resolve ResolutionContext
+// `namespaces`), which produces a module's namespace at most once per ingest -- but only for a
+// caller that binds the context it gets back. A loop over modules threads it; a caller that resolves
+// once projects the value and drops it.
+fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
+  NativeTestContext {
+    resolution: resolution,
+    file_refusals: context.file_refusals,
+    accepted_file_advisories: context.accepted_file_advisories
   }
+}
+
+fn native_test_module_admission(module: QualifiedName) -> Admission {
+  Admission { subject: ResolutionSubject { name: module }, imports: Empty }
+}
+
+type NativeTestResolved {
+  resolved: Outcome<ResolvedTree>
+  context: NativeTestContext
 }
 
 fn native_test_resolve_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<ResolvedTree> {
-  resolve_with_admission_context_policy(
-    context: context.resolution,
-    admission: Admission {
-      subject: ResolutionSubject { name: module },
-      imports: Empty
-    },
-    index: context.index,
-    active_roots: context.active_roots,
-    policy: v2.std.resolution_policy.default_name_resolution_policy()
-  )
+) -> NativeTestResolved {
+  let step = resolve_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestResolved {
+    resolved: step.resolved,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
+}
+
+type NativeTestWalk {
+  walk: ResolveNodeWalk
+  context: NativeTestContext
+}
+
+// THE SAME RESOLUTION AS native_test_resolve_module, OBSERVED WHOLE: every independent failure
+// chain, not only the first. native_test_resolve_module is its projection.
+fn native_test_resolve_module_walk(
+  context: NativeTestContext,
+  module: QualifiedName
+) -> NativeTestWalk {
+  let step = resolve_walk_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestWalk {
+    walk: step.walk,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
 }
 
 fn native_test_infer_resolved(
@@ -1336,7 +1721,7 @@ fn native_test_infer_resolved(
   resolved: ResolvedTree
 ) -> Outcome<NativeTestPreparedModule> {
   bind_outcome(
-    o: infer(tree: resolved),
+    o: infer_and_discharge(tree: resolved),
     f: fn(inferred) {
       outcome_accepted(value: NativeTestPreparedModule {
         module: module,
@@ -1346,14 +1731,23 @@ fn native_test_infer_resolved(
   )
 }
 
+type NativeTestPrepared {
+  prepared: Outcome<NativeTestPreparedModule>
+  context: NativeTestContext
+}
+
 fn native_test_prepare_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<NativeTestPreparedModule> {
-  bind_outcome(
-    o: native_test_resolve_module(context: context, module: module),
-    f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
-  )
+) -> NativeTestPrepared {
+  let step = native_test_resolve_module(context: context, module: module)
+  NativeTestPrepared {
+    prepared: bind_outcome(
+      o: step.resolved,
+      f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
+    ),
+    context: step.context
+  }
 }
 
 // THE DECLARATION SEARCH IS EXACT: a test identity names a top-level declaration of one prepared
@@ -1389,7 +1783,8 @@ fn native_test_decl_in_children(children: List<Edge>, name: Symbol) -> Optional<
       Present { value: v } => optional_present(value: v)
       Absent =>
         match e.label {
-          Named { name: edge_name } =>
+          StructuralLabel { label: _ } => optional_absent()
+          Authored { name: edge_name } =>
             if edge_name == name {
               optional_present(value: e.target)
             } else {
@@ -1405,12 +1800,32 @@ fn native_test_observation_refused(
   module: QualifiedName,
   declaration: Symbol,
   stage: NativeTestStage,
+  diagnostics: NonEmptyDiagnostics
+) -> NativeTestObservation {
+  NativeTestObservation {
+    module: module,
+    declaration: declaration,
+    verdict: NativeTestRefused { stage: stage, diagnostics: diagnostics }
+  }
+}
+
+// THE ROUTE'S OWN ENTRY REFUSALS ARE LOCATED AT THE DECLARATION THEY ARE ABOUT. A declaration the
+// scope does not hold, or holds as something other than an arrow, has no node the route can
+// anchor (the first has no node at all; the second's node is its whole body), and it has exactly
+// one identity: the qualified `<module>.<declaration>` the test identity already names.
+fn native_test_entry_refused(
+  module: QualifiedName,
+  declaration: Symbol,
   reason: Symbol
 ) -> NativeTestObservation {
   NativeTestObservation {
     module: module,
     declaration: declaration,
-    verdict: NativeTestRefused { stage: stage, reason: reason }
+    verdict: native_test_refused_located(
+      stage: NativeTestStageEntry,
+      reason: reason,
+      at: declaration_locus(declaration: qualified_name_snoc(qn: module, segment: declaration))
+    )
   }
 }
 
@@ -1429,7 +1844,7 @@ fn native_test_eval_body(
         module: prepared.module,
         declaration: declaration,
         stage: NativeTestStageEval,
-        reason: native_test_fatal_reason(d: d)
+        diagnostics: d
       )
     Accepted { value: rv, diagnostics: _ } =>
       if v2_eval_runtime_bool_is_true(value: rv) {
@@ -1454,25 +1869,38 @@ fn native_test_eval_body(
   }
 }
 
+fn native_test_eval_one_not_arrow(
+  prepared: NativeTestPreparedModule,
+  declaration: Symbol
+) -> NativeTestObservation {
+  native_test_entry_refused(
+    module: prepared.module,
+    declaration: declaration,
+    reason: ^native_test_entry_declaration_not_arrow
+  )
+}
+
 fn native_test_eval_one(
   prepared: NativeTestPreparedModule,
   declaration: Symbol
 ) -> NativeTestObservation {
   match native_test_module_scope_node(root: prepared.inferred.root, module: prepared.module) {
-    Rejected { diagnostics: _ } =>
-      native_test_observation_refused(
+    Rejected { diagnostics: d } =>
+      NativeTestObservation {
         module: prepared.module,
         declaration: declaration,
-        stage: NativeTestStageEntry,
-        reason: ^native_test_entry_module_scope_unresolved
-      )
+        verdict: native_test_refused_after(
+          stage: NativeTestStageEntry,
+          reason: ^native_test_entry_module_scope_unresolved,
+          d: d
+        )
+      }
     Accepted { value: scope, diagnostics: _ } =>
       match native_test_decl_in_children(children: scope.children, name: declaration) {
         Absent =>
-          native_test_observation_refused(
+          native_test_entry_refused(
             module: prepared.module,
             declaration: declaration,
-            stage: NativeTestStageEntry,
             reason: ^native_test_entry_declaration_not_found
           )
         Present { value: target } =>
@@ -1484,7 +1912,7 @@ fn native_test_eval_one(
                     module: prepared.module,
                     declaration: declaration,
                     stage: NativeTestStageEntry,
-                    reason: native_test_fatal_reason(d: d)
+                    diagnostics: d
                   )
                 Accepted { value: body, diagnostics: _ } =>
                   native_test_eval_body(
@@ -1493,13 +1921,12 @@ fn native_test_eval_one(
                     body: body
                   )
               }
-            _ =>
-              native_test_observation_refused(
-                module: prepared.module,
-                declaration: declaration,
-                stage: NativeTestStageEntry,
-                reason: ^native_test_entry_declaration_not_arrow
-              )
+            TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Cardinality } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
       }
   }
@@ -1679,18 +2106,73 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
     xs: ingest,
     empty: [],
     cons: fn(acc, read) {
+      let declared = native_lane_declared_module_name(content: read.source.carried)
       list_snoc_item(xs: acc, item: NativeLaneSourceFacts {
-        module: native_lane_declared_module_name(content: read.source.carried),
+        module: declared,
         path: read.compilation_unit,
         imports: native_lane_declared_imports(content: read.source.carried),
         malformed_import: native_lane_first_malformed_import(content: read.source.carried),
-        discovery: discover_floor_rows_for_source(
-          repo_path: symbol_lexeme(sym: read.compilation_unit),
-          content: read.source.carried
-        )
+        discovery: native_lane_discovery_for(declared: declared, read: read)
       })
     }
   )
+}
+
+// DISCOVERY IS RUN WHERE IT IS CONSULTED, AND ITS THREE CONSUMERS DO NOT WANT THE WHOLE CORPUS.
+//
+// `discover_floor_rows_for_source` is the expensive half of this fold -- a walk of the file's whole
+// content producing rows, sidecar violations and dispositions, against three line scans for the
+// other three fields. It was run for every read. Its consumers, read one at a time:
+//
+//   1. `native_lane_label_universe` reads `f.discovery.rows`, and does so INSIDE its own
+//      `if !native_route_universe_member(module_qn: declared) { acc }` guard. Non-members never
+//      reach it.
+//   2. `native_lane_unowned_row_path` reads `length(xs: f.discovery.rows)` only in its
+//      `f.module` Absent arm -- a file that declares no module yet enrolled rows.
+//   3. `floor_discovery_finalize_source_outcomes` folds EVERY state, and refuses on walk failures,
+//      disposition refusals and sidecar violations ANYWHERE in the corpus.
+//
+// Only (3) wants the corpus, and (3) is REPOSITORY HYGIENE, not this lane's question. Whether some
+// unrelated module places a sidecar correctly is not part of "are the requested tests complete",
+// and the lane asserting it makes a focused `gunbc test` pay a whole-corpus walk to answer a
+// question about one package. THE RATIO IS RE-DERIVED, NOT TRANSCRIBED (DESIGN section 6): the
+// adjudicating driver's own terminal line carries `universe` beside the `[native-cost-partition]`
+// line's `corpus_reads`, so the share of the corpus this lane's universe actually spans is read off
+// one run rather than copied into this sentence, where it would rot as the corpus grows.
+//
+// THE GUARANTEE IS PRESERVED AT ITS PROPER CONSUMER, WHICH IS WHY THIS IS DE-DUPLICATION AND NOT A
+// RUNG DROP. The required floor runs this same producer independently over its own prepared
+// sources and adjudicates the same finalize -- `required_floor_runner` reaches it through
+// `parse_floor_discovery_producer_result`. So the corpus-wide refusal still exists and still
+// blocks a landing; what is removed is a SECOND authority asserting it from a consumer whose
+// subject is a selected test population (DESIGN section 2, and section 3 on one fact one home).
+//
+// WHAT IS DELIBERATELY KEPT CORPUS-WIDE, because the distinction is the whole point: the import
+// scans stay. `malformed_import` and `imports` protect THIS LANE'S OWN COMPLETENESS -- a malformed
+// import line in any module the closure walk reaches would silently NARROW the closure, which is
+// the arm `native_lane_import_refusal` exists to refuse, and the closure can reach any module in
+// the corpus rather than only universe members. They are also three line scans rather than a walk.
+// Selected-test completeness is kept; repository hygiene is handed back.
+fn native_lane_discovery_for(
+  declared: Optional<String>,
+  read: DagSourceReadWitness
+) -> FloorDiscoveryWalkState {
+  match declared {
+    Absent =>
+      discover_floor_rows_for_source(
+        repo_path: symbol_lexeme(sym: read.compilation_unit),
+        content: read.source.carried
+      )
+    Present { value: qn } =>
+      if native_route_universe_member(module_qn: qn) {
+        discover_floor_rows_for_source(
+          repo_path: symbol_lexeme(sym: read.compilation_unit),
+          content: read.source.carried
+        )
+      } else {
+        floor_discovery_walk_state_zero()
+      }
+  }
 }
 
 // ONE UNIVERSE MEMBER'S MODULE: the identities discovery enrolled for it, and the path they were
@@ -1708,37 +2190,380 @@ type NativeLaneUniverse {
   module_sources: List<NativeRouteModuleSource>
 }
 
-fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
-  match facts.module {
-    Absent => []
-    Present { value: declared } =>
-      if native_route_universe_member(module_qn: declared) {
-        let declarations = fold_list(
-          xs: facts.discovery.rows,
-          empty: [],
-          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
-        )
-        if length(xs: declarations) == 0 {
-          []
-        } else {
-          [NativeLaneUniverseModule {
-            module: declared,
-            path: facts.path,
-            declarations: declarations
-          }]
-        }
+// THE DRIVER'S COMMAND LINE, AS A PLAN -- the same three-part shape v2.cli.compile_cli established,
+// applied to the other rendered main.
+//
+// WHY A PLAN AND NOT A DISPATCH. The rendered main decided the verb itself: it read argv, compared
+// the first word against three literals, and called one of three host functions, refusing inline at
+// three points with its own message and its own status. Every one of those is a DECISION, and
+// `gunbc.source_root_eval_driver_seed_growth` names the capability that retires its row -- the
+// rendered main becomes one call into a fold. A decision taken in emitted Rust is a decision no
+// `.dag` consumer can read, no witness can exercise, and no refusal vocabulary owns; moving it here
+// is what makes the verb surface a modeled fact rather than a property of the emitter's string.
+//
+// THE SPLIT IS THE SAME ONE AND FOR THE SAME REASON. The host cannot know which roots to walk, or
+// which facts file to read, until argv has been parsed; and this module cannot read a directory.
+// So `native_driver_parse` answers with a plan, `native_driver_plan_source_roots` says which roots
+// the host must walk, and the run folds receive what came back. A single call would force one of
+// those two to be wrong. The facts path needs no accessor: only `NativeDriverAdjudicate` carries
+// one, and the rendered main reads it from that verb in the arm that runs adjudication -- the same
+// plan value, not argv (and it retires with `facts_path` itself, trigger stated on the type).
+//
+// THE RENDERED MAIN CALLS THIS AND NOTHING ELSE DECIDES THE VERB. v1.compiler.emit_rust
+// `emit_source_root_eval_driver_main_rs` renders `main` as one `native_driver_parse` call, reads
+// the roots and facts path from the plan, sets the status `native_driver_plan_exit` returns, and
+// dispatches on the verb the plan carries -- the literal comparisons and inline refusals it used to
+// render are deleted in the same change, so these strings are the program's, not a copy of them.
+//
+// BEHAVIOUR IS PRESERVED, including the parts that look like omissions. `census` with no roots is
+// PLANNED here, not refused, because the rendered main collected an empty vector and let the run
+// fold answer -- adding a parse-time refusal would be a new wall wearing a refactor's clothes. The
+// one textual change is the usage line, which no longer names the binary: the emitted main
+// interpolated its crate name there, and a fold that cannot know which crate it was emitted into
+// must not spell one (an earlier draft of this row hardcoded `v1_compiled`, which is the name of
+// the PIPELINE-FREE crate and so was wrong for every binary this plan runs in).
+// `facts_path` IS EXISTING BEHAVIOUR OF A KNOWN-WRONG SHAPE (operator ruling 2026-09-21). The host
+// facts it names -- seed, closure and executable identities, old-route and malformed-control
+// verdicts -- are OBSERVED by the runner, and a user must never hand-author them as a file passed on
+// argv. It is kept only because nothing else supplies them yet, so removing it would starve the
+// lane. RETIREMENT TRIGGER, a capability rather than an artifact: the runner-side producer that
+// observes host facts feeds this plan. At that point `NativeDriverAdjudicate` loses `facts_path`,
+// and the public verb becomes `test` over a target pattern (v2 foundation package 9). No other
+// change retires it.
+type NativeDriverVerb
+  = NativeDriverCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
+  | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
+
+type NativeDriverPlan
+  = NativeDriverPlanned { verb: NativeDriverVerb }
+  | NativeDriverPlanRefused { reason: Symbol, detail: String }
+
+data native_driver_verb_census: String = "census"
+
+data native_driver_verb_census_resolve: String = "census-resolve"
+
+// THE FOURTH MODE, ITS OWN WORD: resolve AND infer every ingested module (native_census_module_inference),
+// for the folds that read inferred trees. Not census-resolve widened -- that verb's cost and meaning
+// stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
+data native_driver_verb_census_infer: String = "census-infer"
+
+data native_driver_verb_demand_census: String = "demand-census"
+
+data native_driver_verb_adjudicate: String = "adjudicate"
+
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+
+data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
+
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+
+// THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
+// goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
+// rendered by that module's own `target_pattern_refusal_text`, and the plan refuses with the misuse
+// status like every other unusable argv -- no universe is derived for a pattern that does not parse.
+fn native_driver_pattern_refused_detail(word: String, cause: TargetPatternRefusal) -> String {
+  concat(
+    concat(concat("REFUSED: adjudicate target pattern ", word), " -- "),
+    target_pattern_refusal_text(r: cause)
+  )
+}
+
+// THE STATE IS THE VERB ALREADY DECIDED, which is why there is no separate "mode" field. Once the
+// first word is read the remaining words mean something different for each verb -- roots for two of
+// them, a facts path then roots for the third -- so carrying the verb in the state is what lets one
+// step function stay total without asking "which mode are we in" at every arm.
+type NativeDriverParseState
+  = DriverSeekVerb
+  | DriverCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverCensusInferRoots { roots: FreeMonoid<String> }
+  | DriverDemandCensusRoots { roots: FreeMonoid<String> }
+  | DriverAdjudicateSeekFacts
+  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
+  | DriverParseRefused { reason: Symbol, detail: String }
+
+fn native_driver_unknown_verb_detail(word: String) -> String {
+  concat(
+    concat("REFUSED: unknown mode ", word),
+    " -- expected adjudicate, census, census-resolve, census-infer or demand-census"
+  )
+}
+
+// A REFUSED STATE ABSORBS THE REST OF ARGV rather than reconsidering it. The first bad word is the
+// located cause; a later word cannot repair it, and letting one re-decide the verb would make the
+// refusal depend on how many arguments followed it.
+fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> NativeDriverParseState {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      DriverParseRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      if word == native_driver_verb_census {
+        DriverCensusRoots { roots: [] }
+      } else if word == native_driver_verb_census_resolve {
+        DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_census_infer {
+        DriverCensusInferRoots { roots: [] }
+      } else if word == native_driver_verb_demand_census {
+        DriverDemandCensusRoots { roots: [] }
+      } else if word == native_driver_verb_adjudicate {
+        DriverAdjudicateSeekFacts
       } else {
-        []
+        DriverParseRefused {
+          reason: ^native_driver_unknown_verb,
+          detail: native_driver_unknown_verb_detail(word: word)
+        }
+      }
+    DriverCensusRoots { roots: roots } =>
+      DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusResolveRoots { roots: roots } =>
+      DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusInferRoots { roots: roots } =>
+      DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverDemandCensusRoots { roots: roots } =>
+      DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverAdjudicateSeekFacts =>
+      DriverAdjudicateSeekPattern { facts_path: word }
+    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      match parse_target_pattern(text: word) {
+        TargetPatternRefused { cause: cause } =>
+          DriverParseRefused {
+            reason: ^native_driver_adjudicate_pattern_refused,
+            detail: native_driver_pattern_refused_detail(word: word, cause: cause)
+          }
+        TargetPatternParsed { pattern: pattern } =>
+          DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: [] }
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
+      DriverAdjudicateRoots {
+        facts_path: facts_path,
+        pattern: pattern,
+        roots: list_snoc_item(xs: roots, item: word)
       }
   }
 }
 
-// THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
-// states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
-// disposition refusal or a sidecar violation ANYWHERE in the inventory refuses the derivation
-// exactly as it refuses the required floor's — and only then are the universe-prefixed modules
-// kept. Filtering first and finalizing the remainder would have made the lane blind to a sidecar
-// violation outside `v2.test.*`, which is a corpus refusal, not a lane exclusion.
+// THE TWO STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
+// argv was empty; still seeking a facts path means `adjudicate` was the last word. Both are
+// refusals the rendered main raised inline, and both are raised here with its exact message.
+fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      NativeDriverPlanRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_no_verb_given,
+        detail: native_driver_usage
+      }
+    DriverAdjudicateSeekFacts =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_facts_path,
+        detail: native_driver_adjudicate_needs_facts
+      }
+    DriverCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
+    DriverCensusResolveRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverCensusInferRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
+    DriverDemandCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
+    DriverAdjudicateSeekPattern { facts_path: _ } =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_pattern,
+        detail: native_driver_adjudicate_needs_pattern
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate { facts_path: facts_path, pattern: pattern, source_roots: roots }
+      }
+  }
+}
+
+fn native_driver_parse(argv: FreeMonoid<String>) -> NativeDriverPlan {
+  native_driver_parse_finish(
+    state: fold_list(xs: argv, empty: DriverSeekVerb, cons: native_driver_parse_step)
+  )
+}
+
+// A REFUSED PLAN NAMES NO ROOTS AND NO FACTS FILE, so the host walks nothing and reads nothing for
+// one. That is the same rule v2.cli.compile_cli states for its own refused plan: the reads a run
+// performs are derived from the plan, never from argv in parallel, or the roots walked and the
+// roots reported could disagree.
+fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String> {
+  match plan {
+    NativeDriverPlanRefused { reason: _, detail: _ } => []
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: roots } => roots
+        NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverCensusInfer { source_roots: roots } => roots
+        NativeDriverDemandCensus { source_roots: roots } => roots
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
+      }
+  }
+}
+
+// THE STATUS IS DERIVED FROM THE PLAN AND DECIDES NOTHING. Exit 2 is the cited misuse code, which
+// is what the rendered main used for all three of these refusals -- a command line that was not
+// usable, as distinct from work that ran and failed. A shim choosing the status from whether the
+// detail string was empty would be a second representation of the verdict, free to disagree with
+// the plan it came from.
+fn native_driver_plan_exit(plan: NativeDriverPlan) -> ProcessExit {
+  match plan {
+    NativeDriverPlanned { verb: _ } => ExitSuccess
+    NativeDriverPlanRefused { reason: _, detail: detail } =>
+      ExitFailure { code: exit_code_misuse, reason: detail }
+  }
+}
+
+// THE POPULATION IS A SELECTION: EVERY UNIVERSE IDENTITY IS A LABEL, AND THE PATTERN DECIDES.
+// `native_lane_label_universe` spells each identity of every universe member as a `Label` ONCE --
+// the module's package text once per module, `parse_label` once per declaration -- and carries the
+// parsed label forward; `native_lane_universe_module_for_source` then admits by
+// `extdeps.bazel.target_pattern` `target_pattern_matches` over the CARRIED label, the one matcher,
+// within the floor's universe. There is one decision site for a refused label and one parse per
+// identity (review 69565: the earlier pre-pass and filter each re-derived every label).
+// `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
+//
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
+// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
+// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
+// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
+// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
+//
+// PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
+// module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
+// sits below the filter.
+type NativeLaneLabeledIdentity {
+  declaration: String
+  label: Label
+}
+
+type NativeLaneLabeledSource {
+  module: String
+  path: Symbol
+  identities: List<NativeLaneLabeledIdentity>
+}
+
+type NativeLaneSourceLabels
+  = NativeLaneSourceLabeled { identities: List<NativeLaneLabeledIdentity> }
+  | NativeLaneSourceLabelRefused { identity: String }
+
+type NativeLaneLabeling
+  = NativeLaneLabeled { sources: List<NativeLaneLabeledSource> }
+  | NativeLaneLabelRefused { identity: String }
+
+// ONE PACKAGE TEXT PER MODULE, ONE PARSE PER DECLARATION. The first refused declaration absorbs:
+// it is the located cause, and a later row cannot repair it.
+fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> NativeLaneSourceLabels {
+  let package_text = native_route_module_package_text(module_qn: declared)
+  fold_list(
+    xs: rows,
+    empty: NativeLaneSourceLabeled { identities: [] },
+    cons: fn(state, row) {
+      match state {
+        NativeLaneSourceLabelRefused { identity: _ } => state
+        NativeLaneSourceLabeled { identities: identities } =>
+          match native_route_label_in_package(package_text: package_text, declaration: row.function) {
+            LabelRefused { cause: _ } =>
+              NativeLaneSourceLabelRefused { identity: concat(concat(declared, "."), row.function) }
+            LabelParsed { label: label } =>
+              NativeLaneSourceLabeled {
+                identities: list_snoc_item(
+                  xs: identities,
+                  item: NativeLaneLabeledIdentity { declaration: row.function, label: label }
+                )
+              }
+          }
+      }
+    }
+  )
+}
+
+// ONLY UNIVERSE MEMBERS ARE LABELED. A source with no declared module never reaches here (the
+// unowned-row refusal runs first), and a module outside the floor's universe is skipped whole.
+fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
+  fold_list(
+    xs: facts,
+    empty: NativeLaneLabeled { sources: [] },
+    cons: fn(acc, f) {
+      match acc {
+        NativeLaneLabelRefused { identity: _ } => acc
+        NativeLaneLabeled { sources: sources } =>
+          match f.module {
+            Absent => acc
+            Present { value: declared } =>
+              if !native_route_universe_member(module_qn: declared) {
+                acc
+              } else {
+                match native_lane_label_rows(declared: declared, rows: f.discovery.rows) {
+                  NativeLaneSourceLabelRefused { identity: identity } =>
+                    NativeLaneLabelRefused { identity: identity }
+                  NativeLaneSourceLabeled { identities: identities } =>
+                    NativeLaneLabeled {
+                      sources: list_snoc_item(
+                        xs: sources,
+                        item: NativeLaneLabeledSource { module: declared, path: f.path, identities: identities }
+                      )
+                    }
+                }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn native_lane_universe_module_for_source(
+  pattern: TargetPattern,
+  source: NativeLaneLabeledSource
+) -> List<NativeLaneUniverseModule> {
+  let declarations = fold_list(
+    xs: source.identities,
+    empty: [],
+    cons: fn(acc, identity) {
+      if target_pattern_matches(pattern: pattern, target: identity.label) {
+        list_snoc_item(xs: acc, item: identity.declaration)
+      } else {
+        acc
+      }
+    }
+  )
+  if length(xs: declarations) == 0 {
+    []
+  } else {
+    [NativeLaneUniverseModule { module: source.module, path: source.path, declarations: declarations }]
+  }
+}
+
+
+// THE DERIVATION FINALIZES THE FLOOR'S OWN PRODUCER, OVER THE SOURCES IT STILL WALKS. Every state
+// this lane holds is handed to floor_discovery_finalize_source_outcomes unchanged, so a walk
+// failure, a disposition refusal or a sidecar violation in a WALKED source refuses the derivation
+// exactly as it refuses the required floor's, and only then are the universe-prefixed modules
+// kept.
+//
+// WHAT CHANGED, SAID WHERE THE READER MEETS THE FINALIZE RATHER THAN ONLY AT THE SCOPING. The set
+// of walked sources is no longer the whole inventory: native_lane_discovery_for substitutes a zero
+// state for a universe non-member, so a sidecar violation in a module outside `v2.test.*` no
+// longer refuses THIS lane. An earlier revision of this note named that exact narrowing as the
+// thing to avoid. It is now the behaviour, and the argument for it is NOT that the violation
+// stopped mattering -- it is that this lane was the SECOND authority asserting it. The required
+// floor runs the same producer over its own prepared sources and adjudicates the same finalize
+// (required_floor_runner, through parse_floor_discovery_producer_result), so the corpus refusal
+// still exists and still blocks a landing. That is what makes this a de-duplication (DESIGN
+// section 2, one fact one home) rather than a section 4b rung drop.
+//
+// THE NARROWING IS NOT TAKEN ON THIS NOTE'S WORD. Four arms in
+// test.claim.native_lane_import_refusal pin it at the boundary, in refusals rather than row
+// counts: a walked member's violation still refuses here, a non-member's no longer does, the
+// floor's own producer still refuses THAT SAME non-member content, and a module-less source keeps
+// its walk and still refuses. Restore the walk for non-members and the second goes red; disarm
+// the finalize and the other three do.
 // A SOURCE THAT ENROLS ROWS AND DECLARES NO MODULE IS A REFUSAL, NOT A DROP. Discovery reads the
 // path and the bytes, so it can enrol test identities for a file whose own header names no module
 // — and such an identity cannot be routed, because the driver resolves by module. The seed refused
@@ -1760,7 +2585,86 @@ fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> Optional<
 }
 
 fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
-  let facts = native_lane_source_facts(ingest: ingest)
+  native_lane_universe_selected(ingest: ingest, pattern: native_route_default_pattern())
+}
+
+// THE SELECTED UNIVERSE: the same derivation over the identities `pattern` admits.
+// `native_lane_universe` is this at the default pattern. THE RENDERED MAIN NO LONGER CALLS IT --
+// it calls `native_lane_universe_of_facts` with the facts it already holds and the pattern it was
+// asked for; this entry remains for callers that hold an ingest and not facts.
+//
+// A caller naming a narrower pattern gets a narrower population through the same producer, never a
+// filter applied to the default universe after the fact. So a refusal raised by a source this lane
+// WALKS still refuses even when the pattern excludes that source -- a narrower question does not
+// make a broken corpus sound. What changed is which sources are walked at all, not what selection
+// does with their refusals: discovery is scoped to universe members and module-less sources by
+// `native_lane_discovery_for`, so a violation in a non-member is no longer this lane's to raise.
+// That boundary, and the required floor that still owns it, are argued at the finalize below.
+// THE SOURCE FACTS ARE DERIVED ONCE AND CARRIED, BECAUSE THE LANE'S MAIN ALREADY HOLDS THEM.
+//
+// `native_lane_source_facts` is a fold over the WHOLE ingest that, per read, splits the file into
+// lines, scans for the module header, scans for imports, and scans for the first malformed import.
+// Those three scans stay corpus-wide, because they protect THIS LANE'S OWN COMPLETENESS: a
+// malformed import line in any module the closure walk can reach would silently narrow the
+// closure. Discovery no longer joins them for every read -- native_lane_discovery_for walks a
+// universe member or a module-less source and hands a zero state for anything else.
+//
+// THE PIPELINE AS IT NOW STANDS, because a reader meeting this function should not have to
+// assemble it:
+//
+//     read the supplied inventory, scan module and import facts   (corpus-wide)
+//         -> run discovery for native-universe members and module-less sources
+//         -> finalize those discovery outcomes
+//         -> apply the requested target pattern
+//         -> prepare the selected tests' dependency closure
+//
+// THE NATIVE-UNIVERSE BOUNDARY IS NOT THE SEVEN-TEST BOUNDARY, and conflating them would overstate
+// what this buys. Discovery is scoped to `v2.test.*` membership, not to the requested pattern, so
+// a run naming one package still walks every other native test module before the pattern narrows
+// the population -- and acquisition and the import scans remain broader still. This is an
+// incremental reduction with a boundary that is visible on purpose, not the focused path's final
+// shape.
+//
+// THE INSTRUMENT IS NAMED AND ITS NUMBERS ARE NOT COPIED HERE (DESIGN section 6). The lane's own
+// `[native-cost-partition]` receipt carries the `universe_derivation` span against the driver wall,
+// and `corpus_reads` beside `closure_reads`, on any adjudicating run of a selected pattern -- the
+// producer is `std.compiler_entry` `SourceRootEvalDriver`'s adjudicate mode, so the figures are
+// re-derived by running it rather than read from this comment.
+//
+// WHAT THAT RECEIPT ESTABLISHES, which is a claim about SHAPE and survives without any digit: the
+// `universe_derivation` phase does not narrow with the pattern -- `corpus_reads` stays at corpus
+// scale while `closure_reads` tracks the selection -- and it was entered twice per run. That is the
+// OLD PHASE COST and NOT a saving demonstrated by this change. What the saving actually is has to
+// come from an integrated native run, which this change does not perform.
+//
+// The rendered adjudicate main binds `source_facts` for the closure derivation --
+// `native_lane_closure_modules`, `native_lane_closure_ingest`, `native_lane_ingest_receipt` and
+// `native_lane_ingest_matches_closure` all consume it -- and then called the universe producer,
+// which opened by deriving the same fold again from the same ingest. Two identical folds over one
+// corpus, in one process, with a shared-state least common ancestor ONE LINE above: DESIGN
+// section 2's authored duplication, where the repetition is evidence about the demand graph rather
+// than a caching obligation, and the repair is to carry the first value rather than to make the
+// second request cheap.
+//
+// THE SPLIT IS WHERE THE VALUE ALREADY WAS. The body took `facts` after its first line, so
+// `native_lane_universe_of_facts` IS that body and this stays the ingest-taking entry for callers
+// that do not already hold the facts. The PATTERN is threaded rather than defaulted, so the entry
+// the main calls is the same one a caller naming a narrower pattern reaches, so a call site
+// naming a different pattern changes that argument and nothing else.
+//
+// WHAT A NATIVE BUILD WOULD AND WOULD NOT ESTABLISH: that the rendered main passes the facts it
+// already bound is a property of emitted Rust, and no `.dag` arm holds it -- but a SUCCESSFUL
+// BUILD ALONE PROVES COMPILATION, NOT THE ABSENCE OF A SECOND FOLD. Establishing that needs the
+// produced main and its call path inspected for the carried binding, with the runtime claim read
+// off the lane's existing `[native-cost-partition]` observations.
+fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPattern) -> Outcome<NativeLaneUniverse> {
+  native_lane_universe_of_facts(facts: native_lane_source_facts(ingest: ingest), pattern: pattern)
+}
+
+fn native_lane_universe_of_facts(
+  facts: List<NativeLaneSourceFacts>,
+  pattern: TargetPattern
+) -> Outcome<NativeLaneUniverse> {
   match native_lane_malformed_import_row(facts: facts) {
     Present { value: f } =>
       native_lane_refused(
@@ -1780,16 +2684,77 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
             detail: symbol_lexeme(sym: unowned)
           )
         Absent =>
-          native_lane_universe_after_ownership(facts: facts)
+          match native_lane_label_universe(facts: facts) {
+            NativeLaneLabelRefused { identity: identity } =>
+              native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+            NativeLaneLabeled { sources: sources } =>
+              native_lane_universe_after_ownership(pattern: pattern, facts: facts, sources: sources)
+          }
       }
   }
+}
+
+// A SINGLE TARGET THAT NAMES A MODULE IS A MISSPELLING, AND IT REFUSES WITH THE RIGHT ONE (manager
+// ruling 2026-09-21). Under this lane's correspondence a module namespace is a PACKAGE and a
+// declaration is a TARGET, so `//v2/test/parse:expression_bodied_fn_decl_parse` asks for a
+// declaration of that name in module `v2.test.parse`. When no identity answers it AND a universe
+// module is named `<package>.<target>`, the author meant that module -- the file-as-target
+// spelling -- and an empty universe would be a silent wrong answer. The refusal names the module
+// spelling, `//<package>/<target>:all`. The comparison is made in PACKAGE-TEXT space with the one
+// correspondence the selection already uses (gunbc.witness_v2_native_route
+// `native_route_module_package_text`), never by an inverse fold back to namespaces. A single
+// target that matches nothing and names no module is left to the caller's own emptiness contract.
+fn native_lane_pattern_named_module(
+  pattern: TargetPattern,
+  modules: List<NativeLaneUniverseModule>,
+  sources: List<NativeLaneLabeledSource>
+) -> Optional<String> {
+  match pattern {
+    SubtreeTargets { package: _ } => optional_absent()
+    PackageTargets { package: _ } => optional_absent()
+    SingleTarget { label: label } =>
+      if length(xs: modules) > 0 {
+        optional_absent()
+      } else {
+        let package_text = render_package(p: label.package)
+        let candidate_package_text = if package_text == "" {
+          label.target.name as String
+        } else {
+          concat(concat(package_text, "/"), label.target.name as String)
+        }
+        match list_find_first(
+          xs: sources,
+          predicate: fn(s) { native_route_module_package_text(module_qn: s.module) == candidate_package_text }
+        ) {
+          Absent => optional_absent()
+          Present { value: s } => optional_present(value: s.module)
+        }
+      }
+  }
+}
+
+fn native_lane_pattern_names_a_module_detail(pattern: TargetPattern, module_qn: String) -> String {
+  concat(
+    concat(
+      concat(concat("target pattern ", render_target_pattern(pattern: pattern)), " names MODULE "),
+      module_qn
+    ),
+    concat(
+      ", not a declaration in its package -- did you mean //",
+      concat(native_route_module_package_text(module_qn: module_qn), ":all")
+    )
+  )
 }
 
 // THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
 // it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
 // the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
 // the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
-fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> Outcome<NativeLaneUniverse> {
+fn native_lane_universe_after_ownership(
+  pattern: TargetPattern,
+  facts: List<NativeLaneSourceFacts>,
+  sources: List<NativeLaneLabeledSource>
+) -> Outcome<NativeLaneUniverse> {
   match floor_discovery_finalize_source_outcomes(
     outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
   ) {
@@ -1797,16 +2762,23 @@ fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> O
       native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
     FloorDiscoveryAccepted { rows: _ } => {
       let modules = fold_list(
-        xs: facts,
+        xs: sources,
         empty: [],
-        cons: fn(acc, f) {
+        cons: fn(acc, source) {
           fold_list(
-            xs: native_lane_universe_module_for_source(facts: f),
+            xs: native_lane_universe_module_for_source(pattern: pattern, source: source),
             empty: acc,
             cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
           )
         }
       )
+      match native_lane_pattern_named_module(pattern: pattern, modules: modules, sources: sources) {
+        Present { value: module_qn } =>
+          native_lane_refused(
+            reason: ^native_lane_pattern_names_a_module,
+            detail: native_lane_pattern_names_a_module_detail(pattern: pattern, module_qn: module_qn)
+          )
+        Absent =>
       outcome_accepted(value: NativeLaneUniverse {
         modules: modules,
         identities: fold_list(
@@ -1830,6 +2802,7 @@ fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> O
           }
         )
       })
+      }
     }
   }
 }
@@ -2153,8 +3126,17 @@ fn native_lane_closure_ingest(
 // timer improvement, and only a POPULATION with a discriminating RED catches it.
 //
 // TWO POPULATIONS, NAMED SEPARATELY BECAUSE THEY COST DIFFERENT THINGS. `scanned` is what the route
-// OPENED for textual discovery — the corpus, because discovery is a floor authority whose subject
-// is the corpus and a `test`-marked declaration outside a sidecar must still be found. `ingested`
+// OPENED for textual discovery — still the corpus, and THE REASON IS NO LONGER THE ONE THIS NOTE
+// USED TO GIVE. It read "because discovery is a floor authority whose subject is the corpus and a
+// `test`-marked declaration outside a sidecar must still be found". That clause is now FALSE for
+// this lane: after `native_lane_discovery_for`, a `test`-marked declaration in a non-member module
+// is exactly what this lane no longer finds -- it is handed to the required floor, which reaches
+// the same `floor_discovery_finalize_source_outcomes` over the full inventory. The population is
+// unchanged; only the justification rotted, which is the stale-rationale tell this same change
+// renames `the_out_of_selection_source_is_discovered_not_refused` to avoid one file over. THE
+// SURVIVING REASON is the one stated at `native_lane_source_facts` above: the header and import
+// scans stay corpus-wide to protect THIS LANE'S OWN CLOSURE COMPLETENESS, because a malformed
+// import line in any module the closure walk can reach would silently narrow the closure. `ingested`
 // is what it TOKENIZED, PARSED AND FOLDED, and the acceptance is an identity join on that one: it
 // equals the transitive import closure of the universe's modules plus the controls' module,
 // exactly. The RED is a module OUTSIDE that closure, malformed or expensive, whose edits change
@@ -2378,37 +3360,230 @@ type NativeLaneModuleResolution
   | NativeLaneModuleContextRowsDecided { rows: List<NativeRouteMemberRow> }
   | NativeLaneModuleResolveRowsDecided { rows: List<NativeRouteMemberRow> }
 
+// THE DECISION "DID THIS MODULE RESOLVE IN THIS CONTEXT" HAS ONE AUTHORITY AND TWO CONSUMERS AT
+// DIFFERENT GRAINS. The lane fans it out to one member row per declaration and keeps the resolved
+// tree to infer from; the whole-tree census keeps the DIAGNOSTICS and drops the tree. Those are two
+// readings of one decision, so the decision is taken once here rather than spelled twice -- a second
+// function reaching native_test_resolve_module behind its own file-refusal precheck would be the
+// fork DESIGN section 3 forbids, in the place it would matter most: the two spellings would then be
+// free to disagree about whether a file the context refused is a module that resolved.
+// THE VERDICT CARRIES THE DIAGNOSTICS UNFOLDED, and that is the whole reason this is a separate
+// declaration rather than an inlined precheck. diagnostics_fatal_reason collapses NonEmptyDiagnostics
+// to its LAST reason, which is the right summary for a member row whose grain is the declaration and
+// the wrong one for a census whose grain is the occurrence: v2.compiler.03_resolve emits one
+// diagnostic PER REFUSED NODE, each carrying its own locus, so a fold to one reason discards every
+// site but one. Summarizing is the CONSUMER's move; this fold hands both consumers everything the
+// resolver said.
+type NativeModuleResolveVerdict
+  = NativeModuleResolveFileRefused { refusal: NativeTestFileRefusal }
+  | NativeModuleResolveImportTargetFileRefused {
+      target: NativeTestFileRefusal
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeModuleResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeModuleResolveAccepted { resolved: ResolvedTree }
+
+// The walk ran under context.resolution's index, so that index is minted beside the root. An
+// accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
+// `import_attribution` IS THE ANSWER THE VERDICT WAS DECIDED FROM, CARRIED rather than re-asked:
+// the census needs the arm the verdict collapses -- an import graph it could not read is not the
+// same fact as one it read and found clean (census C) -- and re-running the lookup to recover it
+// would be the same demand paid twice (DESIGN section 2).
+type NativeModuleResolveStep {
+  verdict: NativeModuleResolveVerdict
+  context: NativeTestContext
+  import_attribution: NativeImportTargetAttribution
+}
+
+// WHETHER A REFUSED MODULE'S REFUSAL IS ATTRIBUTABLE TO AN IMPORT TARGET THE CONTEXT REFUSED. Three
+// answers and a not-asked arm, because "no refused target" and "could not read the imports" are
+// different facts: the second is a completeness gap, and reading it as the first would silently
+// make a cascade member its own root (census C; the #13019 design rule).
+// ATTRIBUTION IS INGEST-ONLY, SO A ROOT IS ONE HOP AWAY BY CONSTRUCTION. The target is looked up in
+// context.file_refusals, and a file refusal's fatal reason is a front-end reason -- never an
+// import-target refusal -- so the target this names is already the root of its cascade.
+type NativeImportTargetAttribution
+  = NativeImportTargetRefused { target: NativeTestFileRefusal }
+  | NativeImportTargetsAdmitted
+  | NativeImportTargetsUnreadable { reason: Symbol }
+  | NativeImportTargetNotAsked
+
+// A MODULE WHOSE IMPORT TARGET WAS REFUSED AT INGEST IS TOLD SO. When a file the context refused
+// declares a module this one imports, none of that module's declarations entered the index, so the
+// resolver finds each imported name unbound. That is true and located, but it names the SYMPTOM:
+// measured on the native seven (quiet-hawk-702, 2026-09-29), every refusal pointed at `tokenize` while
+// the cause was v2.compiler.tokenize's own file, refused by body lowering. The verdict keeps the
+// resolver's diagnostics and names the refused target first. It is decided only when resolution
+// already refused, so a module that resolved is never re-attributed.
+// The import targets are read from the module's own captured import rows
+// (v2.compiler.normalized_tree NormalizedTree import_bindings), and a row's target module is its path
+// less the imported name. The refused module is the one the refused file's header declares.
+fn native_import_target_attribution(context: NativeTestContext, module: QualifiedName) -> NativeImportTargetAttribution {
+  match context.resolution {
+    Rejected { diagnostics: _ } => NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+    Accepted { value: shared, diagnostics: _ } =>
+      match map_lookup(m: shared.roots.by_name, key: module) {
+        Absent => NativeImportTargetsUnreadable { reason: ^native_import_target_module_not_indexed }
+        Present { value: tree } =>
+          fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, refusal) {
+            match found {
+              NativeImportTargetRefused { target: _ } => found
+              NativeImportTargetsUnreadable { reason: _ } => found
+              NativeImportTargetNotAsked => found
+              NativeImportTargetsAdmitted =>
+                match refusal.module {
+                  Absent => found
+                  Present { value: refused_module } =>
+                    if any(xs: normalized_tree_import_bindings(tree: tree), predicate: fn(row) {
+                      qualified_name_init(qn: row.target) == refused_module
+                    }) {
+                      NativeImportTargetRefused { target: refusal }
+                    } else {
+                      found
+                    }
+                }
+            }
+          })
+      }
+  }
+}
+
+fn native_import_target_refusal_diagnostics(target: NativeTestFileRefusal, resolver: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
+  let at = Textual { file: target.path, extent: WholeFile }
+  NonEmptyDiagnostics {
+    head: Diagnostic { reason: ^native_prepare_reason_import_target_file_refused, at: at, correction: Unavailable { reason: UserInputBoundary } },
+    tail: list_append(
+      left: [Diagnostic { reason: native_test_file_refusal_fatal_reason(fr: target), at: at, correction: Unavailable { reason: UserInputBoundary } }, resolver.head],
+      right: resolver.tail
+    )
+  }
+}
+
+// THE CLOSURE INDEX IS DEMANDED ON THE SHARED CONTEXT AND CARRIED FORWARD on the returned step, so the
+// next module of the lane reads it instead of re-resolving the closure (review 74212).
+fn native_module_resolve_verdict(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  module: String,
+  path: Symbol
+) -> NativeModuleResolveStep {
+  match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
+    Present { value: fr } =>
+      NativeModuleResolveStep {
+        verdict: NativeModuleResolveFileRefused { refusal: fr },
+        context: context,
+        import_attribution: NativeImportTargetNotAsked
+      }
+    Absent =>
+      let step = native_test_resolve_module_walk(
+        context: context,
+        module: qualified_name_from_dotted_string(dotted: module)
+      )
+      match step.walk {
+        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+          let attribution = native_import_target_attribution(
+            context: step.context,
+            module: qualified_name_from_dotted_string(dotted: module)
+          )
+          NativeModuleResolveStep {
+            verdict: match attribution {
+              NativeImportTargetRefused { target: target } =>
+                NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
+              NativeImportTargetsAdmitted => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetsUnreadable { reason: _ } => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetNotAsked => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+            },
+            context: step.context,
+            import_attribution: attribution
+          }
+        ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: lexical } =>
+          match step.context.resolution {
+            Accepted { value: shared, diagnostics: d } =>
+              let closure = closure_declarations_demand(shared: shared)
+              NativeModuleResolveStep {
+                verdict: NativeModuleResolveAccepted {
+                  resolved: resolved_tree_of(
+                    root: resolved,
+                    symbol_index: shared.symbol_index,
+                    closure_declarations: closure.declarations,
+                    unavailable_providers: closure.refused,
+                    lexical: lexical
+                  )
+                },
+                context: native_test_context_with_resolution(
+                  context: step.context,
+                  resolution: Accepted { value: closure.context, diagnostics: d }
+                ),
+                import_attribution: NativeImportTargetNotAsked
+              }
+            Rejected { diagnostics: r } =>
+              NativeModuleResolveStep {
+                verdict: NativeModuleResolveRefused {
+                  first: r,
+                  rest: [],
+                  observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+                },
+                context: step.context,
+                import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+              }
+          }
+      }
+  }
+}
+
+type NativeLaneModuleResolutionStep {
+  resolution: NativeLaneModuleResolution
+  context: NativeTestContext
+}
+
 fn native_lane_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeLaneUniverseModule
-) -> NativeLaneModuleResolution {
-  match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
-    Present { value: fr } =>
-      NativeLaneModuleContextRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
-        )
-      }
-    Absent =>
-      match native_test_resolve_module(
-        context: context,
-        module: qualified_name_from_dotted_string(dotted: entry.module)
-      ) {
-        Rejected { diagnostics: d } =>
-          NativeLaneModuleResolveRowsDecided {
-            rows: native_lane_module_refusal_rows(
-              entry: entry,
-              verdict: NativeTestRefused {
-                stage: NativeTestStagePrepare,
-                reason: native_test_fatal_reason(d: d)
-              }
+) -> NativeLaneModuleResolutionStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeLaneModuleResolutionStep {
+    resolution: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: fr } =>
+        NativeLaneModuleContextRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: native_test_refused_located(
+              stage: NativeTestStageContext,
+              reason: native_test_file_refusal_fatal_reason(fr: fr),
+              at: Textual { file: fr.path, extent: WholeFile }
             )
-          }
-        Accepted { value: resolved, diagnostics: _ } =>
-          NativeLaneModuleResolved { resolved: resolved }
-      }
+          )
+        }
+      NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
+          )
+        }
+      NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
+          )
+        }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        NativeLaneModuleResolved { resolved: resolved }
+    },
+    context: step.context
   }
 }
 
@@ -2424,15 +3599,88 @@ fn native_lane_module_inference(
       NativeLaneModuleRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
-          verdict: NativeTestRefused {
-            stage: NativeTestStagePrepare,
-            reason: native_test_fatal_reason(d: d)
-          }
+          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
         )
       }
     Accepted { value: prepared, diagnostics: _ } =>
       NativeLaneModulePrepared { prepared: prepared }
   }
+}
+
+// THE OCCURRENCE-KEY PREMISE, OBSERVED ON THE TREES INFER IS HANDED. Keying infer's facts on a node's
+// authored occurrence is sound only if no resolved module holds two different nodes under one authored
+// occurrence (v2.compiler.inferred_tree authored_occurrence_collisions). The native route resolves every
+// admitted module, so the census rides that route: one row per RESOLVED module. Its reader is the
+// lowering repair that must drive colliding_modules to zero before any occurrence key lands; the rule
+// it measures against is v2.std.node's same-graph lowering keeping its source text's occurrence.
+// OBSERVATION ONLY -- nothing here changes a module's standing, row or refusal. A module that did not
+// resolve has no row, and the summary counts it as UNOBSERVED against the universe size, never as
+// zero collisions.
+type NativeLaneOccurrenceCollision {
+  occurrence: Int
+  first_kind: NodeKind
+  second_kind: NodeKind
+}
+
+type NativeLaneOccurrenceCensusRow {
+  module: String
+  collisions: List<NativeLaneOccurrenceCollision>
+}
+
+type NativeLaneOccurrenceCensus {
+  universe: Int
+  observed: Int
+  colliding: List<NativeLaneOccurrenceCensusRow>
+}
+
+fn native_lane_occurrence_collision(c: AuthoredOccurrenceCollision) -> NativeLaneOccurrenceCollision {
+  NativeLaneOccurrenceCollision { occurrence: c.occurrence.value, first_kind: c.first.kind, second_kind: c.second.kind }
+}
+
+fn native_lane_occurrence_census_row(entry: NativeLaneUniverseModule, resolved: ResolvedTree) -> NativeLaneOccurrenceCensusRow {
+  NativeLaneOccurrenceCensusRow {
+    module: entry.module,
+    collisions: fold_list(
+      xs: authored_occurrence_collisions(root: resolved.root),
+      empty: Empty,
+      cons: fn(acc, c) { list_snoc_item(xs: acc, item: native_lane_occurrence_collision(c: c)) }
+    )
+  }
+}
+
+// THE READER. The host hands every row it minted and the universe size; the census keeps the
+// colliding rows by identity and counts the rest, so observed + unobserved = universe by construction.
+fn native_lane_occurrence_census(universe: Int, rows: List<NativeLaneOccurrenceCensusRow>) -> NativeLaneOccurrenceCensus {
+  NativeLaneOccurrenceCensus {
+    universe: universe,
+    observed: length(xs: rows),
+    colliding: fold_list(xs: rows, empty: Empty, cons: fn(acc, r) {
+      if is_empty(xs: r.collisions) { acc } else { list_snoc_item(xs: acc, item: r) }
+    })
+  }
+}
+
+fn native_lane_occurrence_kind_text(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: s } } => concat("atom:", symbol_lexeme(sym: s))
+    TypeNode { connective: _ } => "type"
+    ComputationNode { behavior: _ } => "computation"
+  }
+}
+
+fn native_lane_occurrence_census_lines(c: NativeLaneOccurrenceCensus) -> List<String> {
+  let head = concat("[native-occurrence-census] universe=", concat(to_string(c.universe),
+    concat(" observed=", concat(to_string(c.observed),
+    concat(" unobserved=", concat(to_string(c.universe - c.observed),
+    concat(" colliding_modules=", to_string(length(xs: c.colliding)))))))))
+  fold_list(xs: c.colliding, empty: Cons { head: head, tail: Empty }, cons: fn(acc, r) {
+    fold_list(xs: r.collisions, empty: acc, cons: fn(acc2, x) {
+      list_snoc_item(xs: acc2, item: concat("[native-occurrence-collision] module=", concat(r.module,
+        concat(" occurrence=", concat(to_string(x.occurrence),
+        concat(" first=", concat(native_lane_occurrence_kind_text(k: x.first_kind),
+        concat(" second=", native_lane_occurrence_kind_text(k: x.second_kind)))))))))
+    })
+  })
 }
 
 // ONE IDENTITY, EVALUATED. The per-declaration grain the profile lane prices: this call and nothing
@@ -2451,6 +3699,887 @@ fn native_lane_identity_row(
     declaration: declaration,
     verdict: observation.verdict
   )
+}
+
+// THE WHOLE-TREE CENSUS ROSTER. The universe roster above answers "which modules carry test
+// identities"; this one answers "which modules the ingest carries at all". They are separate folds
+// rather than one fold with a flag because universe membership is a PREFIX test on the qualified
+// name AND an enrolled discovery row, and a census that inherited either would report a residual
+// over the test corpus while naming one over the tree.
+// THE MODULE NAME IS READ FROM THE SOURCE, NOT FROM THE CONTEXT INDEX. A file the context refused
+// never reached absorb, so it holds no index binding; a roster derived from the index would exclude
+// exactly the files whose refusals a census exists to report, and it would do so silently.
+// IT IS NOT native_lane_source_facts EITHER, and that is a cost decision rather than a taste one:
+// those facts bundle four per-file scans, one of which is the floor's discovery fold, and a census
+// asks for none of them but the module header. Over the whole tree that bundle is paid 6k times to
+// read one line each time. This reuses the same module-name authority the facts record reuses.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D13 DEPENDENCY-DEMAND CENSUS: THE WHOLE-CLOSURE ROUTE (`demand-census`)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A FRONT END OF ITS OWN, ENTERED PHASE BY PHASE. Production lowering refuses every fn with a
+// `uses` clause, and native_test_context_absorb drops a refused file from the roots and the source
+// root index -- so in the production context a uses fn's module is absent, and so are the
+// operations and fns it declares. A census that stripped one module at a time would read every edge
+// into such a module as outside the closure. So this route folds the whole ingest once with the
+// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
+// uses: the only difference from native_test_context_fold_step is the strip, which is why that step
+// is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
+//
+// THE CONTEXT NEVER LEAVES THIS ROUTE. native_demand_census_report returns a DemandCensusReport --
+// rows of authored rows, derived demand and verdicts -- and no tree, context or prepared module, so
+// nothing the elided front end produced can reach infer, eval or emission. Its one caller is the
+// emitted driver's `demand-census` verb, run by `gunbc test //gunbc/instruments:dependency-demand-census`.
+
+type NativeDemandCensusFoldState {
+  context: NativeTestContextFoldState
+  authored: List<AuthoredUsesFunction>
+  file_refused: List<AuthoredUsesFunction>
+  unreadable: Int
+}
+
+fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
+  fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_read(
+  state: NativeDemandCensusFoldState,
+  read: DagSourceReadWitness,
+  front: NativeTestFrontEnd,
+  scope: Fnv1a64Structural
+) -> NativeDemandCensusFoldState {
+  let module_qn = match native_refused_file_module(content: read.source.carried) {
+    Present { value: qn } => qn
+    Absent => Empty
+  }
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lex: front.lex),
+    f: fn(tokens) {
+      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, validation_residue: front.residue, seed: state.context.alloc)
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
+        authored: state.authored,
+        file_refused: state.file_refused,
+        unreadable: state.unreadable + 1
+      }
+    Accepted { value: artifact, diagnostics: _ } =>
+      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+      match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+        Rejected { diagnostics: d } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+            authored: state.authored,
+            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+            unreadable: state.unreadable
+          }
+        Accepted { value: scoped, diagnostics: _ } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+            authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+            file_refused: state.file_refused,
+            unreadable: state.unreadable
+          }
+      }
+  }
+}
+
+type NativeDemandCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+  standings: List<DemandCensusModuleStanding>
+}
+
+// The module's root scope, as resolution itself built it for the module just resolved: the namespace
+// provider answers from its cache, so this produces no second namespace.
+fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: admitted, diagnostics: _ } =>
+          optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
+      }
+  }
+}
+
+fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
+    Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
+    Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
+  }
+}
+
+fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: _ } =>
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: w.functions,
+            operations: w.operations,
+            audited: w.audited,
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
+          }
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            audited: fold_list(xs: facts.audited, empty: w.audited, cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }),
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolved {
+              readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+                list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                  authored: a,
+                  readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                })
+              })
+            })
+          }
+      }
+  }
+}
+
+fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeDemandCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          audited: Empty,
+          standings: Empty
+        },
+        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
+      )
+      outcome_accepted(value: demand_census_report(
+        uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
+        functions: walked.functions,
+        operations: walked.operations,
+        audited: walked.audited,
+        standings: walked.standings,
+        file_refused: folded.file_refused,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: folded.unreadable
+      ))
+    })
+  })
+}
+
+// THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
+// v2.compiler.dependency_demand_census demand_census_exit -- held (0), a census whose rows do not account
+// for every uses fn read (1), or no observation (2): a read refused before authorship, or a context that
+// would not build, whose diagnostics are the line.
+type NativeDemandCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
+  match native_demand_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusOutput { lines: [concat("[demand-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeDemandCensusOutput {
+        lines: demand_census_lines(r: report),
+        exit: demand_census_exit(r: report)
+      }
+  }
+}
+
+type NativeCensusModule {
+  module: String
+  path: Symbol
+}
+
+// IT PREPENDS AND REVERSES ONCE RATHER THAN APPENDING PER ITEM, and at this grain that is not a
+// refinement. An append onto a cons list walks it, so a fold that appends is quadratic in the
+// corpus -- about 6k walks of an average 3k cells for the tree this census is over, to build a list
+// whose every element was already in hand. DESIGN section 6's bare-minimum-cost rule makes that
+// unconditional, and the ordering the append was there to preserve is preserved by the reverse:
+// read order, which is the path-sorted order the driver walked the roots in.
+fn native_census_modules(ingest: SourceRootIngest) -> List<NativeCensusModule> {
+  list_reverse(
+    xs: fold_list(
+      xs: ingest,
+      empty: Empty,
+      cons: fn(acc, read) {
+        match native_lane_declared_module_name(content: read.source.carried) {
+          Absent => acc
+          Present { value: declared } =>
+            Cons {
+              head: NativeCensusModule {
+                module: declared,
+                path: read.compilation_unit
+              },
+              tail: acc
+            }
+        }
+      }
+    )
+  )
+}
+
+// ONE CENSUS MODULE'S OUTCOME. The file-refused arm carries nothing because the census already
+// reports the file refusals in full from the context, and a second rendering of the same refusal
+// under a module heading would be two counts of one fact.
+// THE RESOLVED ARM CARRIES NOTHING EITHER, AND THAT IS THE MEMORY PROPERTY THE WHOLE-TREE GRAIN
+// NEEDS. The lane's resolution keeps the ResolvedTree because it goes on to infer from it; a census
+// never infers, so the tree dies with the call that made it and the census holds one tree at a time
+// rather than accumulating a tree per module across the corpus.
+// THE REFUSED ARM CARRIES THE WHOLE POPULATION: every independent failure chain the walk observed,
+// in walk order, plus whether the walk observed every site. A module is refused whenever any chain
+// exists, so no partially accepted module can be reported beside its refusals.
+type NativeCensusModuleOutcome
+  = NativeCensusModuleFileRefused
+  | NativeCensusModuleResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeCensusModuleResolved
+
+// `cascade` SAYS WHETHER THE OUTCOME IS A SYMPTOM OF ANOTHER FILE'S REFUSAL. It is read off the
+// verdict's carried attribution, never re-asked; a refused module whose imports could not be read
+// is Unattributed with the reason, NOT None -- None would make it a root of its own (census C).
+type NativeCensusModuleStep {
+  outcome: NativeCensusModuleOutcome
+  context: NativeTestContext
+  cascade: NativeCensusCascade
+}
+
+fn native_census_module_resolution(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeCensusModuleStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeCensusModuleStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+    },
+    context: step.context,
+    cascade: match step.import_attribution {
+      NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
+      NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
+      NativeImportTargetsAdmitted => NativeCensusCascadeNone
+      NativeImportTargetNotAsked => NativeCensusCascadeNone
+    }
+  }
+}
+
+// THE census-infer SUBJECT: ONE MODULE RESOLVED, THEN INFERRED. Shared by two folds, by agreement
+// (docs/plans/census-part-2-inference-design.md section 2a; the nominal-type plan's M0,
+// docs/plans/nominal-type-declaration-plan.md section 2): census part 2 reads the refused arm, one row
+// per chain; gunbc.instruments.type_declaration_use_census reads the resolved tree on BOTH infer arms
+// (declarations are resolve-level facts) and the inferred tree on the accepted one. It is the same
+// per-module infer the adjudicating lane demands (native_test_infer_resolved), so there is one infer
+// walk, not two. Unlike native_census_module_resolution it HOLDS the module's trees -- the folds need
+// them -- for the duration of one call; the loop keeps none of them past it.
+type NativeInferCensusOutcome
+  = NativeInferCensusFileRefused
+  | NativeInferCensusResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeInferCensusInferred { resolved: ResolvedTree, inferred: InferredTree }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
+
+type NativeInferCensusStep {
+  outcome: NativeInferCensusOutcome
+  context: NativeTestContext
+}
+
+fn native_census_module_inference(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeInferCensusStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeInferCensusStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
+          Accepted { value: prepared, diagnostics: _ } =>
+            NativeInferCensusInferred { resolved: resolved, inferred: prepared.inferred }
+          Rejected { diagnostics: d } =>
+            NativeInferCensusInferRefused { resolved: resolved, chain: d }
+        }
+    },
+    context: step.context
+  }
+}
+
+// THE TYPE-DECLARATION CENSUS'S FOLD, DISPATCHED FROM THE census-infer WALK (the nominal-type plan's
+// M0, gunbc.instruments.type_declaration_use_census). A module the context refused or that did not
+// resolve has no reference index and is UNREACHED with its stage and fatal reason; one that resolved
+// contributes its declarations, and its casts are typed by its inferred tree or, where infer refused,
+// counted undecided under the infer cause.
+fn native_census_infer_type_contribution(
+  context: NativeTestContext,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> TypeCensusContribution {
+  match outcome {
+    NativeInferCensusFileRefused =>
+      type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
+      type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
+    NativeInferCensusInferred { resolved: r, inferred: i } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
+    NativeInferCensusInferRefused { resolved: r, chain: c } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
+  }
+}
+
+fn native_census_normalized_tree(context: NativeTestContext, module: String) -> Optional<NormalizedTree> {
+  match context.resolution {
+    Accepted { value: shared, diagnostics: _ } => map_get(shared.roots.by_name, qualified_name_from_dotted_string(dotted: module))
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+// WHETHER THE CENSUS OBSERVED EVERY OCCURRENCE OF A MODULE, AS A TYPED ANSWER. A file the context
+// refused never reached resolve, so its occurrence completeness is UNAVAILABLE -- not complete with
+// zero residual, which is what a missing row would otherwise read as. A resolved module was walked
+// in full. A refused one answers what its walk recorded.
+type NativeCensusOccurrenceCompleteness
+  = NativeCensusCompletenessUnavailable { reason: Symbol }
+  | NativeCensusCompletenessObserved { observation: ObservationCompleteness }
+
+fn native_census_module_completeness(outcome: NativeCensusModuleOutcome) -> NativeCensusOccurrenceCompleteness {
+  match outcome {
+    NativeCensusModuleFileRefused =>
+      NativeCensusCompletenessUnavailable { reason: ^native_census_file_never_reached_resolve }
+    NativeCensusModuleResolved =>
+      NativeCensusCompletenessObserved { observation: ObservationComplete }
+    NativeCensusModuleResolveRefused { first: _, rest: _, observation: o } =>
+      NativeCensusCompletenessObserved { observation: o }
+  }
+}
+
+// ONE ROW PER FAILURE CHAIN, WHICH IS ONE ROW PER INDEPENDENTLY REFUSED OCCURRENCE. A chain is
+// pending advisories followed by exactly one fatal, and the fatal's locus is the occurrence the row
+// names -- v2.std.diagnostic diagnostics_fatal is the one authority for which element that is. The
+// row carries the chain whole rather than a reason/locus pair copied out of it, so the advisories
+// that preceded this fatal stay attached to it and to no other row.
+// THE POPULATION IS NOT SUMMARIZED. A module that refuses at forty independent sites yields forty
+// rows; folding them to a count, or to the first, is what makes a residual census an undercount.
+// An advisory is not an occurrence refusal, so it is never a row of its own.
+type NativeCensusResidualRow {
+  module: String
+  path: Symbol
+  chain: NonEmptyDiagnostics
+}
+
+fn native_census_residual_rows(
+  entry: NativeCensusModule,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>
+) -> List<NativeCensusResidualRow> {
+  list_reverse(
+    xs: fold_list(
+      xs: rest,
+      empty: Cons {
+        head: NativeCensusResidualRow { module: entry.module, path: entry.path, chain: first },
+        tail: Empty
+      },
+      cons: fn(acc, c) {
+        Cons {
+          head: NativeCensusResidualRow { module: entry.module, path: entry.path, chain: c },
+          tail: acc
+        }
+      }
+    )
+  )
+}
+
+// THE CENSUS IS GROUPED BY THE CAUSE THAT FIRED, NEVER BY THE ONE THAT CAME FIRST. A refusal's
+// diagnostic list PREPENDS the advisories that were pending when the refusal fired
+// (rejected_with_pending), so its head is whatever advisory was queued first -- on the dag grammar
+// that is the overlap-residue advisory every file carries -- and grouping by it files every refusal
+// under one advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
+// for which element fired: a file refusal already carries its answer as `fatal_reason`
+// (native_test_file_refusal), and a resolve chain is asked the same question here. The head stays on
+// the member as `head_reason` so the reader still sees what rode along; it is a field, not a key.
+// BOTH POPULATIONS LAND IN ONE GROUPING because they are one question -- what refused, and where --
+// asked at two stages, and the stage is a field on the member rather than a second roster.
+type NativeCensusCauseStage
+  = NativeCensusCauseFrontEnd
+  | NativeCensusCauseResolve
+
+// CENSUS C: A CASCADE IS COLLAPSED TO ITS ROOT, ON THE SAME ROW. A module that refused because an
+// import target's FILE was refused is a symptom: it is filed ONCE (one member per module, not one
+// per failure chain -- its chains are all the same missing index) under the ROOT's fatal reason,
+// naming the root. The root's own front-end member carries the cascade's size.
+// ROOTS ARE ONE HOP AWAY BY CONSTRUCTION: attribution reads only ingest refusals
+// (native_import_target_attribution), whose fatal reasons are never import-target refusals.
+// `None` is a refusal that is its own root (or a front-end member before C's fields apply); a
+// cascade member whose imports could not be read is `Unattributed`, a typed completeness gap,
+// never silently a root.
+type NativeCensusCascade
+  = NativeCensusCascadeNone
+  | NativeCensusCascadeMemberOf { root: Symbol, root_reason: Symbol }
+  | NativeCensusCascadeUnattributed { reason: Symbol }
+  | NativeCensusCascadeRoot {
+      closure_fan_out: NativeCensusClosureFanOut
+      resolve_refused_importers: Optional<Int>
+    }
+
+// TWO COUNTS, BECAUSE THEY ARE TWO FACTS (parent ruling on census C, option A).
+// `closure_fan_out` is how many DISTINCT modules have the root in their import closure -- what fixing
+// the root unblocks. Those modules are BLOCKED, not refused: in c -> b -> a with a refused, resolve
+// refuses b (its imports are unbound) and ACCEPTS c, because b's declarations are indexed; c still
+// cannot compile as a program while a is refused. Distinct modules, never paths: a diamond counts
+// its apex once.
+// `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
+// refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
+// not zero.
+// A REFUSED FILE'S OWN IMPORTS ARE UNREAD (it has no tree), so when any OTHER refused file declares
+// a module it may import the root and hide that edge -- c -> b -> a with a AND b refused loses
+// b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
+// then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
+// it is Counted, an exact answer, only when no other refused file could be a hidden importer.
+type NativeCensusClosureFanOut
+  = NativeCensusClosureFanOutCounted { modules: Int }
+  | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
+  | NativeCensusClosureFanOutUnavailable { reason: Symbol }
+
+type NativeCensusCauseMember {
+  stage: NativeCensusCauseStage
+  path: Symbol
+  module: Optional<QualifiedName>
+  head_reason: Symbol
+  cascade: NativeCensusCascade
+}
+
+type NativeCensusCauseGroup {
+  fatal_reason: Symbol
+  members: FreeMonoid<NativeCensusCauseMember>
+}
+
+// THE REVERSE IMPORT GRAPH, READ ONCE PER CENSUS: a module name to the modules that import it.
+// Edges come from the ACCEPTED trees' captured import rows (a refused file has no tree, and needs
+// none: it is a root, and a root's own imports cannot unblock anything). A roster module that is
+// neither file-refused nor indexed has imports nobody can read, so the graph is INCOMPLETE and every
+// fan-out over it is refused with that reason -- an undercount would be the silent arm.
+type NativeCensusClosureIndex
+  = NativeCensusClosureIndexRead { importers_of: Map<String, List<String>>, modules: Int, refused_modules: Int }
+  | NativeCensusClosureIndexUnavailable { reason: Symbol }
+
+type NativeCensusClosureIndexStep {
+  importers_of: Map<String, List<String>>
+  unread: Int
+}
+
+fn native_census_closure_index(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  modules: List<NativeCensusModule>
+) -> NativeCensusClosureIndex {
+  match context.resolution {
+    Rejected { diagnostics: _ } =>
+      NativeCensusClosureIndexUnavailable { reason: ^native_census_closure_context_refused }
+    Accepted { value: shared, diagnostics: _ } =>
+      let read = fold_list(
+        xs: modules,
+        empty: NativeCensusClosureIndexStep { importers_of: empty_map(), unread: 0 },
+        cons: fn(acc, entry) {
+          match map_lookup(m: shared.roots.by_name, key: qualified_name_from_dotted_string(dotted: entry.module)) {
+            Absent =>
+              match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
+                Present { value: _ } => acc
+                Absent => NativeCensusClosureIndexStep { importers_of: acc.importers_of, unread: acc.unread + 1 }
+              }
+            Present { value: tree } =>
+              NativeCensusClosureIndexStep {
+                importers_of: fold_list(
+                  xs: normalized_tree_import_bindings(tree: tree),
+                  empty: acc.importers_of,
+                  cons: fn(index, row) {
+                    let target = qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target))
+                    match map_lookup(index, target) {
+                      Absent => map_insert(index, target, [entry.module])
+                      Present { value: importers } =>
+                        map_insert(index, target, Cons { head: entry.module, tail: importers })
+                    }
+                  }
+                ),
+                unread: acc.unread
+              }
+          }
+        }
+      )
+      if read.unread > 0 {
+        NativeCensusClosureIndexUnavailable { reason: ^native_census_closure_import_graph_unread }
+      } else {
+        NativeCensusClosureIndexRead {
+          importers_of: read.importers_of,
+          modules: length(xs: modules),
+          refused_modules: fold_list(xs: context.file_refusals, empty: 0, cons: fn(n, r) {
+            match r.module {
+              Absent => n
+              Present { value: _ } => n + 1
+            }
+          })
+        }
+      }
+  }
+}
+
+// THE SAME REACHABILITY WALK THE LANE'S CLOSURE USES (native_lane_module_reachable), run over the
+// reverse graph from the root: one walk, two directions, no second closure fold. Its budget is the
+// roster size plus one, which bounds the rounds of any walk over that roster; exhaustion refuses.
+fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTestFileRefusal) -> NativeCensusClosureFanOut {
+  match index {
+    NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusClosureFanOutUnavailable { reason: r }
+    NativeCensusClosureIndexRead { importers_of: importers_of, modules: modules, refused_modules: refused_modules } =>
+      match root.module {
+        Absent => NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_root_declares_no_module }
+        Present { value: qn } =>
+          let seed = [qualified_name_to_dotted_string(qn: qn)]
+          match native_lane_module_reachable(
+            index: importers_of,
+            frontier: seed,
+            seen: seed,
+            seen_set: map_insert(empty_map(), qualified_name_to_dotted_string(qn: qn), true),
+            fuel: modules + 1,
+            budget: modules + 1
+          ) {
+            Rejected { diagnostics: _ } =>
+              NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_walk_exhausted }
+            Accepted { value: reached, diagnostics: _ } =>
+              if refused_modules > 1 {
+                NativeCensusClosureFanOutAtLeast { modules: length(xs: reached) - 1, unread_refused_files: refused_modules - 1 }
+              } else {
+                NativeCensusClosureFanOutCounted { modules: length(xs: reached) - 1 }
+              }
+          }
+      }
+  }
+}
+
+// KEYED BY THE FATAL REASON, ORDERED BY FIRST APPEARANCE. Members are prepended per group and each
+// group is reversed once when read, so adding a member costs one lookup and one cons rather than a
+// walk of its group -- the quadratic append DESIGN section 6 fixes regardless of n.
+// `importers` COUNTS THE RESOLVE REFUSALS ATTRIBUTED TO EACH ROOT, keyed by the root's path. It is
+// Absent when the census does not resolve, so a root member reads "not observed", not zero.
+type NativeCensusCauseGroups {
+  order: FreeMonoid<Symbol>
+  by_reason: Map<Symbol, FreeMonoid<NativeCensusCauseMember>>
+  importers: Optional<Map<Symbol, Int>>
+}
+
+fn native_census_cause_groups_empty(resolves: Bool) -> NativeCensusCauseGroups {
+  NativeCensusCauseGroups {
+    order: Empty,
+    by_reason: empty_map(),
+    importers: if resolves { optional_present(value: empty_map()) } else { optional_absent() }
+  }
+}
+
+fn native_census_cause_groups_add(
+  groups: NativeCensusCauseGroups,
+  fatal_reason: Symbol,
+  member: NativeCensusCauseMember
+) -> NativeCensusCauseGroups {
+  match map_lookup(groups.by_reason, fatal_reason) {
+    Absent =>
+      NativeCensusCauseGroups {
+        order: Cons { head: fatal_reason, tail: groups.order },
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: Empty }),
+        importers: groups.importers
+      }
+    Present { value: members } =>
+      NativeCensusCauseGroups {
+        order: groups.order,
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: members }),
+        importers: groups.importers
+      }
+  }
+}
+
+fn native_census_cause_groups_add_file_refusal(
+  groups: NativeCensusCauseGroups,
+  closure: NativeCensusClosureIndex,
+  refusal: NativeTestFileRefusal
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: native_test_file_refusal_fatal_reason(fr: refusal),
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseFrontEnd,
+      path: refusal.path,
+      module: refusal.module,
+      head_reason: native_test_file_refusal_head_reason(fr: refusal),
+      cascade: NativeCensusCascadeRoot {
+        closure_fan_out: native_census_closure_fan_out(index: closure, root: refusal),
+        resolve_refused_importers: optional_absent()
+      }
+    }
+  )
+}
+
+// A RESOLVE ROW THAT IS ITS OWN ROOT, OR WHOSE ATTRIBUTION COULD NOT BE READ. A cascade member is
+// NOT added here: it goes through native_census_cause_groups_add_cascade_member, once per module.
+fn native_census_cause_groups_add_residual(
+  groups: NativeCensusCauseGroups,
+  cascade: NativeCensusCascade,
+  row: NativeCensusResidualRow
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: diagnostics_fatal_reason(d: row.chain),
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: row.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
+      head_reason: row.chain.head.reason,
+      cascade: cascade
+    }
+  )
+}
+
+// ONE MEMBER PER CASCADED MODULE, FILED UNDER ITS ROOT'S FATAL REASON, and one count on the root.
+fn native_census_cause_groups_add_cascade_member(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  root: Symbol,
+  root_reason: Symbol
+) -> NativeCensusCauseGroups {
+  let added = native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: root_reason,
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: entry.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
+      head_reason: ^native_prepare_reason_import_target_file_refused,
+      cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
+    }
+  )
+  NativeCensusCauseGroups {
+    order: added.order,
+    by_reason: added.by_reason,
+    importers: match added.importers {
+      Absent => optional_absent()
+      Present { value: counts } =>
+        optional_present(value: map_insert(counts, root, match map_lookup(counts, root) {
+          Absent => 1
+          Present { value: n } => n + 1
+        }))
+    }
+  }
+}
+
+fn native_census_cause_groups_add_chains(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>,
+  cascade: NativeCensusCascade
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: native_census_residual_rows(entry: entry, first: first, rest: rest),
+    empty: groups,
+    cons: fn(acc, row) { native_census_cause_groups_add_residual(groups: acc, cascade: cascade, row: row) }
+  )
+}
+
+// ONE CENSUS MODULE'S CONTRIBUTION TO THE GROUPS, decided here rather than in the emitted main: a
+// cascade member is filed once under its root; any other resolve refusal files every chain.
+fn native_census_cause_groups_add_module(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  step: NativeCensusModuleStep
+) -> NativeCensusCauseGroups {
+  match step.outcome {
+    NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
+      match step.cascade {
+        NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
+          native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason)
+        NativeCensusCascadeNone => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeUnattributed { reason: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+      }
+    NativeCensusModuleFileRefused => groups
+    NativeCensusModuleResolved => groups
+  }
+}
+
+fn native_census_cause_groups_from_file_refusals(
+  refusals: FreeMonoid<NativeTestFileRefusal>,
+  closure: NativeCensusClosureIndex,
+  resolves: Bool
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: refusals,
+    empty: native_census_cause_groups_empty(resolves: resolves),
+    cons: fn(acc, r) { native_census_cause_groups_add_file_refusal(groups: acc, closure: closure, refusal: r) }
+  )
+}
+
+// A ROOT MEMBER IS READ WITH ITS OBSERVED IMPORTER COUNT; every other member is read as filed.
+fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: NativeCensusCauseMember) -> NativeCensusCauseMember {
+  match member.cascade {
+    NativeCensusCascadeRoot { closure_fan_out: fan_out, resolve_refused_importers: _ } =>
+      NativeCensusCauseMember {
+        stage: member.stage,
+        path: member.path,
+        module: member.module,
+        head_reason: member.head_reason,
+        cascade: NativeCensusCascadeRoot {
+          closure_fan_out: fan_out,
+          resolve_refused_importers: match groups.importers {
+            Absent => optional_absent()
+            Present { value: counts } =>
+              match map_lookup(counts, member.path) {
+                Absent => optional_present(value: 0)
+                Present { value: n } => optional_present(value: n)
+              }
+          }
+        }
+      }
+    NativeCensusCascadeNone => member
+    NativeCensusCascadeMemberOf { root: _, root_reason: _ } => member
+    NativeCensusCascadeUnattributed { reason: _ } => member
+  }
+}
+
+// `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
+// first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
+// (review 74382; DESIGN section 6 bare minimum cost). Each group's members are reversed and read
+// in that same single pass.
+fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
+  fold_list(
+    xs: groups.order,
+    empty: Empty,
+    cons: fn(acc, reason) {
+      match map_lookup(groups.by_reason, reason) {
+        Absent => acc
+        Present { value: members } =>
+          Cons {
+            head: NativeCensusCauseGroup {
+              fatal_reason: reason,
+              members: fold_list(
+                xs: members,
+                empty: Empty,
+                cons: fn(read, m) { Cons { head: native_census_cause_member_read(groups: groups, member: m), tail: read } }
+              )
+            },
+            tail: acc
+          }
+      }
+    }
+  )
+}
+
+// THE ROOTS, RANKED BY CLOSURE FAN-OUT, highest first; a lower bound (AtLeast) ranks by its bound
+// and keeps its arm on the row, and a root whose fan-out is Unavailable ranks after every counted
+// one rather than reading as zero. Same member rows as the groups -- this is an
+// ORDER over them, not a second format. Bucketed by count so ranking is linear in roots plus the
+// largest count, never an insertion sort (DESIGN section 6).
+type NativeCensusRootBuckets {
+  by_count: Map<Int, FreeMonoid<NativeCensusCauseMember>>
+  top: Int
+  unavailable: FreeMonoid<NativeCensusCauseMember>
+}
+
+fn native_census_roots_ranked(rows: List<NativeCensusCauseGroup>) -> List<NativeCensusCauseMember> {
+  let buckets = fold_list(
+    xs: rows,
+    empty: NativeCensusRootBuckets { by_count: empty_map(), top: 0, unavailable: Empty },
+    cons: fn(acc, group) {
+      fold_list(xs: group.members, empty: acc, cons: fn(b, m) {
+        match m.cascade {
+          NativeCensusCascadeRoot { closure_fan_out: fan_out, resolve_refused_importers: _ } =>
+            match fan_out {
+              NativeCensusClosureFanOutUnavailable { reason: _ } =>
+                NativeCensusRootBuckets { by_count: b.by_count, top: b.top, unavailable: Cons { head: m, tail: b.unavailable } }
+              NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: _ } =>
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
+              NativeCensusClosureFanOutCounted { modules: n } =>
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
+            }
+          NativeCensusCascadeNone => b
+          NativeCensusCascadeMemberOf { root: _, root_reason: _ } => b
+          NativeCensusCascadeUnattributed { reason: _ } => b
+        }
+      })
+    }
+  )
+  native_census_roots_from_buckets(buckets: buckets, count: 0, ranked: list_reverse(xs: buckets.unavailable))
+}
+
+fn native_census_root_buckets_add(buckets: NativeCensusRootBuckets, member: NativeCensusCauseMember, count: Int) -> NativeCensusRootBuckets {
+  NativeCensusRootBuckets {
+    by_count: map_insert(buckets.by_count, count, match map_lookup(buckets.by_count, count) {
+      Absent => Cons { head: member, tail: Empty }
+      Present { value: ms } => Cons { head: member, tail: ms }
+    }),
+    top: if buckets.top < count { count } else { buckets.top },
+    unavailable: buckets.unavailable
+  }
+}
+
+// WALKS THE COUNTS UPWARD, consing each bucket in front, so the highest count ends first. Within a
+// count the roots keep first-appearance order. Descent: top - count strictly decreases.
+fn native_census_roots_from_buckets(
+  buckets: NativeCensusRootBuckets,
+  count: Int,
+  ranked: List<NativeCensusCauseMember>
+) -> List<NativeCensusCauseMember> {
+  if count > buckets.top {
+    ranked
+  } else {
+    native_census_roots_from_buckets(
+      buckets: buckets,
+      count: count + 1,
+      ranked: match map_lookup(buckets.by_count, count) {
+        Absent => ranked
+        Present { value: ms } => fold_list(xs: ms, empty: ranked, cons: fn(acc, m) { Cons { head: m, tail: acc } })
+      }
+    )
+  }
 }
 
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
@@ -2475,13 +4604,10 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
-  ) {
+  ).prepared {
     Rejected { diagnostics: d } =>
       {
-        let refused = NativeTestRefused {
-          stage: NativeTestStagePrepare,
-          reason: native_test_fatal_reason(d: d)
-        }
+        let refused = NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
         NativeLaneControls {
           false_control: optional_present(value: refused),
           true_control: optional_present(value: refused)
@@ -2556,4 +4682,1269 @@ fn native_lane_receipt(
     old_route_control: facts.old_route_control,
     emitted_build: facts.emitted_build
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE NATIVE EVAL LAYER AS A DERIVED DEMAND GRAPH
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The emitted driver walks `for entry in universe.modules` and, inside it, `for declaration in
+// entry.declarations`. Those two loops ARE a dependency structure written as control flow: an
+// identity's evaluation consumes the prepared module that inference produced, and inference
+// consumes the tree that resolution produced. Nothing about that ordering is a policy choice --
+// it is what the values require -- so it is DERIVED here from the same three producers the loop
+// calls, rather than authored as a second roster beside them.
+//
+// WHY THE VERDICT PRODUCERS ARE UNCHANGED. This cut moves SCHEDULING authority and nothing else.
+// `native_lane_module_resolution`, `native_lane_module_inference` and `native_lane_identity_row`
+// are called here exactly as the loop calls them, with the same arguments in the same order, so
+// the verdicts are preserved BY CONSTRUCTION rather than by a comparison that could pass for the
+// wrong reason. A cut that also re-derived the verdicts would make a row difference ambiguous
+// between "the schedule changed" and "the judgment changed", which is the conflation that makes
+// an A/B receipt worthless.
+//
+// THE THREE STAGES ARE THREE DEMANDS, NOT ONE. Fusing them would hide exactly the fact the engine
+// exists to expose: a module whose resolution refuses must leave its identities BLOCKED on a named
+// refused prerequisite, not silently unevaluated, and that distinction is only visible if the
+// prerequisite is its own demand with its own settled state.
+
+// THE SUBJECT IS DERIVED FROM WHAT THE DEMAND IS ABOUT, and for an identity that is the PAIR. A
+// digest of the declaration alone would give `holds` in two modules one subject, and the engine
+// would then attach one to the other as an equal share-admitted demand and evaluate it once --
+// a wrong answer produced by a key that lost a field, which is why the pair is combined rather
+// than concatenated into a string whose separator could appear in either half.
+fn native_demand_module_subject(module: String) -> Fnv1a64Structural {
+  content_hash_atom(value: module as NonEmptyStr)
+}
+
+fn native_demand_identity_subject(module: String, declaration: String) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: module as NonEmptyStr),
+    right: content_hash_atom(value: declaration as NonEmptyStr)
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE THREE JUDGMENTS OF THE NATIVE EVAL LAYER, DECLARED BESIDE THEIR PRODUCERS
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// These sat in std.materialization_provider beside the parse and typecheck contracts, which put a
+// statement about what THIS module's resolve, infer and eval judgments ARE in a module that cannot
+// call any of them. A contract belongs with the producer it constrains: when native_lane_module_
+// inference gains a declared input, the contract that must gain it is in the same file, and a
+// reviewer reading either sees both.
+//
+// THE NATIVE EVAL LAYER'S THREE JUDGMENTS. They are contracts rather than three inline identity
+// constructions because JudgmentContract is the authority for what a demand IS -- its subject, its
+// result contract and its demand nature -- and a scheduler that minted identities beside it would
+// be a second answer to that question, differing first on the field nobody checks. The scheduler
+// reads `demand_identity` and `demand_nature` off these and derives nothing itself.
+//
+// THE COMPILER IS A DECLARED INPUT OF ALL THREE, not an ambient fact. Two runs of one module under
+// different compilers are different judgments with different results, so a key that omitted the
+// compiler would let a later cross-run lookup serve the earlier compiler's answer -- which is the
+// whole reason the existing contracts above carry it too.
+//
+// ALL THREE ARE PureComputation, AND THAT IS A READING RATHER THAN A DEFAULT. Resolution, inference
+// and identity evaluation are functions of their inputs: they read no clock, mutate nothing, and
+// two evaluations of one subject under one compiler are interchangeable. That is what admits
+// in-flight sharing for them, and it is the property that would have to be withdrawn -- here, once
+// -- if any of them ever reached an effect.
+fn native_module_resolve_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_resolve_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn native_module_infer_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_infer_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+// THE SUBJECT IS THE MODULE AND DECLARATION COMBINED, not the declaration alone. `holds` names a
+// different judgment in every module that declares it, and a subject that lost the module would
+// give them one identity -- at which point the engine attaches one to the other as an equal
+// share-admitted demand and evaluates ONE, reporting a verdict for a declaration it never ran.
+fn native_test_identity_judgment_contract(
+  identity_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_test_identity_artifact_kind,
+      subject: identity_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_test_verdicts, occurrence_contract: SemanticOnly)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// IDENTITY AND NATURE ARE READ OFF THE JUDGMENT CONTRACT, NEVER BUILT HERE
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// std.judgment_contract JudgmentContract is the authority for what a demand IS: its subject,
+// its result contract and its demand nature. A scheduler that constructed DemandIdentity values
+// itself would be a second answer to that question -- and the two would agree right up until one
+// of them gained a declared input, at which point the scheduler would key a demand the
+// materialization layer would not recognise, silently, in the direction where a stale result gets
+// served. So this module takes the contract and projects it; it derives nothing.
+//
+// THE SAME GOES FOR SHARING. `nature` decides whether two equal demands may attach in flight, and
+// that is a property of the JUDGMENT, not a policy the scheduler is entitled to choose. Reading it
+// here means a judgment that ever stops being pure withdraws its own share admission, once, at the
+// contract -- rather than in however many schedulers had hardcoded PureComputation beside it.
+fn native_demand_resolve_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_resolve_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
+fn native_demand_infer_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_infer_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
+fn native_demand_eval_contract(
+  module: String,
+  declaration: String,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  native_test_identity_judgment_contract(
+    identity_digest: native_demand_identity_subject(module: module, declaration: declaration),
+    compiler: compiler
+  )
+}
+
+// THE OCCURRENCE CENSUS IS ITS OWN JUDGMENT, a pure reading of a module's resolved tree, observation
+// only: it decides no standing and refuses nothing, so its result carries no refusal arm. It is a
+// separate demand rather than a step inside infer so that its cost is its own exclusive row
+// (std.compiler_entry ExclusiveOccurrenceCensus) and never inflates prepare.
+fn native_module_occurrence_census_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_occurrence_census_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: false,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: false,
+      required_persisted_outputs: []
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn native_demand_occurrence_census_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_occurrence_census_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
+fn native_demand_resolve_identity(module: String, compiler: DeclaredInput) -> DemandIdentity {
+  native_demand_resolve_contract(module: module, compiler: compiler).demand_identity
+}
+
+fn native_demand_infer_identity(module: String, compiler: DeclaredInput) -> DemandIdentity {
+  native_demand_infer_contract(module: module, compiler: compiler).demand_identity
+}
+
+fn native_demand_eval_identity(
+  module: String,
+  declaration: String,
+  compiler: DeclaredInput
+) -> DemandIdentity {
+  native_demand_eval_contract(
+    module: module,
+    declaration: declaration,
+    compiler: compiler
+  ).demand_identity
+}
+
+// THE ENGINE IS GENERIC IN ITS RESULT VALUE, so the three stages' three result shapes ride in one
+// coproduct. It is a coproduct rather than three engines because one ready queue over one identity
+// space is the whole point: three engines would reintroduce the cross-stage ordering question the
+// single queue answers, and would do it in a place with no typed blocked states.
+type NativeDemandValue
+  = NativeResolveValue { resolution: NativeLaneModuleResolution }
+  | NativeInferValue { preparation: NativeLaneModulePreparation }
+  | NativeOccurrenceCensusValue { row: NativeLaneOccurrenceCensusRow }
+  | NativeEvalValue { row: NativeRouteMemberRow }
+
+// The binding from a keyed demand back to what it denotes. The engine keys, orders and admits; it
+// does not know what a key means, and it must not -- a scheduler that understood compiler stages
+// would be a second authority on both. This table is that knowledge, held beside the engine rather
+// than inside it.
+type NativeDemandSubject
+  = NativeResolveSubject { entry: NativeLaneUniverseModule }
+  | NativeInferSubject { entry: NativeLaneUniverseModule }
+  | NativeOccurrenceCensusSubject { entry: NativeLaneUniverseModule }
+  | NativeEvalSubject { module: String, declaration: String }
+
+type NativeDemandBinding {
+  identity: DemandIdentity
+  subject: NativeDemandSubject
+}
+
+type NativeDemandPlan {
+  engine: DemandEngine<NativeDemandValue>
+  bindings: List<NativeDemandBinding>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// DERIVING THE GRAPH FROM THE UNIVERSE THE ROUTE ALREADY CARRIES
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// One resolve and one infer demand per module, one eval demand per declaration, and the edges the
+// values require. The universe roster is the SAME one the loop iterates, so the demand population
+// is exactly the population that would have been walked -- not a subset chosen here, and not a
+// hand-written list that could drift from it.
+fn native_demand_plan_module(
+  plan: NativeDemandPlan,
+  entry: NativeLaneUniverseModule,
+  compiler: DeclaredInput
+) -> NativeDemandPlan {
+  let resolve_contract = native_demand_resolve_contract(module: entry.module, compiler: compiler)
+  let infer_contract = native_demand_infer_contract(module: entry.module, compiler: compiler)
+  let census_contract = native_demand_occurrence_census_contract(module: entry.module, compiler: compiler)
+  let resolve_id = resolve_contract.demand_identity
+  let infer_id = infer_contract.demand_identity
+  let census_id = census_contract.demand_identity
+  let with_resolve_infer = NativeDemandPlan {
+    engine: demand_engine_relate(
+      e: demand_engine_request(
+        e: demand_engine_request(e: plan.engine, id: resolve_id, nature: resolve_contract.demand_nature),
+        id: infer_id,
+        nature: infer_contract.demand_nature
+      ),
+      relation: DependencyRelation {
+        prerequisite: resolve_id,
+        dependent: infer_id,
+        kind: DataDependsOn
+      }
+    ),
+    bindings: list_snoc_item(
+      xs: list_snoc_item(
+        xs: plan.bindings,
+        item: NativeDemandBinding { identity: resolve_id, subject: NativeResolveSubject { entry: entry } }
+      ),
+      item: NativeDemandBinding { identity: infer_id, subject: NativeInferSubject { entry: entry } }
+    )
+  }
+  let with_stages = NativeDemandPlan {
+    engine: demand_engine_relate(
+      e: demand_engine_request(e: with_resolve_infer.engine, id: census_id, nature: census_contract.demand_nature),
+      relation: DependencyRelation {
+        prerequisite: resolve_id,
+        dependent: census_id,
+        kind: DataDependsOn
+      }
+    ),
+    bindings: list_snoc_item(
+      xs: with_resolve_infer.bindings,
+      item: NativeDemandBinding { identity: census_id, subject: NativeOccurrenceCensusSubject { entry: entry } }
+    )
+  }
+  fold_list(
+    xs: entry.declarations,
+    empty: with_stages,
+    cons: fn(acc, declaration) {
+      let eval_contract = native_demand_eval_contract(
+        module: entry.module,
+        declaration: declaration,
+        compiler: compiler
+      )
+      let eval_id = eval_contract.demand_identity
+      NativeDemandPlan {
+        engine: demand_engine_relate(
+          e: demand_engine_request(e: acc.engine, id: eval_id, nature: eval_contract.demand_nature),
+          relation: DependencyRelation {
+            prerequisite: infer_id,
+            dependent: eval_id,
+            kind: DataDependsOn
+          }
+        ),
+        bindings: list_snoc_item(
+          xs: acc.bindings,
+          item: NativeDemandBinding {
+            identity: eval_id,
+            subject: NativeEvalSubject { module: entry.module, declaration: declaration }
+          }
+        )
+      }
+    }
+  )
+}
+
+fn native_demand_plan(
+  modules: List<NativeLaneUniverseModule>,
+  compiler: DeclaredInput
+) -> NativeDemandPlan {
+  let planned = fold_list(
+    xs: modules,
+    empty: NativeDemandPlan { engine: demand_engine_empty(), bindings: [] },
+    cons: fn(acc, entry) { native_demand_plan_module(plan: acc, entry: entry, compiler: compiler) }
+  )
+  NativeDemandPlan {
+    engine: demand_engine_seal(e: planned.engine),
+    bindings: planned.bindings
+  }
+}
+
+fn native_demand_binding(plan: NativeDemandPlan, id: DemandIdentity) -> Optional<NativeDemandSubject> {
+  fold_list(
+    xs: plan.bindings,
+    empty: optional_absent(),
+    cons: fn(acc, b) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if demand_identity_eq(a: b.identity, b: id) {
+            optional_present(value: b.subject)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE STATE-TRANSITION RECEIPT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// One row per admission, in the order the single seat admitted them, carrying the demand key and
+// the state it settled into. It is RECORDED as it happens rather than reconstructed from final
+// states, because the order is the fact under test: two runs of one closure must admit the same
+// demands in the same order, and a final-state snapshot has already lost that.
+//
+// The key is the canonical demand encoding, so a receipt is comparable across runs without being
+// comparable across MEANINGS: two different subjects cannot print one key.
+// THE TRANSITION CARRIES THE TYPED IDENTITY AND A DURATION, AND NOTHING ELSE.
+//
+// It used to carry rendered strings -- a stage spelling and a settlement label -- which were then
+// READ BACK to decide which exclusive cost row a span belonged to and whether a preparation had
+// succeeded. That is an encoding standing between a modelled fact and its consumer: typed
+// DemandIdentity and DemandState were rendered to text and the text was re-parsed to recover cost
+// and outcome meaning. Strings are admissible AFTER meaning is decided, never as the authority that
+// decides it.
+//
+// IT ALSO HAD A FAIL-OPEN ARM. The stage spelling was produced by a label function that answered
+// "unbound" when the plan binding was absent, while the totals recognised only three spellings -- so
+// an admitted transition could contribute to NEITHER exclusive total and NEITHER sample population,
+// disappearing into the unattributed residual instead of making the observation incomplete. That is
+// a degradation that widens rather than refusing (DESIGN section 5), and the classification below
+// has no such arm: an unrecognised kind is COUNTED as unclassified and the rollup's own invariant
+// then fails.
+//
+// THE IDENTITY IS THE JOIN KEY, not the subject. NativeDemandSubject's resolve and infer arms carry
+// a NativeLaneUniverseModule, so retaining the subject per transition would pin that module payload
+// through the whole observation list for the life of the run -- the settled-versus-resident
+// distinction this lane has to establish, violated by the instrument meant to observe it.
+type NativeDemandTransition {
+  identity: DemandIdentity
+  elapsed: ElapsedObservation
+}
+
+// THE COST CLASS IS DERIVED FROM THE CONTRACT-OWNED ARTIFACT KIND, never from a rendered stage word.
+// The three judgment contracts already issue three distinct kinds; the observation fold projects
+// those into the exclusive partition the driver reports, and a kind outside the three is typed
+// rather than silently dropped.
+type NativeDemandCostClass
+  = NativeCostPrepare
+  | NativeCostEval
+  | NativeCostOccurrenceCensus
+  | NativeCostUnclassified
+
+fn native_demand_cost_class(identity: DemandIdentity) -> NativeDemandCostClass {
+  if identity.kind == native_module_resolve_artifact_kind {
+    NativeCostPrepare
+  } else if identity.kind == native_module_infer_artifact_kind {
+    NativeCostPrepare
+  } else if identity.kind == native_test_identity_artifact_kind {
+    NativeCostEval
+  } else if identity.kind == native_module_occurrence_census_artifact_kind {
+    NativeCostOccurrenceCensus
+  } else {
+    NativeCostUnclassified
+  }
+}
+
+// THE ENGINE'S OWN BOOKKEEPING IS MEASURED WHERE IT HAPPENS, which is inside this module and not in
+// the driver. `scheduling_nanos` accumulates the spans around the work the SCHEDULER does -- plan
+// construction, ready selection, demand-binding lookup, settlement, dependent-readiness update and
+// row collection -- and it is disjoint from the demand's own window by construction: that window is
+// exactly `started..finished` around native_demand_execute, and nothing here spans across it.
+//
+// IT IS A SUM OF OBSERVED SPANS AND NEVER A SUBTRACTION. An earlier version of this row was computed
+// in the driver as the whole scheduling call minus the engine's attributed prepare and eval -- which
+// overlaps those spans and, worse, ABSORBS any other unattributed phase into "scheduling", so the
+// partition's remainder could no longer discover a second missing row. A row defined as a residual
+// cannot be the thing that proves the residual is small.
+type NativeDemandRun {
+  engine: DemandEngine<NativeDemandValue>
+  transitions: List<NativeDemandTransition>
+  rows: List<NativeRouteMemberRow>
+  scheduling_nanos: Int
+}
+
+fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String {
+  match state {
+    DemandAvailable { value: v } =>
+      match v {
+        NativeResolveValue { resolution: r } =>
+          match r {
+            NativeLaneModuleResolved { resolved: _ } => "resolve_available"
+            NativeLaneModuleContextRowsDecided { rows: _ } => "resolve_context_refused"
+            NativeLaneModuleResolveRowsDecided { rows: _ } => "resolve_refused"
+          }
+        NativeInferValue { preparation: p } =>
+          match p {
+            NativeLaneModulePrepared { prepared: _ } => "infer_available"
+            NativeLaneModuleRowsDecided { rows: _ } => "infer_refused"
+          }
+        NativeEvalValue { row: _ } => "eval_available"
+        NativeOccurrenceCensusValue { row: _ } => "occurrence_census_available"
+      }
+    DemandRefused => "refused"
+    DemandWaiting => "unsettled"
+    DemandReady => "unsettled"
+    DemandLeasePending => "unsettled"
+    DemandRunning => "unsettled"
+    DemandSuspended => "unsettled"
+    DemandCommitPending => "unsettled"
+    DemandBlocked { cause: _ } => "unsettled"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// RUNNING ONE DEMAND: THE ENGINE SAYS WHICH, THIS SAYS WHAT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A stage reads its prerequisite's value OUT OF THE ENGINE rather than from a local binding, which
+// is what makes the dependency real rather than decorative. If infer read a prepared tree that the
+// resolve demand had not published, the edge between them would be a comment.
+//
+// A REFUSED PREREQUISITE PRODUCES NO WORK HERE AND THAT IS THE POINT. The engine has already
+// decided such a demand never becomes ready, so this function is never asked about it; the rows
+// for those identities come from the refusing stage's own arms, which are the same arms the
+// displaced loop pushed from.
+fn native_demand_resolved_tree(
+  engine: DemandEngine<NativeDemandValue>,
+  module: String,
+  compiler: DeclaredInput
+) -> Optional<NativeLaneModuleResolution> {
+  match demand_engine_entry(e: engine, id: native_demand_resolve_identity(module: module, compiler: compiler)) {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      match entry.state {
+        DemandAvailable { value: v } =>
+          match v {
+            NativeResolveValue { resolution: r } => optional_present(value: r)
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn native_demand_prepared(
+  engine: DemandEngine<NativeDemandValue>,
+  module: String,
+  compiler: DeclaredInput
+) -> Optional<NativeTestPreparedModule> {
+  match demand_engine_entry(e: engine, id: native_demand_infer_identity(module: module, compiler: compiler)) {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      match entry.state {
+        DemandAvailable { value: v } =>
+          match v {
+            NativeInferValue { preparation: p } =>
+              match p {
+                NativeLaneModulePrepared { prepared: prepared } => optional_present(value: prepared)
+                NativeLaneModuleRowsDecided { rows: _ } => optional_absent()
+              }
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+// THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
+// same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
+// than an empirical hope.
+// A RESOLVE STEP'S RETURNED CONTEXT IS NOT CARRIED INTO THE NEXT DEMAND: on this route each module is
+// resolved exactly once, so its namespace (v2.compiler.name_resolve ResolutionContext namespaces) is
+// demanded once and nothing is lost. The run carries it when PR2 of
+// docs/plans/declaration-body-resolution-provider.md adds a module's cross-module declaration demands.
+fn native_demand_execute(
+  run: NativeDemandRun,
+  subject: NativeDemandSubject,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> DemandState<NativeDemandValue> {
+  match subject {
+    NativeResolveSubject { entry: entry } =>
+      DemandAvailable {
+        value: NativeResolveValue {
+          resolution: native_lane_module_resolution(
+            context: context,
+            refusal_index: refusal_index,
+            entry: entry
+          ).resolution
+        }
+      }
+    NativeInferSubject { entry: entry } =>
+      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: resolution } =>
+          match resolution {
+            NativeLaneModuleResolved { resolved: resolved } =>
+              DemandAvailable {
+                value: NativeInferValue {
+                  preparation: native_lane_module_inference(entry: entry, resolved: resolved)
+                }
+              }
+            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+          }
+      }
+    NativeOccurrenceCensusSubject { entry: entry } =>
+      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: resolution } =>
+          match resolution {
+            NativeLaneModuleResolved { resolved: resolved } =>
+              DemandAvailable {
+                value: NativeOccurrenceCensusValue {
+                  row: native_lane_occurrence_census_row(entry: entry, resolved: resolved)
+                }
+              }
+            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+          }
+      }
+    NativeEvalSubject { module: module, declaration: declaration } =>
+      match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: prepared } =>
+          DemandAvailable {
+            value: NativeEvalValue {
+              row: native_lane_identity_row(
+                prepared: prepared,
+                module: module,
+                declaration: declaration
+              )
+            }
+          }
+      }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ONE-SEAT DRAIN
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Ask the engine for the next admissible demand, run it, settle it, repeat. ONE seat, so this cut
+// changes no timing and can change no interleaving -- it moves the authority for WHICH demand runs
+// next out of a hand-written loop and into the engine, and nothing else. Multi-seat realization is
+// a later cut against this same drain.
+//
+// THE FUEL IS THE POPULATION, NOT A GUESS. Every admission settles exactly one demand and a settled
+// demand is never re-admitted, so the number of admissions is bounded by the number of entries;
+// the bound is supplied rather than discovered because the substrate requires it (DESIGN section 4).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// TWO GRAINS, ONE IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// `native_demand_step` runs exactly one admitted demand and returns the advanced run. The driver
+// calls it in a loop so it can open a span around each step -- which is the whole reason the
+// step-wise grain exists, since a `.dag` fold cannot read a clock and an opaque whole-population
+// call would have dissolved the per-demand rows of the cost partition.
+//
+// `native_demand_drain` is the same thing without the clock, and it is written IN TERMS OF the
+// step rather than beside it. Two spellings of one drain would be the fork DESIGN section 3
+// forbids, and it would be the expensive kind: the measured route and the ordinary route could
+// then disagree about what ran, which is precisely the question both exist to answer.
+//
+// NEITHER GRAIN DECIDES ORDER. Both ask the engine for the next admissible demand; the difference
+// is only who holds the clock.
+// AN ELAPSED READING IS TYPED, AND A BACKWARDS ONE IS NOT ZERO.
+//
+// An earlier revision clamped `finish < start` to 0. That turns a broken measurement into "this
+// demand was free" -- the failure-as-value class the whole observation model exists to remove, and
+// the same shape as the "unbound" stage that used to vanish into the residual. If finish precedes
+// start then one of four things is false: the two readings share one process-local epoch, the
+// runtime is monotone, the pair was correctly matched, or the representation preserved the values.
+// None of those is a duration.
+//
+// So the reading carries its own standing, an invalid one is COUNTED, and the rollup's completeness
+// predicate goes false -- which is the same discipline as the unclassified kind, applied to the
+// other way an observation can fail. Conversion saturation inside the runtime body is a separate
+// rule and stays there: v1.runtime_rust clamps u128 nanoseconds into the substrate Int, which is a
+// representational ceiling rather than a reversed pair.
+//
+// THE READINGS ARE THREAD CPU, NOT WALL (std.realization_measurement ObserveThreadCpuAtSubject). These
+// spans are members of the driver's exclusive partition (std.compiler_entry native_driver_cost_account),
+// whose law is that the phases partition the driver's OWN work; a wall span also carries every
+// interval the host descheduled the thread, which made the verdict a function of host load. The
+// monotonicity argument above holds unchanged on the thread CPU clock -- it only advances.
+type ElapsedObservation
+  = ElapsedObserved { nanos: Int }
+  | ElapsedObservationInvalid { start: Int, finish: Int }
+
+fn elapsed_observation(start: Int, finish: Int) -> ElapsedObservation {
+  if finish >= start {
+    ElapsedObserved { nanos: finish - start }
+  } else {
+    ElapsedObservationInvalid { start: start, finish: finish }
+  }
+}
+
+fn elapsed_observed_nanos(e: ElapsedObservation) -> Int {
+  match e {
+    ElapsedObserved { nanos: n } => n
+    ElapsedObservationInvalid { start: _, finish: _ } => 0
+  }
+}
+
+fn elapsed_is_valid(e: ElapsedObservation) -> Bool {
+  match e {
+    ElapsedObserved { nanos: _ } => true
+    ElapsedObservationInvalid { start: _, finish: _ } => false
+  }
+}
+
+fn native_demand_step(
+  run: NativeDemandRun,
+  plan: NativeDemandPlan,
+  identity: DemandIdentity,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> NativeDemandRun {
+  let lookup_started = observed_thread_cpu_nanos("native-demand-binding-lookup-start")
+  match native_demand_binding(plan: plan, id: identity) {
+    Absent => run
+    Present { value: subject } =>
+      let lookup_finished = observed_thread_cpu_nanos("native-demand-binding-lookup-finish")
+      let started = observed_thread_cpu_nanos("native-demand-step-start")
+      let settled = native_demand_execute(
+        run: run,
+        subject: subject,
+        context: context,
+        refusal_index: refusal_index,
+        compiler: compiler
+      )
+      let finished = observed_thread_cpu_nanos("native-demand-step-finish")
+      let elapsed = elapsed_observation(start: started, finish: finished)
+      let settle_started = observed_thread_cpu_nanos("native-demand-settle-start")
+      let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: settled)
+      let collected_rows = native_demand_collect_rows(rows: run.rows, settled: settled)
+      let settle_finished = observed_thread_cpu_nanos("native-demand-settle-finish")
+      NativeDemandRun {
+        engine: settled_engine,
+        transitions: list_snoc_item(
+          xs: run.transitions,
+          item: NativeDemandTransition {
+            identity: identity,
+            elapsed: elapsed
+          }
+        ),
+        rows: collected_rows,
+        scheduling_nanos: run.scheduling_nanos
+          + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
+          + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
+      }
+  }
+}
+
+// THE ADMISSION THE DRIVER ASKS FOR. One seat today; the seat count is the caller's, not the
+// engine's and not this module's, because capacity is a realization fact and authoring a width
+// here would be the control the demand-engine program deletes.
+fn native_demand_next(run: NativeDemandRun, seats: Int) -> DemandAdmission {
+  demand_engine_next(e: run.engine, offer: DemandLeaseOffer { seats: seats })
+}
+
+fn native_demand_drain(
+  run: NativeDemandRun,
+  plan: NativeDemandPlan,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput,
+  fuel: Int
+) -> NativeDemandRun {
+  if fuel <= 0 {
+    run
+  } else {
+    let select_started = observed_thread_cpu_nanos("native-demand-select-start")
+    let admission = native_demand_next(run: run, seats: 1)
+    let select_finished = observed_thread_cpu_nanos("native-demand-select-finish")
+    let selected = native_demand_run_with_scheduling_nanos(
+      run: run,
+      nanos: native_demand_bookkeeping_nanos(start: select_started, finish: select_finished)
+    )
+    match admission {
+      DemandNotAdmitted { cause: _ } => selected
+      DemandAdmitted { identity: identity } =>
+        native_demand_drain(
+          run: native_demand_step(
+            run: selected,
+            plan: plan,
+            identity: identity,
+            context: context,
+            refusal_index: refusal_index,
+            compiler: compiler
+          ),
+          plan: plan,
+          context: context,
+          refusal_index: refusal_index,
+          compiler: compiler,
+          fuel: fuel - 1
+        )
+    }
+  }
+}
+
+// THE DEMAND'S STAGE, FOR THE COST ROW IT IS CHARGED TO. The driver needs to know which exclusive
+// row a step's span belongs to, and that is a property of the demand's subject rather than
+// something the driver should re-derive from the key.
+fn native_demand_stage_label(plan: NativeDemandPlan, identity: DemandIdentity) -> String {
+  match native_demand_binding(plan: plan, id: identity) {
+    Absent => "unbound"
+    Present { value: subject } =>
+      match subject {
+        NativeResolveSubject { entry: _ } => "resolve"
+        NativeInferSubject { entry: _ } => "infer"
+        NativeOccurrenceCensusSubject { entry: _ } => "occurrence_census"
+        NativeEvalSubject { module: _, declaration: _ } => "eval"
+      }
+  }
+}
+
+// THE POPULATION IS ASSEMBLED FROM THE SAME ARMS THE LOOP PUSHED FROM. A refusing resolve or infer
+// contributes its decided rows -- one per declaration, produced by the refusing stage -- and an
+// evaluated identity contributes its own row. Nothing here mints a verdict.
+fn native_demand_collect_rows(
+  rows: List<NativeRouteMemberRow>,
+  settled: DemandState<NativeDemandValue>
+) -> List<NativeRouteMemberRow> {
+  match settled {
+    DemandAvailable { value: v } =>
+      match v {
+        NativeResolveValue { resolution: r } =>
+          match r {
+            NativeLaneModuleResolved { resolved: _ } => rows
+            NativeLaneModuleContextRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+            NativeLaneModuleResolveRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+          }
+        NativeInferValue { preparation: p } =>
+          match p {
+            NativeLaneModulePrepared { prepared: _ } => rows
+            NativeLaneModuleRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+          }
+        NativeEvalValue { row: row } => list_snoc_item(xs: rows, item: row)
+        NativeOccurrenceCensusValue { row: _ } => rows
+      }
+    DemandWaiting => rows
+    DemandReady => rows
+    DemandLeasePending => rows
+    DemandRunning => rows
+    DemandSuspended => rows
+    DemandCommitPending => rows
+    DemandRefused => rows
+    DemandBlocked { cause: _ } => rows
+  }
+}
+
+fn list_append_rows(
+  left: List<NativeRouteMemberRow>,
+  right: List<NativeRouteMemberRow>
+) -> List<NativeRouteMemberRow> {
+  fold_list(xs: right, empty: left, cons: fn(acc, r) { list_snoc_item(xs: acc, item: r) })
+}
+
+// THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
+fn native_demand_schedule_universe(
+  modules: List<NativeLaneUniverseModule>,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> NativeDemandRun {
+  let plan_started = observed_thread_cpu_nanos("native-demand-plan-start")
+  let plan = native_demand_plan(modules: modules, compiler: compiler)
+  let plan_finished = observed_thread_cpu_nanos("native-demand-plan-finish")
+  native_demand_drain(
+    run: native_demand_run_with_scheduling_nanos(
+      run: native_demand_run_empty(plan: plan),
+      nanos: native_demand_bookkeeping_nanos(start: plan_started, finish: plan_finished)
+    ),
+    plan: plan,
+    context: context,
+    refusal_index: refusal_index,
+    compiler: compiler,
+    fuel: native_demand_plan_size(plan: plan) + 1
+  )
+}
+
+// THE DECLARED INPUT THE DRIVER CAN TRUTHFULLY SUPPLY TODAY, AND ITS NAME SAYS WHICH FACT IT IS.
+//
+// The judgment contracts take a compiler input because two runs of one module under different
+// compilers are different judgments -- that is what stops a later cross-run lookup serving the
+// earlier compiler's answer. The driver does not hold the emitted compiler's digest: the host
+// harness computes it and prints it, and nothing passes it in.
+//
+// SO IT IS NOT SUPPLIED. What the driver holds is the TESTED TREE (GITHUB_SHA), which is a real
+// identity of what is being compiled and is not the same fact -- for a self-hosting compiler the
+// two nearly coincide, and `nearly` is exactly the slippage DESIGN section 3 exists to refuse. The
+// `ref` field names the fact, so the row says tested_tree and a reader is never told a tree digest
+// is a compiler digest.
+//
+// WITHIN ONE RUN THIS COSTS NOTHING: the input is constant across every demand, so it separates no
+// two demands here. It matters at the cross-run cut, and the compiler digest joins it as a SECOND
+// declared input there -- a declared frontier (DESIGN section 3c) whose consumer is that cut, not
+// a gap being papered over.
+fn native_demand_tested_tree_input(tree: String) -> DeclaredInput {
+  DeclaredInput {
+    ref: "tested_tree" as NonEmptyStr,
+    digest: content_hash_atom(value: tree as NonEmptyStr)
+  }
+}
+
+// The two counts the cost partition reports beside its spans: how many module preparations reached
+// a prepared module and how many decided rows instead. Derived from the settled engine rather than
+// tallied by the driver, so the driver counts nothing it does not time.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ONE TYPED ROLLUP, FOLDED ONCE, WITH ITS OWN COMPLETENESS INVARIANT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Seven separate scans over the transition list -- resolve time, infer time, eval time, two sample
+// populations, two preparation counts -- each re-deciding the same classification from a string.
+// One fold decides it once, from the contract-owned artifact kind, and every transition inhabits
+// exactly one recognised class.
+//
+// `classified` IS THE INVARIANT AND NOT A STATISTIC. If it does not equal the transition count then
+// some admitted demand reached no cost class, and the honest report is that the OBSERVATION IS
+// INCOMPLETE -- not two totals that are quietly smaller than the work performed. The previous shape
+// had exactly that hole and nothing could have detected it from the totals alone, because a missing
+// contribution and a cheap demand are indistinguishable once the span is gone.
+//
+// DISSOLUTION TRIGGER: demand-engine M4 provides the per-demand CostAccount projection and the
+// native driver consumes that general receipt instead of this native-route rollup. This is a bounded
+// bridge to the exclusive partition that exists today, not a second cost authority.
+type NativeDemandObservationRollup {
+  prepare_nanos: Int
+  eval_nanos: Int
+  occurrence_census_nanos: Int
+  prepare_samples: List<Int>
+  eval_samples: List<Int>
+  prepare_ok: Int
+  prepare_refused: Int
+  classified: Int
+  unclassified: Int
+  invalid_elapsed: Int
+}
+
+fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
+  NativeDemandObservationRollup {
+    prepare_nanos: 0,
+    eval_nanos: 0,
+    occurrence_census_nanos: 0,
+    prepare_samples: [],
+    eval_samples: [],
+    prepare_ok: 0,
+    prepare_refused: 0,
+    classified: 0,
+    unclassified: 0,
+    invalid_elapsed: 0
+  }
+}
+
+// PREPARATION STANDING IS READ FROM THE ENGINE'S TYPED STATE, not from a settlement word. The run
+// already holds the settled DemandState and its NativeDemandValue, so the standing is matched where
+// it lives rather than re-derived from a rendering of it.
+// PREPARATION IS ONE OUTCOME PER MODULE, DECIDED AT THE INFER DEMAND. A module's preparation concludes
+// when its infer demand settles, and there is exactly one infer demand per module (native_demand_plan
+// binds one per entry), so counting there is independent of how many declarations the module has.
+//
+// WHAT THIS CORRECTS, AND IT WAS MINE TWICE OVER. The first version counted every transition whose
+// standing read Refused, so a module failing at resolve was counted on the resolve transition AND again
+// when its infer demand settled DemandRefused -- prepare_refused reported 2 where the module-level count
+// before the engine was 1. My second version fixed the total by excluding the infer settlement instead,
+// which is the WRONG HALF to drop: it left the count on a per-transition basis, so it was still not one
+// outcome per module, and it reported a resolution failure as something other than a refused
+// preparation. The boundary is the infer demand, and the resolve and eval transitions contribute
+// nothing.
+//
+// A RESOLUTION FAILURE IS STILL A REFUSED PREPARATION. The infer demand settles DemandRefused because
+// its prerequisite refused; the module's preparation did not succeed, and the old module-level meaning
+// of prepare_refused was exactly that. Naming it anything else would have changed what the receipt's
+// number means in order to make an arithmetic problem go away.
+type NativePreparationStanding
+  = PreparationSucceeded
+  | PreparationRefused
+  | PreparationNotApplicable
+
+fn native_demand_infer_preparation_standing(
+  value: NativeDemandValue
+) -> NativePreparationStanding {
+  match value {
+    NativeInferValue { preparation: p } =>
+      match p {
+        NativeLaneModulePrepared { prepared: _ } => PreparationSucceeded
+        NativeLaneModuleRowsDecided { rows: _ } => PreparationRefused
+      }
+    NativeResolveValue { resolution: _ } => PreparationNotApplicable
+    NativeEvalValue { row: _ } => PreparationNotApplicable
+    NativeOccurrenceCensusValue { row: _ } => PreparationNotApplicable
+  }
+}
+
+fn native_demand_preparation_standing(
+  run: NativeDemandRun,
+  identity: DemandIdentity
+) -> NativePreparationStanding {
+  if identity.kind == native_module_infer_artifact_kind {
+    match demand_engine_entry(e: run.engine, id: identity) {
+      Absent => PreparationNotApplicable
+      Present { value: entry } =>
+        match entry.state {
+          DemandRefused => PreparationRefused
+          DemandAvailable { value: v } => native_demand_infer_preparation_standing(value: v)
+          _ => PreparationNotApplicable
+        }
+    }
+  } else {
+    PreparationNotApplicable
+  }
+}
+
+fn native_demand_rollup_step(
+  acc: NativeDemandObservationRollup,
+  run: NativeDemandRun,
+  t: NativeDemandTransition
+) -> NativeDemandObservationRollup {
+  let standing = native_demand_preparation_standing(run: run, identity: t.identity)
+  let nanos = elapsed_observed_nanos(e: t.elapsed)
+  let invalid_delta = if elapsed_is_valid(e: t.elapsed) { 0 } else { 1 }
+  let ok_delta = match standing { PreparationSucceeded => 1  _ => 0 }
+  let refused_delta = match standing { PreparationRefused => 1  _ => 0 }
+  match native_demand_cost_class(identity: t.identity) {
+    NativeCostPrepare =>
+      NativeDemandObservationRollup {
+        prepare_nanos: acc.prepare_nanos + nanos,
+        eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
+        prepare_samples: list_snoc_item(xs: acc.prepare_samples, item: nanos),
+        eval_samples: acc.eval_samples,
+        prepare_ok: acc.prepare_ok + ok_delta,
+        prepare_refused: acc.prepare_refused + refused_delta,
+        classified: acc.classified + 1,
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
+      }
+    NativeCostEval =>
+      NativeDemandObservationRollup {
+        prepare_nanos: acc.prepare_nanos,
+        eval_nanos: acc.eval_nanos + nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
+        prepare_samples: acc.prepare_samples,
+        eval_samples: list_snoc_item(xs: acc.eval_samples, item: nanos),
+        prepare_ok: acc.prepare_ok,
+        prepare_refused: acc.prepare_refused,
+        classified: acc.classified + 1,
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
+      }
+    NativeCostOccurrenceCensus =>
+      NativeDemandObservationRollup {
+        prepare_nanos: acc.prepare_nanos,
+        eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos + nanos,
+        prepare_samples: acc.prepare_samples,
+        eval_samples: acc.eval_samples,
+        prepare_ok: acc.prepare_ok,
+        prepare_refused: acc.prepare_refused,
+        classified: acc.classified + 1,
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
+      }
+    NativeCostUnclassified =>
+      NativeDemandObservationRollup {
+        prepare_nanos: acc.prepare_nanos,
+        eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
+        prepare_samples: acc.prepare_samples,
+        eval_samples: acc.eval_samples,
+        prepare_ok: acc.prepare_ok,
+        prepare_refused: acc.prepare_refused,
+        classified: acc.classified,
+        unclassified: acc.unclassified + 1,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
+      }
+  }
+}
+
+fn native_demand_observation_rollup(run: NativeDemandRun) -> NativeDemandObservationRollup {
+  fold_list(
+    xs: run.transitions,
+    empty: native_demand_rollup_empty(),
+    cons: fn(acc, t) { native_demand_rollup_step(acc: acc, run: run, t: t) }
+  )
+}
+
+// THE OBSERVATION IS COMPLETE WHEN EVERY ADMITTED TRANSITION REACHED A COST CLASS. A reader that
+// took the totals without asking this could not tell a demand that cost little from one that was
+// never attributed.
+fn native_demand_observation_complete(run: NativeDemandRun) -> Bool {
+  let r = native_demand_observation_rollup(run: run)
+  (r.unclassified == 0)
+    && (r.invalid_elapsed == 0)
+    && (r.classified == length(xs: run.transitions))
+}
+
+
+// A CLOCK THAT NEVER ADVANCES PASSES EVERY CHECK ABOVE, WHICH IS WHY PROGRESS IS ITS OWN FACT.
+// elapsed_observation admits finish == start as ElapsedObserved { nanos: 0 }, so a realization whose
+// body returns a constant zero yields a run in which every transition is CLASSIFIED and VALIDLY
+// OBSERVED: unclassified is 0, invalid_elapsed is 0, classified equals the transition count, and
+// native_demand_observation_complete answers true over totals that are all zero. The emitted-body
+// membership check has the same blind spot by construction -- it establishes that a bridge HAS a
+// body, never that the body measures anything -- so neither predicate discriminates a dead clock.
+//
+// PROGRESS IS ASKED AT THE RUN AND NOT PER TRANSITION, deliberately. One fast transition may
+// legitimately observe a zero span on a coarse clock, so a per-transition rule would refuse honest
+// work; a whole run that executed transitions and accumulated no span at all is a clock that is not
+// running. A run with no transitions has no span to observe and is vacuously progressed, which keeps
+// the predicate from reporting a defect when there was simply nothing to do.
+//
+// THIS IS DELIBERATELY NOT FOLDED INTO native_demand_observation_complete. Completeness answers
+// whether every admitted transition reached a cost class; progress answers whether the realization
+// underneath produced a measurement. Fusing them would make one counter answer two questions, and
+// would silently change what every existing consumer of `complete` is asserting.
+fn native_demand_observation_progressed(run: NativeDemandRun) -> Bool {
+  if length(xs: run.transitions) == 0 {
+    true
+  } else {
+    let r = native_demand_observation_rollup(run: run)
+    (r.prepare_nanos + r.eval_nanos) > 0
+  }
+}
+
+fn native_demand_prepare_nanos(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).prepare_nanos
+}
+
+fn native_demand_occurrence_census_nanos(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).occurrence_census_nanos
+}
+
+// THE CENSUS ROWS ARE READ FROM THE RUN'S OWN SETTLED CENSUS DEMANDS, one per transition whose
+// identity is a census judgment. A module whose resolve refused settles its census demand
+// DemandRefused and contributes no row, so it is counted UNOBSERVED by native_lane_occurrence_census,
+// never as zero collisions. Observation only: nothing here is read back by resolve, infer or admission.
+fn native_demand_occurrence_census_rows(run: NativeDemandRun) -> List<NativeLaneOccurrenceCensusRow> {
+  fold_list(xs: run.transitions, empty: [], cons: fn(acc, t) {
+    if t.identity.kind == native_module_occurrence_census_artifact_kind {
+      match demand_engine_entry(e: run.engine, id: t.identity) {
+        Present { value: entry } =>
+          match entry.state {
+            DemandAvailable { value: v } =>
+              match v {
+                NativeOccurrenceCensusValue { row: row } => list_snoc_item(xs: acc, item: row)
+                _ => acc
+              }
+            _ => acc
+          }
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn native_demand_occurrence_census_lines(run: NativeDemandRun, universe: Int) -> List<String> {
+  native_lane_occurrence_census_lines(
+    c: native_lane_occurrence_census(universe: universe, rows: native_demand_occurrence_census_rows(run: run))
+  )
+}
+
+fn native_demand_eval_nanos(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).eval_nanos
+}
+
+fn native_demand_prepare_samples(run: NativeDemandRun) -> List<Int> {
+  native_demand_observation_rollup(run: run).prepare_samples
+}
+
+fn native_demand_eval_samples(run: NativeDemandRun) -> List<Int> {
+  native_demand_observation_rollup(run: run).eval_samples
+}
+
+fn native_demand_prepare_ok(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).prepare_ok
+}
+
+fn native_demand_prepare_refused(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).prepare_refused
+}
+
+// THE SCHEDULER'S MEASURED COST, for the driver's exclusive row. It is the accumulated sum the engine
+// took as it worked, so the driver reports a reading rather than deriving one.
+fn native_demand_scheduling_nanos(run: NativeDemandRun) -> Int {
+  run.scheduling_nanos
+}
+
+fn native_demand_unclassified_transitions(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).unclassified
+}
+
+fn native_demand_run_empty(plan: NativeDemandPlan) -> NativeDemandRun {
+  NativeDemandRun { engine: plan.engine, transitions: [], rows: [], scheduling_nanos: 0 }
+}
+
+fn native_demand_run_with_scheduling_nanos(run: NativeDemandRun, nanos: Int) -> NativeDemandRun {
+  NativeDemandRun {
+    engine: run.engine,
+    transitions: run.transitions,
+    rows: run.rows,
+    scheduling_nanos: run.scheduling_nanos + nanos
+  }
+}
+
+// THE SPAN OF ONE BOOKKEEPING STRETCH, through the same seam the demand's own window uses. A negative
+// or unreadable observation contributes nothing rather than a fabricated figure: elapsed_observed_nanos
+// answers 0 for an invalid observation, and invalid_elapsed already counts those separately, so the
+// scheduling total stays a sum of readings that were actually taken.
+fn native_demand_bookkeeping_nanos(start: Int, finish: Int) -> Int {
+  elapsed_observed_nanos(e: elapsed_observation(start: start, finish: finish))
+}
+
+fn native_demand_plan_size(plan: NativeDemandPlan) -> Int {
+  length(xs: plan.bindings)
+}
+
+// THE DERIVATION COUNT, PROJECTED. The driver reports it beside the schedule line, and it reads
+// it through here rather than reaching into the engine inside the run: a caller that walked two
+// records deep would be coupled to the engine's shape, and the engine's shape is not the driver's
+// business.
+// The planned population, read from the run so the driver needs no second handle on the plan. It
+// counts `entry_order` and not `entries`: the engine's store is keyed by identity now, and the ORDER
+// is the population's enumeration. Counting the keyed store typechecked in .dag -- FreeMonoid is loose
+// enough interpreted -- and emitted Rust that could not compile, which is the one route that catches
+// it (v1.compiler.emit_rust; the rostered class is accepted_source_emits_uncompilable_target).
+fn native_demand_run_demand_count(run: NativeDemandRun) -> Int {
+  length(xs: run.engine.entry_order)
+}
+
+fn native_demand_run_readiness_derivations(run: NativeDemandRun) -> Int {
+  run.engine.readiness_computations
+}
+
+fn native_demand_run_rows(run: NativeDemandRun) -> List<NativeRouteMemberRow> {
+  run.rows
+}
+
+fn native_demand_run_transition_count(run: NativeDemandRun) -> Int {
+  length(xs: run.transitions)
+}
+
+// RENDERING IS THE ONE DIRECTION A STRING IS ADMISSIBLE IN. Every word below is produced FROM typed
+// state at the moment of presentation; nothing reads one back to decide a cost class, a preparation
+// standing or a count. The settled label is derived here rather than stored on the transition, so a
+// renaming of any label cannot move a total.
+fn native_demand_cost_class_label(c: NativeDemandCostClass) -> String {
+  match c {
+    NativeCostPrepare => "prepare"
+    NativeCostEval => "eval"
+    NativeCostOccurrenceCensus => "occurrence_census"
+    NativeCostUnclassified => "UNCLASSIFIED"
+  }
+}
+
+// AN INVALID READING RENDERS AS INVALID, not as a number. Printing 0 for a reversed pair would put
+// a plausible duration in the receipt for a measurement that did not happen -- the same
+// failure-as-value the typed observation exists to prevent, reintroduced at the presentation layer
+// where a reader would have no way to tell.
+fn elapsed_label(e: ElapsedObservation) -> String {
+  match e {
+    ElapsedObserved { nanos: n } => to_string(n)
+    ElapsedObservationInvalid { start: st, finish: fi } =>
+      concat(concat("INVALID(start=", to_string(st)), concat(" finish=", concat(to_string(fi), ")")))
+  }
+}
+
+fn native_demand_transition_line(run: NativeDemandRun, t: NativeDemandTransition) -> String {
+  let settled = match demand_engine_entry(e: run.engine, id: t.identity) {
+    Absent => "absent"
+    Present { value: entry } => native_demand_settled_label(state: entry.state)
+  }
+  concat(
+    concat(concat(demand_identity_key(id: t.identity), " "), settled),
+    concat(
+      concat(" ", native_demand_cost_class_label(c: native_demand_cost_class(identity: t.identity))),
+      concat(" ", elapsed_label(e: t.elapsed))
+    )
+  )
+}
+
+fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
+  list_map(xs: run.transitions, f: fn(t) { native_demand_transition_line(run: run, t: t) })
 }

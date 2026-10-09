@@ -1,0 +1,198 @@
+module v2.test.claim.namespace_xl0.reference_conservation_census
+
+import std.types { List }
+import extdeps.filesystem.filesystem_io { FilesystemReadRefused, filesystem_listing_observation }
+import v2.compiler.reference_conservation_census {
+  SampleFile,
+  sample_file_within_cap,
+  sample_paths_by_rule,
+  sample_stratum,
+  SamplePathMissing,
+  SamplePathSubjectRefused,
+  SamplePathUnreadable,
+  sample_path_observation_of,
+  sample_path_parts
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import v2.std.algebra { fold_list, length }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import v2.std.integer { Int }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR THE SAMPLE CENSUS'S PATH OBSERVATION (review 5330814496). The listing and the read
+// must name the same file: the parent a path is listed in is the one it spells, root and all.
+// Every observation is SUPPLIED at the interface (sample_path_observation_of is pure); the host calls
+// that produce them are two lines in reference_conservation_path_observation.
+
+fn parts_are(path: String, directory: String, name: String) -> Bool {
+  let p = sample_path_parts(path: path)
+  p.directory == directory && p.name == name
+}
+
+test fn an_absolute_path_keeps_its_root_holds() -> Bool {
+  parts_are(path: "/tmp/rc/probe.dag", directory: "/tmp/rc", name: "probe.dag")
+}
+
+test fn a_file_at_the_root_lists_the_root_holds() -> Bool {
+  parts_are(path: "/probe.dag", directory: "/", name: "probe.dag")
+}
+
+test fn a_bare_name_lists_the_current_directory_holds() -> Bool {
+  parts_are(path: "probe.dag", directory: ".", name: "probe.dag")
+}
+
+test fn a_relative_path_lists_its_relative_parent_holds() -> Bool {
+  parts_are(path: "dag/std/stack.dag", directory: "dag/std", name: "stack.dag")
+}
+
+// AN UNREADABLE ABSOLUTE FILE IS UNREADABLE, WITH ITS CAUSE: its own parent lists it, its read is
+// refused.
+test fn an_unreadable_absolute_file_is_unreadable_with_its_cause_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "/tmp/rc", success: true, entries: "probe.dag", error: ""),
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" }
+  ) {
+    SamplePathUnreadable { path: _, cause: c } => string_contains(s: c, pattern: "Permission denied")
+    _ => false
+  }
+}
+
+// THE MISMATCHED SUBJECT THE BUG PRODUCED: the unreadable absolute file above, observed against a
+// listing of the unrelated, empty RELATIVE directory the old split named. Asking that listing about
+// the entry would read "absent" and report a stale pin; the observation refuses the mismatch
+// instead, and never answers SamplePathMissing.
+test fn a_listing_of_another_directory_refuses_rather_than_reading_absent_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "tmp/rc", success: true, entries: "", error: ""),
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" }
+  ) {
+    SamplePathSubjectRefused { path: _, cause: _ } => true
+    SamplePathMissing { path: _ } => false
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR ABSENCE: the right parent, listed, without the entry, is a stale pin.
+test fn a_file_its_own_parent_does_not_list_is_missing_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "/tmp/rc", success: true, entries: "other.dag", error: ""),
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" }
+  ) {
+    SamplePathMissing { path: _ } => true
+    _ => false
+  }
+}
+
+// ---- the sampling rule's arithmetic, pinned on supplied file sets --------------------------------
+//
+// sample_paths_by_rule is the one authority for the pinned list; these controls pin each of its
+// parts on a small SUPPLIED file set whose answer is derived by hand, so a change to any part of the
+// rule reds here without reading a tree. Whether the pinned list IS the rule's output at its revision
+// is the instrument reference_conservation_sample_by_rule_at_pin_exit, run against the object store.
+
+data rule_digits: List<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+type RuleNameAcc {
+  count: Int
+  names: FreeMonoid<String>
+}
+
+// The first n of "000".."999", in order (and in path order, being zero-padded).
+fn rule_names(n: Int) -> FreeMonoid<String> {
+  fold_list(xs: rule_digits, empty: RuleNameAcc { count: 0, names: Empty }, cons: fn(a1, d1) {
+    fold_list(xs: rule_digits, empty: a1, cons: fn(a2, d2) {
+      fold_list(xs: rule_digits, empty: a2, cons: fn(a3, d3) {
+        if a3.count < n { RuleNameAcc { count: a3.count + 1, names: list_snoc_item(xs: a3.names, item: d1 + d2 + d3) } } else { a3 }
+      })
+    })
+  }).names
+}
+
+fn rule_files(dir: String, n: Int, within_cap: Bool) -> FreeMonoid<SampleFile> {
+  fold_list(xs: rule_names(n: n), empty: Empty, cons: fn(acc, nm) {
+    list_snoc_item(xs: acc, item: SampleFile { path: dir + "/f" + nm + ".dag", within_cap: within_cap })
+  })
+}
+
+fn rule_join(a: FreeMonoid<SampleFile>, b: FreeMonoid<SampleFile>) -> FreeMonoid<SampleFile> {
+  fold_list(xs: b, empty: a, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) })
+}
+
+fn rule_selected_under(files: FreeMonoid<SampleFile>, dir: String) -> FreeMonoid<String> {
+  filter(sample_paths_by_rule(files: files), p => starts_with(s: p, prefix: dir + "/"))
+}
+
+// THE THREE LARGE FILE SETS ARE NULLARY AND ENROLLED WARM in v2.workflow.floor_pure_producer_share:
+// building them is not what the claims are about, so each claim pays only for the rule it runs.
+fn quota_fixture_files() -> FreeMonoid<SampleFile> {
+  rule_join(a: rule_files(dir: "dag/a", n: 10, within_cap: true), b: rule_files(dir: "dag/b", n: 490, within_cap: false))
+}
+
+fn under_floor_fixture_files() -> FreeMonoid<SampleFile> {
+  rule_join(a: rule_files(dir: "dag/a", n: 10, within_cap: true), b: rule_files(dir: "dag/b", n: 600, within_cap: false))
+}
+
+fn half_share_fixture_files() -> FreeMonoid<SampleFile> {
+  rule_join(a: rule_files(dir: "dag/a", n: 13, within_cap: true), b: rule_files(dir: "dag/b", n: 299, within_cap: false))
+}
+
+// THE floor(i*n/k) INDICES. dag/a holds 10 small files among 500 in all (the filler is 490 over-cap
+// files in dag/b), so its quota is 300 * 10 / 500 = 6, and floor(i * 10 / 6) for i in 0..5 is 0, 1,
+// 3, 5, 6, 8.
+test fn the_rule_takes_its_quota_at_the_floor_indices_holds() -> Bool {
+  rule_selected_under(files: quota_fixture_files(), dir: "dag/a") == ["dag/a/f000.dag", "dag/a/f001.dag", "dag/a/f003.dag", "dag/a/f005.dag", "dag/a/f006.dag", "dag/a/f008.dag"]
+}
+
+// A SHARE UNDER THE FLOOR IS RAISED TO 6: dag/a's 10 small files among 610 give round(4.92) = 5.
+test fn a_share_under_the_floor_takes_six_holds() -> Bool {
+  length(xs: rule_selected_under(files: under_floor_fixture_files(), dir: "dag/a")) == 6
+}
+
+// TIES ROUND TO EVEN: dag/a's 13 small files among 312 give 300 * 13 / 312 = 12.5, which rounds to 12
+// (half-up would take all 13).
+test fn a_half_share_rounds_to_even_holds() -> Bool {
+  length(xs: rule_selected_under(files: half_share_fixture_files(), dir: "dag/a")) == 12
+}
+
+// A STRATUM WITH FEWER SMALL FILES THAN ITS QUOTA TAKES THEM ALL: 3 small, quota 6.
+test fn a_small_stratum_takes_every_small_file_holds() -> Bool {
+  let files = rule_join(a: rule_files(dir: "dag/a", n: 3, within_cap: true), b: rule_files(dir: "dag/a", n: 0, within_cap: true))
+  rule_selected_under(files: files, dir: "dag/a") == ["dag/a/f000.dag", "dag/a/f001.dag", "dag/a/f002.dag"]
+}
+
+// ONLY dag/ AND src/v2/ ARE IN THE RULE'S ROOTS: a src/v1 file is never selected.
+test fn a_file_outside_the_rule_roots_is_never_selected_holds() -> Bool {
+  length(xs: sample_paths_by_rule(files: rule_files(dir: "src/v1/compiler", n: 3, within_cap: true))) == 0
+}
+
+test fn strata_are_two_segments_under_dag_and_three_under_src_v2_holds() -> Bool {
+  sample_stratum(path: "dag/std/access.dag") == "dag/std"
+    && sample_stratum(path: "dag/gunbc/recurring_failure_mode/x.dag") == "dag/gunbc"
+    && sample_stratum(path: "src/v2/compiler/self_host/a.dag") == "src/v2/compiler"
+}
+
+// THE CAP IS IN BYTES: code points bound bytes from below, so the boundary is exercised with a
+// two-byte character that makes 8,000 code points into 8,001 bytes.
+fn rule_repeat(unit: String, n: Int) -> String {
+  fold_list(xs: rule_names(n: n), empty: "", cons: fn(acc, _) { acc + unit })
+}
+
+fn rule_ascii(n100: Int) -> String {
+  rule_repeat(unit: rule_repeat(unit: "x", n: 100), n: n100)
+}
+
+test fn the_cap_admits_exactly_eight_thousand_bytes_holds() -> Bool {
+  sample_file_within_cap(content: rule_ascii(n100: 80))
+    && !sample_file_within_cap(content: rule_ascii(n100: 80) + "x")
+}
+
+test fn the_cap_counts_bytes_not_code_points_holds() -> Bool {
+  let short_by_two = substring(s: rule_ascii(n100: 80), start: 0, end: 7998)
+  !sample_file_within_cap(content: short_by_two + "x" + "\u{e9}")
+    && sample_file_within_cap(content: short_by_two + "\u{e9}")
+}

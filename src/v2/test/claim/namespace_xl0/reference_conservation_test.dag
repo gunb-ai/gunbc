@@ -1,0 +1,619 @@
+module v2.test.claim.namespace_xl0.reference_conservation
+
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  ReferenceConservationReport,
+  ReferenceConservationSubject,
+  dag_declared_token_classes,
+  reference_conservation_accepted,
+  reference_conservation_admitted,
+  reference_conservation_holds,
+  reference_conservation_of_subject,
+  reference_conservation_subject_of_read,
+  reference_conservation_of_subject_admitted,
+  reference_conservation_report_lines,
+  report_with_advisories,
+  OccurrenceRoleTableUnadmitted
+}
+import std.algebra { Cons, Empty }
+import std.optional { Absent, Present }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused, NameRoleNotYetRead, dag_name_production_rows, name_production_table_admission, name_row }
+import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
+import v2.std.algebra { any, fold_list, length, list_map }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, invariant_port_locus }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.text { String }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import extdeps.communication.medium { Lossless, Medium }
+import std.process { ProcessExit, exit_failure }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE CONTROLS FOR v2.compiler.reference_conservation.
+//
+// Each drop fixture carries ONE shape lowering is known to lose and names the one atom it loses;
+// the clean control carries the same kinds of atom in positions lowering keeps. The claims assert
+// two things per drop fixture -- the check is RED on it, and the red names the expected atom -- so
+// a check that went red for some other reason (a population bug, an unreadable extent) cannot
+// stand in for the discrimination. The control asserts the check is GREEN with a nonzero
+// population, so a check that found nothing to conserve cannot pass as clean.
+//
+// THE DROP CLAIMS ARE STATED AS TODAY'S MEASUREMENT. When a lowering repair lands, its fixture's
+// drop claim reds; the repair re-states it as a conserved control rather than deleting it (DESIGN
+// section 4b(4): the discriminating evidence stays enrolled after the climb). The `a + b` fixture
+// is the one #12145 repaired; it is now a conserved control.
+
+fn conservation_fixture_read(id_tail: String, source: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: "reference_conservation_fixture_" + id_tail),
+      file_path: "src/v2/test/fixture/reference_conservation/" + id_tail + ".dag"
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: "reference_conservation_cu_" + id_tail),
+    source_root: DagTree
+  }
+}
+
+// THE SHARED PRODUCER IS THE SUBJECT (parse + normalize), NEVER THE VERDICT. Each fixture's
+// `*_subject` is nullary and pure (its source is inline) and is enrolled WARM in
+// v2.workflow.floor_pure_producer_share, so the production phases no claim here is about are paid
+// once; every claim still executes reference_conservation_of_subject, which is what it names.
+fn conservation_subject(id_tail: String, source: String) -> ReferenceConservationSubject {
+  match dag_prepared_grammar() {
+    Accepted { value: prepared, diagnostics: residue } =>
+      reference_conservation_subject_of_read(
+        read: conservation_fixture_read(id_tail: id_tail, source: source),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        prepared: prepared,
+        residue: residue
+      )
+    Rejected { diagnostics: d } =>
+      ReferenceConservationSubject { path: "grammar-unprepared", parsed: Rejected { diagnostics: d }, normalized: Rejected { diagnostics: d } }
+  }
+}
+
+fn conservation_report_of(subject: ReferenceConservationSubject) -> ReferenceConservationReport {
+  reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())
+}
+
+fn report_drops_identity(report: ReferenceConservationReport, wanted: Symbol) -> Bool {
+  report_drop_count(report: report, wanted: wanted) > 0
+}
+
+fn report_drop_count(report: ReferenceConservationReport, wanted: Symbol) -> Int {
+  fold_list(
+    xs: report.dropped,
+    empty: 0,
+    cons: fn(acc, row) { if row.atom.identity == wanted { acc + 1 } else { acc } }
+  )
+}
+
+// ---- the clean control -------------------------------------------------------------------------
+
+data clean_control_source: String = "module v2.test.reference_conservation_clean\n\nimport std.types { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_body(a: Bool, b: Bool) -> Bool { rc_callee(a) }\n\nfn rc_bare(c: Bool) -> Bool { c }\n\ndata rc_row: Int = 7\n\ntest fn rc_marked_holds() -> Bool { rc_bare(true) }\n"
+
+fn clean_control_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "clean", source: clean_control_source)
+}
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share beside its subject: five
+// claims read this one report, so it is computed once rather than once per claim (each paid it in
+// full and went over the new-witness budget, v2.workflow.required_floor
+// claim_eval_step_budget_for_identity, as the floor's required_floor_claim_cost rows recorded).
+fn clean_control_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: clean_control_subject())
+}
+
+test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
+  reference_conservation_admitted(report: clean_control_report())
+}
+
+// The numbers are separate and together account for the whole population: a check that found
+// nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
+// control has conserved references, role-excluded declarations, labels and parameters, and the
+// header -- and, now that the parameter lists are read (v2.compiler.occurrence_role
+// ReadParamListBinders), no locus-erased atom: before that reader its parameters were the
+// locus-erased number, so a zero here is the reader's receipt, not an empty disposition.
+test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
+  let r = clean_control_report()
+  r.conserved > 0 && r.locus_erased == 0 && r.role_excluded > 0 && r.header_channel > 0
+    && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+}
+
+// THE HEADER IS ITS OWN CHANNEL (HeaderSegmentsNotRefusalSites): the clean control's header
+// `v2.test.reference_conservation_clean` is exactly three segments, all counted there.
+test fn the_clean_control_counts_its_header_segments_in_the_header_channel_holds() -> Bool {
+  clean_control_report().header_channel == 3
+}
+
+test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
+  clean_control_report().import_channel > 0
+}
+
+// The `test` marker is the grammar's exact word (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr),
+// class-stamped like `service`, so it is not an authored atom and this population has no channel to
+// count it in; the clean control above, which carries a `test fn`, is admitted with it. The marker's
+// own capture and refusal are held by v2.test.claim.parse.test_marker_channel.
+
+// ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
+
+// MEASURED BOTH WAYS, AND THE SECOND WAY WAS HIDDEN. Before gunbc#12221 this body lowered and its
+// second statement reached no reference site: one DroppedReference. #12221 made a statement followed
+// by another REFUSE, located, so this module is no longer accepted. The old claim
+// (the_block_second_statement_is_reported_dropped_holds) kept passing because
+// reference_conservation_holds admits refused atoms: the refusal stood in for the drop. With
+// reference_conservation_accepted asked, it went red (seed-interpreted at 1204ef3922, fierce-gull-556).
+// Restated as what is true now: the module is refused, and neither accepted nor admitted. This is also
+// the shared mutation for every "lowered, and ..." control in this file: on a refusing report the
+// predicates they all ask are false, so each of them would be red. When a block's later statements
+// lower, this reds and is restated as a conserved control.
+data block_second_statement_source: String = "module v2.test.reference_conservation_block\n\nfn rc_block() -> Int { 1 \n 2 }\n"
+
+fn block_second_statement_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "block_second_statement", source: block_second_statement_source)
+}
+
+fn block_second_statement_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: block_second_statement_subject())
+}
+
+test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool {
+  let r = block_second_statement_report()
+  (r.refused > 0)
+    && !reference_conservation_accepted(report: r)
+    && !reference_conservation_admitted(report: r)
+}
+
+// A REPORT, NOT A CLAIM: the block fixture's four numbers through the process exit, so a run shows
+// how the report counts a refused body.
+fn block_second_statement_numbers() -> ProcessExit {
+  let r = block_second_statement_report()
+  exit_failure(reason: "authored=" + integer_int_to_decimal_string(value: r.authored) + " conserved=" + integer_int_to_decimal_string(value: r.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: r.locus_erased) + " refused=" + integer_int_to_decimal_string(value: r.refused) + " dropped=" + integer_int_to_decimal_string(value: length(xs: r.dropped)))
+}
+
+// ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------
+
+// MEASURED BOTH WAYS. Before gunbc#12221 the if-arm's call argument `rc_arm_arg` reached no reference
+// site and this check reported it as exactly one DroppedReference. After #12221 (if-arms lower
+// through the statement authority) the argument keeps its occurrence, and the pinned-drop claim went
+// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (DESIGN
+// section 4b(4)): it is now the permanent regression control that the if-arm argument is conserved.
+// The argument is POSITIONAL on purpose: a named argument's label is its own, separately rostered
+// drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a
+// reason that is not the if-arm. The argument's spelling is used NOWHERE else in its declaration, so
+// the declaration-scoped pool cannot account for it: a regression drops it and names exactly it.
+data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport std.types { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(rc_arm_arg) } else { c } }\n"
+
+fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "if_arm_call_argument", source: if_arm_call_argument_source)
+}
+
+fn if_arm_call_argument_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: if_arm_call_argument_subject())
+}
+
+test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
+  let r = if_arm_call_argument_report()
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
+}
+
+// ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
+
+// MEASURED BOTH WAYS. On main fec339d561 (before #12145) this check reported `rc_rhs` as exactly one
+// DroppedReference. On #12145's head babf511 and on main after it, the operand keeps its occurrence
+// and the row is gone. The fixture stays enrolled as the regression control DESIGN section 4b(4)
+// asks for: if the operator tower ever drops a later operand again, this goes red on that atom.
+data infix_right_operand_source: String = "module v2.test.reference_conservation_infix\n\nimport std.types { Bool }\n\ndata rc_lhs: Int = 1\n\ndata rc_rhs: Int = 2\n\nfn rc_compare() -> Bool { rc_lhs == rc_rhs }\n"
+
+fn infix_right_operand_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "infix_right_operand", source: infix_right_operand_source)
+}
+
+fn infix_right_operand_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: infix_right_operand_subject())
+}
+
+test fn the_infix_right_operand_is_conserved_holds() -> Bool {
+  let r = infix_right_operand_report()
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
+}
+
+// ---- a caret symbol's name is a conserved member (MQ-1 PR-2) -----------------------------------
+
+// Before MQ-1 PR-2 the caret's name terminal was class-stamped, published ^dag_token_ident and was
+// never in the population, so lowering `id == ^a` and `id == ^b` to one node reported nothing
+// (gunbc.recurring_failure_mode reference_conservation_population_omits_class_stamped_terminals).
+// It is lexeme-stamped now, so each name IS a population member, and the symbol literal carries it
+// with its occurrence as its payload: both are conserved. RED if a lowering drops a payload (a
+// DroppedReference row on that spelling) or if the name stops being a member (the check then
+// passes vacuously, which the non-zero-population half of the grammar claim
+// test.claim.parse_test_type_decl_modifier_g0_parse_probe caret_referenced_ident_publishes_the_lexeme_holds guards).
+data caret_symbol_payload_source: String = "module v2.test.reference_conservation_caret\n\nimport std.types { Bool }\n\nfn rc_caret(id: Symbol) -> Bool { if id == ^rc_sym_less { true } else { id == ^rc_sym_less_or_equal } }\n"
+
+fn caret_symbol_payload_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "caret_symbol_payload", source: caret_symbol_payload_source)
+}
+
+test fn caret_symbol_payloads_are_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: caret_symbol_payload_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_sym_less) == 0
+    && report_drop_count(report: r, wanted: ^rc_sym_less_or_equal) == 0
+}
+
+// ---- the named-argument label: conserved (was a declared drop) ----------------------------------
+
+// The label of a named argument (`rc_label:` below) names the callee's parameter, so it is a
+// reference. It used to reach no node and no edge of the normalized tree -- a call lowered its
+// arguments positionally -- and was the declared drop KnownDropShape NamedArgumentLabel. MQ-1
+// (v2.compiler.body_lowering_fold body_lower_call_arg_edge) carries it as the application's Named
+// edge, the edge the Arrow domain already keys its binders by, so the drop is retired and this is
+// restated as a CONSERVED control (DESIGN section 4b(4)): the callee, the label and the value all
+// reach the lowered tree, and nothing is dropped. MUTATION RECEIPT: lowering the named actual as a
+// Positional edge reds it with rc_label dropped.
+data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport std.types { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+
+fn named_argument_label_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "named_argument_label", source: named_argument_label_source)
+}
+
+fn named_argument_label_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: named_argument_label_subject())
+}
+
+test fn a_named_argument_label_is_conserved_holds() -> Bool {
+  let r = named_argument_label_report()
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_label) == 0
+    && report_drop_count(report: r, wanted: ^rc_callee) == 0
+    && length(xs: r.dropped) == 0
+}
+
+// ---- a list-literal call argument: conserved (was a module-wide refusal) ---------------------
+
+// Measured on main 1b2f64fd49: a call argument whose value was a list literal refused the WHOLE
+// module at normalize, so every atom of the module was lost with no refusal at or above it
+// (RefusalNotAtOrAbove rows). v2.compiler.body_lowering_fold body_lower_list_literal now lowers the
+// literal as its free-monoid construction with every element whole, so this is restated as a
+// conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
+// A producer that kept only the first element drops `rc_list_second` and reds this. The argument
+// is POSITIONAL on purpose, so this control reds only for the list; the named-argument label has its
+// own conserved control (a_named_argument_label_is_conserved_holds).
+data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee([rc_elsewhere, rc_list_second]) }\n"
+
+fn list_literal_argument_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "list_literal_argument", source: list_literal_argument_source)
+}
+
+fn list_literal_argument_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: list_literal_argument_subject())
+}
+
+test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
+  let r = list_literal_argument_report()
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_elsewhere) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_second) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_callee) == 0
+}
+
+// ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
+
+// `rc_rep` is spelled four times in the declaration `rc_repeat`: as its parameter binder (rebuilt
+// into an edge label, so LocusErased against the pool's one label), as the let's binder (dropped: the
+// rostered StatementLetBinder shape), and as the let's value and the body's use (both survive). The pool is declaration-scoped and holds one copy, which the binder consumes,
+// so exactly ONE DroppedReference remains -- neither zero (a pool that failed to consume) nor two (a
+// pool that was never read).
+// RE-PINNED twice. After gunbc#12221 the fixture's second block statement no longer dropped; it then
+// dropped through the named-argument label, and MQ-1 (gunbc#12382) CONSERVED that label, retiring
+// KnownDropShape NamedArgumentLabel. The multiset property is the subject, not the drop shape, so the
+// fixture drops through a shape still rostered as a known drop.
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nfn rc_repeat(rc_rep: Int) -> Int {\n  let rc_rep = rc_rep\n  rc_rep\n}\n"
+
+fn repeated_spelling_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
+}
+
+fn repeated_spelling_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: repeated_spelling_subject())
+}
+
+test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
+  let r = repeated_spelling_report()
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+}
+
+// ---- a retired drop: the where-refinement predicates ---------------------------------------
+
+// Found when v2.test.claim.body_lowering.declaration_structure_preserved was routed through
+// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): lowering kept one bare
+// atom at the clause's occurrence, so a predicate's name reached no node of the normalized tree.
+// Lowering now carries every predicate of the clause at its own occurrence, with its arguments
+// (v2.compiler.body_lowering_fold body_lower_kept_where_clause), so the same shape -- two predicates,
+// the first with labelled arguments -- conserves every authored atom. This was the drop's pin; it is
+// kept as the regression control that the drop stays retired (DESIGN 4b(4)).
+data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = Int where rc_pred(min: 1, max: 5), rc_other\n"
+
+fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "where_refinement_predicate", source: where_refinement_predicate_source)
+}
+
+test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: where_refinement_predicate_subject())
+  reference_conservation_admitted(report: r)
+}
+
+// ---- measured drops found by admission: a later match arm, a statement-let binder -------------
+
+// Found when v2.test.claim.body_lowering.single_arm_match was routed through the admitted
+// normalize (MQ-6): normalize ACCEPTED a three-arm match and the THIRD arm -- its pattern and its
+// body -- reached no node of the normalized tree, because the arm collector took the repeat's whole
+// spine as one arm. Match arms are now read through v2.compiler.body_lowering_fold
+// body_lower_match_arms_from_list (the one comma-list reader), the MatchLaterArm drop shape is
+// retired, and this claim flips from reporting the drop to asserting its absence: it stays enrolled
+// as the regression control (DESIGN section 4b(4)). It keeps the ACCEPTED conjunct, so a module that
+// refused outright cannot satisfy "rc_third is not dropped" vacuously. The arm's body spelling is
+// used nowhere else in the declaration, so a returning drop reds at it.
+data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
+
+test fn the_third_match_arm_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: match_later_arm_subject())
+  reference_conservation_accepted(report: r) && (report_drops_identity(report: r, wanted: ^rc_third) == false)
+}
+
+// Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
+// binder keeps neither its occurrence nor an unconsumed copy of its spelling, while the later use
+// of the name is conserved at its own occurrence.
+data statement_let_binder_source: String = "module v2.test.reference_conservation_let\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+
+test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
+  let r = conservation_report_of(subject: statement_let_binder_subject())
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+}
+
+fn match_later_arm_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "match_later_arm", source: match_later_arm_source)
+}
+
+fn statement_let_binder_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
+}
+
+// ---- constructor tags keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 3) -----
+
+// A record-literal tag (`RcRow { v: n }`) and a constructor pattern (`RcRow { v: x } =>`) each
+// lower to a construct whose tag atom v2.std.node_query construct_tag_edge builds. Before the
+// repair that atom was lowered from the enclosing capture, so it carried the shell's occurrence and
+// both mentions were counted locus-erased. MEASURED on this fixture: 9 conserved / 13 locus-erased
+// before, 11 / 11 after -- the two tags and nothing else moved. Every other atom here is a binder,
+// a field name or a type position, so the counts are the fixture's own, not a corpus literal.
+data construct_tags_source: String = "module v2.test.reference_conservation_construct_tags\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: n } }\n\nfn rc_read(r: RcRow) -> Int {\n  match r {\n    RcRow { v: x } => x\n  }\n}\n"
+
+fn construct_tags_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "construct_tags", source: construct_tags_source)
+}
+
+test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
+}
+
+// BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
+// fixture's erased atoms, eight have a recorded role that is a declaration or a non-module-scope
+// reference (the RcRow type, the two fn names, the `v:` record-literal label, the `v:` pattern
+// label, the two parameters n and r, and the `v` field declaration); three are the header; none is
+// left in locus_erased, and no production is left unread. Before the parameter and field-block
+// readers landed those three binders were locus_erased and role_not_yet_read counted them.
+test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.role_excluded == 8 && r.header_channel == 3 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0
+}
+
+// ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
+
+// A dotted value chain (`r.v`) and a qualified type path (`v2.std.integer.Int`) lower to the
+// qualified-name spine. Before the repair every segment atom was built synthetic by
+// v2.std.qualified_name qualified_name_spine_node, because the chain reader had already reduced
+// the segments to symbols; now each segment is the atom lowered from its own token
+// (qualified_name_spine_of_atoms). MEASURED on this fixture: 4 conserved / 14 locus-erased
+// before, 10 / 8 after -- the six spine segments and nothing else moved.
+data dotted_spine_source: String = "module v2.test.reference_conservation_spine\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_dotted(r: RcRow) -> Int { r.v }\n\ndata rc_typed: v2.std.integer.Int = 1\n"
+
+fn dotted_spine_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "spine", source: dotted_spine_source)
+}
+
+test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
+  let r = conservation_report_of(subject: dotted_spine_subject())
+  r.authored == 18 && r.conserved == 10 && r.locus_erased + r.role_excluded + r.header_channel == 8 && length(xs: r.dropped) == 0
+}
+
+// ---- anonymous parameter slots are conserved by their minted identity -------------------------
+
+// Each `_` parameter lowers to its own minted binder (v2.std.anonymous_binder), so the label is
+// never the spelling `_`. The pool credits an authored `_` against the anonymous-slot class, keyed
+// on the minted identity: both `_` here are conserved and none is dropped. Keying the pool on the
+// spelling instead drops both.
+data anonymous_slots_source: String = "module v2.test.reference_conservation_anonymous\n\nfn rc_anon(_: Int, _: Bool) -> Int { 1 }\n"
+
+fn anonymous_slots_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "anonymous_slots", source: anonymous_slots_source)
+}
+
+test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool {
+  let r = conservation_report_of(subject: anonymous_slots_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
+    && r.authored > 0
+}
+
+// ---- roles are observed whatever normalization does (review 5330814496) -----------------------
+
+// A module that parses and whose normalization refuses BY DESIGN: it holds a service with a transport
+// member, which every route except census grade refuses as
+// body_lowering_reason_service_realization_unreachable (gunbc.recurring_failure_mode
+// service_interface_member_has_no_carrier). An else-less `if` guard was the refusal here until
+// #12713 lowered early-return guards, which made this control lose its subject. Every
+// name-bearing production of the `.dag` grammar is now read, so a live gap no longer exists to observe;
+// the gap is PLANTED AT THE INTERFACE instead: the role table is the real one with its param_list row
+// supplied as NameRoleNotYetRead, and the module's one fn has one parameter list, so an observed role
+// pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the role
+// producer and reported zero, a gap nobody had observed.
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_plain(n: Int) -> Int { n }\n"
+
+fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
+  name_production_table_admission(
+    root: dag_grammar_root(),
+    rows: list_map(xs: dag_name_production_rows(), f: fn(row) {
+      if row.production == ^dag_production_param_list { name_row(production: row.production, disposition: NameRoleNotYetRead) } else { row }
+    })
+  )
+}
+
+fn normalization_refused_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). The two claims below
+// need normalization to REFUSE and read only the refusal's accounting, so a fixture that stopped
+// refusing, or refused for some other reason, would leave them red or green for the wrong cause.
+// This pins the modeled refusal the fixture exists to carry. It went silent once (#12812: #12713
+// lowered the earlier else-less-if fixture and both claims were red on main outside the gate), so
+// the module is admitted to the required gate at exact grain (v2.workflow.required_floor
+// required_gate_authored_modules). MUTATION: a fixture without the service (the plain fn alone)
+// normalizes Accepted and reds this.
+test fn the_refused_normalization_fixture_refuses_for_the_service_realization_reason_holds() -> Bool {
+  match normalization_refused_subject().normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ne } =>
+      fold_list(xs: ne.tail, empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable, cons: fn(found, d) {
+        found || d.reason == ^body_lowering_reason_service_realization_unreachable
+      })
+  }
+}
+
+fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
+  r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
+}
+
+// The report is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share
+// (the clean_control_report pattern): building the planted admission over the whole grammar inside the
+// claim put it over the new-witness budget once the grammar grew its per-kind productions (XL-2 PR3b-i).
+fn refused_normalization_report() -> ReferenceConservationReport {
+  reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+}
+
+test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
+  let r = refused_normalization_report()
+  refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
+}
+
+// THE REFUSED MODULE NAMES ITS CAUSE (gunbc.recurring_failure_mode
+// census_counts_a_stage_refusal_without_naming_its_cause). The census counted a normalize refusal --
+// `refused`, and `refusal-not-at-or-above` per uncovered atom -- and printed neither the reason nor
+// where, so a reader of its lines could tell THAT a module refused and never WHY. Three claims over
+// reports this module already computes (no new shared producer):
+//   the typed carrier holds the fixture's own fatal reason, located in the module's TEXT (a node
+//     locus resolved through the span index, not left as a node);
+//   the summary line prints that reason and that locus;
+//   the accepted control prints `refusal=none`, so the field is read beside a module that has none.
+// MUTATION: dropping the report_with_normalize_refusal call in conservation_against_refusal reds the
+// first two; printing the refusal unconditionally reds the third.
+fn conservation_summary_line(report: ReferenceConservationReport) -> String {
+  match reference_conservation_report_lines(report: report) {
+    Cons { head: line, tail: _ } => line
+    Empty => ""
+  }
+}
+
+test fn a_refused_normalization_carries_its_fatal_reason_located_in_text_holds() -> Bool {
+  match refused_normalization_report().normalize_refusal {
+    Absent => false
+    Present { value: refusal } =>
+      refusal.fatal.reason == ^body_lowering_reason_service_realization_unreachable
+        && string_contains(s: refusal.located, pattern: " bytes 47..54")
+  }
+}
+
+test fn a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds() -> Bool {
+  let line = conservation_summary_line(report: refused_normalization_report())
+  string_contains(s: line, pattern: " refusal=normalize:body_lowering_reason_service_realization_unreachable @ ")
+    && string_contains(s: line, pattern: " bytes 47..54")
+}
+
+test fn an_accepted_module_prints_no_refusal_on_the_summary_line_holds() -> Bool {
+  let line = conservation_summary_line(report: clean_control_report())
+  string_contains(s: line, pattern: " refusal=none") && !string_contains(s: line, pattern: "refusal=normalize")
+}
+
+// A ROLE TABLE THE GRAMMAR REFUSES, ON A MODULE WHOSE NORMALIZATION ALSO REFUSES: the report keeps
+// normalization's refusal accounting AND records the unadmitted table. Planted at the interface by
+// supplying a refused admission.
+fn planted_refused_admission() -> NameProductionTableAdmission {
+  NameProductionTableRefused { unlisted: [^reference_conservation_planted_unlisted], unknown: [], unkeyed: [] }
+}
+
+test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds() -> Bool {
+  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_refused_admission())
+  refusal_accounts_for_population(r: r)
+    && fold_list(xs: r.unmeasured, empty: false, cons: fn(acc, u) {
+      acc || match u {
+        OccurrenceRoleTableUnadmitted { unlisted: l, unknown: _, unkeyed: _ } => l == [^reference_conservation_planted_unlisted]
+        _ => false
+      }
+    })
+}
+
+// ---- a string literal is conserved by its VALUE -------------------------------------------------
+
+// A string literal carries its decoded value (v2.extdeps.languages.dag
+// dag_string_literal_node_from_lexeme) and is a population member by its own predicate, compared by
+// that value on both sides (v2.compiler.reference_conservation conserved_identity_of). Before this,
+// every string literal was one childless class atom: its value was in neither tree, so no drop of it
+// could be counted. The fixture's two literals differ, and each must be conserved with nothing
+// dropped. MUTATION RECEIPT (run, see the PR): a lowering that keeps the literal's occurrence but
+// rebuilds it without its payload reds this with each value RespelledInNormalizedTree.
+data string_literal_value_source: String = "module v2.test.reference_conservation_string\n\nimport std.types { Bool }\n\ndata rc_greeting: String = \"hello\"\n\nfn rc_quoted() -> String { \"a\\\"b\" }\n"
+
+fn string_literal_value_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "string_literal_value", source: string_literal_value_source)
+}
+
+test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool {
+  let r = conservation_report_of(subject: string_literal_value_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "hello")) == 0
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "a\"b")) == 0
+}
+
+// ---- accepted-file advisories ------------------------------------------------------------------
+//
+// A NON-RESIDUE ADVISORY IS RENDERED BY ITS OWN IDENTITY. The boundary is the report the census
+// renders, SUPPLIED here as the clean control's real report (shared warm with the claim above)
+// carrying one body-lowering advisory in place of its own; the real accepted arm's inhabitance is
+// the claim above. The supplied reason must be rendered, and the residue the real report carried
+// must not -- the census renders the advisories it was given, it does not re-derive them. Supplying
+// at this interface rather than re-running a front end is DESIGN section 3's witness rule: a
+// re-parse here cost the claim past the floor's new-witness budget and asserted nothing more.
+test fn a_supplied_accepted_advisory_is_rendered_by_identity_holds() -> Bool {
+  let report = report_with_advisories(
+    report: clean_control_report(),
+    advisories: Some {
+      diagnostics: diagnostics_singleton(d: Diagnostic {
+        reason: ^body_lowering_reason_postfix_suffix_carried,
+        at: invariant_port_locus(port: ^body_lowering_locus_port, invariant: ^body_lowering_reason_postfix_suffix_carried),
+        correction: Unavailable { reason: UserInputBoundary }
+      })
+    }
+  )
+  let lines = reference_conservation_report_lines(report: report)
+  any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " body_lowering_reason_postfix_suffix_carried" })
+    && !any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " parse_grammar_choice_overlap_residue" })
+}

@@ -1,11 +1,14 @@
 module extdeps.tcgplayer.store
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, AuthScheme }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,6 +36,7 @@ service tcgplayer.Store {
   }
 
   operation UpdateSkuPrice {
+    requires Network
     input {
       bearer_token: Secret
       store_key: NonEmptyStr
@@ -59,6 +63,7 @@ service tcgplayer.Store {
   }
 
   operation IncrementSkuQuantity {
+    requires Network
     input {
       bearer_token: Secret
       store_key: NonEmptyStr

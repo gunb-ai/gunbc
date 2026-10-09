@@ -1,6 +1,7 @@
 module extdeps.languages.json.number
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.nat { Nat }
 import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal }
 import extdeps.languages.json.grammar { JsonNumberLexeme }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
@@ -60,7 +61,7 @@ fn json_number_fragment_refusal_text(r: JsonNumberFragmentRefusal) -> NonEmptySt
 
 // A SCAN RATHER THAN A `contains`, BECAUSE THE POSITION IS THE ANSWER. Whether the lexeme has a
 // decimal point is not the question; where it is decides how many fraction digits there are.
-fn json_number_char_index(s: String, i: Int, wanted: String, other: String) -> Int {
+fn json_number_char_index(s: String, i: Nat, wanted: String, other: String) -> Nat {
   if i >= s.length() {
     s.length()
   } else if char_at(s, i) == wanted || char_at(s, i) == other {

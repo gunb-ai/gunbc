@@ -1,7 +1,6 @@
 module gunbc.fleet_observation_capture_chunk
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.string_type { String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash {
@@ -29,6 +28,7 @@ import std.durable_compare_and_set {
   CasUnreadableObservationBoundExceeded,
   CasSlotObservationRefused,
   CasGenerationPublicationRefused,
+  CasGenerationSpaceExhausted,
 }
 import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
 
@@ -333,6 +333,8 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
           }
         CasGenerationPublicationRefused { detail: detail } =>
           LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+        CasGenerationSpaceExhausted { head: h } =>
+          LocalCommitFailed { cause: ChunkCommitRefused { detail: join(["slot generation space exhausted at head ", to_string(h)], "") as NonEmptyStr } }
       }
   }
 }

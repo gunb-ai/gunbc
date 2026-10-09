@@ -1,5 +1,6 @@
 module v2.workflow.required_regen
 
+import std.types { List }
 import v2.workflow.regen_convergence_transaction {
   RegenConvergenceTransactionReceipt,
   RegenConvergenceRefusal,
@@ -7,9 +8,8 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { list_append }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;

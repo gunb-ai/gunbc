@@ -1,0 +1,12 @@
+module test.fixture.evaluation_store_address_alias.same_leaf
+
+import test.fixture.evaluation_store_address_alias.home { home_marker }
+import test.fixture.evaluation_store_address_alias.decoy { evaluation_store_address }
+
+fn same_leaf_imported_call() -> Bool {
+  evaluation_store_address()
+}
+
+fn same_leaf_home_marker_use() -> Int {
+  home_marker()
+}

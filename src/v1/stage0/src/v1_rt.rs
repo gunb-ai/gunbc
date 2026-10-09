@@ -265,7 +265,7 @@ impl V2Concat for String {
 
 impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
-        self.extend(other);
+        self.append(other);
         self
     }
 }
@@ -321,6 +321,23 @@ pub fn symbol_lexeme(sym: String) -> String {
 
 pub fn symbol_intern_lexeme(lexeme: String) -> String {
     lexeme
+}
+
+/// std.bytes bytes_octets: the octets of a Bytes carrier (Vec<u8> on this target), each as
+/// the List<Int> member the interpreter's free_call.bytes_octets arm answers.
+pub fn bytes_octets(b: Vec<u8>) -> Rc<Vec<i64>> {
+    Rc::new(b.iter().map(|octet| *octet as i64).collect())
+}
+
+/// std.bytes utf8_encode_bytes: RFC 3629 UTF-8 encoding, the inverse of utf8_decode_bytes.
+pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
+    s.into_bytes().into_iter().collect()
+}
+
+/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
+/// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
+pub fn pure_dag_seam_unreachable() -> i64 {
+    panic!("std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
@@ -399,16 +416,61 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
 /// free functions' semantics: each method falls back to the function it shadows
 /// whenever the flag is false, and takes the byte path only under the same
 /// condition that path is already taken there (byte index == code-point index).
+///
+/// The content hash is the second carried fact, carried for the same reason as the
+/// flag: a pure function of immutable content that a hot consumer re-derived per
+/// access. The interpreter's eval-call memo keys every pure call by the content hash
+/// of its arguments and rehashed a `Value::Str` in full on EVERY call, so a recursion
+/// threading one large text through its steps paid O(|text|) per step and O(|text|^2)
+/// overall. It is filled lazily -- most strings are never a call argument -- and it is
+/// carried beside the Rc rather than behind it: a clone taken after the first hash
+/// inherits it, which is the route a threaded argument takes (the key is read off the
+/// argument before it becomes the callee's binding, and the next step's argument is a
+/// clone of that binding). An identity memo keyed on the allocation was rejected: a
+/// `Weak<str>` keeps the string's inline bytes allocated, so every hashed argument
+/// would be retained for the context's lifetime.
 #[derive(Debug, Clone)]
 pub struct RcStr {
     rc: Rc<str>,
     is_ascii: bool,
+    content_hash: Cell<Option<u64>>,
+}
+
+/// The one content hash of interpreted string text. `RcStr::content_hash` carries it and
+/// a consumer holding a bare `&str` calls it directly, so a carried hash and a computed
+/// one cannot disagree.
+pub fn str_content_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+#[cfg(test)]
+thread_local! {
+    static STR_CONTENT_HASH_COMPUTED: Cell<u64> = const { Cell::new(0) };
 }
 
 impl RcStr {
     pub fn new(rc: Rc<str>) -> Self {
         let is_ascii = rc.is_ascii();
-        RcStr { rc, is_ascii }
+        RcStr {
+            rc,
+            is_ascii,
+            content_hash: Cell::new(None),
+        }
+    }
+
+    /// `str_content_hash` of this text, computed at most once per carrier lineage.
+    pub fn content_hash(&self) -> u64 {
+        if let Some(h) = self.content_hash.get() {
+            return h;
+        }
+        #[cfg(test)]
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.set(c.get() + 1));
+        let h = str_content_hash(&self.rc);
+        self.content_hash.set(Some(h));
+        h
     }
 
     #[inline]
@@ -496,6 +558,51 @@ impl std::fmt::Display for RcStr {
     }
 }
 
+#[cfg(test)]
+mod rc_str_content_hash_tests {
+    use super::*;
+
+    fn computed() -> u64 {
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.get())
+    }
+
+    #[test]
+    fn carried_hash_equals_the_free_authority() {
+        for text in ["", "a", "{\"weight_map\": {}}", "caf\u{e9} \u{1f600}"] {
+            assert_eq!(
+                RcStr::new(Rc::from(text)).content_hash(),
+                str_content_hash(text)
+            );
+        }
+    }
+
+    #[test]
+    fn a_threaded_clone_inherits_the_hash_instead_of_rehashing() {
+        let first = RcStr::new(Rc::from("x".repeat(4096).as_str()));
+        let before = computed();
+        let h = first.content_hash();
+        let mut carried = first.clone();
+        for _ in 0..1000 {
+            assert_eq!(carried.content_hash(), h);
+            carried = carried.clone();
+        }
+        assert_eq!(
+            computed() - before,
+            1,
+            "one hash per lineage, not one per step"
+        );
+    }
+
+    #[test]
+    fn a_clone_taken_before_the_first_hash_is_an_independent_lineage() {
+        let a = RcStr::new(Rc::from("abc"));
+        let b = a.clone();
+        let before = computed();
+        assert_eq!(a.content_hash(), b.content_hash());
+        assert_eq!(computed() - before, 2);
+    }
+}
+
 impl PartialEq for RcStr {
     fn eq(&self, other: &Self) -> bool {
         self.rc == other.rc
@@ -544,6 +651,14 @@ pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, ke
     m.get(&key).cloned()
 }
 
+pub fn list_get_optional<T: Clone>(items: &Vec<T>, index: i64) -> Option<T> {
+    if index < 0 {
+        None
+    } else {
+        items.get(index as usize).cloned()
+    }
+}
+
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
     let mut map = HashMap::new();
     for item in list {
@@ -585,7 +700,26 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.
+// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the
+// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a
+// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,
+// at the call, rather than sorting in an order the interpreter would not produce.
+#[diagnostic::on_unimplemented(
+    message = "EMIT REFUSED: `{Self}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations",
+    label = "ordering key of a type with no canonical emitted order"
+)]
+pub trait CanonicalOrdKey: Ord {}
+impl CanonicalOrdKey for String {}
+impl CanonicalOrdKey for RcStr {}
+impl CanonicalOrdKey for i64 {}
+impl CanonicalOrdKey for bool {}
+
+pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering {
+    a.cmp(b)
+}
+
+pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     let mut keys = map_keys(m);
     keys.sort();
     keys
@@ -615,7 +749,7 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
 }
 
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.extend(b);
+    a.append(b);
     a
 }
 
@@ -716,7 +850,7 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    Rc::make_mut(&mut result).extend(b.iter().cloned());
+    Rc::make_mut(&mut result).append((*b).clone());
     result
 }
 
@@ -871,6 +1005,67 @@ pub fn scan_string_end(s: &str, start: i64) -> i64 {
 
 pub fn code_point(c: String) -> i64 {
     c.chars().next().map(|ch| ch as i64).unwrap_or(0)
+}
+
+// THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS — the interpreted piece-walk this primitive
+// replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the
+// measured interpreter constant), which was the read's wall once every quadratic above it was
+// gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown
+// escape refuses before a value is built) holds at native speed. A \u high surrogate must be
+// followed by a \u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);
+// an unpaired surrogate of either half refuses. It used to decode through from_code_point,
+// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).
+// The caller owns the span: this kernel takes the already-scanned body and answers the
+// decoded value or None.
+pub fn json_unescape_checked(s: &str) -> Option<String> {
+    if !s.contains('\\') {
+        return Some(s.to_string());
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('b') => out.push('\x08'),
+            Some('f') => out.push('\x0c'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('u') => {
+                let cp = json_unescape_hex4(&mut chars)?;
+                if (0xD800..=0xDBFF).contains(&cp) {
+                    if chars.next() != Some('\\') || chars.next() != Some('u') {
+                        return None;
+                    }
+                    let lo = json_unescape_hex4(&mut chars)?;
+                    if !(0xDC00..=0xDFFF).contains(&lo) {
+                        return None;
+                    }
+                    out.push(char::from_u32(
+                        0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00),
+                    )?);
+                } else {
+                    out.push(char::from_u32(cp)?);
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let mut v: u32 = 0;
+    for _ in 0..4 {
+        v = v * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(v)
 }
 
 pub fn from_code_point(cp: i64) -> String {
@@ -1149,7 +1344,11 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
 
 pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
 
-pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+pub fn gunbc_file_write_create_new(
+    file_path: &str,
+    content: &[u8],
+    declared_mode: Option<u32>,
+) -> std::io::Result<()> {
     use std::io::Write;
     static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut attempted: u32 = 0;
@@ -1173,6 +1372,25 @@ pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::
             Err(host) => return Err(host),
         }
     };
+    if let Some(declared) = declared_mode {
+        #[cfg(unix)]
+        let applied = {
+            use std::os::unix::fs::PermissionsExt;
+            staged.set_permissions(std::fs::Permissions::from_mode(declared))
+        };
+        #[cfg(not(unix))]
+        let applied: std::io::Result<()> = Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "gunbc create-new: declared mode {} is unavailable on this platform",
+                declared
+            ),
+        ));
+        if let Err(mode_err) = applied {
+            let _ = std::fs::remove_file(&staging_path);
+            return Err(mode_err);
+        }
+    }
     if let Err(staging_err) = staged.write_all(content) {
         let _ = std::fs::remove_file(&staging_path);
         return Err(staging_err);
@@ -1187,9 +1405,17 @@ pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::
     published
 }
 
+pub fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {
+    std::fs::hard_link(source_path, file_path)
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,
+}
+
+pub fn unrealized_host_seam<T>(seam: &str) -> T {
+    panic!("{}", seam);
 }
 
 pub fn filesystem_read(path: String) -> FilesystemReadResult {
@@ -1197,6 +1423,134 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
+/// Substrate `Int` arithmetic: the interpreter refuses on overflow and on a zero divisor
+/// (v1.interpreter eval_int_binop / eval_unaryop); release-profile i64 operators wrap. The emitter
+/// realizes every Int operator through these (extdeps.languages.rust.emit
+/// rust_refusing_int_operator_helper), and each refusal carries the interpreter's own text.
+#[cold]
+#[inline(never)]
+fn int_overflow(op: &str, lhs: i64, rhs: i64) -> ! {
+    panic!(
+        "integer overflow: {} {} {} does not fit in a 64-bit Int",
+        lhs, op, rhs
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn int_division_by_zero() -> ! {
+    panic!("division by zero")
+}
+
+#[inline]
+pub fn int_add(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_add(rhs) {
+        Some(v) => v,
+        None => int_overflow("+", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_sub(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_sub(rhs) {
+        Some(v) => v,
+        None => int_overflow("-", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_mul(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_mul(rhs) {
+        Some(v) => v,
+        None => int_overflow("*", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_div(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_div(rhs) {
+        Some(v) => v,
+        None => int_overflow("/", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_rem(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_rem(rhs) {
+        Some(v) => v,
+        None => int_overflow("%", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_neg(operand: i64) -> i64 {
+    match operand.checked_neg() {
+        Some(v) => v,
+        None => int_overflow("-", 0, operand),
+    }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveElapsedAtSubject.
+///
+/// The builtin was registered for the INTERPRETER and had no emitted body, so a .dag fold that
+/// read the clock typechecked, ran under `gunbc run`, and PANICKED in the emitted binary --
+/// which is where the native route actually executes. The two capabilities are different and
+/// registering one does not supply the other.
+///
+/// The label is not identity material and is never hashed or keyed on. It exists so two
+/// observations around one subject cannot be collapsed by pure-call memoization into a single
+/// read, which would make every measured span zero.
+///
+/// The epoch is process-local and monotone: callers subtract two readings around the subject
+/// they are measuring, so the absolute value is neither calendar time nor comparable across
+/// processes. A saturating subtraction at the call site is therefore the caller's obligation.
+pub fn observed_monotonic_nanos(_label: String) -> i64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    let epoch = EPOCH.get_or_init(Instant::now);
+    // i64 nanoseconds saturates at ~292 years of uptime; clamping is honest rather than
+    // wrapping into a negative duration that would read as a span running backwards.
+    let nanos = epoch.elapsed().as_nanos();
+    if nanos > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        nanos as i64
+    }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.
+///
+/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances
+/// only while this thread executes, so a span read on it is the thread's own work and never an
+/// interval the host took the thread away. The label plays the same anti-memoization role as
+/// observed_monotonic_nanos's and is never identity material.
+///
+/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;
+/// answering with the monotonic wall instead would put host load back into every verdict read
+/// on this clock, and answering zero would make every span vanish. Neither is a reading.
+pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    if rc != 0 {
+        eprintln!("REFUSED: clock_gettime(CLOCK_THREAD_CPUTIME_ID) is unavailable on this host ({}); no thread CPU span is measurable and the wall is not substituted", std::io::Error::last_os_error());
+        std::process::exit(2);
+    }
+    (ts.tv_sec as i64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as i64)
+}
+
 fn int_relu(x: i64) -> i64 {
     if x > 0 {
         x

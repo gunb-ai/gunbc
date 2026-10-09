@@ -133,7 +133,7 @@ fn witness_linear_instance_green() -> WorkflowLawWitness {
     law_tag: "workflow:linear_instance_equals_flat_settle_green",
     verified: verdict_eq(
       a: settle_verdict_tree(linearize_steps(demo_spine_green())),
-      b: settle(demo_spine_green())
+      b: gunbc.idea_pr_spine.settle(demo_spine_green())
     ),
   }
 }
@@ -143,7 +143,7 @@ fn witness_linear_instance_unknown() -> WorkflowLawWitness {
     law_tag: "workflow:linear_instance_equals_flat_settle_unknown",
     verified: verdict_eq(
       a: settle_verdict_tree(linearize_steps(demo_spine_unknown())),
-      b: settle(demo_spine_unknown())
+      b: gunbc.idea_pr_spine.settle(demo_spine_unknown())
     ),
   }
 }

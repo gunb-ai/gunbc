@@ -1,31 +1,34 @@
 module v2.extdeps.languages.verilog
 
+import v2.std.algebra { list_reverse }
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import std.integer { Signedness }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
   Node,
-  Named,
+  Authored,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.compilers.target_model {
   EmitSpellingWrap,
+  EmitLineBreaks,
   ProducedDeclUnwired,
   TargetModel,
   TokenClassEmitTransform,
   render_target_text
 }
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_nested_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, derive_grammar_relation_row_for_lhs }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -617,8 +620,8 @@ type VerilogModule
     }
 
 type VerilogCost {
-  gate_cost: v2.std.nat.Nat
-  area_cost: v2.std.nat.Nat
+  gate_cost: std.nat.Nat
+  area_cost: std.nat.Nat
 }
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
@@ -669,7 +672,8 @@ fn verilog_lex() -> LexRules {
             right: LiteralPattern { text: "|" }
           }
         )
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -805,16 +809,18 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
         grammar_formal_terminal_free(identity: ^verilog_token_rparen),
         grammar_formal_terminal(identity: ^verilog_token_semicolon),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
+        grammar_formal_nested_occurrence(identity: ^verilog_production_assign_list, unit: ^verilog_body_indent),
         grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
       ]
     )
   ]
 }
 
-// LAYOUT IS TARGET-OWNED, AND THIS IS WHERE IT LIVES. target_text_seq concatenates exactly, so
-// every space and newline in an emitted module is declared here or does not exist. None of it may
-// return to product.compute_board.
+// LAYOUT IS TARGET-OWNED, AND THIS IS WHERE IT LIVES. Every space and line break in an emitted
+// module is declared here or does not exist: spaces by spelling wraps, line breaks by EmitLineBreaks,
+// and the module body's indentation by the nested assign_list occurrence
+// (grammar_formal_nested_occurrence), whose unit ^verilog_body_indent is spelled below. None of it
+// may return to product.compute_board.
 //
 // WHY THE HEADER AND EXPRESSION PARENTHESES ARE DIFFERENT TOKEN CLASSES. A transform is keyed by
 // token class, so one paren class cannot render " (\n" around a port list and "(" inside an
@@ -913,11 +919,11 @@ fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> N
 fn verilog_emit_layout_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = map_insert(empty_map(), ^verilog_token_kw_module, EmitSpellingWrap { prefix: "", suffix: " " })
   let m1 = map_insert(m0, ^verilog_token_kw_wire, EmitSpellingWrap { prefix: "", suffix: " " })
-  let m2 = map_insert(m1, ^verilog_token_comma, EmitSpellingWrap { prefix: "", suffix: "\n" })
-  let m3 = map_insert(m2, ^verilog_token_semicolon, EmitSpellingWrap { prefix: "", suffix: "\n" })
-  let m4 = map_insert(m3, ^verilog_token_kw_assign, EmitSpellingWrap { prefix: "  ", suffix: " " })
+  let m2 = map_insert(m1, ^verilog_token_comma, EmitLineBreaks { before: 0, after: 1 })
+  let m3 = map_insert(m2, ^verilog_token_semicolon, EmitLineBreaks { before: 0, after: 1 })
+  let m4 = map_insert(m3, ^verilog_token_kw_assign, EmitSpellingWrap { prefix: "", suffix: " " })
   let m5 = map_insert(m4, ^verilog_token_equals, EmitSpellingWrap { prefix: " ", suffix: " " })
-  map_insert(m5, ^verilog_token_kw_endmodule, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  map_insert(m5, ^verilog_token_kw_endmodule, EmitLineBreaks { before: 0, after: 1 })
 }
 
 // THE INTERLOCK EXEMPLAR. The binding symbol in a derived row comes from the EMITTED atom
@@ -979,6 +985,10 @@ fn verilog_interlock_emitted() -> Node {
 // oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
 // like the transforms.
 fn verilog_binding_spellings() -> Map<Symbol, String> {
+  map_insert(verilog_slot_spellings(), ^verilog_body_indent, "  ")
+}
+
+fn verilog_slot_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -1031,35 +1041,19 @@ fn verilog_relation_row_for_productions(
   lhs: Symbol,
   emitted: Node
 ) -> Witness<Node> {
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 // The same population in reverse authoring order. Selection is structural, so this must derive a
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
 fn verilog_emission_formal_productions_reversed() -> List<FormalProduction> {
-  reverse(verilog_emission_formal_productions())
+  list_reverse(xs: verilog_emission_formal_productions())
 }
 
 fn verilog_relation_row_for(lhs: Symbol, emitted: Node) -> Witness<Node> {
   let productions = verilog_emission_formal_productions()
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn verilog_module_relation_row() -> Witness<Node> {
@@ -1070,7 +1064,7 @@ fn verilog_module_relation_row() -> Witness<Node> {
 }
 
 fn verilog_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {
@@ -1254,7 +1248,8 @@ fn verilog_identifier_is_admissible(spelling: String) -> Bool {
     && !verilog_identifier_contains_forbidden(spelling: spelling)
 }
 
-// THE TARGET-OWNED SPELLINGS EVERY VERILOG PROGRAM SHARES: the two port directions and the three
+// THE TARGET-OWNED SPELLINGS EVERY VERILOG PROGRAM SHARES: the module body's indent unit
+// (^verilog_body_indent, the nested assign_list occurrence), the two port directions and the three
 // boolean operators. A product supplies spellings for ITS identifiers and merges them over these,
 // so no consumer has to know that "input" is padded to align with "output" or that the conjunction
 // renders with surrounding spaces. Those are layout decisions and stay here.
@@ -1265,7 +1260,7 @@ fn verilog_base_spellings() -> Map<Symbol, String> {
         map_insert(
           map_insert(
             map_insert(
-              map_insert(empty_map(), ^verilog_header_open, " (\n"),
+              map_insert(map_insert(empty_map(), ^verilog_body_indent, "  "), ^verilog_header_open, " (\n"),
               ^verilog_header_close,
               "\n)"
             ),
@@ -1329,13 +1324,13 @@ type VerilogEmission
 fn verilog_emit_module(module_node: Node, spellings: Map<Symbol, String>) -> VerilogEmission {
   match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: module_node) {
     Holds { value: row } =>
-      match target_serialize_relation_row_from_model_bounded(
-        4096,
-        verilog_target_model_for(row: row, spellings: spellings),
-        module_node
+      match target_serialize_derived_row_bounded(
+        remaining: 4096,
+        target: verilog_target_model_for(row: row, spellings: spellings),
+        row: row
       ) {
         Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: render_target_text(t: text) }
-        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: diagnostics_fatal_reason(d: d) }
       }
     Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
   }

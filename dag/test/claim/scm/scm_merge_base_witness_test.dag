@@ -424,19 +424,6 @@ test fn scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later() -
   }
 }
 
-test fn scm_merge_base_witnesses_hold() -> Bool {
-  scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on()
-    && scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base()
-    && scm_mb_an_independent_lineage_sharing_content_still_derives_its_base()
-    && scm_mb_replaying_the_consumed_source_itself_has_no_valid_base()
-    && scm_mb_the_integration_record_survives_a_document_round_trip()
-    && scm_mb_a_well_ordered_subset_still_decodes()
-    && scm_mb_a_document_whose_integration_anchor_is_absent_refuses()
-    && scm_mb_a_document_whose_integration_anchor_comes_later_refuses()
-    && scm_mb_checked_encode_refuses_an_absent_integration_anchor()
-    && scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later()
-}
-
 // DEGENERATE TOPOLOGY: A BASE THAT IS THE SOURCE MEANS THERE IS NOTHING TO INTEGRATE.
 //
 // Both rows MERGED before this arm existed, measured wet on the canary. The damage is not the empty

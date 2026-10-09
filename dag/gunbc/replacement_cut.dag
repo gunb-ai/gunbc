@@ -1,6 +1,6 @@
 module gunbc.replacement_cut
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length, brand }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,

@@ -1,5 +1,6 @@
 module v2.compiler.emit_host
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
@@ -25,7 +26,7 @@ import v2.compiler.eval {
 }
 import extdeps.communication.medium { Medium }
 import std.algebra { Cons, Empty }
-import v2.std.collection { List, optional_present }
+import v2.std.collection { optional_present }
 import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,
@@ -51,6 +52,7 @@ import std.artifact_store {
   artifact_realization_digest
 }
 import std.content_hash {
+  Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural
 }
@@ -58,9 +60,9 @@ import std.content_hash { ContentHash }
 import extdeps.realization.emit_on_demand_host {
   native_cache_realization_workspace_root
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.diagnostic {
+  diagnostics_fatal,
   Diagnostic,
   Outcome,
   Accepted,
@@ -107,7 +109,10 @@ import v2.std.verdict {
 import v2.std.verification {
   test_claim_input,
   EqualsClaim,
-  CompilesClaim
+  CompilesClaim,
+  DiagnosticClaim,
+  StructuralEqualsClaim,
+  RoundTripClaim
 }
 import v2.std.witness { Holds, Violates }
 
@@ -173,7 +178,8 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-    _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+    Accepted { value: Violates { diagnostic: _ }, diagnostics: Some { diagnostics: _ } } => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+    Accepted { value: Holds { value: _ }, diagnostics: _ } => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
 
@@ -210,7 +216,14 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
       integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
-    _ => outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeAggregate { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeReference { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeClosure { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeUnit { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
   }
 }
 
@@ -287,7 +300,7 @@ fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String 
   }
 }
 
-fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
+fn emit_host_string_list_digest(xs: List<String>, seed: String) -> Fnv1a64Structural {
   fold(
     xs,
     init: content_hash_atom(value: seed),
@@ -585,6 +598,13 @@ fn run_emit_host_cached_with_run_args(
   )
 }
 
+// AN ADVISORY ON THE EXPECTED OUTCOME NEVER FAILS THE BUILD. An Accepted expected value is
+// compared on its value; the advisories it carries ride on the `actual` outcome a non-Pass verdict
+// reports, so they are visible and never mistaken for a cause. A refused expectation reports its
+// FATAL diagnostic (the chain's last), not its head, which may be an advisory prepended to it.
+// Before this, any Accepted { diagnostics: Some } became a build failure keyed on the head. No
+// producer on the eval route attaches an advisory today (05_eval, std.runtime and the v2
+// evaluator runtimes mint none), so that arm was unreachable rather than a relied-upon safety.
 fn run_test_claim_emit_vs_eval_verdict(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
@@ -593,15 +613,15 @@ fn run_test_claim_emit_vs_eval_verdict(
   expected: Outcome<RuntimeValue>
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
-    Accepted { value: exp_val, diagnostics: None } =>
+    Accepted { value: exp_val, diagnostics: advisories } =>
       match accepted_runtime_value_outcome_equality(
         a: Accepted { value: host_actual, diagnostics: None },
-        b: expected
+        b: Accepted { value: exp_val, diagnostics: None }
       ) {
         RuntimeValuesEqual => Pass
         RuntimeValuesDiffer =>
           verdict_semantic_mismatch(
-            actual: Accepted { value: host_actual, diagnostics: None },
+            actual: Accepted { value: host_actual, diagnostics: advisories },
             falsification: optional_present(
               value: FalsificationReceipt {
                 subject: subject,
@@ -615,25 +635,27 @@ fn run_test_claim_emit_vs_eval_verdict(
         RuntimeValueEqualityUnavailable { reason: r } =>
           runtime_value_equality_verdict(
             equality: RuntimeValueEqualityUnavailable { reason: r },
-            actual: Accepted { value: host_actual, diagnostics: None },
+            actual: Accepted { value: host_actual, diagnostics: advisories },
             at: subject.input.evaluator_input
           )
       }
     Rejected { diagnostics: ds } =>
       verdict_build_failed(
         actual: expected,
-        diagnostic: ds.head
-      )
-    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
-      verdict_build_failed(
-        actual: expected,
-        diagnostic: ds.head
+        diagnostic: diagnostics_fatal(d: ds)
       )
   }
 }
 
 fn emit_host_no_run_args() -> List<String> {
   []
+}
+
+fn run_test_claim_emit_vs_eval_run_failed(exit: HostExit) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  verdict_run_failed(
+    actual: host_exit_failure_outcome(exit: exit),
+    diagnostic: emit_host_run_failed_diagnostic()
+  )
 }
 
 fn run_test_claim_emit_vs_eval_verdict_from_run(
@@ -662,14 +684,11 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
             Rejected { diagnostics: ds } =>
               verdict_run_failed(
                 actual: Rejected { diagnostics: ds },
-                diagnostic: ds.head
+                diagnostic: diagnostics_fatal(d: ds)
               )
           }
-        _ =>
-          verdict_run_failed(
-            actual: host_exit_failure_outcome(exit: host_receipt.exit),
-            diagnostic: emit_host_run_failed_diagnostic()
-          )
+        Accepted { value: _, diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
+        Rejected { diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
       }
     Rejected { diagnostics: ds } =>
       Deferred {
@@ -838,7 +857,9 @@ fn run_test_claim_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 
@@ -872,7 +893,9 @@ fn run_test_claim_from_source_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 
@@ -941,7 +964,9 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 

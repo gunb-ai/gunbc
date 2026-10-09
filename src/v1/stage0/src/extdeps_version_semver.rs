@@ -6,8 +6,10 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
+pub use crate::std_algebra::trim;
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_checked_arithmetic::checked_int_to_nat;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
@@ -101,16 +103,32 @@ pub fn semver_compare_identifiers(
                 if ((b.clone().len() as i64) == 0) {
                     break Ordering::Greater;
                 } else {
-                    match semver_compare_identifier(a.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of semver_compare_identifier (empty Optional at runtime)"), b.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of semver_compare_identifier (empty Optional at runtime)")) {
-    Ordering::Equal => { {
-                        let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-__tco_loop_a = __tco_0;
-__tco_loop_b = __tco_1;
-continue;
-} },
-    other => { break other.clone(); },
-}
+                    match a.clone().first().cloned() {
+                        Some(ah) => match b.clone().first().cloned() {
+                            Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
+                                Ordering::Equal => {
+                                    let __tco_0 = Rc::new(
+                                        a.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        b.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    __tco_loop_a = __tco_0;
+                                    __tco_loop_b = __tco_1;
+                                    continue;
+                                }
+                                other => {
+                                    break other.clone();
+                                }
+                            },
+                            std::option::Option::None => {
+                                break Ordering::Greater;
+                            }
+                        },
+                        std::option::Option::None => {
+                            break Ordering::Less;
+                        }
+                    }
                 }
             }
         }
@@ -152,6 +170,76 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
             }
         }
         other => other.clone(),
+    }
+}
+
+pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
+    {
+        let parts = Rc::new(
+            crate::std_algebra::trim(text.clone())
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        if (((parts.clone().len() as i64) < 2) || ((parts.clone().len() as i64) > 3)) {
+            std::option::Option::None
+        } else {
+            match semver_dotted_part(parts.clone(), 0) {
+                std::option::Option::None => std::option::Option::None,
+                Some(major) => match semver_dotted_part(parts.clone(), 1) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(minor) => {
+                        if ((parts.clone().len() as i64) == 2) {
+                            Some(Rc::new(SemVerVersion {
+                                major: major.clone(),
+                                minor: minor.clone(),
+                                patch: 0,
+                                pre_release: Rc::new(vec![]),
+                                build: Rc::new(vec![]),
+                            }))
+                        } else {
+                            match semver_dotted_part(parts.clone(), 2) {
+                                std::option::Option::None => std::option::Option::None,
+                                Some(patch) => Some(Rc::new(SemVerVersion {
+                                    major: major.clone(),
+                                    minor: minor.clone(),
+                                    patch: patch.clone(),
+                                    pre_release: Rc::new(vec![]),
+                                    build: Rc::new(vec![]),
+                                })),
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<NonNegativeInt> {
+    match parts
+        .clone()
+        .iter()
+        .cloned()
+        .skip(index.clone() as usize)
+        .next()
+    {
+        std::option::Option::None => std::option::Option::None,
+        Some(w) => match v1_rt::parse_int(w.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(n) => crate::std_checked_arithmetic::checked_int_to_nat(n.clone()),
+        },
+    }
+}
+
+pub fn semver_minimum_of_constraint(constraint: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
+    {
+        let c = crate::std_algebra::trim(constraint.clone());
+        if v1_rt::starts_with(c.clone(), ">=".to_string()) {
+            semver_core_of_dotted(v1_rt::substring(&c, 2, v1_rt::string_length(&c)))
+        } else {
+            std::option::Option::None
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 module extdeps.package_managers.pip
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -25,7 +27,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data pip_program: NonEmptyStr = "pip"
+fn pip_program() -> ProgramIdentity = uncataloged_program(invocation: "pip")
 
 // THE VERSION IS NOT OPTIONAL IN THIS BUILDER, and that is the whole reason it exists rather than a
 // caller passing a bare package name. An unpinned install resolves to whatever the index serves at
@@ -36,7 +38,7 @@ data pip_program: NonEmptyStr = "pip"
 // and no caller can omit it.
 fn pip_install_pinned_command(distribution: NonEmptyStr, version: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: pip_program,
+    program: pip_program(),
     arguments: ["install", concat(concat(distribution as String, "=="), version as String)],
   )
 }

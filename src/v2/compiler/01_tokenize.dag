@@ -1,13 +1,16 @@
 module v2.compiler.tokenize
 
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
+import std.types { List }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup, list_at_optional }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
-import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
-import v2.std.logic { Bool }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, length, list_reverse }
+import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
+import std.unicode.types { unicode_scalar_utf8_octet_count }
+import std.unicode.char_class { unicode_char_code_point }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, advance_line_prefix_indent_only, placement_from_line_prefix }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -23,6 +26,14 @@ import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
+  LexMode,
+  LexModeDeclaredTwice,
+  LexModeDeclarationRefusal,
+  LexModeTransition,
+  ModeTransitionTokenRule,
+  PopLexMode,
+  PushLexMode,
+  lex_rule_set_mode_refusal,
   LineCommentTextChar,
   ModeledLexRules,
   StringTextChar,
@@ -32,7 +43,11 @@ import v2.std.compilers.lexing {
   lex_artifact_new,
   lex_artifact_semantic_tokens,
   token_stream_empty,
-  token_stream_new,
+  lexeme_has_line_feed,
+  stream_layout_empty,
+  stream_layout_with_break,
+  StreamLayout,
+  token_stream_lexed,
   TriviaRule,
   UnboundSourceAnnotation,
   VoidLexRules,
@@ -40,19 +55,41 @@ import v2.std.compilers.lexing {
   fold_lex_pattern
 }
 
+// One source carrier is retained throughout the walk; progress is a scalar index.
+// Byte extents remain independently derived from consumed Unicode scalars.
+type LexCursor {
+  source: v2.std.text.String
+  index: Int
+}
+
+fn lex_cursor_head(cursor: LexCursor) -> v2.std.text.CharResult {
+  match list_at_optional(xs: cursor.source, index: cursor.index) {
+    Absent => CharAbsent
+    Present { value: c } => CharFound { value: c }
+  }
+}
+
+fn lex_cursor_empty(cursor: LexCursor) -> Bool {
+  match lex_cursor_head(cursor: cursor) {
+    CharAbsent => true
+    CharFound { value: _ } => false
+  }
+}
+
+fn lex_cursor_advance(cursor: LexCursor) -> LexCursor {
+  LexCursor { source: cursor.source, index: cursor.index + 1 }
+}
+
 type LexMatchResult
-  = LexMatchAccepted { remaining: v2.std.text.String, lexeme: v2.std.text.String }
+  = LexMatchAccepted { remaining: LexCursor, lexeme: v2.std.text.String }
   | LexMatchRejected
 
 type LexRuleApply
   = LexRuleNoMatch
-  | LexRuleToken { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
-  | LexRuleTrivia { lexeme: v2.std.text.String, remaining: v2.std.text.String }
-  | LexRuleAnnotation { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
-
-type LexMatchThunk {
-  apply: fn(v2.std.text.String) -> LexMatchResult
-}
+  | LexRuleToken { class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor }
+  | LexRuleTrivia { lexeme: v2.std.text.String, remaining: LexCursor }
+  | LexRuleAnnotation { class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor }
+  | LexRuleModalToken { class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor, transition: LexModeTransition }
 
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -66,6 +103,49 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// THE MODE STACK'S THREE MEANINGLESS STATES, each its own refusal (v2.std.compilers.lexing LexRule
+// lexical modes). A push names a mode the rule set never declared; a pop is attempted in the default
+// mode, which has nothing beneath it; or the source ends with a mode still pushed, located at the
+// token that pushed it, since that is where the unclosed context began.
+fn tokenize_lex_e2_mode_undeclared_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e2_mode_undeclared,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn tokenize_lex_e3_mode_pop_at_default_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e3_mode_pop_at_default,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn tokenize_lex_e4_mode_unterminated_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e4_mode_unterminated,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn lex_mode_declaration_refusal_reason(refusal: LexModeDeclarationRefusal) -> Symbol {
+  match refusal {
+    LexModeDeclaredTwice { mode: _ } => ^tokenize_lex_e5_mode_declared_twice
+  }
+}
+
+// A rule set whose mode declarations are malformed is refused before any text is walked.
+fn tokenize_lex_e5_mode_declaration_diagnostic(file: Symbol, refusal: LexModeDeclarationRefusal) -> Diagnostic {
+  Diagnostic {
+    reason: lex_mode_declaration_refusal_reason(refusal: refusal),
+    at: Textual { file: file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -98,28 +178,38 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
   }
 }
 
-fn lex_strip_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> ListTailResult<Char> {
+// THE LEXEME IS THE SOURCE'S OWN TEXT, NOT THE PATTERN'S. Every other matcher answers the codepoints
+// it consumed from `source`; this one answered the pattern literal `prefix`. The two agree as
+// values, but on the seed they are different carriers -- a pattern literal is a native String, the
+// source is a codepoint list -- and the sequence arm of lex_match_pattern joins its two lexemes with
+// list_append. The line-comment rule is Sequence(Literal "//", Repeat(..)), so that join met a native
+// String and a codepoint list, and the seed's concat rendered the list: `// ab` became the text
+// `//[32, 97, 98]` and a bare `//` became `//Empty`. lex_walk_step advances every extent by the
+// lexeme's length, so every token after any line comment was mislocated (gunbc.recurring_failure_mode
+// lexer_literal_lexeme_straddles_its_sequence_partner). Consuming the prefix from the source makes
+// every lexeme one carrier; the value is unchanged.
+fn lex_consume_prefix(prefix: v2.std.text.String, source: LexCursor) -> LexMatchResult {
   fold_list(
     xs: prefix,
-    empty: TailFound { tail: source },
-    cons: fn(acc, _) {
+    empty: LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty },
+    cons: fn(acc, expected) {
       match acc {
-        TailAbsent => TailAbsent
-        TailFound { tail: r } => list_tail(xs: r)
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: cursor, lexeme: consumed } =>
+          match lex_cursor_head(cursor: cursor) {
+            CharAbsent => LexMatchRejected
+            CharFound { value: c } =>
+              if c == expected {
+                LexMatchAccepted { remaining: lex_cursor_advance(cursor: cursor), lexeme: list_snoc_item(xs: consumed, item: c) }
+              } else { LexMatchRejected }
+          }
       }
     }
   )
 }
 
-fn lex_match_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> LexMatchResult {
-  if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
-    match lex_strip_prefix(prefix: prefix, source: source) {
-      TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
-      TailAbsent => LexMatchRejected
-    }
-  } else {
-    LexMatchRejected
-  }
+fn lex_match_prefix(prefix: v2.std.text.String, source: LexCursor) -> LexMatchResult {
+  lex_consume_prefix(prefix: prefix, source: source)
 }
 
 // Lexeme growth must push items (amortized O(log n) on the persistent carrier, per
@@ -132,13 +222,13 @@ fn lexeme_grow(acc: v2.std.text.String, chunk: v2.std.text.String) -> v2.std.tex
 }
 
 type RepeatState {
-  remaining: v2.std.text.String
+  remaining: LexCursor
   lexeme: v2.std.text.String
   done: Bool
 }
 
 type DelimitedState {
-  remaining: v2.std.text.String
+  remaining: LexCursor
   lexeme: v2.std.text.String
   done: Bool
   failed: Bool
@@ -149,34 +239,25 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
     TokenRule { token_class: _, pattern: p } => p
     TriviaRule { pattern: p } => p
     AnnotationRule { annotation_class: _, pattern: p } => p
+    ModeTransitionTokenRule { token_class: _, pattern: p, transition: _ } => p
   }
 }
 
-fn lex_match_char_pred(pred: fn(Char) -> Bool, source: v2.std.text.String) -> LexMatchResult {
-  match string_is_empty(s: source) {
-    true => LexMatchRejected
-    false =>
-      match string_head(s: source) {
-        CharAbsent => LexMatchRejected
-        CharFound { value: c } =>
-          match pred(c) {
-            true =>
-              match string_tail(s: source) {
-                TailFound { tail: rest } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: std.algebra.Empty } }
-                TailAbsent => LexMatchRejected
-              }
-            false => LexMatchRejected
-          }
-      }
+fn lex_match_char_pred(pred: fn(Char) -> Bool, source: LexCursor) -> LexMatchResult {
+  match lex_cursor_head(cursor: source) {
+    CharAbsent => LexMatchRejected
+    CharFound { value: c } =>
+      if pred(c) {
+        LexMatchAccepted { remaining: lex_cursor_advance(cursor: source), lexeme: Cons { head: c, tail: std.algebra.Empty } }
+      } else { LexMatchRejected }
   }
 }
 
-fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
+fn lex_repeat_step(element: LexPattern, state: RepeatState) -> RepeatState {
   match state.done {
     true => state
     false =>
-      match elem_r.apply(state.remaining) {
+      match lex_match_pattern(pattern: element, source: state.remaining) {
         LexMatchRejected =>
           RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
         LexMatchAccepted { remaining: rest, lexeme: consumed } =>
@@ -185,7 +266,7 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
               RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
             false =>
               lex_repeat_step(
-                elem_r: elem_r,
+                element: element,
                 state: RepeatState {
                   remaining: rest,
                   lexeme: lexeme_grow(acc: state.lexeme, chunk: consumed),
@@ -197,15 +278,15 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
   }
 }
 
-fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
-  lex_repeat_step(elem_r: elem_r, state: init)
+fn lex_repeat_loop(element: LexPattern, init: RepeatState) -> RepeatState {
+  lex_repeat_step(element: element, state: init)
 }
 
-fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: DelimitedState) -> DelimitedState {
+fn lex_delimited_step(close: LexPattern, body: LexPattern, state: DelimitedState) -> DelimitedState {
   match state.done {
     true => state
     false =>
-      match close_r.apply(state.remaining) {
+      match lex_match_pattern(pattern: close, source: state.remaining) {
         LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
           DelimitedState {
             remaining: after_close,
@@ -214,7 +295,7 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
             failed: false
           }
         LexMatchRejected =>
-          match body_r.apply(state.remaining) {
+          match lex_match_pattern(pattern: body, source: state.remaining) {
             LexMatchRejected =>
               DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
             LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
@@ -223,8 +304,8 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
                   DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
                 false =>
                   lex_delimited_step(
-                    close_r: close_r,
-                    body_r: body_r,
+                    close: close,
+                    body: body,
                     state: DelimitedState {
                       remaining: after_body,
                       lexeme: lexeme_grow(acc: state.lexeme, chunk: body_lex),
@@ -240,7 +321,6 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
 
 type CompiledLexRule {
   rule: LexRule
-  thunk: LexMatchThunk
   index: Int
   first: LexFirst
 }
@@ -310,7 +390,8 @@ fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
         } else {
           open
         }
-      }
+      },
+      not_followed_by: fn(element) { LexFirst { chars: std.algebra.Empty, classes: std.algebra.Empty, nullable: true } }
     }
   )
 }
@@ -401,8 +482,8 @@ fn lex_merge_by_index(left: List<CompiledLexRule>, right: List<CompiledLexRule>)
   }
 }
 
-fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: v2.std.text.String) -> List<CompiledLexRule> {
-  match string_head(s: source) {
+fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: LexCursor) -> List<CompiledLexRule> {
+  match lex_cursor_head(cursor: source) {
     CharAbsent => dispatch.all
     CharFound { value: c } =>
       lex_merge_by_index(
@@ -415,120 +496,80 @@ fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: v2.std.text.String
   }
 }
 
-fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
-  fold_lex_pattern(
-    pattern: lex_rule_pattern(rule: rule),
-    algebra: LexPatternFold {
-      empty: LexMatchThunk { apply: fn(s) {
-        LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
-      } },
-      literal: fn(text) {
-        LexMatchThunk { apply: fn(s) {
-          lex_match_prefix(prefix: text, source: s)
-        } }
-      },
-      keyword: fn(text) {
-
-        LexMatchThunk { apply: fn(s) {
-          match lex_match_prefix(prefix: text, source: s) {
-            LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              match string_is_empty(s: rest) {
-                true => LexMatchAccepted { remaining: rest, lexeme: lex }
-                false =>
-                  match string_head(s: rest) {
-                    CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
-                    CharFound { value: c } =>
-                      match v2.compiler.tokenize.char_in_class(c: c, class: IdentContinueChar) {
-                        true => LexMatchRejected
-                        false => LexMatchAccepted { remaining: rest, lexeme: lex }
-                      }
-                  }
-              }
+// A RULE'S MATCHER IS ITS PATTERN, READ. The pattern is data and the match is one structural walk
+// over it, so a compiled rule set holds no closures: it is portable, and a prepared rule set can be
+// served across evaluations like PreparedGrammar (v2.compiler.program_assembly dag_prepared_lex).
+// Each arm answers exactly what the closure built per arm used to: the consumed source as the
+// lexeme, a keyword refused when an identifier character follows, a choice taking its left
+// alternative first, a repeat stopping at a rejection or an empty match, and a delimited body
+// running until its close matches.
+// THIS IS THE ONE DIRECT WALK OVER LexPattern, DECLARED in v2.std.compilers.lexing beside
+// lex_pattern_is_keyword: structural questions use fold_lex_pattern, but matching threads the cursor
+// through the children, which the fold could express only by producing closures. The match below is
+// over the closed coproduct, so a new variant refuses here at compile time rather than being skipped.
+fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
+  match pattern {
+    EmptyPattern => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
+    LiteralPattern { text: text } => lex_match_prefix(prefix: text, source: source)
+    KeywordPattern { text: text } =>
+      match lex_match_prefix(prefix: text, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          match lex_cursor_head(cursor: rest) {
+            CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
+            CharFound { value: c } =>
+              if char_in_class(c: c, class: IdentContinueChar) { LexMatchRejected } else { LexMatchAccepted { remaining: rest, lexeme: lex } }
           }
-        } }
-      },
-      char: fn(expected) {
-        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { c == expected }, source: s) } }
-      },
-      char_class: fn(class) {
-        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { v2.compiler.tokenize.char_in_class(c: c, class: class) }, source: s) } }
-      },
-      sequence: fn(left_r, right_r) {
-        LexMatchThunk { apply: fn(s) {
-          match left_r.apply(s) {
-            LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
-              match right_r.apply(rest1) {
-                LexMatchRejected => LexMatchRejected
-                LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
-                  LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
-              }
-          }
-        } }
-      },
-      choice: fn(left_r, right_r) {
-        LexMatchThunk { apply: fn(s) {
-          match left_r.apply(s) {
-            LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              LexMatchAccepted { remaining: rest, lexeme: lex }
-            LexMatchRejected => right_r.apply(s)
-          }
-        } }
-      },
-      optional: fn(elem_r) {
-        LexMatchThunk { apply: fn(s) {
-          match elem_r.apply(s) {
-            LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              LexMatchAccepted { remaining: rest, lexeme: lex }
-            LexMatchRejected =>
-              LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
-          }
-        } }
-      },
-      repeat: fn(elem_r) {
-
-        LexMatchThunk { apply: fn(s) {
-          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: std.algebra.Empty, done: false })
-          LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
-        } }
-      },
-      one_or_more: fn(elem_r) {
-
-        LexMatchThunk { apply: fn(s) {
-          match elem_r.apply(s) {
-            LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: rest, lexeme: lex, done: false })
-              LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
-          }
-        } }
-      },
-      delimited: fn(open_r, body_r, close_r) {
-
-        LexMatchThunk { apply: fn(s) {
-          match open_r.apply(s) {
-            LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
-              let init = DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false }
-              let result = lex_delimited_step(close_r: close_r, body_r: body_r, state: init)
-              match result.done {
-                false => LexMatchRejected
-                true =>
-                  match result.failed {
-                    true => LexMatchRejected
-                    false => LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
-                  }
-              }
-          }
-        } }
       }
-    }
-  )
+    CharPattern { char: expected } => lex_match_char_pred(pred: fn(c) { c == expected }, source: source)
+    CharClassPattern { class: class } => lex_match_char_pred(pred: fn(c) { char_in_class(c: c, class: class) }, source: source)
+    SequencePattern { left: left, right: right } =>
+      match lex_match_pattern(pattern: left, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
+          match lex_match_pattern(pattern: right, source: rest1) {
+            LexMatchRejected => LexMatchRejected
+            LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
+              LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
+          }
+      }
+    ChoicePattern { left: left, right: right } =>
+      match lex_match_pattern(pattern: left, source: source) {
+        LexMatchAccepted { remaining: rest, lexeme: lex } => LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchRejected => lex_match_pattern(pattern: right, source: source)
+      }
+    OptionalPattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchAccepted { remaining: rest, lexeme: lex } => LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchRejected => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
+      }
+    RepeatPattern { element: element } =>
+      let result = lex_repeat_loop(element: element, init: RepeatState { remaining: source, lexeme: std.algebra.Empty, done: false })
+      LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
+    OneOrMorePattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          let result = lex_repeat_loop(element: element, init: RepeatState { remaining: rest, lexeme: lex, done: false })
+          LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
+      }
+    DelimitedPattern { open: open, body: body, close: close } =>
+      match lex_match_pattern(pattern: open, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
+          let result = lex_delimited_step(close: close, body: body, state: DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false })
+          if result.done && !result.failed { LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme } } else { LexMatchRejected }
+      }
+    NotFollowedByPattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchAccepted { remaining: _, lexeme: _ } => LexMatchRejected
+        LexMatchRejected => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
+      }
+  }
 }
 
-fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> LexRuleApply {
-  match compiled.thunk.apply(source) {
+fn lex_try_compiled(compiled: CompiledLexRule, source: LexCursor) -> LexRuleApply {
+  match lex_match_pattern(pattern: lex_rule_pattern(rule: compiled.rule), source: source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match compiled.rule {
@@ -538,6 +579,8 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> Le
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
         AnnotationRule { annotation_class: class, pattern: _ } =>
           LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
+        ModeTransitionTokenRule { token_class: class, pattern: _, transition: t } =>
+          LexRuleModalToken { class: class, lexeme: lexeme, remaining: remaining, transition: t }
       }
   }
 }
@@ -556,7 +599,6 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
         reversed: Cons {
           head: CompiledLexRule {
             rule: rule,
-            thunk: lex_rule_thunk(rule: rule),
             index: acc.next_index,
             first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
           },
@@ -566,18 +608,17 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
       }
     }
   )
-  compiled.reversed.reverse()
+  list_reverse(xs: compiled.reversed)
 }
 
 fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
   lex_try_compiled(
     compiled: CompiledLexRule {
       rule: rule,
-      thunk: lex_rule_thunk(rule: rule),
       index: 0,
       first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
     },
-    source: source
+    source: LexCursor { source: source, index: 0 }
   )
 }
 
@@ -587,16 +628,119 @@ fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
     LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
     LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
     LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
+    LexRuleModalToken { lexeme: lexeme, remaining: _, class: _, transition: _ } => length(xs: lexeme)
   }
 }
 
 fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> LexRuleApply {
   match acc {
     LexRuleNoMatch => candidate
-    _ =>
+    LexRuleToken { class: _, lexeme: _, remaining: _ } =>
       match candidate {
         LexRuleNoMatch => acc
-        _ =>
+        LexRuleToken { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleTrivia { lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+      }
+    LexRuleTrivia { lexeme: _, remaining: _ } =>
+      match candidate {
+        LexRuleNoMatch => acc
+        LexRuleToken { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleTrivia { lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+      }
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
+      match candidate {
+        LexRuleNoMatch => acc
+        LexRuleToken { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleTrivia { lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+      }
+    LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
+      match candidate {
+        LexRuleNoMatch => acc
+        LexRuleToken { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleTrivia { lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
+            candidate
+          } else {
+            acc
+          }
+        LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
           if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
             candidate
           } else {
@@ -606,7 +750,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
   }
 }
 
-fn lex_try_rules(rules: List<CompiledLexRule>, source: v2.std.text.String) -> LexRuleApply {
+fn lex_try_rules(rules: List<CompiledLexRule>, source: LexCursor) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
@@ -620,8 +764,21 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: v2.std.text.String) -> Le
 }
 
 // The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
+// A lexeme's extent in UTF-8 OCTETS. Every walk offset (`pos`, Token and annotation start/end) is
+// carried as v2.std.diagnostic ByteRange, so it advances by the encoding form's octet count per
+// scalar, never by the scalar count: counting scalars made ByteRange hold character offsets on any
+// non-ASCII source, a name carrying two meanings. The per-scalar count is the one UTF-8 table,
+// std.unicode.types unicode_scalar_utf8_octet_count.
+fn lexeme_utf8_octet_count(lexeme: v2.std.text.String) -> Int {
+  fold_list(
+    xs: lexeme,
+    empty: 0,
+    cons: fn(total, c) { total + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)) }
+  )
+}
+
 type LexWalkAcc {
-  remaining: v2.std.text.String
+  remaining: LexCursor
   tokens: List<Token>
   annotations: List<UnboundSourceAnnotation>
   line_prefix_indent_only: Bool
@@ -630,11 +787,108 @@ type LexWalkAcc {
   error: Bool
   file: Symbol
   dispatch: LexRuleDispatch
+  modes: Map<Symbol, LexRuleDispatch>
+  mode_stack: List<LexModeFrame>
+  mode_fault: Optional<LexWalkModeFault>
+  gap_start: Int
+  gap_has_break: Bool
+  layout: StreamLayout
 }
 
-fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
+// One pushed mode: the dispatch to resume when it pops, and the extent of the token that pushed it,
+// which is where an unterminated mode is reported.
+type LexModeFrame {
+  resume: LexRuleDispatch
+  opened_start: Int
+  opened_end: Int
+}
+
+type LexWalkModeFault
+  = ModeUndeclaredAt { start: Int, end: Int }
+  | ModePopAtDefaultAt { start: Int, end: Int }
+  | ModeUnterminatedAt { start: Int, end: Int }
+
+fn lex_mode_dispatches(rules: LexRuleSet) -> Map<Symbol, LexRuleDispatch> {
+  fold_list(
+    xs: rules.modes,
+    empty: empty_map(),
+    cons: fn(acc, mode) { map_insert(m: acc, key: mode.mode, value: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: mode.rules))) }
+  )
+}
+
+// The walk state with its mode fields replaced; every other field carried. The one place a mode
+// change is written, so the push, the pop and each refusal cannot drift apart.
+fn lex_walk_with_mode(
+  acc: LexWalkAcc,
+  dispatch: LexRuleDispatch,
+  mode_stack: List<LexModeFrame>,
+  mode_fault: Optional<LexWalkModeFault>
+) -> LexWalkAcc {
+  let faulted = match mode_fault {
+    Present { value: _ } => true
+    Absent => false
+  }
   LexWalkAcc {
-    remaining: src,
+    remaining: acc.remaining,
+    tokens: acc.tokens,
+    annotations: acc.annotations,
+    line_prefix_indent_only: acc.line_prefix_indent_only,
+    pos: acc.pos,
+    done: acc.done || faulted,
+    error: acc.error || faulted,
+    file: acc.file,
+    dispatch: dispatch,
+    modes: acc.modes,
+    mode_stack: mode_stack,
+    mode_fault: mode_fault,
+    gap_start: acc.gap_start,
+    gap_has_break: acc.gap_has_break,
+    layout: acc.layout
+  }
+}
+
+// Applied after a mode-transition token is emitted; `start`..`end` is that token's extent. A walk
+// already stopped is left as it is.
+fn lex_walk_transition(acc: LexWalkAcc, transition: LexModeTransition, start: Int, end: Int) -> LexWalkAcc {
+  if acc.done {
+    acc
+  } else {
+    match transition {
+      PushLexMode { mode: m } =>
+        match map_lookup(m: acc.modes, key: m) {
+          Present { value: d } =>
+            lex_walk_with_mode(
+              acc: acc,
+              dispatch: d,
+              mode_stack: Cons { head: LexModeFrame { resume: acc.dispatch, opened_start: start, opened_end: end }, tail: acc.mode_stack },
+              mode_fault: optional_absent()
+            )
+          Absent =>
+            lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModeUndeclaredAt { start: start, end: end }))
+        }
+      PopLexMode =>
+        match acc.mode_stack {
+          Empty =>
+            lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModePopAtDefaultAt { start: start, end: end }))
+          Cons { head: frame, tail: rest } =>
+            lex_walk_with_mode(acc: acc, dispatch: frame.resume, mode_stack: rest, mode_fault: optional_absent())
+        }
+    }
+  }
+}
+
+// End of input: a mode still pushed is an unterminated context, refused at the token that opened it.
+fn lex_walk_finish(acc: LexWalkAcc) -> LexWalkAcc {
+  match acc.mode_stack {
+    Empty => acc
+    Cons { head: frame, tail: _ } =>
+      lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModeUnterminatedAt { start: frame.opened_start, end: frame.opened_end }))
+  }
+}
+
+fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> LexWalkAcc {
+  LexWalkAcc {
+    remaining: LexCursor { source: src, index: 0 },
     tokens: std.algebra.Empty,
     annotations: std.algebra.Empty,
     line_prefix_indent_only: true,
@@ -642,7 +896,13 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Le
     done: false,
     error: false,
     file: file,
-    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules))
+    dispatch: prepared.dispatch,
+    modes: prepared.modes,
+    mode_stack: Empty,
+    mode_fault: optional_absent(),
+    gap_start: 0,
+    gap_has_break: false,
+    layout: stream_layout_empty()
   }
 }
 
@@ -651,19 +911,27 @@ fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
 }
 
 fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
-  match string_is_empty(s: acc.remaining) {
+  match lex_cursor_empty(cursor: acc.remaining) {
     true =>
-      LexWalkAcc {
-        remaining: acc.remaining,
-        tokens: acc.tokens,
-        annotations: acc.annotations,
-        line_prefix_indent_only: acc.line_prefix_indent_only,
-        pos: acc.pos,
-        done: true,
-        error: false,
-        file: acc.file,
-        dispatch: acc.dispatch
-      }
+      lex_walk_finish(
+        acc: LexWalkAcc {
+            remaining: acc.remaining,
+            tokens: acc.tokens,
+            annotations: acc.annotations,
+            line_prefix_indent_only: acc.line_prefix_indent_only,
+            pos: acc.pos,
+            done: true,
+            error: false,
+            file: acc.file,
+            dispatch: acc.dispatch,
+            modes: acc.modes,
+            mode_stack: acc.mode_stack,
+            mode_fault: acc.mode_fault,
+            gap_start: acc.gap_start,
+            gap_has_break: acc.gap_has_break,
+            layout: acc.layout
+          }
+      )
     false =>
       match lex_try_rules(rules: lex_dispatch_candidates(dispatch: acc.dispatch, source: acc.remaining), source: acc.remaining) {
         LexRuleNoMatch =>
@@ -676,7 +944,13 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             done: true,
             error: true,
             file: acc.file,
-            dispatch: acc.dispatch
+            dispatch: acc.dispatch,
+            modes: acc.modes,
+            mode_stack: acc.mode_stack,
+            mode_fault: acc.mode_fault,
+            gap_start: acc.gap_start,
+            gap_has_break: acc.gap_has_break,
+            layout: acc.layout
           }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
           match string_is_empty(s: lexeme) {
@@ -690,7 +964,13 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break,
+                layout: acc.layout
               }
             false =>
               LexWalkAcc {
@@ -698,49 +978,21 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 tokens: acc.tokens,
                 annotations: acc.annotations,
                 line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
+                layout: acc.layout
               }
           }
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-          match string_is_empty(s: lexeme) {
-            true =>
-              LexWalkAcc {
-                remaining: acc.remaining,
-                tokens: acc.tokens,
-                annotations: acc.annotations,
-                line_prefix_indent_only: acc.line_prefix_indent_only,
-                pos: acc.pos,
-                done: true,
-                error: true,
-                file: acc.file,
-                dispatch: acc.dispatch
-              }
-            false =>
-              LexWalkAcc {
-                remaining: remaining,
-                tokens: Cons {
-                  head: Token {
-                    class: class,
-                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
-                    file: acc.file,
-                    start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
-                  },
-                  tail: acc.tokens
-                },
-                annotations: acc.annotations,
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
-                done: false,
-                error: false,
-                file: acc.file,
-                dispatch: acc.dispatch
-              }
-          }
+          lex_walk_emit_token(acc: acc, class: class, lexeme: lexeme, remaining: remaining)
         LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
           match string_is_empty(s: lexeme) {
             true =>
@@ -753,7 +1005,13 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break,
+                layout: acc.layout
               }
             false =>
               LexWalkAcc {
@@ -762,52 +1020,149 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 annotations: Cons {
                   head: UnboundSourceAnnotation {
                     annotation_class: class,
-                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+                    lexeme: unicode_scalar_fold(xs: lexeme),
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
+                    end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
                   },
                   tail: acc.annotations
                 },
                 line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
+                layout: acc.layout
               }
           }
+        LexRuleModalToken { class: class, lexeme: lexeme, remaining: remaining, transition: t } =>
+          lex_walk_transition(
+            acc: lex_walk_emit_token(acc: acc, class: class, lexeme: lexeme, remaining: remaining),
+            transition: t,
+            start: acc.pos,
+            end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
+          )
       }
   }
 }
 
-fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWalkAcc> {
+// A token rule's match, emitted onto the walk: shared by the plain and the mode-transition token arms.
+fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor) -> LexWalkAcc {
+  match string_is_empty(s: lexeme) {
+    true =>
+      LexWalkAcc {
+        remaining: acc.remaining,
+        tokens: acc.tokens,
+        annotations: acc.annotations,
+        line_prefix_indent_only: acc.line_prefix_indent_only,
+        pos: acc.pos,
+        done: true,
+        error: true,
+        file: acc.file,
+        dispatch: acc.dispatch,
+        modes: acc.modes,
+        mode_stack: acc.mode_stack,
+        mode_fault: acc.mode_fault,
+        gap_start: acc.gap_start,
+        gap_has_break: acc.gap_has_break,
+        layout: acc.layout
+      }
+    false =>
+      LexWalkAcc {
+        remaining: remaining,
+        tokens: Cons {
+          head: Token {
+            class: class,
+            lexeme: unicode_scalar_fold(xs: lexeme),
+            file: acc.file,
+            start: acc.pos,
+            end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
+          },
+          tail: acc.tokens
+        },
+        annotations: acc.annotations,
+        line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
+        pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
+        done: false,
+        error: false,
+        file: acc.file,
+        dispatch: acc.dispatch,
+        modes: acc.modes,
+        mode_stack: acc.mode_stack,
+        mode_fault: acc.mode_fault,
+        gap_start: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
+        gap_has_break: false,
+        layout: if acc.gap_has_break { stream_layout_with_break(layout: acc.layout, token_start: acc.pos, gap_start: acc.gap_start) } else { acc.layout }
+      }
+  }
+}
+
+fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet) -> SourceFold<LexWalkAcc> {
   SourceFold {
-    init: fn(src) { lex_walk_init(src: src, file: file, rules: rules) },
+    init: fn(src) { lex_walk_init(src: src, file: file, prepared: prepared) },
     is_done: lex_walk_is_done,
     step: lex_walk_step
   }
 }
 
+// The unmatched scalar's width in octets, so the refusal extent covers exactly that one scalar.
+fn lex_unmatched_scalar_octets(remaining: LexCursor) -> Int {
+  match lex_cursor_head(cursor: remaining) {
+    CharFound { value: c } => unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c))
+    CharAbsent => 0
+  }
+}
+
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
-// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar when remaining is nonempty.
+// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
+  lex_walk_artifact_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
+}
+
+fn lex_walk_artifact_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
+  match prepared.mode_refusal {
+    Present { value: refusal } =>
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e5_mode_declaration_diagnostic(file: file, refusal: refusal)) }
+    Absent => lex_walk_artifact_walked(source: source, file: file, prepared: prepared)
+  }
+}
+
+fn lex_walk_mode_fault_diagnostic(file: Symbol, fault: LexWalkModeFault) -> Diagnostic {
+  match fault {
+    ModeUndeclaredAt { start: a, end: b } => tokenize_lex_e2_mode_undeclared_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+    ModePopAtDefaultAt { start: a, end: b } => tokenize_lex_e3_mode_pop_at_default_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+    ModeUnterminatedAt { start: a, end: b } => tokenize_lex_e4_mode_unterminated_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+  }
+}
+
+fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
-    algebra: lex_walk_source_algebra(file: file, rules: rules)
+    algebra: lex_walk_source_algebra(file: file, prepared: prepared)
   )
-  let at = match string_is_empty(s: result.remaining) {
+  let at = match lex_cursor_empty(cursor: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
-    false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + 1 } }
+    false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + lex_unmatched_scalar_octets(remaining: result.remaining) } }
   }
   if result.error {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    match result.mode_fault {
+      Present { value: fault } =>
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lex_walk_mode_fault_diagnostic(file: file, fault: fault)) }
+      Absent =>
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    }
   } else {
     v2.std.diagnostic.Accepted {
       value: lex_artifact_new(
-        tokens: token_stream_new(all: result.tokens.reverse()),
-        annotations: result.annotations.reverse()
+        tokens: token_stream_lexed(all: list_reverse(xs: result.tokens), layout: result.layout),
+        annotations: list_reverse(xs: result.annotations)
       ),
       diagnostics: v2.std.diagnostic.None
     }
@@ -815,7 +1170,11 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
 }
 
 fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
-  match lex_walk_artifact(source: source, file: file, rules: rules) {
+  lex_walk_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
+}
+
+fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<TokenStream> {
+  match lex_walk_artifact_prepared(source: source, file: file, prepared: prepared) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     v2.std.diagnostic.Accepted { value: artifact, diagnostics: ds } =>
@@ -830,7 +1189,9 @@ fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outc
 // hands over exactly the value it hashed, and the read boundary performs no lexical interpretation
 // — deciding what a character IS belongs to the lexer, which is here.
 //
-// `chars` is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
+// The crossing is the declared route std.coercion unicode_scalar_unfold, the value form of the
+// UnicodeScalarSequenceUnfold row (gunbc.structural_realization_bindings conversion_plan_rows); its
+// body is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
 // unfold_scalar_sequence_image builds the UnicodeScalarSequenceUnfold image by calling it, so the
 // runtime converter and the literal elaborator are two producers deriving one meaning from one
 // authority rather than two loops that agree by coincidence. Scalar values, never UTF-8 bytes and
@@ -841,26 +1202,62 @@ fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outc
 // prefix operation, walk state or fold ever receives the host form. A second conversion further in
 // would be a second answer to a question already answered.
 //
-// THIS AUTHORIZES ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
+// THIS IS ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
 // arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
 // text_boundary_identity_wall stands, its subject is the non-literal host value crossing an exact
 // structural-text boundary through permissive compatibility, and this named morphism does not
 // retire it. A green ingress here is not that wall coming down.
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
-  let source = chars(s: text)
+  tokenize_prepared(text: text, file: file, prepared: prepare_lex_rules(rules: rules))
+}
+
+// THE COMPILED RULES ARE A PROPERTY OF THE LANGUAGE, NOT OF THE TEXT. Compiling a rule set (each
+// rule's matcher, the first-character dispatch over them, one dispatch per declared mode) and
+// checking its mode declarations depend on the rules alone, so prepare_lex_rules does that once and
+// every tokenize of every text under the same rules reads the result. tokenize above is the
+// one-text door and prepares for that one call; a caller that tokenizes many texts under one
+// language (the per-file assembly fold, the front ends) prepares once beside prepare_grammar and
+// calls tokenize_prepared, exactly as the parse reads PreparedGrammar.
+type PreparedLexRuleSet {
+  dispatch: LexRuleDispatch
+  modes: Map<Symbol, LexRuleDispatch>
+  mode_refusal: Optional<LexModeDeclarationRefusal>
+}
+
+type PreparedLexRules
+  = PreparedVoidLexRules
+  | PreparedModeledLexRules { root: PreparedLexRuleSet }
+
+fn prepare_lex_rule_set(rules: LexRuleSet) -> PreparedLexRuleSet {
+  PreparedLexRuleSet {
+    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules)),
+    modes: lex_mode_dispatches(rules: rules),
+    mode_refusal: lex_rule_set_mode_refusal(rules: rules)
+  }
+}
+
+fn prepare_lex_rules(rules: LexRules) -> PreparedLexRules {
+  match rules {
+    VoidLexRules => PreparedVoidLexRules
+    ModeledLexRules { root: rule_set } => PreparedModeledLexRules { root: prepare_lex_rule_set(rules: rule_set) }
+  }
+}
+
+fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<TokenStream> {
+  let source = unicode_scalar_unfold(s: text)
   let at = Textual {
     file: file,
     extent: WholeFile
   }
-  match rules {
-    VoidLexRules =>
+  match prepared {
+    PreparedVoidLexRules =>
       if is_empty(xs: source) {
         v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
-    ModeledLexRules { root: rule_set } =>
-      lex_walk(source: source, file: file, rules: rule_set)
+    PreparedModeledLexRules { root: prepared_set } =>
+      lex_walk_prepared(source: source, file: file, prepared: prepared_set)
   }
 }
 

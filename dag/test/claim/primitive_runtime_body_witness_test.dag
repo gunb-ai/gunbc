@@ -1,0 +1,160 @@
+module test.claim.primitive_runtime_body_witness_test
+
+import std.primitive_identity {
+  PrimitiveRuntimeBodiesObserved,
+  PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
+  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
+  primitive_surface_census_with_runtime,
+  primitive_identity_eq, primitive_map_keys, primitive_map_values,
+}
+import extdeps.languages.rust.emit { RuntimeFunction }
+import std.types { Bool, String }
+import gunbc.primitive_runtime_body_gate { runtime_body_required_check_in }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.required_ci_phase_roster {
+  PrimitiveRuntimeBodyPhase, required_ci_phases, required_ci_phase_enrolled,
+  lane_phase_names, WitnessesLane, BuildLane,
+}
+
+fn bridge(name: String, body: String) -> RuntimeFunction {
+  RuntimeFunction { name: name, bridge_name: body, passes_by_ref: false, wraps_result: false }
+}
+
+test fn registered_bridge_without_body_refuses() -> Bool {
+  let registry = [bridge(name: "clock_probe", body: "native_clock_probe")]
+  let census = primitive_runtime_body_census_in(
+    registry: registry,
+    source: "pub fn unrelated() {}\n"
+  )
+  match primitive_runtime_body_check_in(registry: registry, census: census) {
+    PrimitiveRuntimeBodiesMissing { violations: rows } =>
+      count(rows) == 1 && (rows |> all(row => row.authored_symbol == "clock_probe" && row.bridge_name == "native_clock_probe"))
+    _ => false
+  }
+}
+
+test fn bridge_alias_joins_the_runtime_definition() -> Bool {
+  let registry = [bridge(name: "empty_map", body: "rc_empty_map")]
+  let census = primitive_runtime_body_census_in(
+    registry: registry,
+    source: "pub fn rc_empty_map<T>() {}\n"
+  )
+  match primitive_runtime_body_check_in(registry: registry, census: census) {
+    PrimitiveRuntimeBodiesComplete => true
+    _ => false
+  }
+}
+
+test fn operation_spelling_does_not_substitute_for_bridge_definition() -> Bool {
+  let registry = [bridge(name: "empty_map", body: "rc_empty_map")]
+  let census = primitive_runtime_body_census_in(
+    registry: registry,
+    source: "pub fn empty_map() {}\n"
+  )
+  match primitive_runtime_body_check_in(registry: registry, census: census) {
+    PrimitiveRuntimeBodiesMissing { violations: rows } => count(rows) == 1
+    _ => false
+  }
+}
+
+test fn nested_function_and_comment_do_not_supply_a_runtime_body() -> Bool {
+  let registry = [bridge(name: "clock_probe", body: "native_clock_probe")]
+  let census = primitive_runtime_body_census_in(
+    registry: registry,
+    source: "// pub fn native_clock_probe() {}\nmod nested {\n    pub fn native_clock_probe() {}\n}\n"
+  )
+  match primitive_runtime_body_check_in(registry: registry, census: census) {
+    PrimitiveRuntimeBodiesMissing { violations: rows } => count(rows) == 1
+    _ => false
+  }
+}
+
+test fn unreadable_runtime_refuses_even_with_no_bridges() -> Bool {
+  let census = primitive_runtime_body_census_in(
+    registry: [],
+    source: "this is not a Rust item\n"
+  )
+  match primitive_runtime_body_check_in(registry: [], census: primitive_surface_census_with_runtime(runtime: census)) {
+    PrimitiveRuntimeBodiesUnreadable { line: line, detail: detail } => line == 1 && string_length(s: detail) > 0
+    _ => false
+  }
+}
+
+test fn declaration_without_body_does_not_realize_a_bridge() -> Bool {
+  let registry = [bridge(name: "clock_probe", body: "native_clock_probe")]
+  let census = primitive_runtime_body_census_in(
+    registry: registry, source: "pub fn native_clock_probe();\n"
+  )
+  match primitive_runtime_body_check_in(registry: registry, census: census) {
+    PrimitiveRuntimeBodiesMissing { violations: rows } => count(rows) == 1
+    _ => false
+  }
+}
+
+test fn shared_body_preserves_each_identity_join() -> Bool {
+  let census = primitive_runtime_body_census_in(
+    registry: [bridge(name: "map_keys", body: "shared_body"), bridge(name: "map_values", body: "shared_body")],
+    source: "pub fn shared_body() {}\n"
+  )
+  match census {
+    PrimitiveRuntimeBodiesObserved { rows: rows } =>
+      count(rows) == 2
+        && (rows |> any(row => match row.primitive {
+          Present { value: identity } => primitive_identity_eq(left: identity, right: primitive_map_keys)
+          Absent => false
+        }))
+        && (rows |> any(row => match row.primitive {
+          Present { value: identity } => primitive_identity_eq(left: identity, right: primitive_map_values)
+          Absent => false
+        }))
+    _ => false
+  }
+}
+
+test fn required_phase_accepts_live_bodies_and_runs_its_control() -> Bool {
+  match runtime_body_required_check_in(
+    registry: [bridge(name: "map_insert", body: "rc_map_insert"), bridge(name: "new_operation", body: "new_body")],
+    source: "pub fn rc_map_insert() {}\npub fn new_body() {}\n"
+  ) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+test fn required_phase_auto_enrolls_a_new_bridge_without_a_body() -> Bool {
+  match runtime_body_required_check_in(
+    registry: [bridge(name: "map_insert", body: "rc_map_insert"), bridge(name: "new_operation", body: "new_body")],
+    source: "pub fn rc_map_insert() {}\n"
+  ) {
+    ExitFailure { code: code, reason: reason } =>
+      code == 1 && string_contains(s: reason, pattern: "new_operation -> v1_rt::new_body")
+    _ => false
+  }
+}
+
+test fn required_phase_cannot_pass_without_its_mutation_subject() -> Bool {
+  match runtime_body_required_check_in(registry: [], source: "") {
+    ExitFailure { code: code, reason: reason } =>
+      code == 1 && string_contains(s: reason, pattern: "exactly one live map_insert")
+    _ => false
+  }
+}
+
+test fn required_phase_refuses_when_its_negative_control_is_not_negative() -> Bool {
+  match runtime_body_required_check_in(
+    registry: [bridge(name: "map_insert", body: "rc_map_insert")],
+    source: "pub fn rc_map_insert() {}\npub fn runtime_body_missing_control() {}\n"
+  ) {
+    ExitFailure { code: code, reason: reason } =>
+      code == 1 && string_contains(s: reason, pattern: "mutation control did not refuse")
+    _ => false
+  }
+}
+
+test fn runtime_body_phase_is_required_on_the_witnesses_lane() -> Bool {
+  required_ci_phase_enrolled(p: PrimitiveRuntimeBodyPhase, phases: required_ci_phases)
+    && (lane_phase_names(lane: WitnessesLane, phases: required_ci_phases)
+      |> any(name => name == "primitive-runtime-body"))
+    && !(lane_phase_names(lane: BuildLane, phases: required_ci_phases)
+      |> any(name => name == "primitive-runtime-body"))
+}

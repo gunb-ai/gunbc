@@ -23,6 +23,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   DirectAtomBody,
+  FunctionValueBody,
   Edge,
   Node,
   Positional,
@@ -34,9 +35,18 @@ import v2.std.node {
   arrow_body_record_construct_conforms,
   arrow_body_target_is_valid_realization,
   classify_arrow_body_form,
+  DeclarationReferenceBody,
+  ParameterReferenceBody,
+  LexicalReferenceBody,
+  DeclarationReferenceKind,
+  MarkedReference,
+  NotMarkedReference,
+  ParameterReferenceKind,
+  LexicalReferenceKind,
+  resolved_reference_body_kind,
 }
 import v2.std.node_query { find_arrow_body_child }
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
+import std.optional { Optional, Present, optional_absent, optional_present }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
@@ -48,22 +58,72 @@ type ArrowBodyFormAdmissionMirror
   = ArrowBodyFormAdmissionProduction
   | ArrowBodyFormAdmissionRedNoDirectAtom
   | ArrowBodyFormAdmissionRedNoComputationBody
+  | ArrowBodyFormAdmissionRedNoDeclarationReference
+  | ArrowBodyFormAdmissionRedNoFunctionValueBody
 
+// Each mirror deletes exactly ONE production arm of v2.std.node classify_arrow_body_form and keeps
+// every other one, so a claim reds only for the arm it names.
 fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
-    TypeNode { connective: Conj } => RecordConstructBody
+    TypeNode { connective: Conj } =>
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
+    TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
 fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
-    TypeNode { connective: Conj } => RecordConstructBody
+    TypeNode { connective: Conj } =>
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
+    TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: _ } => UnsupportedArrowBody
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
+  }
+}
+
+// THE CANARY MUTATION (gunbc native lane, 2026-09-26): the classifier as it stood before
+// DeclarationReferenceBody, reading every Conj body as a record construct.
+fn classify_arrow_body_form_red_no_declaration_reference(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } =>
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        _ => RecordConstructBody
+      }
+    TypeNode { connective: Arrow } => FunctionValueBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    TypeNode { connective: _ } => UnsupportedArrowBody
+  }
+}
+
+// The FunctionValueBody arm deleted: an Arrow body falls to UnsupportedArrowBody, as before the arm.
+fn classify_arrow_body_form_red_no_function_value_body(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } =>
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -74,14 +134,44 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
       match classify_arrow_body_form_red_no_direct_atom(target: target) {
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
+        ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
+        FunctionValueBody => true
         ComputationBody { behavior: _ } => true
       }
     ArrowBodyFormAdmissionRedNoComputationBody =>
       match classify_arrow_body_form_red_no_computation_body(target: target) {
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
+        ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
+        FunctionValueBody => true
+        ComputationBody { behavior: _ } => true
+      }
+    ArrowBodyFormAdmissionRedNoDeclarationReference =>
+      match classify_arrow_body_form_red_no_declaration_reference(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
+        ParameterReferenceBody => true
+        LexicalReferenceBody => true
+        DirectAtomBody => true
+        FunctionValueBody => true
+        ComputationBody { behavior: _ } => true
+      }
+    ArrowBodyFormAdmissionRedNoFunctionValueBody =>
+      match classify_arrow_body_form_red_no_function_value_body(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
+        ParameterReferenceBody => true
+        LexicalReferenceBody => true
+        DirectAtomBody => true
+        FunctionValueBody => true
         ComputationBody { behavior: _ } => true
       }
   }
@@ -223,7 +313,7 @@ fn arrow_body_form_eval_int_result_equals_for_call(call: Node, expected: Int) ->
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
     Accepted { value: actual, diagnostics: _ } =>
       arrow_body_form_eval_runtime_int_equals(value: actual, n: expected)
-    _ => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

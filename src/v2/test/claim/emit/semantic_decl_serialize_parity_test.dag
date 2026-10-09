@@ -1,11 +1,10 @@
 module v2.test.emit.semantic_decl_serialize_parity
 
+import v2.std.collection { empty_map }
+import v2.compiler.emit_semantic_decl { produced_type_binding }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,
   rust_decl_general_lex,
@@ -33,8 +32,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { Map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.text { String }
 import std.algebra { Empty }
 
@@ -44,8 +42,8 @@ fn bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
+      Edge { label: Authored { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Authored { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -101,7 +99,8 @@ fn bool_text_with_target(target: TargetModel) -> Outcome<String> {
           projection: emission.surface,
           name: ^Bool,
           params: Empty,
-          coproduct: bool_coproduct()
+          coproduct: bool_coproduct(),
+          type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
         ),
         f: fn(surface) {
           serialize_surface_with_target(
@@ -124,7 +123,8 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
             projection: emission.surface,
             name: ^Bool,
             params: Empty,
-            coproduct: bool_coproduct()
+            coproduct: bool_coproduct(),
+            type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
@@ -180,7 +180,8 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
             projection: emission.surface,
             name: ^Bool,
             params: Empty,
-            coproduct: bool_coproduct()
+            coproduct: bool_coproduct(),
+            type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
@@ -304,12 +305,14 @@ test fn generic_row_profile_matches_golden() -> Bool {
         projection: emission.surface,
         name: ^Bool,
         params: Empty,
-        coproduct: bool_coproduct()
+        coproduct: bool_coproduct(),
+        type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
       ) {
         Accepted { value: surface, diagnostics: _ } =>
           match semantic_decl_serialize_target(
             profile: emission.enum_serialize_profile,
-            rules: rust_enum_general_decl_productions_only_translation_rules()
+            rules: rust_enum_general_decl_productions_only_translation_rules(),
+            host_binding_spellings: empty_map()
           ) {
             Accepted { value: target, diagnostics: _ } =>
               match serialize_surface_with_target(

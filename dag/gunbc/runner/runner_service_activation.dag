@@ -3,7 +3,7 @@ module gunbc.runner_service_activation
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
   SystemdEnableUnit,
@@ -24,7 +24,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable, StructurallyGuarant
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, BoundedPopulation, stall_report_message, climbs_when }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
-data runner_service_activation_scope_disposition: Disposition = SingleAuthority
+data runner_service_activation_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // ENABLE AND START ARE TWO TRANSITIONS AND THIS MODULE IS THE PLACE THEY STAY TWO. The emitted
 // apply.sh carried daemon-reload and disable and nothing else: enable count zero, start count zero,

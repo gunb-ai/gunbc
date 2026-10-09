@@ -10,7 +10,7 @@ import gunbc.roadmap_model {
   Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
-  NodeSizing, Unsized,
+  WorkItemDispatch, NotDispatchable,
   roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   node_carrier_clean,
   node_status_drift,
@@ -70,10 +70,12 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
     node: roadmap_model_child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -101,10 +103,12 @@ test fn witness_node_status_drifts() -> Bool {
     node: roadmap_model_child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
   verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
@@ -115,10 +119,12 @@ test fn witness_node_unsigned_box_clean() -> Bool {
     node: roadmap_model_child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
   match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
     Clean => true

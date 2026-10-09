@@ -1,7 +1,8 @@
 module v2.std.model_core
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
+import v2.std.collection { Absent, Map, Present, empty_map, map_insert }
 import v2.std.diagnostic {
   Diagnostic,
   Textual,
@@ -10,21 +11,18 @@ import v2.std.diagnostic {
   WholeFile
 }
 import v2.std.algebra {
-  field_reciprocal_nonzero_precondition_node,
-  field_reciprocal_operation_node,
   fold_list
 }
+import v2.std.algebra_structure_signature { bool_boolean_algebra_node, bool_boolean_algebra_type_node, field_reciprocal_nonzero_precondition_node, field_reciprocal_operation_node }
 import v2.std.logic {
   BoolPrimitiveFacts,
-  bool_boolean_algebra_node,
-  bool_boolean_algebra_type_node,
   bool_encoding_fact_node,
   bool_node,
   bool_primitive_facts,
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
 type ModelCorePrimitiveFactAxis
@@ -189,15 +187,15 @@ fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^model_core_law_field_subject },
+        label: Authored { name: ^model_core_law_field_subject },
         target: model_core_bool_inhabitance_witness()
       },
       Edge {
-        label: Named { name: ^model_core_law_field_algebra },
+        label: Authored { name: ^model_core_law_field_algebra },
         target: model_core_bool_algebra_node()
       },
       Edge {
-        label: Named { name: ^model_core_law_field_kind },
+        label: Authored { name: ^model_core_law_field_kind },
         target: model_core_atom(id: discriminant(v: key))
       },
     ],

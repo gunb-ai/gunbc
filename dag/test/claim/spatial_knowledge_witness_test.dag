@@ -56,6 +56,7 @@ import product.spatial_dimension {
   StrokeHypothesisDashed,
   NotDrawnObligationOnly,
 }
+import std.nat { Nat }
 
 // One room's clear width, carried at four standings, so every claim discriminates on standing and
 // precision rather than on which number was written. The hypothesis specimen is the refuted 25 ft

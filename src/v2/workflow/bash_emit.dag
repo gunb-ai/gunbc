@@ -1,5 +1,6 @@
 module v2.workflow.bash_emit
 
+import std.types { List }
 import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_emitted,
   bash_stmt_env_prefixed_source_text,
@@ -18,8 +19,10 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node,
   bash_fold_serialize_program
 }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.algebra { fold_list }
+import v2.std.text { CharAbsent, CharFound, CharResult, char_eq, string_head }
+import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused }
+import std.algebra { list_snoc_item }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -28,7 +31,6 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -163,5 +165,81 @@ fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String
   match emit_o {
     Accepted { value: folded, diagnostics: _ } => folded != golden
     Rejected { diagnostics: _ } => true
+  }
+}
+
+// SEQUENTIAL COMPOSITION OF COMPLETE EMITTED SHELL PROGRAMS -- the one place two emitted programs
+// are joined into one step script. A step whose shell has parts emitted by different folds (a
+// bash_build prelude and an orchestration-emitted core; a ROOT stamp and a retry core) is their
+// concatenation in order, and the only way that concatenation changes meaning is a part that does
+// not end its last line: the next program's first command would then be read as more words of it.
+// So every part but the last must be non-empty and newline-terminated, and a part that is not
+// refuses here rather than fusing two commands into one line. The last part may leave its line
+// open, because a GitHub Actions `run: |-` block strips the final newline anyway.
+// dissolve-on: a PipelineStep arm carrying a bash_build statement Node lands in
+// v2.compiler emit_orchestration, so a prelude joins the orchestration pipeline as nodes and this
+// text-level join has no remaining consumer.
+// The part list is validated in one pass that builds no text, and the validated parts are then
+// materialized by ONE join, which copies each part exactly once. A fold that appends parts onto a
+// growing result copies that result again at every step in the String realization, which pushes
+// the RIGHT operand -- whichever side the accumulator sits on (review 5333525589; DESIGN §6: a
+// copied accumulator is fixed regardless of n). Equal output bytes cannot tell the two apart, and
+// NO executing discriminator exists yet: one is owed, and the accumulator-copy lens cannot serve
+// until the v2 front end normalizes this file -- gunbc.recurring_failure_mode
+// lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on.
+type BashProgramSequenceCheck
+  = BashProgramSequenceOpen { line_open: Bool }
+  | BashProgramSequenceFused
+
+fn bash_emit_program_last_char(program: String) -> CharResult {
+  fold_list(xs: program, empty: CharAbsent, cons: fn(_, c) { CharFound { value: c } })
+}
+
+fn bash_emit_program_ends_line(program: String) -> Bool {
+  match bash_emit_program_last_char(program: program) {
+    CharFound { value: last } =>
+      match string_head(s: "\n") {
+        CharFound { value: newline } => char_eq(a: last, b: newline)
+        CharAbsent => false
+      }
+    CharAbsent => false
+  }
+}
+
+fn bash_emit_program_sequence_check(programs: List<String>) -> BashProgramSequenceCheck {
+  fold_list(
+    xs: programs,
+    empty: BashProgramSequenceOpen { line_open: false },
+    cons: fn(acc, program) {
+      match acc {
+        BashProgramSequenceFused => BashProgramSequenceFused
+        BashProgramSequenceOpen { line_open: open } =>
+          if open {
+            BashProgramSequenceFused
+          } else {
+            BashProgramSequenceOpen { line_open: !bash_emit_program_ends_line(program: program) }
+          }
+      }
+    }
+  )
+}
+
+fn bash_emit_program_sequence(programs: List<String>) -> Outcome<String> {
+  match bash_emit_program_sequence_check(programs: programs) {
+    BashProgramSequenceOpen { line_open: _ } =>
+      Accepted { value: join(programs, ""), diagnostics: None }
+    BashProgramSequenceFused => bash_fold_serialize_refused(variant: ^bash_emit_program_sequence_fuses_lines)
+  }
+}
+
+// The String seam every run: builder returns cannot carry diagnostics, so a refused join becomes a
+// marker that is not valid workflow shell and turns the committed-workflow drift gate red, the same
+// discipline as v2.workflow.ci_retry_emit ci_retry_emit_refused_poison. Never a partial join.
+data bash_emit_program_sequence_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ bash_emit_program_sequence refused: a non-final program did not end its last line, so joining it would fuse two commands into one line; this marker is not valid workflow shell (DESIGN 5: refuse, never widen)\n"
+
+fn bash_emit_program_sequence_script(programs: List<String>) -> String {
+  match bash_emit_program_sequence(programs: programs) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => bash_emit_program_sequence_refused_poison
   }
 }

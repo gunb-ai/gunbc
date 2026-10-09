@@ -5,9 +5,8 @@ import std.algebra { trim }
 import std.measure { Microsecond, microsecond_count }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
-  SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
+  systemd_unit_property_wire, SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
   LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
-  systemd_unit_property_wire,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
@@ -53,7 +52,7 @@ type UnitPropertyRead
   | UnitPropertyUnreadable { unit: String, property: String }
 
 fn read_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitPropertyRead {
-  let got = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  let got = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   if got.success {
     UnitPropertyValue { value: trim(s: got.value) }
   } else {
@@ -201,7 +200,33 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
     Present { value: v } => Present { value: v }
     Absent => match d {
       ExecStart { command: c } => Present { value: c as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
@@ -211,7 +236,33 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
     Present { value: v } => Present { value: v }
     Absent => match d {
       ServiceUser { name: n } => Present { value: n as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
@@ -221,7 +272,33 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
     Present { value: v } => Present { value: v }
     Absent => match d {
       WorkingDirectory { path: p } => Present { value: p as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
@@ -272,7 +349,15 @@ fn timer_on_boot_duration(directives: List<SystemdTimerDirective>) -> Microsecon
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { OnBootSec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: t } => systemd_duration_usec(text: t as String)
+        OnUnitInactiveSec { duration: _ } => none
+        AccuracySec { duration: _ } => none
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 
@@ -280,7 +365,15 @@ fn timer_on_unit_inactive_duration(directives: List<SystemdTimerDirective>) -> M
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: _ } => none
+        OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String)
+        AccuracySec { duration: _ } => none
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 
@@ -288,7 +381,15 @@ fn timer_accuracy_duration(directives: List<SystemdTimerDirective>) -> Microseco
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { AccuracySec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: _ } => none
+        OnUnitInactiveSec { duration: _ } => none
+        AccuracySec { duration: t } => systemd_duration_usec(text: t as String)
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 
@@ -301,7 +402,12 @@ fn timer_directive_target(directives: List<SystemdTimerDirective>) -> String? {
     Present { value: v } => Present { value: v }
     Absent => match d {
       TimerUnit { target: t } => Present { value: t as String }
-      _ => none
+      OnCalendar { expression: _ } => none
+      OnBootSec { duration: _ } => none
+      OnUnitInactiveSec { duration: _ } => none
+      AccuracySec { duration: _ } => none
+      RandomizedDelaySec { duration: _ } => none
+      Persistent { enabled: _ } => none
     }
   })
 }

@@ -1,12 +1,14 @@
 module extdeps.tools.npm
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, Bool, FilePath, Unit }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_npm }
+import extdeps.apt { apt_bin_dir, package_npm }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -15,10 +17,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn npm_program() -> ProgramIdentity = cataloged_program(invocation: "npm")
+
 data npm_cli_tool: CliTool = CliTool {
-  name: "npm",
+  program: npm_program(),
   min_version: none,
-  installable_via: [SourceApt { package: package_npm }],
+  installable_via: [SourceApt { package: package_npm, bin_dir: apt_bin_dir }],
 }
 
 // min_version = none is NOT a materialization receipt. Observed npm --version is recorded on
@@ -26,6 +30,7 @@ data npm_cli_tool: CliTool = CliTool {
 
 service npm.Cli {
   operation Version {
+    requires none
     input {}
     output {
       version: String from "stdout"
@@ -64,6 +69,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service npm.Cache {
   operation Add {
+    requires Network
     input { cache: FilePath, tarball: FilePath }
     output {
       success: Bool from "exit_success"
@@ -82,6 +88,7 @@ service npm.Cache {
 
 service npm.Ci {
   operation IgnoreScripts {
+    requires opaque
     input { workdir: FilePath }
     output {
       success: Bool from "exit_success"
@@ -98,6 +105,7 @@ service npm.Ci {
   }
 
   operation IgnoreScriptsOffline {
+    requires opaque
     input { workdir: FilePath, cache: FilePath }
     output {
       success: Bool from "exit_success"

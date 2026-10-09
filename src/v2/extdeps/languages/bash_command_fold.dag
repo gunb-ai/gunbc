@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash_command_fold
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
@@ -50,9 +51,9 @@ import v2.extdeps.languages.bash {
   bash_word_pass_emitted,
   bash_word_pass_target_model
 }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_nth,
@@ -87,10 +88,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.grammar {
+  derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -103,11 +103,12 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  node_subtree_count,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -395,11 +396,27 @@ fn bash_fold_with_redir_fixed_rhs(redir_binding: Symbol, redir_token: Symbol) ->
 }
 
 fn bash_fold_with_redir_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  bash_fold_with_redir_file_rhs(
+    redir_binding: ^bash_production_fold_redir_to_file,
+    redir_token: ^bash_fold_redir_to_file,
+    path_word_kind: path_word_kind
+  )
+}
+
+fn bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  bash_fold_with_redir_file_rhs(
+    redir_binding: ^bash_production_fold_redir_stderr_to_file,
+    redir_token: ^bash_fold_redir_stderr_to_file,
+    path_word_kind: path_word_kind
+  )
+}
+
+fn bash_fold_with_redir_file_rhs(redir_binding: Symbol, redir_token: Symbol, path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
   [
     bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
     grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
-    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_redir_to_file),
-    grammar_formal_terminal(identity: ^bash_fold_redir_to_file),
+    bash_fold_stmt_kind_tag_terminal(binding: redir_binding),
+    grammar_formal_terminal(identity: redir_token),
     grammar_formal_nonterminal_occurrence(identity: path_word_kind)
   ]
 }
@@ -423,7 +440,9 @@ fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
       redir_token: ^bash_fold_redir_stdout_to_stderr
     ),
     bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_lit_word),
-    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_var_word)
+    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_var_word),
+    bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: ^bash_production_fold_lit_word),
+    bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: ^bash_production_fold_var_word)
   ]
 }
 
@@ -692,91 +711,62 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
   )
 }
 
-fn bash_fold_translation_rules_node_for_emitted(
-  emitted: Node,
-  lhs: Symbol,
-  rule_name: Symbol
-) -> Witness<Node> {
-  match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
-    Holds { value: row } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            bash_named_edge(
-              name: ^grammar_relation_rules_formal_productions,
-              target: formal_productions_catalog_to_node(
-                productions: bash_fold_formal_productions()
-              )
-            ),
-            bash_named_edge(
-              name: rule_name,
-              target: row
-            )
-          ],
-          occurrence_id: OccurrenceSynthetic
-        }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+// THE FOLD'S GRAMMAR IS ONE VALUE, BUILT ONCE AND CARRIED TO EVERY LEAF. The production catalog,
+// its encoding as a catalog node, the lex rules and the emit transforms are the same for every word
+// and command this fold serializes; only the relation row depends on the emitted node. Rebuilding
+// them inside each leaf re-derived a constant once per command, so the cost of a script grew with
+// its command count rather than its bytes (re-derive with claim_batch eval_steps over
+// gunbc.live_deploy.emit approval_broker_dark_install_script). Declared once here, a leaf's own work
+// is the row and the serialization of its tokens.
+data bash_fold_formal_production_catalog: List<FormalProduction> = bash_fold_formal_productions()
+
+data bash_fold_formal_production_catalog_node: Node = formal_productions_catalog_to_node(
+  productions: bash_fold_formal_production_catalog
+)
+
+data bash_fold_lex_carried: LexRules = bash_fold_lex()
+
+data bash_fold_binding_spellings_carried: Map<Symbol, String> = bash_fold_binding_spellings()
+
+data bash_fold_emit_transforms_carried: Map<Symbol, TokenClassEmitTransform> = bash_fold_emit_transforms()
+
+fn bash_fold_translation_rules_node_for_row(row: Node, rule_name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: bash_fold_formal_production_catalog_node
+      ),
+      bash_named_edge(
+        name: rule_name,
+        target: row
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
   }
+}
+
+// THE SERIALIZER'S RECURSION BUDGET FOR ONE ROW'S RULES, from the carried catalog count. It is the
+// subtree count of bash_fold_translation_rules_node_for_row(row) -- the rules root, the catalog node
+// and the row -- which this module builds and so can count without walking the catalog per leaf;
+// test.claim.bash_command_fold_carried_catalog pins the two equal over real rows.
+data bash_fold_formal_production_catalog_subtree_count: Int = node_subtree_count(
+  n: bash_fold_formal_production_catalog_node
+)
+
+fn bash_fold_translation_rules_budget_for_row(row: Node) -> Int {
+  1 + bash_fold_formal_production_catalog_subtree_count + node_subtree_count(n: row)
 }
 
 fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
-  let productions = bash_fold_formal_productions()
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_serialize_source_witness(
-  emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
-) -> Witness<Node> {
-  match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
-      match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-        Accepted { value: tokens_root, diagnostics: _ } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                bash_named_edge(
-                  name: ^serialize_source_field_source_text,
-                  target: bash_word_atom(id: source_literal)
-                ),
-                bash_named_edge(
-                  name: ^serialize_source_field_source_grammar,
-                  target: bash_word_atom(id: production_binding)
-                ),
-                bash_named_edge(
-                  name: ^grammar_relation_field_tokens,
-                  target: tokens_root
-                )
-              ],
-              occurrence_id: OccurrenceSynthetic
-            }
-          }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: bash_fold_formal_production_catalog, lhs: lhs, emitted: emitted)
 }
 
 fn bash_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
@@ -812,8 +802,10 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_and_stderr_null, text: " >/dev/null 2>&1"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_null, text: " >/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_to_stderr, text: " >&2"),
-      bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > ")
-    ]
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > "),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_to_file, text: " 2> ")
+    ],
+    modes: []
   }
 }
 
@@ -844,7 +836,8 @@ fn bash_ingest_only_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: "{ "),
       bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: "; }"),
       bash_fold_lex_rule(token_class: ^bash_token_orch_seq_newline, text: "\n")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -853,12 +846,13 @@ fn bash_ingest_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: bash_fold_lex_rules().rules,
       right: bash_ingest_only_lex_rules().rules
-    )
+    ),
+    modes: []
   }
 }
 
 fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
-  let m0 = bash_token_class_emit_transforms()
+  let m0 = bash_token_class_emit_transforms_carried
   let m1 = map_insert(m0, ^bash_fold_word_kind_lit, EmitSpellingConstant { value: "" })
   let m2 = map_insert(m1, ^bash_fold_word_kind_var, EmitSpellingConstant { value: "" })
   let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, EmitSpellingConstant { value: "" })
@@ -872,33 +866,26 @@ fn bash_fold_binding_spellings() -> Map<Symbol, String> {
   map_insert(m0, ^bash_fold_word_kind_var, "")
 }
 
-fn bash_fold_target_model_bundle_witness(
-  emitted: Node,
+// THE TARGET MODEL OF ONE ALREADY-DERIVED ROW. The serialize source and the translation rules are
+// both spelled from the row the caller holds, so the row is derived once per leaf rather than once
+// per consumer of it.
+fn bash_fold_target_model_for_row(
+  row: Node,
   source_literal: Symbol,
+  source_text: String,
   production_binding: Symbol,
   rule_name: Symbol
-) -> Witness<Node> {
-  match bash_fold_serialize_source_witness(
-    emitted: emitted,
-    source_literal: source_literal,
-    production_binding: production_binding
-  ) {
-    Holds { value: serialize_source } =>
-      match bash_fold_translation_rules_node_for_emitted(
-        emitted: emitted,
-        lhs: production_binding,
-        rule_name: rule_name
-      ) {
-        Holds { value: rules } =>
-          Holds {
-            value: bash_target_model_bundle(
-              rules: rules,
-              serialize_source: serialize_source
-            )
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+) -> Witness<TargetModel> {
+  Holds {
+    value: target_model_make_with_emit_transforms(
+      bundle: bash_target_model_bundle(
+        rules: bash_fold_translation_rules_node_for_row(row: row, rule_name: rule_name)),
+      lex: bash_fold_lex_carried,
+      binding_spellings: bash_fold_binding_spellings_carried,
+      token_class_emit_transforms: bash_fold_emit_transforms_carried,
+      authority_source_text: source_text,
+      runtime_row: target_emit_host_runtime_row_unconfigured
+    )
   }
 }
 
@@ -909,23 +896,15 @@ fn bash_fold_target_model_for_emitted_witness(
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Witness<TargetModel> {
-  match bash_fold_target_model_bundle_witness(
-    emitted: emitted,
-    source_literal: source_literal,
-    production_binding: production_binding,
-    rule_name: rule_name
-  ) {
-    Holds { value: bundle } =>
-      Holds {
-        value: target_model_make_with_emit_transforms(
-          bundle: bundle,
-          lex: bash_fold_lex(),
-          binding_spellings: bash_fold_binding_spellings(),
-          token_class_emit_transforms: bash_fold_emit_transforms(),
-          authority_source_text: source_text,
-          runtime_row: target_emit_host_runtime_row_unconfigured
-        )
-      }
+  match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
+    Holds { value: row } =>
+      bash_fold_target_model_for_row(
+        row: row,
+        source_literal: source_literal,
+        source_text: source_text,
+        production_binding: production_binding,
+        rule_name: rule_name
+      )
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }

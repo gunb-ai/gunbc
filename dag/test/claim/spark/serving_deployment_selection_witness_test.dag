@@ -4,8 +4,11 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
-import extdeps.vllm.engine_args { VllmMemoryRequest }
-import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmKvCacheDtypeRequest, KvFp8DsMla, KvFp8, KvAuto, KvNvfp4,
+  vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_request_matching_wire,
+}
+import std.optional { Present, Absent }
 import std.interval { IntervalReady, IntervalRefused }
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
@@ -28,19 +31,16 @@ import gunbc.spark.v41_published_image_observation {
 import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
-import product.placement_supply { HostIdentity, host_identity_eq }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.serving_subject {
-  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_canary_serving_subject,
+  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_group_b_serving_subject,
 }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
-  ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
+  ExecutorRayProfile, ExecutorMpProfile, SpeculationOff, SpeculationOn, SpeculationDraft,
   WeightTreatment, PublishedNativeWeights, RequantisedWeights,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
@@ -55,7 +55,7 @@ import gunbc.spark.serving_deployment_selection {
   FleetFit, FleetFitWithinAdmissible, FleetFitExceedsAdmissible, FleetFitDegenerate, fleet_fit_of, fleet_fit_admits,
   FleetSnapshot, spark_unified_memory_per_host, spark_unified_memory_how, covering_topologies_over,
   ax_host_fit, ServedArtifactTransition, group_a_served_artifact_transition,
-  pair_unit_a_fleet_snapshot, glm_canary_fleet_snapshot, pair_unit_a_evidence_current, glm_canary_evidence_current,
+  pair_unit_a_fleet_snapshot, glm_group_b_fleet_snapshot, pair_unit_a_evidence_current, glm_group_b_evidence_current,
   serving_parameters_current, spark_runtime,
   artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
@@ -86,7 +86,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   unique_constraint_identities, constraint_native_quality, constraint_no_redundancy, constraint_authorized_runtime,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
-  kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
+  sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   ax_component_route, constraint_component_route,
   ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
@@ -102,7 +102,7 @@ import gunbc.spark.serving_deployment_selection {
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
-  v4_1_selection_frontier, kv_layout_wire,
+  v4_1_selection_frontier,
 }
 import gunbc.fabric.engram_materialization {
   ax_route_per_rank_resident_lower_bound,
@@ -144,12 +144,7 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
 test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
   match v4_1_gb10_kv_layout {
     Sm12KvLayoutAdmitted { policy: k } =>
-      match k {
-        KvFp8DsMlaLayout => v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
-        KvAutoLayout => false
-        KvFp8Layout => false
-        KvFp4Layout => false
-      }
+      (w_kv_is(k: k, w: "fp8_ds_mla") && v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: k)))
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "sm12_designed")) {
@@ -384,7 +379,7 @@ data other_runtime_parameters: ServingDecisionParameters = serving_decision_para
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorMpProfile,
-  kv_layout: KvFp8DsMlaLayout,
+  kv_cache_dtype: KvFp8DsMla,
   speculative: SpeculationOff,
   runtime: runtime_revision(image: "a different image" as NonEmptyStr, vllm_revision: "a different revision" as NonEmptyStr),
 )
@@ -395,7 +390,7 @@ data wider_context_parameters: ServingDecisionParameters = serving_decision_para
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
-  kv_layout: KvFp8DsMlaLayout,
+  kv_cache_dtype: KvFp8DsMla,
   speculative: SpeculationOff,
   runtime: spark_runtime,
 )
@@ -429,7 +424,7 @@ data impossible_utilisation: ServingDecisionParameters = serving_decision_parame
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
-  kv_layout: KvFp8DsMlaLayout,
+  kv_cache_dtype: KvFp8DsMla,
   speculative: SpeculationOff,
   runtime: spark_runtime,
 )
@@ -643,14 +638,14 @@ test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
     == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
 }
 
-fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> ServingDecisionParameters {
+fn profile_with_layout(p: ServingDecisionParameters, k: VllmKvCacheDtypeRequest) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: p.max_model_len,
     memory_request: p.memory_request,
     max_num_batched_tokens: p.max_num_batched_tokens,
     max_num_seqs: p.max_num_seqs,
     executor: p.executor,
-    kv_layout: k,
+    kv_cache_dtype: k,
     speculative: p.speculative,
     runtime: p.runtime,
   )
@@ -684,7 +679,7 @@ test fn candidate_identity_includes_the_complete_profile() -> Bool {
     ServingProfileReady { profile: p } =>
       !declaration_ref_eq(
         a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
-        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvFp4Layout)),
+        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvNvfp4)),
       )
   }
 }
@@ -906,9 +901,9 @@ test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
 // hosts is exactly what a count could not detect, so no length appears here.
 test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() -> Bool {
   let a = pair_unit_a_fleet_snapshot.admissible_hosts
-  let b = glm_canary_fleet_snapshot.admissible_hosts
+  let b = glm_group_b_fleet_snapshot.admissible_hosts
   serving_subject_eq(a: pair_unit_a_fleet_snapshot.subject, b: group_a_served_artifact_transition.subject)
-    && serving_subject_eq(a: glm_canary_fleet_snapshot.subject, b: glm_canary_serving_subject)
+    && serving_subject_eq(a: glm_group_b_fleet_snapshot.subject, b: glm_group_b_serving_subject)
     && contains_host(hosts: a, host: operator_host_srv5) && contains_host(hosts: a, host: operator_host_srv6)
     && contains_host(hosts: a, host: operator_host_srv7) && contains_host(hosts: a, host: operator_host_srv8)
     && !contains_host(hosts: a, host: operator_host_srv9) && !contains_host(hosts: a, host: operator_host_srv10)
@@ -1085,29 +1080,19 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           SpeculationOff => false
           SpeculationOn => false
         }
-        && match p.kv_layout {
-          KvFp8DsMlaLayout => true
-          KvAutoLayout => false
-          KvFp8Layout => false
-          KvFp4Layout => false
-        })
+        && w_kv_is(k: p.kv_cache_dtype, w: "fp8_ds_mla"))
     && match v4_1_gb10_kv_layout {
       Sm12KvLayoutAdmitted { policy: k } =>
-        match k {
-          KvFp8DsMlaLayout => true
-          KvAutoLayout => false
-          KvFp8Layout => false
-          KvFp4Layout => false
-        }
-        && (kv_layout_wire(k: k) as String) == (v41_sm12_kv_layout as String)
-        && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+        w_kv_is(k: k, w: "fp8_ds_mla")
+        && (vllm_kv_cache_dtype_wire(request: k) as String) == (v41_sm12_kv_layout as String)
+        && v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: k))
       Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
     }
-    && !v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: KvAutoLayout))
+    && !v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: KvAuto))
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
       KvBytesPerTokenUnestablished { layout: k, obligation: _ } =>
-        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+        w_kv_is(k: k, w: "fp8_ds_mla")
       KvBytesPerTokenNotThisSubject => false
     }
 }
@@ -1121,12 +1106,7 @@ fn names_sm12_kv_join(s: NonEmptyStr) -> Bool {
 fn planted_join_is_named_failure(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
   match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
     Sm12KvLayoutAdmitted { policy: k } =>
-      match k {
-        KvAutoLayout => false
-        KvFp8DsMlaLayout => false
-        KvFp8Layout => false
-        KvFp4Layout => false
-      }
+      false
     Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
   }
 }
@@ -1137,16 +1117,11 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
   count(standings) == 3
     && all(standings, s => match s {
       ServingProfileReady { profile: p } =>
-        match p.kv_layout {
-          KvAutoLayout => false
-          KvFp8DsMlaLayout => false
-          KvFp8Layout => false
-          KvFp4Layout => false
-        }
+        false
       ServingProfileSm12JoinFailed { runtime: _, standing: st } =>
         match st {
           Sm12KvLayoutAdmitted { policy: k } =>
-            match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+            false
           Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
         }
     })
@@ -1167,20 +1142,21 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
 
 test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool {
   let empty_admit: List<NonEmptyStr> = []
-  let unadmitted = kv_layout_wire(k: KvAutoLayout)
-  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
-    match kv_layout_policy_matching_wire(wire: d) {
+  let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
+  let planted_admit = w_planted_nomatch_roster()
+  let nomatch_opt = (filter(planted_admit, d =>
+    match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
       Absent => true
       Present { value: _ } => false
     })).first()
   match nomatch_opt {
     Absent => false
     Present { value: nomatch } =>
-      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
-        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
-        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: planted_admit))
+        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: planted_admit))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: planted_admit))
           != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
-        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: planted_admit))
           != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
   }
 }
@@ -1192,11 +1168,11 @@ test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool
 // difference between splitting and dropping a case. Operator ruling 2026-09-14: a witness
 // discriminates at ONE interface, not over cases.
 test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
-  let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
   !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
-    && match kv_layout_policy_matching_wire(wire: unadmitted) {
+    && match vllm_kv_cache_dtype_request_matching_wire(wire: unadmitted) {
       Present { value: k } =>
-        match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+        w_kv_is(k: k, w: "auto")
       Absent => false
     }
     && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
@@ -1207,25 +1183,34 @@ test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
     }
 }
 
+// THE NOMATCH WIRE IS PLANTED, because the real roster no longer holds one: fp8_e4m3 was it until the
+// canonical request vocabulary gained KvFp8E4m3 (extdeps.vllm.engine_args). The join's behaviour on a
+// wire it admits but cannot name is still a case worth pinning, so the roster here is the real one
+// plus a spelling no request renders.
+fn w_planted_nomatch_roster() -> List<NonEmptyStr> {
+  concat(v41_sm12_admitted_kv_cache_dtypes, ["fp8_planted_nomatch" as NonEmptyStr])
+}
+
 // A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
 // and policy matching are two joins, and a wire can pass the first and fail the second.
 test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
-  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
-    match kv_layout_policy_matching_wire(wire: d) {
+  let planted_admit = w_planted_nomatch_roster()
+  let nomatch_opt = (filter(planted_admit, d =>
+    match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
       Absent => true
       Present { value: _ } => false
     })).first()
   match nomatch_opt {
     Absent => false
     Present { value: nomatch } =>
-      v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
-        && match kv_layout_policy_matching_wire(wire: nomatch) {
+      count(filter(planted_admit, d => (d as String) == (nomatch as String))) == 1
+        && match vllm_kv_cache_dtype_request_matching_wire(wire: nomatch) {
           Absent => true
           Present { value: _ } => false
         }
-        && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && match sm12_kv_layout_standing(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+        && planted_join_is_named_failure(wire: nomatch, admitted: planted_admit)
+        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: planted_admit)
+        && match sm12_kv_layout_standing(wire: nomatch, admitted: planted_admit) {
           Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
           Sm12KvLayoutAdmitted { policy: _ } => false
         }
@@ -1276,7 +1261,7 @@ test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
 test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool {
   match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
     Sm12KvLayoutAdmitted { policy: k } =>
-      match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      w_kv_is(k: k, w: "fp8_ds_mla")
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
 }
@@ -2141,4 +2126,11 @@ test fn every_authored_free_memory_row_mints_its_region() -> Bool {
       IntervalReady { interval: _ } => true
       IntervalRefused { reason: _ } => false
     })
+}
+
+// THE REQUEST VOCABULARY IS UPSTREAM'S AND OPEN-ENDED, so a witness that wants one request asks by its
+// canonical wire rather than enumerating every constructor -- a new upstream spelling then costs no
+// edit here.
+fn w_kv_is(k: VllmKvCacheDtypeRequest, w: String) -> Bool {
+  (vllm_kv_cache_dtype_wire(request: k) as String) == w
 }

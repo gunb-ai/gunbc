@@ -6,10 +6,11 @@ import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.c_decl { c_stage1_type_decl_frontier_deferred_count }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,16 +36,16 @@ fn cdr_atom_type(name: Symbol) -> Node {
 }
 
 fn cdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: cdr_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: cdr_atom_type(name: type_name))
 }
 
 fn cdr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: cdr_empty_conj() }
+  Edge { label: Authored { name: name }, target: cdr_empty_conj() }
 }
 
 fn cdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Conj },
       children: fields,
@@ -54,7 +55,7 @@ fn cdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
 }
 
 fn cdr_emit_text(name: Symbol, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: Empty, node: node, target: c_target_model()) {
+  match emit_semantic_type_decl(name: name, params: Empty, node: node, target: c_target_model(), realization_host: c_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -124,7 +125,8 @@ test fn c_semantic_non_int_field_refuses() -> Bool {
     name: ^Bad,
     params: [],
     node: cdr_bool_field_record(),
-    target: c_target_model()
+    target: c_target_model(),
+    realization_host: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -136,11 +138,7 @@ test fn c_semantic_int_field_still_emits() -> Bool {
 }
 
 fn cdr_arrow_type() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [ Edge { label: Positional, target: cdr_atom_type(name: ^Int) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [cdr_atom_type(name: ^Int)], codomain: cdr_atom_type(name: ^Int), source: cdr_atom_type(name: ^Int))
 }
 
 test fn c_semantic_generic_struct_refuses() -> Bool {
@@ -148,7 +146,8 @@ test fn c_semantic_generic_struct_refuses() -> Bool {
     name: ^Pair,
     params: [^K, ^V],
     node: cdr_point_record(),
-    target: c_target_model()
+    target: c_target_model(),
+    realization_host: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -160,7 +159,8 @@ test fn c_semantic_generic_tagged_union_refuses() -> Bool {
     name: ^Answer,
     params: [^T],
     node: cdr_answer_coproduct(),
-    target: c_target_model()
+    target: c_target_model(),
+    realization_host: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

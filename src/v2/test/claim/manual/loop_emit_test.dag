@@ -16,14 +16,12 @@ import v2.extdeps.languages.dag {
   dag_loop_source_text,
   dag_loop_target_model
 }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_emitted_node
-}
+import v2.compiler.translate { translate_emitted_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.collection {
   Map
 }
-import v2.std.optional {
+import std.optional {
   Optional
 }
 import v2.std.diagnostic {
@@ -33,7 +31,6 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.node_query {
   find_arrow_body_child

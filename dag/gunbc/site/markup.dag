@@ -1,6 +1,27 @@
 module gunbc.site.markup
 
 import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import std.types { String }
+
+// ── HOW A REJECTED HTML EMISSION IS REPORTED ────────────────────────────────────────────────
+// THIS IS A FACT ABOUT SERIALIZING MARKUP, NOT ABOUT THE ROADMAP SITE, and it lived in
+// gunbc.roadmap_site_surface_render only because the roadmap was the first thing that rendered a
+// page. The approval broker's confirmation page is the second, and it is served from a process
+// whose whole purpose is to share nothing with the roadmap -- so consuming the prefix from the
+// roadmap's module would have pulled gunbc.roadmap_component and its client assets into the
+// broker's compiled closure to obtain one string. A closure is exactly what the split is about, so
+// the declaration moved to the layer that actually owns it rather than being re-spelled at the
+// second consumer (DESIGN section 3: a fact home is its LAYER, not its file).
+//
+// IT IS A PREFIX RATHER THAN A WHOLE MESSAGE because the emitter reason is the located part: the
+// body is "page render refused: " plus whatever try_serialize_html_source said, so the refusal is
+// typed and located rather than an empty page (DESIGN section 5, and node_http_server_emit's
+// EmitRejected => [] route-drop is the silent widen this deliberately does not copy).
+data page_render_refusal_prefix: String = "page render refused: "
+
+fn page_render_refusal_body(reason: String) -> String {
+  join([page_render_refusal_prefix, reason, "\n"], "")
+}
 
 fn txt(s: String) -> Fragment {
   FragmentText { content: s }

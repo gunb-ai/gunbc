@@ -1,10 +1,7 @@
 module test.claim.gitattributes_emit_witness
 
-import gunbc.generated_artifact {
-  GitattributesArtifact,
-  committed_generated_artifact_paths,
-  artifact_path
-}
+import gunbc.generated_artifact { GitattributesArtifact, artifact_path }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.gitattributes_emit {
   GitattributesGenerated,
   GitattributesGenerationRefused,
@@ -103,14 +100,4 @@ test fn witness_red_perturbed_emit_drifts() -> Bool {
     GitattributesGenerationRefused => false
     GitattributesGenerated { content } => committed.success && !(concat(committed.content, "\n# perturb") == content)
   }
-}
-
-test fn witness_holds() -> Bool {
-  witness_all_committed_paths_have_merge_rows_holds()
-    && witness_projection_population_contains_dispatch_generated()
-    && witness_duplicate_projection_path_refuses_before_emission()
-    && witness_presentation_policy_row_present_holds()
-    && witness_committed_matches_emit_holds()
-    && witness_red_missing_merge_row_fails()
-    && witness_red_perturbed_emit_drifts()
 }

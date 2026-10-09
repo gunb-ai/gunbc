@@ -13,7 +13,6 @@ pub use crate::std_source_annotation::{
     AnnotationSubject, KeyedAnnotationRow, NormalizedAnnotationCapture, SourceAnnotationDebt,
     SourceAnnotationGraph, UnboundAnnotationCapture,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -50,56 +49,119 @@ pub fn module_item_entries(
         )
 }
 
-pub fn next_module_item_start(
-    items: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    after: i64,
-    fallback: i64,
-) -> i64 {
-    items.iter().cloned().fold(
-        fallback.clone(),
-        |best: i64, entry: Rc<OccurrenceIndexEntry>| {
-            let start = entry
-                .projection
-                .clone()
-                .diagnostic_span
-                .clone()
-                .start
-                .clone();
-            if ((start.clone() > after.clone()) && (start.clone() < best.clone())) {
-                start.clone()
+pub fn item_start_at_or_before(
+    mut __tco_loop_starts: Rc<Vec<i64>>,
+    mut __tco_loop_x: i64,
+    mut __tco_loop_lo: i64,
+    mut __tco_loop_hi: i64,
+) -> Option<i64> {
+    loop {
+        #[allow(unused_mut)]
+        let mut starts = __tco_loop_starts;
+        #[allow(unused_mut)]
+        let mut x = __tco_loop_x;
+        #[allow(unused_mut)]
+        let mut lo = __tco_loop_lo;
+        #[allow(unused_mut)]
+        let mut hi = __tco_loop_hi;
+        if (lo.clone() >= hi.clone()) {
+            if (lo.clone() == 0) {
+                break std::option::Option::None;
             } else {
-                best.clone()
+                break starts
+                    .clone()
+                    .get((v1_rt::int_sub(lo.clone(), 1)) as usize)
+                    .cloned();
             }
-        },
-    )
+        } else {
+            let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
+            match starts.clone().get((mid.clone()) as usize).cloned() {
+                Some(s) => {
+                    if (s.clone() <= x.clone()) {
+                        {
+                            let __tco_0 = starts;
+                            let __tco_1 = x;
+                            let __tco_2 = v1_rt::int_add(mid.clone(), 1);
+                            let __tco_3 = hi;
+                            __tco_loop_starts = __tco_0;
+                            __tco_loop_x = __tco_1;
+                            __tco_loop_lo = __tco_2;
+                            __tco_loop_hi = __tco_3;
+                            continue;
+                        }
+                    } else {
+                        {
+                            let __tco_0 = starts;
+                            let __tco_1 = x;
+                            let __tco_2 = lo;
+                            let __tco_3 = mid.clone();
+                            __tco_loop_starts = __tco_0;
+                            __tco_loop_x = __tco_1;
+                            __tco_loop_lo = __tco_2;
+                            __tco_loop_hi = __tco_3;
+                            continue;
+                        }
+                    }
+                }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            }
+        }
+    }
 }
 
-pub fn module_item_extent_end(
+pub fn module_item_extent_ends(
     entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    start: i64,
-    limit: i64,
-    own_end: i64,
-) -> i64 {
-    entries.iter().cloned().fold(
-        own_end.clone(),
-        |best: i64, entry: Rc<OccurrenceIndexEntry>| {
-            let entry_start = entry
-                .projection
-                .clone()
-                .diagnostic_span
-                .clone()
-                .start
-                .clone();
-            let entry_end = entry.projection.clone().diagnostic_span.clone().end.clone();
-            if (((entry_start.clone() >= start.clone()) && (entry_start.clone() < limit.clone()))
-                && (entry_end.clone() > best.clone()))
-            {
-                entry_end.clone()
-            } else {
-                best.clone()
-            }
-        },
-    )
+    item_starts: Rc<Vec<i64>>,
+    source_length: i64,
+) -> Rc<HashMap<i64, i64>> {
+    {
+        let item_count = (item_starts.clone().len() as i64);
+        entries.iter().cloned().fold(
+            v1_rt::rc_empty_map::<i64, i64>(),
+            |acc: Rc<HashMap<i64, i64>>, entry: Rc<OccurrenceIndexEntry>| {
+                let entry_start = entry
+                    .projection
+                    .clone()
+                    .diagnostic_span
+                    .clone()
+                    .start
+                    .clone();
+                let entry_end = entry.projection.clone().diagnostic_span.clone().end.clone();
+                if (entry_start.clone() >= source_length.clone()) {
+                    acc.clone()
+                } else {
+                    match item_start_at_or_before(
+                        item_starts.clone(),
+                        entry_start.clone(),
+                        0,
+                        item_count.clone(),
+                    ) {
+                        Some(item_start) => match v1_rt::map_get(&acc, item_start.clone()) {
+                            Some(best) => {
+                                if (entry_end.clone() > best.clone()) {
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        item_start.clone(),
+                                        entry_end.clone(),
+                                    )
+                                } else {
+                                    acc.clone()
+                                }
+                            }
+                            std::option::Option::None => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                item_start.clone(),
+                                entry_end.clone(),
+                            ),
+                        },
+                        std::option::Option::None => acc.clone(),
+                    }
+                }
+            },
+        )
+    }
 }
 
 pub fn annotation_subjects(
@@ -108,8 +170,34 @@ pub fn annotation_subjects(
 ) -> Rc<Vec<Rc<AnnotationSubject>>> {
     {
         let entries = transport.index.clone().entries.clone();
-        let items = module_item_entries(transport.clone());
-        entries.clone().iter().cloned().fold(
+        let item_starts = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new({
+                let mut __result = Vec::new();
+                for item in module_item_entries(transport.clone()).iter().cloned() {
+                    __result.push(
+                        item.projection
+                            .clone()
+                            .diagnostic_span
+                            .clone()
+                            .start
+                            .clone(),
+                    );
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .collect();
+            __sorted.sort_by(|a: &i64, b: &i64| {
+                let __ka = (|start: i64| start.clone())(a.clone());
+                let __kb = (|start: i64| start.clone())(b.clone());
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
+            });
+            __sorted
+        });
+        let extent_ends =
+            module_item_extent_ends(entries.clone(), item_starts.clone(), source_length.clone());
+        entries.iter().cloned().fold(
             Rc::new(vec![]),
             |acc: Rc<Vec<Rc<AnnotationSubject>>>, entry: Rc<OccurrenceIndexEntry>| {
                 let depth = entry_ancestor_depth(entry.clone());
@@ -126,11 +214,17 @@ pub fn annotation_subjects(
                 } else {
                     if (depth.clone() == 1) {
                         {
-                            let limit = next_module_item_start(
-                                items.clone(),
-                                span.start.clone(),
-                                source_length.clone(),
-                            );
+                            let extent_end = match v1_rt::map_get(&extent_ends, span.start.clone())
+                            {
+                                Some(bucket_end) => {
+                                    if (bucket_end.clone() > span.end.clone()) {
+                                        bucket_end.clone()
+                                    } else {
+                                        span.end.clone()
+                                    }
+                                }
+                                std::option::Option::None => span.end.clone(),
+                            };
                             v1_rt::rc_list_push(
                                 acc.clone(),
                                 Rc::new(AnnotationSubject {
@@ -138,12 +232,7 @@ pub fn annotation_subjects(
                                     span: Rc::new(SourceSpan {
                                         file: span.file.clone(),
                                         start: span.start.clone(),
-                                        end: module_item_extent_end(
-                                            entries.clone(),
-                                            span.start.clone(),
-                                            limit.clone(),
-                                            span.end.clone(),
-                                        ),
+                                        end: extent_end.clone(),
                                     }),
                                     module_root: false,
                                 }),
@@ -279,7 +368,7 @@ pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: Str
         .cloned()
         .fold(0, |n: i64, entry: Rc<OccurrenceIndexEntry>| {
             if (entry.projection.clone().authored_name.clone() == name.clone()) {
-                (n.clone() + 1)
+                v1_rt::int_add(n.clone(), 1)
             } else {
                 n.clone()
             }

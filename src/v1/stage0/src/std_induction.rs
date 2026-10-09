@@ -7,27 +7,29 @@ use self::ParamGrowth::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
-pub use crate::std_algebra::CostShape;
 use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
-pub use crate::std_algebra::Ordering;
-use crate::std_algebra::Ordering::*;
+use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_algebra::{CostShape, Ordering};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
 pub use crate::std_computation::tree_size_bound;
-use crate::std_computation::CallPattern::*;
-use crate::std_computation::IterationPrimitive::*;
-use crate::std_computation::ShrinkFactor::*;
-use crate::std_computation::SizeBound::*;
+use crate::std_computation::CallPattern::{
+    ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, SameArgumentCall,
+};
+use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
+use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
     CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
-use crate::std_termination::DescentEvidence::*;
-use crate::std_termination::PositiveDescentAmount::*;
-use crate::std_termination::ProportionalDivisor::*;
-use crate::std_termination::RankingDimension::*;
+pub use crate::std_optional::Optional;
+use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+use crate::std_termination::PositiveDescentAmount::OneStep;
+use crate::std_termination::ProportionalDivisor::DivideByTwo;
+use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,
@@ -36,6 +38,7 @@ pub use crate::std_termination::{
 pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -235,7 +238,10 @@ pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
         SubValueRelation::IteratedSubValue { field: _, .. } => true,
         SubValueRelation::ArithmeticDescent { .. } => true,
         SubValueRelation::StrictAxisErased => true,
-        _ => false,
+        SubValueRelation::PreservedValue => false,
+        SubValueRelation::NonIncreasingValue => false,
+        SubValueRelation::MixedTop => false,
+        SubValueRelation::SubValueUnknown => false,
     }
 }
 
@@ -332,7 +338,33 @@ pub fn compose_sub_value(
 ) -> Rc<SubValueRelation> {
     match (*base.clone()).clone() {
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-        _ => Rc::new(SubValueRelation::StrictSubValue {
+        SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::IteratedSubValue { field: _, .. } => {
+            Rc::new(SubValueRelation::StrictSubValue {
+                field: field.clone(),
+                factor: Rc::new(ShrinkFactor::UnitShrink),
+            })
+        }
+        SubValueRelation::ArithmeticDescent { .. } => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::MixedTop => Rc::new(SubValueRelation::StrictSubValue {
             field: field.clone(),
             factor: Rc::new(ShrinkFactor::UnitShrink),
         }),
@@ -348,7 +380,19 @@ pub fn compose_sub_value_relations(
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
         SubValueRelation::NonIncreasingValue => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::StrictSubValue { .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
         },
         SubValueRelation::StrictAxisErased => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
@@ -367,7 +411,14 @@ pub fn compose_sub_value_relations(
         SubValueRelation::MixedTop => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            _ => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::MixedTop)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel.clone()).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
@@ -426,7 +477,13 @@ pub fn compose_sub_value_relations(
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
             SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
             SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            }
         },
     }
 }
@@ -821,9 +878,9 @@ pub fn param_growth_multiply(a: Rc<ParamGrowth>, b: Rc<ParamGrowth>) -> Rc<Param
             ParamGrowth::OrderableGrowth { rank: rb, .. } => {
                 Rc::new(ParamGrowth::OrderableGrowth {
                     rank: GrowthRank {
-                        degree: (ra.degree.clone() + rb.degree.clone()),
-                        logs: (ra.logs.clone() + rb.logs.clone()),
-                        bodies: (ra.bodies.clone() + rb.bodies.clone()),
+                        degree: v1_rt::int_add(ra.degree.clone(), rb.degree.clone()),
+                        logs: v1_rt::int_add(ra.logs.clone(), rb.logs.clone()),
+                        bodies: v1_rt::int_add(ra.bodies.clone(), rb.bodies.clone()),
                     },
                 })
             }
@@ -1079,17 +1136,18 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                         if (base.clone() == 1) {
                             Some(1)
                         } else {
-                            if (base.clone() == (0 - 1)) {
+                            if (base.clone() == v1_rt::int_sub(0, 1)) {
                                 {
-                                    let half = (e.clone() / 2);
-                                    if ((half.clone() + half.clone()) == e.clone()) {
+                                    let half = v1_rt::int_div(e.clone(), 2);
+                                    if (v1_rt::int_add(half.clone(), half.clone()) == e.clone()) {
                                         Some(1)
                                     } else {
-                                        Some((0 - 1))
+                                        Some(v1_rt::int_sub(0, 1))
                                     }
                                 }
                             } else {
-                                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                                match int_pow_bounded(base.clone(), v1_rt::int_sub(exp.clone(), 1))
+                                {
                                     Some(prev) => {
                                         match crate::std_checked_arithmetic::checked_int_optional(
                                             crate::std_checked_arithmetic::checked_int_multiply(

@@ -38,9 +38,3 @@ test fn srv1_package_provision_is_typed_gap() -> Bool {
   gap.missing_capability == cursor_sdk_local_provision_missing_capability
     && string_contains(s: gap.reason as String, pattern: "srv1")
 }
-
-test fn cursor_sdk_model_witness_keystone_holds() -> Bool {
-  local_usage_standing_is_typed_capability_gap()
-    && package_closure_matches_probe_receipt()
-    && srv1_package_provision_is_typed_gap()
-}

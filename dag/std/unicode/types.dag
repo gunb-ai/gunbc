@@ -1,7 +1,5 @@
 module std.unicode.types
 
-import std.types { Char, Int }
-
 data unicode_scalar_max_code_point: Int = 1114111
 data unicode_surrogate_first_code_point: Int = 55296
 data unicode_surrogate_last_code_point: Int = 57343
@@ -16,7 +14,23 @@ fn unicode_scalar(code_point: Int) -> Bool {
     && !(code_point >= unicode_surrogate_first_code_point && code_point <= unicode_surrogate_last_code_point)
 }
 
-type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+// The UTF-8 encoding form's octet count for one scalar value: Unicode Standard 17.0 Core
+// Specification section 3.9, definition D92 and Table 3-6 (UTF-8 bit distribution), identical to
+// RFC 3629 section 3. It is the ONE table of the three range boundaries; std.encoding's decoder
+// admits a completed scalar by asking this function whether its sequence length is the shortest
+// form, and v2.compiler.tokenize advances a source ByteRange by it, so a byte offset and the decoder
+// cannot disagree about where a scalar ends. Total over Int: callers pass scalar values.
+fn unicode_scalar_utf8_octet_count(code_point: Int) -> Int {
+  if code_point < 128 {
+    1
+  } else {
+    if code_point < 2048 {
+      2
+    } else {
+      if code_point < 65536 { 3 } else { 4 }
+    }
+  }
+}
 
 type DisplayWidth = ZeroWidth | Narrow | Wide
 
@@ -34,27 +48,6 @@ type UnicodeBlock {
   end_inclusive: Int
   default_width: DisplayWidth
 }
-
-fn char_in_class(c: Char, class: CharClass) -> Bool =
-  match class {
-
-    Whitespace =>
-      unicode_char_code_point(c: c) == 9 || unicode_char_code_point(c: c) == 10 || unicode_char_code_point(c: c) == 12
-      || unicode_char_code_point(c: c) == 13 || unicode_char_code_point(c: c) == 32
-    Digit => unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
-    IdentStart =>
-      unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
-      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
-      || unicode_char_code_point(c: c) == 95
-
-    IdentContinue =>
-      unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
-      || unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
-      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
-      || unicode_char_code_point(c: c) == 95
-  }
-
-fn unicode_char_code_point(c: Char) -> Int = c + 0
 
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive

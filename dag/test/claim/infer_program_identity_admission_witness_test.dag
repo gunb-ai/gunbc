@@ -1,0 +1,71 @@
+module test.claim.infer_program_identity_admission_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT THE PROGRAM CENSUS IS A COMPILER WALL, on the source -> .dag
+// acceptance path, against the REAL extdeps.exec.program rather than a planted copy of it.
+//
+// The census of programs gunbc invokes through a typed argv is the pair of admit_callers lists on
+// extdeps.exec.program: uncataloged_program's list IS the debt roster, cataloged_program's is the
+// catalog. A census that anyone could extend by writing a string at a call site would be a count,
+// not a wall, so what this file establishes is that each route by which a NEW program could enter
+// without an edit to those lists is refused by the compiler:
+//
+//   1. minting an uncataloged program from a declaration the debt roster does not name;
+//   2. minting a cataloged one from a declaration the catalog does not name -- without this arm
+//      the debt seal is decoration, because new debt could simply be declared cataloged;
+//   3. spelling the ProgramIdentity record directly, which would skip both mints.
+//
+// Each red is paired with the control that shows the harness reaches a clean compile over the
+// same module: a fixture that invokes an ADMITTED identity through its production builder raises
+// neither diagnostic. Without it, a wall that refused every use of the leaf would score identically
+// on the reds.
+//
+// PATH SCOPE (DESIGN 4b): source -> .dag acceptance on the seed route only. admit_callers is
+// parsed and discarded on the native route (gunbc.rung_drop admit_callers_discarded_on_the_native_route),
+// so this wall does not hold there, and nothing here claims it does. It also holds only over what a
+// run compiles: a new uncataloged mint in a module no required closure reaches is refused whenever
+// that module is next compiled, not on the pull request that adds it.
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data unlisted_uncataloged_mint_source: String = "module probe_program_identity_unlisted_debt\nimport extdeps.exec.program { ProgramIdentity, uncataloged_program }\nfn probe_new_program() -> ProgramIdentity = uncataloged_program(invocation: \"probe-new-tool\")\n"
+
+test fn w_new_uncataloged_program_outside_the_debt_roster_is_refused() -> Bool {
+  violation_count(source: unlisted_uncataloged_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+data unlisted_cataloged_mint_source: String = "module probe_program_identity_unlisted_catalog\nimport extdeps.exec.program { ProgramIdentity, cataloged_program }\nfn probe_claimed_cataloged() -> ProgramIdentity = cataloged_program(invocation: \"probe-new-tool\")\n"
+
+test fn w_new_program_claimed_cataloged_outside_the_catalog_is_refused() -> Bool {
+  violation_count(source: unlisted_cataloged_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+data direct_record_source: String = "module probe_program_identity_direct_record\nimport extdeps.exec.program { ProgramIdentity, CatalogCarried }\nfn probe_spelled_program() -> ProgramIdentity = ProgramIdentity { invocation: \"probe-new-tool\", catalog: CatalogCarried }\n"
+
+test fn w_program_identity_spelled_as_a_record_is_refused() -> Bool {
+  violation_count(source: direct_record_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// The positive control: an admitted identity, reached through the production builder that names
+// it, exactly as production reaches it.
+data admitted_identity_source: String = "module probe_program_identity_admitted\nimport extdeps.exec.command { ArgvCommand }\nimport extdeps.tools.uname { uname_release_command }\nfn probe_uses_admitted_program() -> ArgvCommand = uname_release_command()\n"
+
+test fn w_admitted_identity_through_its_builder_raises_no_admission_refusal() -> Bool {
+  violation_count(source: admitted_identity_source, wanted: "ConstructorCallAdmissionRefused") == 0
+    && violation_count(source: admitted_identity_source, wanted: "SoleConstructorViolation") == 0
+}
