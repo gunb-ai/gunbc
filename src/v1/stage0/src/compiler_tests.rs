@@ -52,7 +52,7 @@ mod compiler_tests {
             // Admitted per directory, so a ledger row directory contributes its derived roster
             // in memory (`derived_row_roster::acquire_dir_files`) rather than as a written file.
             let acquired = crate::cli_run::derived_row_roster::acquire_dir_files(dir, here)
-                .unwrap_or_else(|e| panic!("{e}"));
+                .unwrap_or_else(|e| panic!("{}", e));
             for source in acquired {
                 let path = source.path();
                 let rel = path

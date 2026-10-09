@@ -83,7 +83,7 @@ fn ct_file_discovery_helpers() -> String {
     "            // Admitted per directory, so a ledger row directory contributes its derived roster\n",
     "            // in memory (`derived_row_roster::acquire_dir_files`) rather than as a written file.\n",
     "            let acquired = crate::cli_run::derived_row_roster::acquire_dir_files(dir, here)\n",
-    "                .unwrap_or_else(|e| panic!(\"{e}\"));\n",
+    "                .unwrap_or_else(|e| panic!(\"{}\", e));\n",
     "            for source in acquired {\n",
     "                let path = source.path();\n",
     "                let rel = path\n",
