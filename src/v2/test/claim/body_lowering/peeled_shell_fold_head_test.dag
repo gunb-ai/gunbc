@@ -27,7 +27,7 @@ data peeled_shell_fold_head_source: String = "module w.p\n\ndata d: I = fold(x, 
 fn peeled_shell_fold_head_parsed() -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
         o: tokenize(
           text: peeled_shell_fold_head_source,
@@ -37,8 +37,7 @@ fn peeled_shell_fold_head_parsed() -> Outcome<Node> {
         f: fn(token_stream) {
           match parse_module_prepared(
             tokens: token_stream,
-            prepared: prepared,
-            validation_residue: residue
+            prepared: prepared
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } =>

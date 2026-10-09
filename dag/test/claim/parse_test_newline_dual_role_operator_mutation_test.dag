@@ -164,11 +164,11 @@ fn nlm_mutant_prepared() -> Outcome<PreparedGrammar> {
 fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGrammar>) -> Bool {
   match prepared {
     Rejected { diagnostics: _ } => false
-    Accepted { value: p, diagnostics: residue } =>
+    Accepted { value: p, diagnostics: _ } =>
       match tokenize(text: text, file: file, rules: dag_lex()) {
         Rejected { diagnostics: _ } => false
         Accepted { value: stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: stream, prepared: p, validation_residue: residue) {
+          match parse_module_prepared(tokens: stream, prepared: p) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }

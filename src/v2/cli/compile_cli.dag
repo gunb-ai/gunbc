@@ -373,9 +373,8 @@ type CliRunOutcome
 // boundary. Measured on the built binary at gunbc#11507's head -- three different entries
 // (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
 //
-// THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. Rendering only the head answers
-// `parse_grammar_choice_overlap_residue` for every entry tried; that is a grammar-global ADVISORY
-// and never the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
+// THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. A head can be a non-fatal advisory
+// that rejected_with_pending prepended; it is never by itself the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
 // builds its locus from the first remaining token. The fatal pick is `v2.std.diagnostic`
 // `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text_in_spans` (every
 // link with its locus, so thirty-five advisories in front of the fatal each say where they are),

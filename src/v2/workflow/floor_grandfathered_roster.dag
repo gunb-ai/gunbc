@@ -374,6 +374,59 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_reds_on_one_unsound" as NonEmptyStr,
     deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
   },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.assemble_receipt_carries_nonempty_rejection_chain" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.masked_overlap_located_reason_unmasks_terminal_refusal" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.masked_resolve_not_found_unmasks_located_reason" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.overlap_evidence_binds_exact_row_not_global_roster" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.overlap_only_chain_keeps_overlap_located_reason" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.self_host.frontier_probe_overlap_detail.overlap_stage_attaches_evidence_when_diagnostics_stripped" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: grammar validation REFUSES every choice-overlap row, located at the owning production, so parse_grammar_choice_overlap_residue has no producer and the parse-stage overlap evidence carrier (v2.compiler.parse_diagnostic) is deleted. v2.test.self_host.frontier_probe_overlap_detail witnessed that carrier's merge and masking; its subject no longer exists" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.self_host.frontier_probe_overlap_detail.emit_stage_receipt_has_no_assemble_detail" as NonEmptyStr,
+    new_identity: "v2.test.self_host.frontier_probe_assemble_detail.emit_stage_receipt_has_no_assemble_detail" as NonEmptyStr,
+    renamed_in: "the grammar-overlap cut: the claim is unchanged and its subject survives, but its module was named for the overlap-detail carrier the cut deletes, so it moved to v2.test.self_host.frontier_probe_assemble_detail and is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.both_measured_shards_name_body_lowering_beneath_the_mask_holds" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: v2.compiler.self_host.frontier_probe_semantic_family_receipt recorded a 2026-08 observation whose subject was the grammar-overlap residue masking a deeper chain. Validation now refuses every overlap, so that mask cannot exist and the module's own note required a fresh survey to replace its rows; the module and its consistency claims are deleted, the receipt stays in git history" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_capped_shard_exceeds_the_cap_it_names_holds" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: v2.compiler.self_host.frontier_probe_semantic_family_receipt recorded a 2026-08 observation whose subject was the grammar-overlap residue masking a deeper chain. Validation now refuses every overlap, so that mask cannot exist and the module's own note required a fresh survey to replace its rows; the module and its consistency claims are deleted, the receipt stays in git history" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_measured_chain_is_non_uniform_holds" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: v2.compiler.self_host.frontier_probe_semantic_family_receipt recorded a 2026-08 observation whose subject was the grammar-overlap residue masking a deeper chain. Validation now refuses every overlap, so that mask cannot exist and the module's own note required a fresh survey to replace its rows; the module and its consistency claims are deleted, the receipt stays in git history" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.the_five_shards_partition_into_measured_and_capped_holds" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: v2.compiler.self_host.frontier_probe_semantic_family_receipt recorded a 2026-08 observation whose subject was the grammar-overlap residue masking a deeper chain. Validation now refuses every overlap, so that mask cannot exist and the module's own note required a fresh survey to replace its rows; the module and its consistency claims are deleted, the receipt stays in git history" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.two_shards_are_measured_and_three_are_capped_holds" as NonEmptyStr,
+    deleted_in: "the grammar-overlap cut: v2.compiler.self_host.frontier_probe_semantic_family_receipt recorded a 2026-08 observation whose subject was the grammar-overlap residue masking a deeper chain. Validation now refuses every overlap, so that mask cannot exist and the module's own note required a fresh survey to replace its rows; the module and its consistency claims are deleted, the receipt stays in git history" as NonEmptyStr,
+  },
   WitnessRenamed {
     previous_identity: "v2.test.parse.parse_binding_fidelity.witness_ambiguous_export_fail_closed_holds" as NonEmptyStr,
     new_identity: "test.claim.parse_test_parse_binding_fidelity.witness_ambiguous_export_fail_closed_holds" as NonEmptyStr,

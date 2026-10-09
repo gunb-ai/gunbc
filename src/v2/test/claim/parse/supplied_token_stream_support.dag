@@ -57,11 +57,10 @@ fn supplied_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenS
 fn supplied_stream_parse(tokens: TokenStream) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       match parse_module_prepared(
         tokens: tokens,
-        prepared: prepared,
-        validation_residue: residue
+        prepared: prepared
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: artifact, diagnostics: d } =>

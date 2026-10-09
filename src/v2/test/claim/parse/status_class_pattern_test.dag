@@ -35,11 +35,11 @@ fn status_source(pattern: String) -> String {
 fn status_parse(text: String) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
         o: tokenize(text: text, file: ^status_class_probe, rules: dag_lex()),
         f: fn(token_stream) {
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
           }

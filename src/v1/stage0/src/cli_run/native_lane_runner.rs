@@ -884,10 +884,9 @@ fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
 /// census run's only consumed output.
 struct NativeFileRefusalObserved {
     path: String,
-    /// The FIRST diagnostic of the file's chain -- often an advisory that rode along (the
-    /// grammar-construction residue `parse_grammar_choice_overlap_residue` heads every file,
-    /// clean ones included). Carried so the summary can show it AS the head, beside the cause,
-    /// rather than leaving a reader to mistake it for one.
+    /// The FIRST diagnostic of the file's chain -- possibly a non-fatal advisory that
+    /// `rejected_with_pending` prepended. Carried so the summary can show it AS the head, beside
+    /// the cause, rather than leaving a reader to mistake it for one.
     head_reason: String,
     fatal_reason: String,
     /// Where the FATAL link points, rendered from the row's `chain`
@@ -2065,8 +2064,7 @@ struct CliRefusalRendering {
 ///
 /// `v2.cli.compile_cli` renders `REFUSED: the closure did not emit; diagnostic chain: <links> |
 /// FATAL AT <locus>`, and `diagnostics_fatal` folds the chain to its LAST link -- that module's
-/// annotation states why: the head answers `parse_grammar_choice_overlap_residue` for every entry
-/// tried, a grammar-global ADVISORY that is never the fatal.
+/// annotation states why: a head can be a non-fatal advisory, and the fatal is the last link.
 ///
 /// EVERY LINK IS NOW LOCATED, AND THIS DECODER DID NOT KNOW THAT. gunbc#11965/#11985 moved the chain
 /// to `lens_verdict_diagnostics_located_chain_text`, so a link is
@@ -3353,15 +3351,10 @@ mod tests {
             fatal_at: at.to_string(),
         };
         let summary = native_file_refusal_summary(&[
-            row(
-                "a.dag",
-                "parse_grammar_choice_overlap_residue",
-                "parse_g0_tokens_remain",
-                "12:5",
-            ),
+            row("a.dag", "advisory_head_x", "parse_g0_tokens_remain", "12:5"),
             row(
                 "b.dag",
-                "parse_grammar_choice_overlap_residue",
+                "advisory_head_x",
                 "body_lowering_reason_x",
                 "<unresolved-node>",
             ),
@@ -3384,13 +3377,13 @@ mod tests {
             summary.contains("fatal_cause 1x body_lowering_reason_x"),
             "{summary}"
         );
-        assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
+        assert!(!summary.contains("fatal_cause 2x advisory_head_x"));
         // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
         // rendering that dropped b pass (review on #13005); the expected line is derived per row,
         // so the head appears only where it differs from the cause.
         let expected = [
-            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
-            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=advisory_head_x",
+            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=advisory_head_x",
             "  refused c.dag at=<whole-file> fatal=parse_g0_tokens_remain",
         ];
         assert_eq!(
@@ -3703,15 +3696,12 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"advisory_head_x\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
         // Both reasons are DERIVED from the chain: the head link's and the last link's.
-        assert_eq!(
-            parsed.file_refusals[0].head_reason,
-            "parse_grammar_choice_overlap_residue"
-        );
+        assert_eq!(parsed.file_refusals[0].head_reason, "advisory_head_x");
         assert_eq!(
             parsed.file_refusals[0].fatal_reason,
             "parse_g0_tokens_remain"

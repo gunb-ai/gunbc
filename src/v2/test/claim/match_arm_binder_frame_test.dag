@@ -336,8 +336,8 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
     Accepted { value: tokens, diagnostics: _ } =>
       match dag_prepared_grammar() {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: prepared, diagnostics: residue } =>
-          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize(parse_tree: artifact.tree) {

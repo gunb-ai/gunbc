@@ -1425,7 +1425,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.pattern_and_let_sugar",
+    module: "test.claim.parse_test_pattern_and_let_sugar",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_bare_assignment_lowers_identically_to_let_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_generic_pattern_refuses_at_its_generic_params_holds", standing: ActiveFillDebt },

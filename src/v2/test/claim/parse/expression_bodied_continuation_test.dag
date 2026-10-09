@@ -8,13 +8,10 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostics,
-  None,
   Outcome,
   Rejected,
   bind_outcome,
-  outcome_accepted,
-  outcome_diagnostics
+  outcome_accepted
 }
 import v2.std.node { Arrow, ArrowBodyEdge, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, core_edge_label }
 import v2.std.node_query { find_arrow_body_child }
@@ -58,8 +55,7 @@ fn cont_parse(text: String, file: Symbol) -> Outcome<Node> {
           bind_outcome(
             o: parse_module_prepared(
               tokens: token_stream,
-              prepared: prepared,
-              validation_residue: outcome_diagnostics(o: dag_prepared_grammar())
+              prepared: prepared
             ),
             f: fn(artifact) { cont_artifact_tree(artifact: artifact) }
           )
@@ -76,19 +72,6 @@ fn cont_parse(text: String, file: Symbol) -> Outcome<Node> {
 // binder, which is exactly the isolation this file exists to make.
 fn cont_artifact_tree(artifact: ParseArtifact) -> Outcome<Node> {
   outcome_accepted(value: artifact.tree)
-}
-
-// THE RESIDUE THE SUBJECT THREADS EXPLICITLY IS THREADED HERE TOO, and that is not a formality: the
-// prepared grammar DOES carry residue. An earlier version of this file passed None on the assumption
-// that it did not, and the claim written to check that assumption went RED -- which is the only
-// reason this control now forwards the real thing rather than parsing under a residue the seven
-// never use. bind_outcome cannot supply it, because it merges diagnostics into the continuation
-// instead of handing them back, so the residue is read with v2.std.diagnostic outcome_diagnostics.
-test fn cont_the_prepared_grammar_carries_residue_holds() -> Bool {
-  match outcome_diagnostics(o: dag_prepared_grammar()) {
-    None => false
-    _ => true
-  }
 }
 
 fn cont_accepted(o: Outcome<Node>) -> Bool {
@@ -275,7 +258,7 @@ fn cont_root_itself_has_arrow_body(root: Node) -> Bool {
 
 // THE CONTROL PRODUCES WHAT THE SUBJECT PRODUCES, asserted rather than assumed. Everything above is
 // only evidence about the seven if this chain and theirs agree, and "I used the same functions" is
-// not that evidence -- the residue defect this file already caught is exactly how they can diverge
+// not that evidence -- a diagnostics-threading difference this file once caught is how they can diverge
 // while every row still looks green. So the two trees are compared directly, for each source, through
 // the subject's own entry point.
 //

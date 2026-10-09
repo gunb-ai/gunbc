@@ -416,12 +416,12 @@ test fn an_emit_refusal_exits_general_error_holds() -> Bool {
 // THE REFUSAL NAMES THE REFUSING LINK, NOT THE FIRST ADVISORY. This is the run-level claim the emit
 // arm's frontier above does not block: a refusal at ASSEMBLE happens before the single-module
 // emit frontier is reached, so a supplied ingest holding one file with tokens left after its module
-// body refuses through the real front end (tokenize, parse, normalize over dag_language_model),
-// with the grammar's overlap-residue advisory riding in front. The outcome's `reason` must be the
+// body refuses through the real front end (tokenize, parse, normalize over dag_language_model).
+// The outcome's `reason` must be the
 // FATAL -- the last link, parse_g0_tokens_remain -- and the detail must locate it: the compilation
 // unit the front end was handed (v2.compiler.program_assembly names the read's compilation_unit as
 // the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
-// which on every such refusal is the same grammar-global advisory, so three different broken
+// which on every such refusal was then the same grammar-global advisory (a residue since retired), so three different broken
 // entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
 data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
 

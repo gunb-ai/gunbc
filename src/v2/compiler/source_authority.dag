@@ -30,7 +30,6 @@ import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  Diagnostics,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
@@ -791,8 +790,7 @@ fn module_storage_binding_from_parse_artifact(
 fn module_storage_binding_from_read_prepared(
   source_read: DagSourceReadWitness,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
     SourceFile =>
@@ -806,8 +804,7 @@ fn module_storage_binding_from_read_prepared(
           bind_outcome(
             o: parse_module_prepared(
               tokens: token_stream,
-              prepared: prepared,
-              validation_residue: residue
+              prepared: prepared
             ),
             f: fn(artifact) {
               module_storage_binding_from_parse_artifact(
@@ -839,12 +836,11 @@ fn module_storage_binding_from_read_with_model(
 ) -> Outcome<ModuleStorageBinding> {
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       )
   }
 }
@@ -900,8 +896,7 @@ fn module_storage_fold_step(
   state: ModuleStorageFoldState,
   read: DagSourceReadWitness,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ModuleStorageFoldState {
   match state {
     ModuleStorageFoldFailed { diagnostics: d } =>
@@ -910,8 +905,7 @@ fn module_storage_fold_step(
       match module_storage_binding_from_read_prepared(
         source_read: read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       ) {
         Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
@@ -929,8 +923,7 @@ fn module_storage_fold_step(
 fn module_storage_bindings_from_ingest_prepared(
   ingest: SourceRootIngest,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ModuleStorageIndex> {
   match fold_list(
     xs: ingest,
@@ -940,8 +933,7 @@ fn module_storage_bindings_from_ingest_prepared(
         state: state,
         read: read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       )
     }
   ) {
@@ -959,12 +951,11 @@ fn module_storage_bindings_from_ingest_with_model(
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: prepared, diagnostics: residue } =>
+        Accepted { value: prepared, diagnostics: _ } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
             lm: lm,
-            prepared: prepared,
-            residue: residue
+            prepared: prepared
           )
       }
   }

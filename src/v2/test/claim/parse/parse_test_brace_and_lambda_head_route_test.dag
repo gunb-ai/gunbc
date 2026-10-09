@@ -1,4 +1,4 @@
-module v2.test.parse.brace_and_lambda_head_route
+module test.claim.parse_test_brace_and_lambda_head_route
 
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }

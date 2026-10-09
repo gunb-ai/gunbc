@@ -70,7 +70,7 @@ type EntryRealizationAttempt {
 }
 
 // The exact cause is the chain's FATAL element (its last), never its head: an advisory prepended
-// to the refusal (the grammar overlap residue heads every module's chain) only rode along.
+// to the refusal by rejected_with_pending only rode along.
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
   diagnostics_fatal_reason(d: ds)
 }

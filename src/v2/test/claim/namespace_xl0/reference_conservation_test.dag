@@ -67,12 +67,11 @@ fn conservation_fixture_read(id_tail: String, source: String) -> DagSourceReadWi
 // once; every claim still executes reference_conservation_of_subject, which is what it names.
 fn conservation_subject(id_tail: String, source: String) -> ReferenceConservationSubject {
   match dag_prepared_grammar() {
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       reference_conservation_subject_of_read(
         read: conservation_fixture_read(id_tail: id_tail, source: source),
         lex: prepare_lex_rules(rules: dag_language_model().lex),
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       )
     Rejected { diagnostics: d } =>
       ReferenceConservationSubject { path: "grammar-unprepared", parsed: Rejected { diagnostics: d }, normalized: Rejected { diagnostics: d } }

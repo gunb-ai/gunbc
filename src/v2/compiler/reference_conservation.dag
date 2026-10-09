@@ -1125,13 +1125,11 @@ type ReferenceConservationSubject {
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ReferenceConservationSubject {
   let parsed = program_assembly_phase_parse_measured_seeded(
     tokens: program_assembly_phase_tokenize(read: read, lex: lex),
     prepared: prepared,
-    residue: residue,
     seed: occurrence_id_allocator_initial()
   ).outcome
   ReferenceConservationSubject {
@@ -1253,11 +1251,10 @@ fn reference_conservation_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   lex: PreparedLexRules,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ReferenceConservationReport {
   reference_conservation_of_subject(
-    subject: reference_conservation_subject_of_read(read: read, lex: lex, prepared: prepared, residue: residue),
+    subject: reference_conservation_subject_of_read(read: read, lex: lex, prepared: prepared),
     token_classes: declared_token_classes(lm: lm)
   )
 }
@@ -1265,8 +1262,7 @@ fn reference_conservation_of_read(
 fn reference_conservation_of_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> FreeMonoid<ReferenceConservationReport> {
   let lex = prepare_lex_rules(rules: lm.lex)
   fold_list(
@@ -1275,7 +1271,7 @@ fn reference_conservation_of_ingest(
     cons: fn(acc, read) {
       list_snoc_item(
         xs: acc,
-        item: reference_conservation_of_read(read: read, lm: lm, lex: lex, prepared: prepared, residue: residue)
+        item: reference_conservation_of_read(read: read, lm: lm, lex: lex, prepared: prepared)
       )
     }
   )

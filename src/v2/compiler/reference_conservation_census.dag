@@ -120,14 +120,13 @@ fn sample_path_parts(path: String) -> SamplePathParts {
 fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => SamplePathGrammarUnprepared { path: path }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       SamplePathMeasured {
         report: reference_conservation_of_read(
           read: conservation_read_of(path: path, text: text),
           lm: dag_language_model(),
           lex: prepare_lex_rules(rules: dag_language_model().lex),
-          prepared: prepared,
-          residue: residue
+          prepared: prepared
         )
       }
   }

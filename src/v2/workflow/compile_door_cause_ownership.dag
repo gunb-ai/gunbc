@@ -57,12 +57,12 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^member_not_a_binder,
     lane: MigrationOwned,
-    flip_trigger: "RETIRED WHEN v2.lens.lifecycle_carrier and v2.lens.unit_modeling narrow their carrier predicate so that a node whose Authored members are module surface nodes (a container of modules, not a record or payload type) is never judged as a record carrier; this row is then deleted and the door-ledger long test's member_not_a_binder count returns to zero. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag. Each refusal is located at the TARGET of the offending member edge, a synthetic dag_surface_module node: both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder, and a node carrying modules as Authored members reaches that fold. That is a lens defect (the carrier predicate admits a module container), not a correct refusal of these subjects. It was masked at head grain by parse_grammar_choice_overlap_residue. The fix is owned by its own work item, not this row"
+    flip_trigger: "RETIRED WHEN v2.lens.lifecycle_carrier and v2.lens.unit_modeling narrow their carrier predicate so that a node whose Authored members are module surface nodes (a container of modules, not a record or payload type) is never judged as a record carrier; this row is then deleted and the door-ledger long test's member_not_a_binder count returns to zero. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag. Each refusal is located at the TARGET of the offending member edge, a synthetic dag_surface_module node: both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder, and a node carrying modules as Authored members reaches that fold. That is a lens defect (the carrier predicate admits a module container), not a correct refusal of these subjects. It was masked at head grain by parse_grammar_choice_overlap_residue, a reason since retired (gunbc#13126). The fix is owned by its own work item, not this row"
   },
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
+    flip_trigger: "no per-cause trigger — grammar-surgery class (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
   },
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,

@@ -7,7 +7,7 @@ import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_lex }
-import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
 import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.node { Node, content_hash, symbol_lexeme }
 
@@ -38,11 +38,11 @@ type DagEmitRoundTripRow {
 }
 
 // The grammar is prepared once per round trip and both ingests read it.
-fn dag_round_trip_parse(prepared: PreparedGrammar, residue: Diagnostics, text: String) -> Outcome<Node> {
+fn dag_round_trip_parse(prepared: PreparedGrammar, text: String) -> Outcome<Node> {
   bind_outcome(
     o: tokenize(text: text, file: ^dag_emit_round_trip_source, rules: dag_lex()),
     f: fn(stream) {
-      match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+      match parse_module_prepared(tokens: stream, prepared: prepared) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
       }
@@ -59,14 +59,14 @@ fn dag_round_trip_refused(stage: String, d: NonEmptyDiagnostics) -> String {
 fn dag_round_trip_observed(text: String) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => dag_round_trip_refused(stage: "grammar preparation", d: d)
-    Accepted { value: prepared, diagnostics: residue } =>
-      match dag_round_trip_parse(prepared: prepared, residue: residue, text: text) {
+    Accepted { value: prepared, diagnostics: _ } =>
+      match dag_round_trip_parse(prepared: prepared, text: text) {
         Rejected { diagnostics: d } => dag_round_trip_refused(stage: "first ingest", d: d)
         Accepted { value: tree, diagnostics: _ } =>
           match dag_emit_parse_tree(tree: tree) {
             Rejected { diagnostics: d } => dag_round_trip_refused(stage: "emit", d: d)
             Accepted { value: emitted, diagnostics: _ } =>
-              match dag_round_trip_parse(prepared: prepared, residue: residue, text: emitted) {
+              match dag_round_trip_parse(prepared: prepared, text: emitted) {
                 Rejected { diagnostics: d } => dag_round_trip_refused(stage: "re-ingest", d: d)
                 Accepted { value: again, diagnostics: _ } =>
                   if content_hash(n: tree) == content_hash(n: again) { "same" } else { concat("trees differ: ", emitted) }

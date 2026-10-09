@@ -5,7 +5,7 @@ fn witness_python_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: python_grammar_root())
 }
 
-fn witness_python_grammar_validate_accepts_with_overlap_residue() -> Bool {
+fn witness_python_grammar_validate_accepts() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_ambiguity_audit_grammar_contract)
   match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -17,16 +17,6 @@ fn witness_dag_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: dag_grammar_root())
 }
 
-fn witness_dag_zero_nullable_choice_ambiguity() -> Bool {
-  is_empty(xs: grammar_nullable_ambiguity_rows(
-    roster: grammar_choice_ambiguity_roster(root: dag_grammar_root())
-  ))
-}
-
-fn witness_dag_overlap_residue_row_count() -> Int {
-  length(xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()))
-}
-
 fn witness_dag_grammar_validate_accepts() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_ambiguity_audit_grammar_contract)
   match grammar_validate_for_parse(root: dag_grammar_root(), at: at) {
@@ -35,7 +25,7 @@ fn witness_dag_grammar_validate_accepts() -> Bool {
   }
 }
 
-// THE RESIDUE ROSTER BY IDENTITY, not a count plus its first row. Two rosters of equal length can
+// THE OVERLAP ROSTER BY IDENTITY, not a count plus its first row. Two rosters of equal length can
 // differ in every row, so a count cannot show a row was removed and another added. One line per
 // row: `production#k: overlap=[..] left=[..] right=[..]`, in roster order.
 //
@@ -69,7 +59,7 @@ type AuditRosterFold {
   lines: FreeMonoid<String>
 }
 
-fn witness_dag_overlap_residue_row_identities() -> String {
+fn witness_dag_overlap_row_identities() -> String {
   let folded = fold_list(
     xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
     empty: AuditRosterFold { seen: empty_map(), lines: [] },

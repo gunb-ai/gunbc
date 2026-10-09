@@ -1,4 +1,4 @@
-module v2.test.claim.parse.pattern_and_let_sugar
+module test.claim.parse_test_pattern_and_let_sugar
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }

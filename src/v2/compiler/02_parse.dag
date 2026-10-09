@@ -1,12 +1,6 @@
 module v2.compiler.parse
 
 import std.types { List }
-import v2.compiler.parse_diagnostic {
-  NonEmptyParseStageDiagnostics,
-  non_empty_parse_stage_diagnostics_from_overlap_roster,
-  parse_overlap_residue_stage_diagnostic_at,
-  parse_stage_diagnostic_core
-}
 import std.optional {
   Absent,
   Optional,
@@ -29,13 +23,12 @@ import v2.std.diagnostic {
   Textual,
   Unavailable,
   UserInputBoundary,
-  diagnostics_merge,
   diagnostics_singleton,
   node_locus,
   outcome_accepted,
+  declaration_locus,
   invariant_port_locus,
   port_refusal_locus,
-  rejected_with_pending,
   source_port_locus
 }
 import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
@@ -360,7 +353,6 @@ type ParseTable = ParseTableRealization
 type PreparedModeledGrammar {
   validated: ValidatedGrammarRoot
   analysis: GrammarFirstAnalysis
-  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 }
 
 type PreparedGrammar
@@ -3728,52 +3720,31 @@ fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
   length(xs: grammar_choice_ambiguity_roster(root: root))
 }
 
-fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
+// A grammar choice whose alternatives overlap is refused AT THE PRODUCTION that owns the choice.
+// There is no accepting arm: an ordered choice resolved by authoring order is a reading the grammar
+// does not declare, so a grammar carrying one is not a grammar the parser may run.
+fn parse_grammar_choice_ambiguity_row_diagnostic(row: GrammarChoiceAmbiguityRow) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_choice_ambiguity,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_ambiguity),
-    correction: match count > 0 {
-      true => Unavailable { reason: ExternalContractUnknown }
-      false => Unavailable { reason: UserInputBoundary }
-    }
+    at: declaration_locus(declaration: Cons { head: row.production, tail: std.algebra.Empty }),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
-  let overlap_count = length(xs: row.overlap_terminals)
-  parse_grammar_choice_ambiguity_diagnostic(
-    at: at,
-    count: if row.both_nullable && overlap_count == 0 { 1 } else { overlap_count }
-  )
-}
-
-fn grammar_choice_ambiguity_row_diagnostic_list(
-  at: Locus,
-  roster: List<GrammarChoiceAmbiguityRow>
-) -> List<Diagnostic> {
-  fold_list(
-    xs: roster,
-    empty: std.algebra.Empty,
-    cons: fn(acc, row) {
-      list_snoc_item(
-        xs: acc,
-        item: parse_grammar_choice_ambiguity_row_diagnostic(at: at, row: row)
-      )
-    }
-  )
-}
-
 fn grammar_choice_ambiguity_rejection_diagnostics(
-  at: Locus,
-  roster: List<GrammarChoiceAmbiguityRow>
+  first: GrammarChoiceAmbiguityRow,
+  rest: List<GrammarChoiceAmbiguityRow>
 ) -> NonEmptyDiagnostics {
-  parse_diags_to_non_empty(
-    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
-    default: parse_grammar_choice_ambiguity_diagnostic(
-      at: at,
-      count: length(xs: roster)
+  NonEmptyDiagnostics {
+    head: parse_grammar_choice_ambiguity_row_diagnostic(row: first),
+    tail: fold_list(
+      xs: rest,
+      empty: std.algebra.Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(xs: acc, item: parse_grammar_choice_ambiguity_row_diagnostic(row: row))
+      }
     )
-  )
+  }
 }
 
 fn grammar_empty_corner_list() -> List<Symbol> {
@@ -4055,40 +4026,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
-fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> List<GrammarChoiceAmbiguityRow> {
-  filter(xs: roster, predicate: fn(row) { row.both_nullable })
-}
-
-fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
-  parse_stage_diagnostic_core(
-    d: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
-  )
-}
-
-fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
-  match list_at_optional(xs: items, index: 0) {
-    Absent => None
-    Present { value: first } =>
-      match list_tail(xs: items) {
-        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
-        TailFound { tail: rest } =>
-          Some { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
-      }
-  }
-}
-
-fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbiguityRow>) -> Diagnostics {
-  diagnostics_from_diagnostic_list(
-    items: fold_list(
-      xs: roster,
-      empty: std.algebra.Empty,
-      cons: fn(acc, row) {
-        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at, row: row))
-      }
-    )
-  )
-}
-
 // ONE nullable fixpoint for the whole preparation. The left-recursion check and the FIRST analysis
 // both need the nullable set, and computing it here rather than inside each of them is the
 // difference between one fixpoint per preparation and three.
@@ -4104,24 +4041,17 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
         let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
-        let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
-        let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
-        if !is_empty(xs: nullable_rows) {
-          Rejected {
-            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
-          }
-        } else {
-          Accepted {
-            value: PreparedModeledGrammar {
-              validated: ValidatedGrammarRoot { root: root },
-              analysis: analysis,
-              overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
-                at: at,
-                roster: ambiguity_roster
-              )
-            },
-            diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
-          }
+        match grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis) {
+          Cons { head: first, tail: rest } =>
+            Rejected { diagnostics: grammar_choice_ambiguity_rejection_diagnostics(first: first, rest: rest) }
+          Empty =>
+            Accepted {
+              value: PreparedModeledGrammar {
+                validated: ValidatedGrammarRoot { root: root },
+                analysis: analysis
+              },
+              diagnostics: None
+            }
         }
       }
     }
@@ -4131,8 +4061,8 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
 fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: modeled, diagnostics: residue } =>
-      Accepted { value: modeled.validated, diagnostics: residue }
+    Accepted { value: modeled, diagnostics: _ } =>
+      Accepted { value: modeled.validated, diagnostics: None }
   }
 }
 
@@ -5346,13 +5276,13 @@ fn prepare_grammar_with_admission(
       ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: modeled, diagnostics: validation_residue } =>
+          Accepted { value: modeled, diagnostics: _ } =>
             match admit(modeled.analysis.memo_recurrence) {
               Rejected { diagnostics: refusal } => Rejected { diagnostics: refusal }
               Accepted { value: materialization, diagnostics: _ } =>
                 Accepted {
                   value: PreparedModeled { modeled: modeled, materialization: materialization },
-                  diagnostics: validation_residue
+                  diagnostics: None
                 }
             }
         }
@@ -5362,45 +5292,26 @@ fn prepare_grammar_with_admission(
   }
 }
 
-fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
-  match prepared {
-    PreparedVoidGrammar => optional_absent()
-    PreparedModeled { modeled: modeled, materialization: _ } => modeled.overlap_residue_stage
-  }
-}
-
-fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
-  match prepare_grammar(grammar: grammar) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: prepared, diagnostics: _ } =>
-      overlap_residue_stage_from_prepared(prepared: prepared)
-  }
-}
-
 // The unmeasured door, retained for every caller that does not own a clock or a relay, and defined
 // as the projection of the measured fold rather than restated beside it.
 fn parse_module_prepared(
   tokens: TokenStream,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ParseArtifact> {
   parse_module_prepared_measured(
     tokens: tokens,
-    prepared: prepared,
-    validation_residue: validation_residue
+    prepared: prepared
   ).outcome
 }
 
 fn parse_module_prepared_seeded(
   tokens: TokenStream,
   prepared: PreparedGrammar,
-  validation_residue: Diagnostics,
   seed: OccurrenceIdAllocator
 ) -> Outcome<ParseArtifact> {
   parse_module_prepared_measured_seeded(
     tokens: tokens,
     prepared: prepared,
-    validation_residue: validation_residue,
     seed: seed
   ).outcome
 }
@@ -5410,13 +5321,11 @@ fn parse_module_prepared_seeded(
 // void parse indistinguishable from a parse whose stats were dropped.
 fn parse_module_prepared_measured(
   tokens: TokenStream,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ParseProductionMeasured {
   parse_module_prepared_measured_seeded(
     tokens: tokens,
     prepared: prepared,
-    validation_residue: validation_residue,
     seed: occurrence_id_allocator_initial()
   )
 }
@@ -5430,7 +5339,6 @@ fn parse_module_prepared_measured(
 fn parse_module_prepared_measured_seeded(
   tokens: TokenStream,
   prepared: PreparedGrammar,
-  validation_residue: Diagnostics,
   seed: OccurrenceIdAllocator
 ) -> ParseProductionMeasured {
   let ntok = token_stream_remaining_count(stream: tokens)
@@ -5440,7 +5348,7 @@ fn parse_module_prepared_measured_seeded(
         ParseProductionMeasured {
           outcome: Accepted {
             value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
-            diagnostics: validation_residue
+            diagnostics: None
           },
           memo: parse_memo_stats_empty()
         }
@@ -5464,31 +5372,15 @@ fn parse_module_prepared_measured_seeded(
         layout: token_stream_layout(stream: tokens),
         materialization: materialization
       )
-      match measured.outcome {
-        Accepted { value: artifact, diagnostics: parse_diags } =>
-          ParseProductionMeasured {
-            outcome: Accepted {
-              value: artifact,
-              diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
-            },
-            memo: measured.memo
-          }
-        Rejected { diagnostics: parse_rejected } =>
-          ParseProductionMeasured {
-            outcome: Rejected {
-              diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
-            },
-            memo: measured.memo
-          }
-      }
+      measured
   }
 }
 
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   match prepare_grammar(grammar: grammar) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: prepared, diagnostics: validation_residue } =>
-      parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
+    Accepted { value: prepared, diagnostics: _ } =>
+      parse_module_prepared(tokens: tokens, prepared: prepared)
   }
 }
 
