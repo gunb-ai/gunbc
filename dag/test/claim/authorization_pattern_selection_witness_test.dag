@@ -10,7 +10,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
-  NoWitnessDischarge,
+  NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
@@ -24,13 +24,14 @@ import gunbc.auth.privileged_effect_census {
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
+  runner_lifecycle_scope_ruling, runner_lifecycle_operator_ruling, OperatorScopeRuling, ruling_discharge_for,
   RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
   NoDischargeSiteModeled,
 }
-import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.types { NonEmptyStr, String, Int, List }
 import std.logic { Bool }
 
@@ -390,16 +391,74 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
     && any(privileged_effect_interlocks, i => declaration_ref_display_key(ref: i.site) == "gunbc.host_reset_return_run::host_reset_return_wet")
 }
 
-// THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT deregistration is a
-// recurring automated effect under the dispatching run's federated identity, so the selection must
+// THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT registration,
+// deregistration, the qualification dispatch and its per-attempt branch pin are each a
+// recurring automated effect under the dispatching run's federated identity (the pin and its removal
+// on their own parameters, with no ruling discharge), so the selection must
 // answer the federated scoped grant and the row must conform; rowing it as an approval capability or
 // a per-registration ntfy approval turns this red.
-test fn the_jit_registration_and_deregistration_sites_select_the_federated_grant_and_conform() -> Bool {
-  ["dispatch_jit_mint", "ensure_jit_runner_deregistered"] |> all(name =>
+test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federated_grant_and_conform() -> Bool {
+  ["dispatch_jit_mint", "ensure_jit_runner_deregistered", "dispatch_qualification_floor", "ensure_qualification_ref_pin", "remove_qualification_ref_pin"] |> all(name =>
     any(census_verdicts(), v =>
       (v.site.decl_name as String) == name
         && selected_federated(s: v.selection)
         && match v.conformance { Conforms => true _ => false }))
+}
+
+// THE OPERATOR'S SCOPE RULING IS THE ONE SOURCE OF WHERE THE RUNNER-LIFECYCLE DISCHARGE MAY APPLY: a
+// census row takes it only when covers names its site, and every covered site is a census row. The
+// red is a row claiming the ruling outside the operator's scope, or a covers entry naming no site. A
+// covered row that does not consume the discharge is admitted: the selection federates it on its own
+// parameters, so it owes no interlock (the converse direction is not a wall, by design).
+fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
+  match d {
+    NoWitnessDischarge => false
+    StandingRulingUnderInterlock { ruling: g } => (g.ruling_text as String) == (runner_lifecycle_operator_ruling.ruling_text as String)
+  }
+}
+
+test fn a_row_takes_the_runner_lifecycle_ruling_only_where_the_operator_scope_ruling_covers_it() -> Bool {
+  privileged_effect_census |> all(r =>
+    !discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
+      || any(runner_lifecycle_scope_ruling.covers, c => declaration_ref_eq(a: c, b: r.site)))
+    && runner_lifecycle_scope_ruling.covers |> all(c => any(privileged_effect_census, r => declaration_ref_eq(a: c, b: r.site)))
+}
+
+// THE DISPATCH'S COVERAGE IS THE OPERATOR'S 2026-10-05 SCOPE RULING, NOT THE 10-03 TEXT. The census
+// row's discharge reads runner_lifecycle_scope_ruling; narrowed to registration and deregistration --
+// the 10-03 ruling's own words -- the same irreversible dispatch effect is no longer discharged and
+// the selection stops answering the federated grant. The 10-03 text is unchanged either way, and its
+// interlock is the host-generic unit hold.
+test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool {
+  let row = first(filter(privileged_effect_census, r => (r.site.decl_name as String) == "dispatch_qualification_floor"))
+  let narrowed = OperatorScopeRuling {
+    ruling: runner_lifecycle_operator_ruling,
+    scope_text: "narrowed to the 2026-10-03 ruling's own words" as NonEmptyStr,
+    decided_on: runner_lifecycle_scope_ruling.decided_on,
+    decided_through: runner_lifecycle_scope_ruling.decided_through,
+    covers: [
+      decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
+      decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+    ],
+  }
+  (runner_lifecycle_scope_ruling.decided_through as String) == "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb"
+    && (runner_lifecycle_operator_ruling.interlock.decl_name as String) == "UnitHoldProof"
+    && (runner_lifecycle_operator_ruling.interlock.module_path as String) == "gunbc.managed_host_unit_hold"
+    && match row {
+      Present { value: r } =>
+        selected_federated(s: select_authorization_pattern(e: r.effect))
+          && !selected_federated(s: select_authorization_pattern(e: PrivilegedEffect {
+            subject: r.effect.subject,
+            frequency: r.effect.frequency,
+            reversibility: r.effect.reversibility,
+            surface: r.effect.surface,
+            workload_identity: r.effect.workload_identity,
+            minted_reach: r.effect.minted_reach,
+            billing: r.effect.billing,
+            witness_discharge: ruling_discharge_for(scope: narrowed, site_ref: r.site),
+          }))
+      Absent => false
+    }
 }
 
 // THE R2 MINT CUSTODY CELLS ARE REALIZED BY THE FEDERATED GCP IAM ROUTE, NOT AN OPERATOR SESSION:

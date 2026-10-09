@@ -1,7 +1,8 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes }
 import std.resources { Network }
+import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
@@ -29,6 +30,16 @@ import extdeps.github.app
 import extdeps.github.actions_jit_runner
 import extdeps.github.actions_self_hosted_runners
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerDeletedBody }
+import extdeps.github.workflows
+import extdeps.github.workflows { WorkflowDispatchReceipt }
+import extdeps.github.workflow_runs
+import extdeps.github.git_database
+import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
+import extdeps.github.org_actions
+import extdeps.github.org_actions { OrgRunnerGroupWire }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
+import extdeps.github.actions_artifacts
+import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -138,10 +149,17 @@ type JitMintAppJwt
 // same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
 // refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
 // never arrived is commit-ambiguous and is NOT reported as a refusal.
+//
+// ADMITTED ONLY FROM THE PERFORM FUNCTION AND A CLAIM. This fold takes the dispatch and the answer
+// separately, so an open call would mint a delivery for dispatch A from any 201 body; the perform
+// function is the one caller whose answer is GitHub's response to dispatch.request.
 fn jit_mint_performance_of_generate(
   dispatch: JitMintDispatch,
   outcome: RestResult<JitConfigCreatedBody>,
-) -> JitMintPerformance {
+) -> JitMintPerformance admit_callers: [
+  decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "perform_organization_jit_mint"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered"),
+] {
   match outcome {
     RestAnswered { answer: created } =>
       JitMintReceived {
@@ -313,6 +331,160 @@ fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmpty
 {
   let deleted = github.ActionsSelfHostedRunners.DeleteOrganizationRunner(installation_token: token.token, org: organization, runner_id: runner_id)
   match deleted {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  }
+}
+
+// THE QUALIFICATION DISPATCH AND ITS READBACK, under the same controller installation token
+// (gunbc.runner.runner_qualification_dispatch). Each answer is GitHub's RestResult, sealed so the
+// decision module receives only what GitHub returned; the decision classifies a refusal as a read's
+// or a mutation's (extdeps.transports.rest classify_rest_refusal), so for the dispatch a 5xx, a lost
+// response or an undecodable 200 is commit-ambiguous rather than refused.
+type WorkflowDispatchAnswer sole_constructor {
+  dispatch: RestResult<WorkflowDispatchReceipt>
+}
+
+fn dispatch_workflow_with(
+  token: ControllerInstallationToken,
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  workflow_id: NonEmptyStr,
+  git_ref: NonEmptyStr,
+  inputs: Map<String, String>,
+) -> WorkflowDispatchAnswer uses net: Network {
+  let answered = github.Workflows.CreateDispatch(
+    auth_token: token.token,
+    owner: owner as String,
+    repo: repo as String,
+    workflow_id: workflow_id as String,
+    ref: git_ref as String,
+    inputs: inputs,
+  )
+  WorkflowDispatchAnswer {
+    dispatch: match answered {
+      RestAnswered { answer } => RestAnswered { answer: answer.result }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+type WorkflowRunRead sole_constructor {
+  run: RestResult<WorkflowRun>
+}
+
+fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunRead uses net: Network {
+  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+  WorkflowRunRead {
+    run: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.run }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+type WorkflowAttemptJobsRead sole_constructor {
+  jobs: RestResult<WorkflowJobRunList>
+}
+
+fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
+  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String, attempt_number: attempt)
+  WorkflowAttemptJobsRead {
+    jobs: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.result }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+// THE QUALIFICATION RUN'S OUTPUTS, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF. One job's
+// log (actions/download-job-logs-for-workflow-run, followed through its redirect by the bound REST
+// handler), the run's artifact listing, and one artifact's archive. Each answer is sealed beside its
+// RestResult, like the run and job reads above, so a consumer cannot pair a body with a result it
+// did not come with. The archive is Bytes and today's handler reads bodies as text,
+// so a real download answers RestRefused with RestBodyUndecodable (extdeps.github.actions_artifacts).
+type WorkflowJobLogRead sole_constructor {
+  job_id: Int
+  log: RestResult<String>
+}
+
+fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, job_id: Int) -> WorkflowJobLogRead uses net: Network {
+  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: job_id as String)
+  WorkflowJobLogRead {
+    job_id: job_id,
+    log: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.log }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+type WorkflowRunArtifactsRead sole_constructor {
+  listed: RestResult<ActionsArtifactList>
+}
+
+fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunArtifactsRead uses net: Network {
+  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+  WorkflowRunArtifactsRead {
+    listed: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.result }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+type ArtifactArchiveRead sole_constructor {
+  artifact_id: Int
+  archive: RestResult<Bytes>
+}
+
+fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
+  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: artifact_id as String)
+  ArtifactArchiveRead {
+    artifact_id: artifact_id,
+    archive: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.archive }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+// THE QUALIFICATION REF PIN'S EXCHANGES (gunbc.runner.runner_qualification_ref_pin), under the same
+// controller installation token. Ref and group reads are reads; the create, delete and group write
+// are mutations, so a lost answer is commit-ambiguous. Each answer is sealed for the same reason as
+// the dispatch's: the decision module judges only what GitHub returned.
+type GitRefRead sole_constructor {
+  reference: RestResult<GitRefWire>
+}
+
+fn read_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, ref: NonEmptyStr) -> GitRefRead uses net: Network {
+  let read = github.GitDatabase.GetRef(auth_token: token.token, owner: owner as String, repo: repo as String, ref: ref as String)
+  GitRefRead {
+    reference: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.reference }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
+fn create_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, full_ref: NonEmptyStr, sha: String) -> RestResult<GitRefWire> uses net: Network {
+  match github.GitDatabase.CreateRef(auth_token: token.token, owner: owner as String, repo: repo as String, full_ref: full_ref as String, sha: sha) {
+    RestAnswered { answer } => RestAnswered { answer: answer.reference }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  }
+}
+
+fn delete_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, ref: NonEmptyStr) -> RestResult<GitRefDeletedBody> uses net: Network {
+  match github.GitDatabase.DeleteRef(auth_token: token.token, owner: owner as String, repo: repo as String, ref: ref as String) {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  }
+}
+
+fn update_runner_group_workflows_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_group_id: Int, selected_workflows: List<String>) -> RestResult<OrgRunnerGroupWire> uses net: Network {
+  match github.OrgRunnerGroupsRest.UpdateOrganizationRunnerGroupWorkflows(
+    installation_token: token.token, org: organization, runner_group_id: runner_group_id, selected_workflows: selected_workflows,
+  ) {
     RestAnswered { answer } => RestAnswered { answer: answer.result }
     RestRefused { refusal } => RestRefused { refusal: refusal }
   }
