@@ -47,7 +47,8 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
 import v2.std.text { String }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.occurrence_identity {
@@ -1297,7 +1298,7 @@ fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
     Textual { file: _, extent: extent } =>
       match extent {
         ByteRange { start: s, end: e } =>
-          integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
+          int_to_decimal_string(value: s) + "-" + int_to_decimal_string(value: e)
         WholeFile => "whole-file"
       }
     NodeLocus { anchor: _ } => "unlocated"
@@ -1348,7 +1349,7 @@ fn reference_conservation_refusal_text(report: ReferenceConservationReport) -> S
 // the accepted subject carried, in chain order: the census's per-path record of what an accepted
 // module's front end attached without refusing.
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
-  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
+  let summary = "module " + report.path + " authored=" + int_to_decimal_string(value: report.authored) + " conserved=" + int_to_decimal_string(value: report.conserved) + " locus_erased=" + int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + int_to_decimal_string(value: report.role_excluded) + " header_channel=" + int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + int_to_decimal_string(value: report.role_reader_refused) + " refused=" + int_to_decimal_string(value: report.refused) + " import_channel=" + int_to_decimal_string(value: report.import_channel) + " dropped=" + int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
   let with_dropped = fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },

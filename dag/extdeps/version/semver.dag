@@ -4,7 +4,7 @@ import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
 import std.types { List, Int }
-import std.nat { nat_compare }
+import std.nat { nat_compare, nat_to_decimal_string }
 import std.types { NonEmptyStr, String }
 import std.algebra { trim }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -151,7 +151,7 @@ fn semver_minimum_of_constraint(constraint: VersionConstraint) -> SemVerVersion?
 
 fn semver_identifier_label(id: SemVerIdentifier) -> String {
   match id {
-    SemVerNumericIdentifier { value: v } => "{v}"
+    SemVerNumericIdentifier { value: v } => nat_to_decimal_string(value: v)
     SemVerAlphanumericIdentifier { label: s } => s
   }
 }
