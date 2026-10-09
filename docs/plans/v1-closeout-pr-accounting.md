@@ -1,15 +1,15 @@
 # v1 closeout: open PR accounting
 
-As of 2026-10-09; it includes the operator's side-chat dispositions. There are 165 open PRs on gunb-ai/gunbc. Apart from #13203 (blackjack, kept up by request), every one of them ends either in the mega branch #13641 (`integration/v1-closeout`) or closed with a stated reason. The owners come from the dashboard's PR-to-session records and the side chats. The dispositions come from each manager's closeout report. Merge state is GitHub's `mergeStateStatus` at the time of writing.
+As of 2026-10-09; it includes the operator's side-chat dispositions. There are 162 open PRs on gunb-ai/gunbc. Apart from #13203 (blackjack, kept up by request), every one of them ends either in the mega branch #13641 (`integration/v1-closeout`) or closed with a stated reason. The owners come from the dashboard's PR-to-session records and the side chats. The dispositions come from each manager's closeout report. Merge state is GitHub's `mergeStateStatus` at the time of writing.
 
 | Disposition | PRs | What happens |
 | --- | --- | --- |
 | In the mega branch | 29 | Lands when #13641 lands |
-| Pending fold | 65 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
+| Pending fold | 66 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 41 | Closed in the second pass unless revived |
+| Left out | 38 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
 | Unreported, owned by a live lane | 10 | Waiting on that lane's report |
-| Orphans: no live owner | 15 | Triaged by the closeout: fold if done and clean, otherwise close |
+| Orphans: no live owner | 14 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
 ## In the mega branch
@@ -89,8 +89,8 @@ These are merged into `integration/v1-closeout`.
 | [#13243](https://github.com/gunb-ai/gunbc/pull/13243) | Inference: a variant literal of a generic coproduct takes the expected | ready / DIRTY | via gentle-dove-36 |
 | [#13224](https://github.com/gunb-ai/gunbc/pull/13224) | Native effect realization admission; native mains bind admitted handle | ready / CLEAN | via gentle-dove-36 |
 | [#13202](https://github.com/gunb-ai/gunbc/pull/13202) | Native broker 2C/G: optional data rows keep their ? (signature and JSO | ready / CLEAN | via gentle-dove-36 |
-| [#13460](https://github.com/gunb-ai/gunbc/pull/13460) | map_get fork: the declared projection renames to map_get_checked | ready / BLOCKED | via lively-ram-153 |
-| [#13108](https://github.com/gunb-ai/gunbc/pull/13108) | admit_callers: restore the native-route caller-admission wall (DP-M6 i | ready / BLOCKED | via lively-ram-153 |
+| [#13460](https://github.com/gunb-ai/gunbc/pull/13460) | map_get fork: the declared projection renames to map_get_checked | ready / CLEAN | via lively-ram-153 |
+| [#13108](https://github.com/gunb-ai/gunbc/pull/13108) | admit_callers: restore the native-route caller-admission wall (DP-M6 i | ready / CLEAN | via lively-ram-153 |
 | [#13621](https://github.com/gunb-ai/gunbc/pull/13621) | A data reference uses its value: ConstantMemberEdge marks the lowered  | draft / BLOCKED | via sharp-raven-357 |
 | [#13618](https://github.com/gunb-ai/gunbc/pull/13618) | workflow scripts: a refused bash emission refuses, never emits an empt | ready / CLEAN | via sharp-raven-357 |
 | [#13545](https://github.com/gunb-ai/gunbc/pull/13545) | Compare an Optional with an Optional at 46 latent sites no gated closu | ready / CLEAN | via sharp-raven-357 |
@@ -113,8 +113,9 @@ These are merged into `integration/v1-closeout`.
 | [#13126](https://github.com/gunb-ai/gunbc/pull/13126) | Grammar overlap: validation refuses every overlap row; required zero-c | ready / CLEAN | via sharp-raven-357 |
 | [#13123](https://github.com/gunb-ai/gunbc/pull/13123) | C4: native route enforces constructor confinement (sole_constructor +  | ready / CLEAN | via sharp-raven-357 |
 | [#13625](https://github.com/gunb-ai/gunbc/pull/13625) | CAX41 guest onboarding; fleet-converge from a branch after a per-run n | draft / BLOCKED | side chat, draft; folds when CI green (touches fleet-converge.yml) |
-| [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / BLOCKED | side chat, folds when CI green |
-| [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / BLOCKED | side chat, folds when CI green |
+| [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / CLEAN | side chat, folds when CI green |
+| [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / CLEAN | side chat, folds when CI green |
+| [#13597](https://github.com/gunb-ai/gunbc/pull/13597) | Make the crate partitioner the only emitted-Rust layout; delete single | draft / DIRTY | side chat, not yet done: needs a main merge + regen, the remaining acceptance runs, and a PR body update; folds once marked ready |
 | [#13610](https://github.com/gunb-ai/gunbc/pull/13610) | walk_cgroup, entry_presence: tail-position self-recursion so both modu | ready / CLEAN | via silent-lark-156 |
 | [#13472](https://github.com/gunb-ai/gunbc/pull/13472) | Realize rust shell stderr-capture channels (unblocks #13217 floor) | ready / DIRTY | via silent-lark-156 |
 
@@ -129,12 +130,12 @@ These are merged into `integration/v1-closeout`.
 
 ## Left out
 
-These are drafts, red, superseded or WIP, per the manager's report or a side chat. The default is to close them, unless you want one revived.
+These are drafts, red, superseded or WIP, per the manager's report or a side chat. Closing one never drops its work: what is left gets a row under Outstanding work first.
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
 | [#13430](https://github.com/gunb-ai/gunbc/pull/13430) | XL-2 PR2b: string templates — disjoint lexer, one ^dag_string_template | ready / BLOCKED | XL-2 cancelled |
-| [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | draft / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
+| [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | ready / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
 | [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: left out |
 | [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: left out |
 | [#13576](https://github.com/gunb-ai/gunbc/pull/13576) | DRAFT: floor-control for #13575 (plan forged-probe census) | draft / UNSTABLE | eager-gull: left out |
@@ -149,7 +150,6 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13475](https://github.com/gunb-ai/gunbc/pull/13475) | fold_list empty: [] no longer locks the accumulator as List<Unit> | draft / BLOCKED | gentle-dove: left out |
 | [#13265](https://github.com/gunb-ai/gunbc/pull/13265) | Type parameters bind only inside their own declaration (rule 2 / A'; s | draft / DIRTY | gentle-dove: left out |
 | [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | qwen: jq length(null)->0 fabricated default (DESIGN §5) |
-| [#13631](https://github.com/gunb-ai/gunbc/pull/13631) | dusk qwen 1 | draft / BLOCKED | qwen: no compile |
 | [#13634](https://github.com/gunb-ai/gunbc/pull/13634) | C2 #13482: the seven review fixes (own-interface entries, lookup-first | draft / BLOCKED | royal-moth: left out |
 | [#13482](https://github.com/gunb-ai/gunbc/pull/13482) | C2: typecheck materialization through the local store | draft / CLEAN | royal-moth: left out |
 | [#13637](https://github.com/gunb-ai/gunbc/pull/13637) | XL-2 3c: enumerate ServiceSetAside consumers before delete-first | ready / BLOCKED | sharp-raven: left out |
@@ -166,10 +166,8 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: left out |
 | [#13377](https://github.com/gunb-ai/gunbc/pull/13377) | node_query: qualify the Cardinality/Optional references (import-level  | ready / BLOCKED | sharp-raven: left out |
 | [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: left out |
-| [#13552](https://github.com/gunb-ai/gunbc/pull/13552) | BMC-hosted shell boot as a boot-delivery candidate; name srv13-srv16 | ready / BLOCKED | side chat: dropped BMC-hosted boot route; close |
 | [#13557](https://github.com/gunb-ai/gunbc/pull/13557) | plans: tie native memory rulings to resumable roadmap milestones | draft / CLEAN | side chat: plans/roadmap rows only; optional |
 | [#13613](https://github.com/gunb-ai/gunbc/pull/13613) | Tailscale ACL: admit tag:dashboard to the dusk-1 serving API (tcp:8080 | ready / BLOCKED | side chat: red (AmbiguousBareNameRead in tailscale_acl_witness); unrelated to cutover |
-| [#13555](https://github.com/gunb-ai/gunbc/pull/13555) | BMC-hosted netboot: plans derive from a per-host roster; srv4 unchange | ready / CLEAN | side chat: stacked on 13552; close |
 | [#13339](https://github.com/gunb-ai/gunbc/pull/13339) | D2 follow-up: role-singleton observation by host self-report (ssh prob | draft / CLEAN | silent-lark: left out |
 | [#13217](https://github.com/gunb-ai/gunbc/pull/13217) | Deployment risk D2: role-following singletons resolve the prod-role ho | ready / DIRTY | silent-lark: left out |
 | [#13429](https://github.com/gunb-ai/gunbc/pull/13429) | Workspace pack: same-size synthetic transcript placeholders; withhold  | ready / DIRTY | superseded by 13442 |
@@ -196,21 +194,85 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | opened 2026-10-09; proposed: close |
-| [#13603](https://github.com/gunb-ai/gunbc/pull/13603) | Fix fleet convergence pool display name length | draft / CLEAN | opened 2026-10-09; proposed: close |
-| [#13597](https://github.com/gunb-ai/gunbc/pull/13597) | Make the crate partitioner the only emitted-Rust layout; delete single | draft / DIRTY | opened 2026-10-08; proposed: close |
+| [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | opened 2026-10-09; proposed: close (record remaining work first) |
+| [#13603](https://github.com/gunb-ai/gunbc/pull/13603) | Fix fleet convergence pool display name length | draft / CLEAN | opened 2026-10-09; proposed: close (record remaining work first) |
 | [#13565](https://github.com/gunb-ai/gunbc/pull/13565) | ROADMAP #117: Realize node HTTP serve smoke as typed ops, not heredoc | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13564](https://github.com/gunb-ai/gunbc/pull/13564) | argv dissolution: replace hand-typed id/hostname argv with typed build | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13328](https://github.com/gunb-ai/gunbc/pull/13328) | recurring_failure_mode: re-scope the native-route row to the package-p | ready / CLEAN | opened 2026-10-05; proposed: review for fold |
-| [#13295](https://github.com/gunb-ai/gunbc/pull/13295) | Consolidate cassette joinery, power and shared platform profiles | ready / DIRTY | opened 2026-10-04; proposed: close |
-| [#13223](https://github.com/gunb-ai/gunbc/pull/13223) | Separate pinned Orca fit-prototype preparation from printer execution | draft / DIRTY | opened 2026-10-04; proposed: close |
-| [#13218](https://github.com/gunb-ai/gunbc/pull/13218) | Route approval clients to the active store writer | draft / DIRTY | opened 2026-10-04; proposed: close |
-| [#13149](https://github.com/gunb-ai/gunbc/pull/13149) | Unify printer starts behind ntfy approval, idle checks and durable cla | draft / DIRTY | opened 2026-10-03; proposed: close |
-| [#12917](https://github.com/gunb-ai/gunbc/pull/12917) | DS4.1 | ready / DIRTY | opened 2026-10-01; proposed: close |
-| [#12749](https://github.com/gunb-ai/gunbc/pull/12749) | Observe mode for the approval broker: unit, journal, slice cgroup, /li | ready / DIRTY | opened 2026-09-30; proposed: close |
-| [#12737](https://github.com/gunb-ai/gunbc/pull/12737) | kimi k3 low | ready / DIRTY | opened 2026-09-30; proposed: close |
-| [#12707](https://github.com/gunb-ai/gunbc/pull/12707) | luna pro low qual | ready / DIRTY | opened 2026-09-29; proposed: close |
-| [#12691](https://github.com/gunb-ai/gunbc/pull/12691) | Journal initial commissioning and gate workspace supply on committed r | draft / CLEAN | opened 2026-09-29; proposed: close |
+| [#13295](https://github.com/gunb-ai/gunbc/pull/13295) | Consolidate cassette joinery, power and shared platform profiles | ready / DIRTY | opened 2026-10-04; proposed: close (record remaining work first) |
+| [#13223](https://github.com/gunb-ai/gunbc/pull/13223) | Separate pinned Orca fit-prototype preparation from printer execution | draft / DIRTY | opened 2026-10-04; proposed: close (record remaining work first) |
+| [#13218](https://github.com/gunb-ai/gunbc/pull/13218) | Route approval clients to the active store writer | draft / DIRTY | opened 2026-10-04; proposed: close (record remaining work first) |
+| [#13149](https://github.com/gunb-ai/gunbc/pull/13149) | Unify printer starts behind ntfy approval, idle checks and durable cla | draft / DIRTY | opened 2026-10-03; proposed: close (record remaining work first) |
+| [#12917](https://github.com/gunb-ai/gunbc/pull/12917) | DS4.1 | ready / DIRTY | opened 2026-10-01; proposed: close (record remaining work first) |
+| [#12749](https://github.com/gunb-ai/gunbc/pull/12749) | Observe mode for the approval broker: unit, journal, slice cgroup, /li | ready / DIRTY | opened 2026-09-30; proposed: close (record remaining work first) |
+| [#12737](https://github.com/gunb-ai/gunbc/pull/12737) | kimi k3 low | ready / DIRTY | opened 2026-09-30; proposed: close (record remaining work first) |
+| [#12707](https://github.com/gunb-ai/gunbc/pull/12707) | luna pro low qual | ready / DIRTY | opened 2026-09-29; proposed: close (record remaining work first) |
+| [#12691](https://github.com/gunb-ai/gunbc/pull/12691) | Journal initial commissioning and gate workspace supply on committed r | draft / CLEAN | opened 2026-09-29; proposed: close (record remaining work first) |
+
+## Closed by the closeout
+
+| PR | Why |
+| --- | --- |
+| #13636, #13644, #13646, #13647 | Auto-opened integration PRs. Their content is in #13641 (or, for #13647, deliberately left out) |
+| #13638 | Duplicate of #13430 |
+| #13552, #13555 | They build the BMC-hosted boot route, which was dropped; the srv13-16 naming is carried by #13570 |
+| #13631 | Doesn't compile; the credential model is unresolved; to be restarted from scratch |
+
+Every branch was kept.
+
+## Outstanding work that isn't a mergeable PR
+
+This is work that has to go somewhere even though none of it merges now. Each row names its owner today and what unblocks it.
+
+### Follow-up code (no PR yet, or the PR is out of the snapshot)
+
+| Item | Source | What's needed |
+| --- | --- | --- |
+| #13125 lifecycle fixes: drain disable on retract; drain After/Wants user@<uid>.service | bold-bee-114 (WIP head 9f206434, excluded) | A fresh branch without the scratch_tc test; 2 oracle tests fail today |
+| #13125 event-driven units are not deployed on srv2 | bold-bee-114 | Cut over from the legacy user timer gunbc-srv2-deploy-belt.timer to the emitted system units |
+| #13097 G1 store/belt cutover | bold-bee-114 | Unblocked when #13549 (the T?==T sweep) lands |
+| #13513 door-binding stall | bold-bee-114 | A door-grain claim. #13560's door control refuses an isolated module at TranslateTo |
+| #13616 real-path receipt | bold-bee-114 | Capture the first srv2 tick after deploy; per-shard reads should be 1 |
+| #13632 jq fan-config migration | stern-boar-596 | Fix length(null)->0 with select(type==...); add a pure request seam and a route test |
+| Redfish/http.Client onto transport rest (was #13631) | stern-boar-596 | Restart from scratch; decide the credential model first |
+| #13626 follow-up: FQDN vs short slot label in the identity probe | stern-boar-596 | Decide whether to accept an FQDN; today it is a fail-closed refusal |
+| #13578 dusk-1 Qwen replica + failure classifier | swift-ibex-601 | Fix review 78337: a third placement arm, refusing an absent clock, the stale capacity claim |
+| #13430 XL-2 string templates (PR2b) | XL-2 lane (closed) | Unowned. Its REQUEST_CHANGES is stale; it needs #13436's named conversions |
+| #13613 Tailscale ACL grant for dusk-1 | side chat | Find the ambiguous name in tailscale_acl_witness |
+| #13597 crate partitioner | side chat | Main merge + regen, the remaining acceptance runs, and a PR body update |
+| Unit-modeling fix (review 78356): RetryAfterSeconds and QuotaTermSeconds as Second | closeout worker adhoc-1bfd89a3-3eb | In progress; its PR targets #13641 |
+| Wave-2 conflicts (#13583, #13582, #13615, #13609) + full regen | closeout worker adhoc-ac536796-f2c | In progress; its PR targets #13641 |
+| session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
+| wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
+
+### Operator steps
+
+| Step | Source |
+| --- | --- |
+| OpenRouter accessor grant + a live harness_hosted_probe_cli run | swift-ibex-601 |
+| claude-code-oauth-harness: the secret, the grant, srv1 custody, a live turn | swift-ibex-601 |
+| cursor-api-key-harness and codex-auth-harness: secrets, grants, srv2 custody, a live turn each | swift-ibex-601 |
+| Consume or delete the unused secrets: openrouter -2/-3, groq, opencode | swift-ibex-601 |
+| OCI srv1 accessor grant (phone approval), key custody, converge | nimble-heron-805 |
+| The browser toolchain on the srv1/srv3/srv4 floor runners (unblocks #13382/#13383/#13411) | lively-ram-153 |
+| Fabric storage measurement: transcript_rate_observe, source_pack, checkpoint_measure, restore | warm-badger-442 |
+| srv1-09 floor runner: no cgroup memory limit (HostBudgetUnreadable); floor_class mislabels it 'structural' | stern-boar-596 |
+
+### Open decisions
+
+| Decision | Source |
+| --- | --- |
+| Remove Group B (srv9-12) from config/convergence | valiant-crab-775 |
+| Control-plane platform (#13084/#13161) | warm-badger-442 |
+| r2_bucket_ensure skips lifecycle convergence when a purpose's rules are [] | warm-badger-442 |
+| external_model_scope 2 red on main; quarantine_probe_disposition 2/9 red | warm-badger-442 |
+| ObservedReceipt next rungs: in-substrate sha256; an executing EEPROM read | warm-badger-442 |
+| Close or keep #13382/#13383/#13411 | lively-ram-153 |
+| #13544 Group A decommission is DIRTY: rebase it or fold it | valiant-crab-775 |
+
+### Lanes not yet reported
+
+eager-gull-22, gentle-dove-36, sharp-raven-357 and silent-lark-156 are finishing their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
 
 ## Notes
 
