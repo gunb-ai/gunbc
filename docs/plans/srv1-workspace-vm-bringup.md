@@ -379,3 +379,63 @@ behavior are unchanged. The observer's first broader batch passes all six new
 ancestor controls and exposes four stale single-cell/unenrolled-slot fixtures:
 srv3 now enrolls slot 7 too. The isolated classification test now supplies only
 its selected slot's readback, and foreign-probe controls use slots 99 and 100.
+
+At `4fa60f7134239a58f91fced3e127e36a5861a303`, all 52 observer checks pass,
+all 8,280 source files parse, and formatting passes. Controller installation and
+full readback pass. The fresh cell plan `local-2026-10-09T09:17:53Z`, hash
+`e3dc463bbc6f76f8`, admits only `CPUQuota=400%`, a start of the existing slice,
+and the existing root-owned base-directory ensure. Its apply receipt
+`43cf1e08f8680971` records exit 0 and generation 19 → 20. Independent systemd
+readback confirms `CPUQuotaPerSecUSec=4s`, `MemoryHigh=MemoryMax=30064771072`,
+`MemorySwapMax=0`, `TasksMax=16384`, `CPUWeight=100`, and an active slice.
+The commissioning plan against this verified release refuses as detailed below;
+no VM boot or guest login is yet claimed. CI run
+[37910533190](https://github.com/gunb-ai/gunbc/actions/runs/37910533190) covers
+this pushed revision.
+
+The commissioning plan at `4fa60f71342` passes installed-runtime checks but
+refuses initial sanitation. Its TUN holder census invokes
+`ethtool --show-channels gunbc-tap13`, which returns `Operation not supported`
+on srv1's running `6.8.0-138-generic`. The installed `6.8.0-142-generic`
+System.map also lacks `tun_get_channels` (while naming `tun_fill_info` and
+`tun_ethtool_ops`), so the pending ordinary reboot does not establish this capability.
+The original refusal was hidden by three projections; the census cause, unproven
+sanitation fact and commissioning admission reason are now retained end to end.
+
+[Linux v6.8's TUN driver](https://github.com/torvalds/linux/blob/v6.8/drivers/net/tun.c)
+has no channel-count callback. [Linux v6.9's implementation](https://github.com/torvalds/linux/blob/v6.9/drivers/net/tun.c#L3442)
+reports the attached queue count. Descriptor sweeps alone cannot substitute for it,
+because file references can remain outside process descriptor tables. The v6.8
+netlink queue counters are emitted only for multi-queue devices; changing this TAP
+to multi-queue would not match [Firecracker v1.16.1's open flags](https://github.com/firecracker-microvm/firecracker/blob/v1.16.1/src/vmm/src/devices/virtio/net/tap.rs#L109).
+No refusal has been relaxed, no readiness record has been fabricated, and no VM
+has been commissioned or booted.
+
+### Proposed host maintenance (not applied)
+
+The read-only package simulation on srv1 selects Ubuntu's arm64 HWE meta-package
+`linux-generic-hwe-24.04=7.0.0-38.38~24.04.4`. It adds eight packages, upgrades
+none and removes none: the image, modules, ZFS module package, header packages
+and HWE image/header meta-packages. This leaves the existing 6.8 kernels installed.
+The downloaded Ubuntu image/modules packages were inspected without installation.
+The modules package's `System.map-7.0.0-38-generic` contains `tun_get_channels`,
+`tun_fill_info` and `tun_ethtool_ops`; this checks the proposed binary's symbols,
+not merely its version. The simulated install is:
+
+```sh
+sudo apt-get --no-install-recommends install linux-generic-hwe-24.04=7.0.0-38.38~24.04.4
+```
+
+This requires separate operator approval for shared-host maintenance: the reboot
+interrupts srv1's twelve runner services, dashboard, fabric storage, approval
+broker, ntfy and container services. Before installing or rebooting, drain work,
+establish console/boot recovery, and recheck the package plan and disk capacity.
+GRUB currently boots entry 0 with a hidden, zero-second menu; keeping an old
+kernel alone is not automatic rollback. After reboot, require successful
+`ethtool --show-channels gunbc-tap13`, verify KVM, network and service recovery,
+then rerun the commissioning plan. A newer version string alone is insufficient.
+Local read-only IPMI device/chassis queries succeed and SOL reports enabled;
+remote console access and boot recovery have not been established. The current
+GitHub credential cannot list organization runners (403), so a runner drain must
+be established separately rather than inferred from the repository runner list.
+No kernel package has been installed and no reboot has been initiated.

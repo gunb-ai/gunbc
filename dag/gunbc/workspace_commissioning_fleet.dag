@@ -170,21 +170,24 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
                     } else if !committed && (match workspace_initial_controller_history_refusal(slot: slot) { Present { value: _ } => true Absent => false }) {
                       WorkspaceCommissioningFleetRefused { reason: "prior controller history requires recovery" }
                     } else {
-                      let admitted = committed || (match workspace_commissioning_admit(slot: slot,
+                      let admission_refusal = if committed { none } else { match workspace_commissioning_admit(slot: slot,
                       authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: provenance.plan_hash },
                       budget: HostAllocationConserves, cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope,
                       prior_purpose: WorkspacePriorPurposeWithdrawn,
                       obligations: workspace_observe_commissioning_obligations(root: fabric_control_plane_store_root(), slot: slot), sanitation: observation.observations) {
-                      WorkspaceCommissioningReady { commissioned: _ } => true
-                      WorkspaceCommissioningRefused { reason: _ } => false
-                    })
-                    if admitted { WorkspaceCommissioningFleetObserved { basis: WorkspaceCommissioningFleetBasis {
+                      WorkspaceCommissioningReady { commissioned: _ } => none
+                      WorkspaceCommissioningRefused { reason } => Present { value: reason }
+                    } }
+                    match admission_refusal {
+                      Absent => WorkspaceCommissioningFleetObserved { basis: WorkspaceCommissioningFleetBasis {
                         provenance: provenance, release_dir: installed, already_committed: committed,
                         prestate: serialize_content_hash(hash: content_hash_of_value(value: to_string([
                           to_string(snapshot.expected), to_string(snapshot.reading), to_string(execution.expected),
                           to_string(readiness), if initial { to_string(HoldSlotAbsent) } else { to_string(mutation) }, to_string(controller), observation.observation_identity as String,
                         ]) as NonEmptyStr)) as NonEmptyStr,
-                      } } } else { WorkspaceCommissioningFleetRefused { reason: "initial commissioning obligations are not admitted" } }
+                      } }
+                      Present { value: reason } => WorkspaceCommissioningFleetRefused { reason: reason }
+                    }
                     }
                     WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "controller prestate is unreadable" }
                   } }

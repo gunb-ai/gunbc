@@ -1,18 +1,27 @@
 module test.claim.workspace_network_producer_witness_test
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr }
 import gunbc.runner_microvm_network_observe { network_read_outcome }
 import gunbc.host_effect { SshShell }
 import gunbc.executor_privileged_operation { ReadNftRuleset }
 import extdeps.shell.exec { ProcessRefused }
 import gunbc.runner_microvm_network_sanitation_observe { tap_holders_reading }
 import gunbc.runner_microvm_network { TapPresentUnheld, TapHeld, TapHoldersUnreadable }
-import extdeps.linux.tun_fdinfo { TunDescriptorCount, TunDescriptorUnreadable, TunCensusMultiQueue }
+import extdeps.linux.tun_fdinfo { TunDescriptorCount, TunDescriptorUnreadable, TunCensusMultiQueue, TunCensusQueueCountUnreadable }
 
 test fn network_producer_requires_successful_tun_census() -> Bool {
   (match tap_holders_reading(census: TunDescriptorCount { count: 0, exited: 0 }) { TapPresentUnheld => true other => false })
     && (match tap_holders_reading(census: TunDescriptorCount { count: 1, exited: 0 }) { TapHeld { holders: n } => n == 1 other => false })
     && (match tap_holders_reading(census: TunDescriptorUnreadable { cause: TunCensusMultiQueue }) { TapHoldersUnreadable { reason: _ } => true other => false })
+}
+
+test fn network_producer_preserves_unsupported_queue_observation() -> Bool {
+  match tap_holders_reading(census: TunDescriptorUnreadable {
+    cause: TunCensusQueueCountUnreadable { cause: "ethtool --show-channels exited nonzero" as NonEmptyStr },
+  }) {
+    TapHoldersUnreadable { reason } => reason == "TUN attached-queue count is unavailable: ethtool --show-channels exited nonzero"
+    other => false
+  }
 }
 
 

@@ -24,10 +24,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // references held by io_uring/SCM_RIGHTS rather than installed process FDs. Denied reads refuse.
 //
 // WHERE THE QUEUE COUNT COMES FROM: the current combined channel count, read through
-// extdeps.ethtool. This carries over the earlier inline probe's ETHTOOL_GCHANNELS read, and with it
-// that probe's UNVERIFIED assumption that tun answers that request. If it does not, every census is
-// Unreadable, which blocks release and never reports zero. The assumption is a live check before
-// first commissioning (run `ethtool -l <tap>` against a slot's device on srv1).
+// extdeps.ethtool. Linux v6.9 drivers/net/tun.c tun_get_channels publishes tun->numqueues;
+// v6.8 has no get_channels callback. srv1's 6.8.0-138-generic returned Operation not supported
+// during PR #13607 commissioning on 2026-10-09. An unsupported query remains Unreadable, never
+// zero: descriptor sweeps alone miss SCM_RIGHTS/io_uring references. Upgrading a host requires
+// a fresh successful capability observation, not admission by a version string.
 //
 // ROOT IS ESTABLISHED, NOT INFERRED FROM DENIALS. A non-root reader is refused by the effective uid
 // on /proc/self/status before anything else is read. Denied fdinfo reads alone would not be
@@ -43,6 +44,18 @@ type TunCensusRefusal
   | TunCensusMultiQueue
   | TunCensusQueueCountUnreadable { cause: NonEmptyStr }
   | TunCensusProcUnreadable { path: String }
+
+fn tun_census_refusal_text(cause: TunCensusRefusal) -> String {
+  match cause {
+    TunCensusSubjectInadmissible => "TUN census interface name is inadmissible"
+    TunCensusReaderIdentityUnreadable => "TUN census reader identity is unreadable"
+    TunCensusReaderNotRoot { euid } => concat("TUN census requires root; effective UID is ", to_string(euid))
+    TunCensusFlagsUnreadable => "TUN interface flags are unreadable or malformed"
+    TunCensusMultiQueue => "TUN census does not admit multi-queue interfaces"
+    TunCensusQueueCountUnreadable { cause: detail } => concat("TUN attached-queue count is unavailable: ", detail as String)
+    TunCensusProcUnreadable { path } => concat("TUN descriptor census could not read ", path)
+  }
+}
 
 // An exact nonnegative count must be affirmed; missing or malformed is not zero. `exited` counts
 // pids and threads that disappeared between being listed and being read. They were skipped, not
