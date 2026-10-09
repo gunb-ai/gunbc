@@ -33,8 +33,15 @@ import gunbc.runner.runner_isolation_admission {
 // the Hetzner Cloud rebuild exchange (POST /v1/servers/{id}/actions/rebuild, then GET
 // /v1/actions/{id} until status success) lands with the controller-driven reset loop; until then no
 // incarnation can be built, so every guest offer below stays unbuilt rather than assumed.
+//
+// THE REBUILD IS FOR ONE ATTEMPT, NAMED BEFORE IT IS ISSUED. The controller rebuilds a guest because
+// an attempt is about to run on it, and the receipt carries that attempt; the slot and registration
+// derive their names from it (gunbc.runner.runner_host_unit_slot provider_guest_slot_for), so one
+// rebuild yields one registration name. Running a second attempt on the same incarnation would need
+// a second rebuild receipt, which only the provider can produce.
 type ProviderRebuildReceipt {
   acquisition: ProviderResourceAcquisition
+  attempt: NonEmptyStr
   image: NonEmptyStr
   action_id: NonEmptyStr
   finished_at: NonEmptyStr
@@ -45,7 +52,7 @@ type ProviderRebuildReceipt {
 // which joins the three on the same resource -- so an adoption of one server cannot certify another
 // server's rebuild.
 type ProviderGuestIncarnation sole_constructor {
-  host: HostIdentity
+  controlled: ControlledHost
   rebuild: ProviderRebuildReceipt
   adoption: ProviderGuestAdoption
 }
@@ -76,7 +83,7 @@ fn provider_guest_incarnation(
           if (adopted as String) != (rebuild.acquisition.resource_id as String) {
             IncarnationRefused { refusal: IncarnationAdoptionForAnotherResource { rebuilt: rebuild.acquisition.resource_id, adopted: adopted } }
           } else {
-            IncarnationEstablished { incarnation: ProviderGuestIncarnation { host: controlled.host, rebuild: rebuild, adoption: adoption } }
+            IncarnationEstablished { incarnation: ProviderGuestIncarnation { controlled: controlled, rebuild: rebuild, adoption: adoption } }
           }
       } }
   }
@@ -92,8 +99,8 @@ fn provider_guest_incarnation(
 //                        them. (The microVM path withholds PrivateNetworkNamespace because its VMM
 //                        runs in the HOST's namespace; a provider guest has no such host of ours.)
 // WITHHELD, with reasons in the offer's standing:
-//   AttemptScopedSecrets   -- earned at launch, when only this attempt's JIT registration is placed;
-//                             that launch does not exist yet.
+//   AttemptScopedSecrets   -- earned at launch, when only this attempt's JIT registration is placed
+//                             (gunbc.runner.provider_guest_launch attempt_placed_offer).
 //   DefaultDenyEgress      -- the guest has open internet (gunbc.rung_drop provider_guest_ci_egress_unfiltered).
 fn incarnation_offer(incarnation: ProviderGuestIncarnation) -> SandboxOffer {
   SandboxOffer {
@@ -101,7 +108,7 @@ fn incarnation_offer(incarnation: ProviderGuestIncarnation) -> SandboxOffer {
     evidenced: [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace],
     withheld: [AttemptScopedSecrets, DefaultDenyEgress],
     standing: join([
-      "provider guest ", incarnation.host as String,
+      "provider guest ", incarnation.controlled.host as String,
       " rebuilt from ", incarnation.rebuild.image as String,
       " by provider action ", incarnation.rebuild.action_id as String,
       "; AttemptScopedSecrets is earned at launch, DefaultDenyEgress is not provided",
@@ -136,18 +143,24 @@ type IncarnationAdmission
   = IncarnationAdmitted { excused: List<IsolationGuarantee> }
   | IncarnationAdmissionRefused { missing: List<IsolationGuarantee> }
 
-// THE WORK'S REQUIREMENT AGAINST WHAT THIS INCARNATION EARNED. Missing guarantees refuse by name;
-// one is excused only when an excuse names exactly that guarantee AND this host. The excused set is
-// carried on the admission, so a launch records which drop it ran under.
-fn admit_incarnation_work(incarnation: ProviderGuestIncarnation, work: RunnerWorkProvenance, excuses: List<IsolationExcuse>) -> IncarnationAdmission {
+// THE WORK'S REQUIREMENT AGAINST WHAT AN OFFER ON THIS HOST EARNED. Missing guarantees refuse by
+// name; one is excused only when an excuse names exactly that guarantee AND this host. The excused
+// set is carried on the admission, so a launch records which drop it ran under. The offer is the
+// caller's because it changes over the incarnation's life: before launch it is incarnation_offer,
+// and a launch that placed one attempt's registration adds the guarantee that placement earned.
+fn admit_offer_on_host(host: HostIdentity, offer: SandboxOffer, work: RunnerWorkProvenance, excuses: List<IsolationExcuse>) -> IncarnationAdmission {
   let missing = unsatisfied_isolation_guarantees(
     required: runner_work_isolation_requirement(p: work),
-    provided: offer_profile(o: incarnation_offer(incarnation: incarnation)),
+    provided: offer_profile(o: offer),
   )
-  let unexcused = filter(missing, g => (filter(excuses, e => excuse_covers(excuse: e, host: incarnation.host, g: g)) |> count) == 0)
+  let unexcused = filter(missing, g => (filter(excuses, e => excuse_covers(excuse: e, host: host, g: g)) |> count) == 0)
   if (unexcused |> count) == 0 {
     IncarnationAdmitted { excused: missing }
   } else {
     IncarnationAdmissionRefused { missing: unexcused }
   }
+}
+
+fn admit_incarnation_work(incarnation: ProviderGuestIncarnation, work: RunnerWorkProvenance, excuses: List<IsolationExcuse>) -> IncarnationAdmission {
+  admit_offer_on_host(host: incarnation.controlled.host, offer: incarnation_offer(incarnation: incarnation), work: work, excuses: excuses)
 }

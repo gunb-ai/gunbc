@@ -1,0 +1,102 @@
+module gunbc.runner.provider_guest_launch
+
+import std.types { List, NonEmptyStr, String }
+import product.fabric.isolation {
+  IsolationGuarantee, DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace,
+  PrivateNetworkNamespace, AttemptScopedSecrets, DefaultDenyEgress,
+}
+import gunbc.github_effect_perform { JitMintPerformance }
+import gunbc.runner.runner_isolation_admission { SandboxOffer, DedicatedKernelSandboxProvider, RunnerWorkProvenance }
+import gunbc.runner.runner_host_unit_slot {
+  HostUnitSlot, HostUnitSlotRefusal, HostUnitSlotBound, HostUnitSlotRefused, provider_guest_slot_for,
+}
+import gunbc.runner.jit_registration_subject { host_unit_slot_subject }
+import gunbc.runner_attempt_launch {
+  AdmittedJitCredential, JitDeviceRefusal, JitCredentialAdmitted, JitCredentialRefused, admit_jit_credential_for,
+}
+import gunbc.runner.provider_guest_incarnation {
+  ProviderGuestIncarnation, IsolationExcuse, IncarnationAdmitted, IncarnationAdmissionRefused, admit_offer_on_host,
+}
+
+// ONE JOB ON ONE REBUILT PROVIDER GUEST: the incarnation, the slot on it, the one registration placed
+// into it, and what the job was admitted under. This is the provider guest's counterpart of
+// gunbc.runner_attempt_launch for a microVM, and it shares that module's credential checker
+// (admit_jit_credential_for) rather than restating it: the realizations differ in where the runner
+// process lives, not in what makes a credential this attempt's.
+//
+// CONSUMER: the controller-driven reset loop (rebuild, scan, adopt, launch, run one job, rebuild),
+// which places the admitted credential into the slot's unit over the fleet's SSH route. It lands with
+// the Hetzner Cloud rebuild exchange that produces gunbc.runner.provider_guest_incarnation
+// ProviderRebuildReceipt; until then the plan below is exercised by its witness only.
+
+// WHY PLACING ONE REGISTRATION EARNS AttemptScopedSecrets HERE. The guarantee is that no secret on
+// the job's side of the boundary outlives the attempt or belongs to another. On a microVM it is a
+// property of the credential's carrier, a drive that exists for one VM (gunbc.runner_microvm
+// JitConfigOnReadOnlyDrive). On a provider guest the carrier is the guest itself: it was rebuilt from
+// the provider's image for this attempt, it holds no fleet credential -- the controller drives it
+// over SSH from outside, and the project's login key is public -- and it is rebuilt again before the
+// next attempt. So the one credential this launch places is the only secret on the guest, and its
+// lifetime is bounded by the rebuilds on either side. The admitted credential is the evidence; the
+// rebuild after the job is the loop's obligation, carried there.
+type ProviderGuestLaunch sole_constructor {
+  incarnation: ProviderGuestIncarnation
+  slot: HostUnitSlot
+  credential: AdmittedJitCredential
+  offer: SandboxOffer
+  excused: List<IsolationGuarantee>
+}
+
+type ProviderGuestLaunchRefusal
+  = LaunchSlotRefused { refusal: HostUnitSlotRefusal }
+  | LaunchCredentialRefused { refusal: JitDeviceRefusal }
+  | LaunchIsolationRefused { offer: SandboxOffer, missing: List<IsolationGuarantee> }
+
+type ProviderGuestLaunchPlan
+  = ProviderGuestLaunchAdmitted { launch: ProviderGuestLaunch }
+  | ProviderGuestLaunchRefused { refusal: ProviderGuestLaunchRefusal }
+
+// THE OFFER ONCE ONE ATTEMPT'S REGISTRATION IS PLACED: the incarnation's five, plus
+// AttemptScopedSecrets on the admitted credential. Egress stays withheld; only its declared drop can
+// excuse it, and admission says so by carrying the excused set.
+fn attempt_placed_offer(incarnation: ProviderGuestIncarnation, credential: AdmittedJitCredential) -> SandboxOffer {
+  SandboxOffer {
+    provider_class: DedicatedKernelSandboxProvider,
+    evidenced: [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace, AttemptScopedSecrets],
+    withheld: [DefaultDenyEgress],
+    standing: join([
+      "provider guest ", incarnation.controlled.host as String,
+      " rebuilt from ", incarnation.rebuild.image as String,
+      " by provider action ", incarnation.rebuild.action_id as String,
+      " for attempt ", incarnation.rebuild.attempt as String,
+      "; the only secret placed is runner registration ", credential.runner_name.value as String,
+      "; DefaultDenyEgress is not provided",
+    ], "") as NonEmptyStr,
+  }
+}
+
+// THE PLAN, IN THE ORDER THE FACTS DEPEND ON EACH OTHER: the slot exists on this incarnation, the
+// delivered credential was minted for exactly that slot's subject, and the offer that placement
+// earns admits the work (excusing only what a declared drop names for this host).
+fn plan_provider_guest_launch(
+  incarnation: ProviderGuestIncarnation,
+  workflow: NonEmptyStr,
+  mint: JitMintPerformance,
+  work: RunnerWorkProvenance,
+  excuses: List<IsolationExcuse>,
+) -> ProviderGuestLaunchPlan {
+  match provider_guest_slot_for(incarnation: incarnation, workflow: workflow) {
+    HostUnitSlotRefused { refusal: r } => ProviderGuestLaunchRefused { refusal: LaunchSlotRefused { refusal: r } }
+    HostUnitSlotBound { slot: slot } => match admit_jit_credential_for(expected: host_unit_slot_subject(slot: slot), mint: mint) {
+      JitCredentialRefused { refusal: r } => ProviderGuestLaunchRefused { refusal: LaunchCredentialRefused { refusal: r } }
+      JitCredentialAdmitted { admitted: credential } => {
+        let offer = attempt_placed_offer(incarnation: incarnation, credential: credential)
+        match admit_offer_on_host(host: incarnation.controlled.host, offer: offer, work: work, excuses: excuses) {
+          IncarnationAdmissionRefused { missing: m } => ProviderGuestLaunchRefused { refusal: LaunchIsolationRefused { offer: offer, missing: m } }
+          IncarnationAdmitted { excused: e } => ProviderGuestLaunchAdmitted {
+            launch: ProviderGuestLaunch { incarnation: incarnation, slot: slot, credential: credential, offer: offer, excused: e },
+          }
+        }
+      }
+    }
+  }
+}

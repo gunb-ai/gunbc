@@ -41,7 +41,7 @@ import gunbc.runner_jit_mint {
 }
 import gunbc.runner.jit_registration_subject {
   JitRegistrationSubject, JitRegistrationSubjectStanding, SubjectCellNotOwned, SubjectHostUnitSlotRefused,
-  microvm_registration_subject, host_unit_registration_subject, subject_is_microvm_attempt,
+  microvm_registration_subject, host_unit_registration_subject, microvm_registration_subject_of,
 }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
 import extdeps.transports.rest { RestResult, RestAnswered }
@@ -1040,7 +1040,7 @@ fn jit_binding(owned: Bool) -> JitRegistrationSubjectStanding {
 fn is_fixture_attempt_subject(subject: JitRegistrationSubject) -> Bool {
   match microvm_attempt(slot: jit_test_slot, attempt_id: "w-11") {
     MicroVmAttemptAccepted { attempt: a } =>
-      subject_is_microvm_attempt(subject: subject, attempt: a)
+      subject == microvm_registration_subject_of(attempt: a)
         && (subject.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
     MicroVmAttemptRefused { refusal: _ } => false
   }

@@ -42,7 +42,7 @@ import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
 import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialBoundToAttempt,
 }
-import gunbc.runner.jit_registration_subject { JitRegistrationSubject, jit_runner_name_for, subject_is_microvm_attempt }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject, microvm_registration_subject_of }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
@@ -207,14 +207,18 @@ fn host_mint_admission_is_required() -> Bool {
   }
 }
 
-fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> JitCredentialAdmission {
+// ONE CHECKER FOR EVERY REALIZATION OF A REGISTRATION SUBJECT. The microVM attempt and the provider
+// guest's host unit each derive the subject they expect from their own proven slot and hand it here;
+// the delivered credential is admitted only when it was minted for exactly that subject. The runner
+// name travels from the subject, so no realization restates how a runner is named.
+fn admit_jit_credential_for(expected: JitRegistrationSubject, mint: JitMintPerformance) -> JitCredentialAdmission {
   match mint {
     JitMintReceived { delivery: delivery } =>
       match delivery {
         JitCredentialBoundToAttempt { subject: bound, credential: c, runner_id: id } =>
           if !host_mint_admission_is_required() {
             JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
-          } else if !subject_is_microvm_attempt(subject: bound, attempt: attempt) {
+          } else if !(bound == expected) {
             JitCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: bound } }
           } else if !measure_le(a: jit_config_byte_floor, b: jit_credential_bytes(credential: c)) {
             JitCredentialRefused { refusal: JitCredentialBelowFloor { bytes: jit_credential_bytes(credential: c) } }
@@ -222,17 +226,17 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
             JitCredentialRefused { refusal: JitCredentialAboveCeiling { bytes: jit_credential_bytes(credential: c) } }
           } else {
             JitCredentialAdmitted {
-              admitted: AdmittedJitCredential {
-                credential: c,
-                runner_name: jit_runner_name_for(attempt: attempt),
-                registration_id: id,
-              },
+              admitted: AdmittedJitCredential { credential: c, runner_name: expected.name, registration_id: id },
             }
           }
         other => JitCredentialRefused { refusal: JitCredentialNotDelivered { delivery: other } }
       }
     other => JitCredentialRefused { refusal: JitMintNotReceived { performance: other } }
   }
+}
+
+fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> JitCredentialAdmission {
+  admit_jit_credential_for(expected: microvm_registration_subject_of(attempt: attempt), mint: mint)
 }
 
 // THE DEVICE, AS TWO HOST STEPS WHOSE ORDER IS THE SECURITY PROPERTY. (1) install(1) creates an

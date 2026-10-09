@@ -22,6 +22,17 @@ import gunbc.runner.provider_guest_incarnation {
   provider_guest_incarnation, incarnation_offer, admit_incarnation_work, excuse_covers,
   provider_guest_isolation_excuses, provider_guest_egress_excuse,
 }
+import extdeps.github.actions_jit_runner { EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome }
+import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt }
+import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived, JitMintAppJwtUnsigned }
+import gunbc.runner_attempt_launch { JitCredentialBoundToDifferentAttempt }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlotBound, HostUnitSlotRefused, provider_guest_slot_for, provider_guest_ci_lane_label }
+import gunbc.runner.jit_registration_subject { host_unit_slot_subject }
+import gunbc.runner.provider_guest_launch {
+  ProviderGuestLaunchPlan, ProviderGuestLaunchAdmitted, ProviderGuestLaunchRefused, LaunchCredentialRefused,
+  LaunchIsolationRefused, plan_provider_guest_launch,
+}
+import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,6 +47,10 @@ fn cax41_read() -> GuestObservationRead {
 }
 
 fn incarnation_of(host: HostIdentity, rebuilt_from_hel: Bool) -> IncarnationStanding? {
+  incarnation_for_attempt(host: host, rebuilt_from_hel: rebuilt_from_hel, attempt: "a1")
+}
+
+fn incarnation_for_attempt(host: HostIdentity, rebuilt_from_hel: Bool, attempt: String) -> IncarnationStanding? {
   match enrollment_for_host(host: host) {
     Absent => none
     Present { value: intent } => match enrolled_host_control(intent: intent) {
@@ -48,7 +63,7 @@ fn incarnation_of(host: HostIdentity, rebuilt_from_hel: Bool) -> IncarnationStan
         }
         Present { value: provider_guest_incarnation(
           controlled: c,
-          rebuild: ProviderRebuildReceipt { acquisition: acquisition, image: "ubuntu-24.04", action_id: "fixture-action-1", finished_at: "2026-10-09T00:00:00Z" },
+          rebuild: ProviderRebuildReceipt { acquisition: acquisition, attempt: attempt, image: "ubuntu-24.04", action_id: "fixture-action-1", finished_at: "2026-10-09T00:00:00Z" },
           adoption: adoption,
         ) }
       }
@@ -105,4 +120,75 @@ test fn the_egress_excuse_covers_only_egress_on_the_two_guests() -> Bool {
     && excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_3dde7f, g: DefaultDenyEgress)
     && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_srv1, g: DefaultDenyEgress)
     && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_183527, g: AttemptScopedSecrets)
+}
+
+// ── launch ───────────────────────────────────────────────────────────────────────────────────────
+
+data ci_workflow: String = "gunbai/gunbc/.github/workflows/provider-guest-ci.yml@refs/heads/main"
+
+// 640 characters, inside the launch's byte floor and ceiling (gunbc.runner_attempt_launch).
+data fixture_jit_blob: String = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+// A DELIVERED MINT FOR THE SLOT OF THE INCARNATION REBUILT FOR `attempt`. The mint's performance is
+// supplied (GitHub's exchange is gunbc.github_effect_perform's subject, not this one); the subject it
+// was minted for is derived from the real slot producer.
+fn delivered_for_attempt(attempt: String) -> JitMintPerformance {
+  let encoded = fixture_jit_blob
+  let minted = match jit_config_mint_outcome(status: 201, encoded: encoded, runner_id: 4242, error_body: "") {
+    JitConfigMinted { config: c, runner_id: _ } => [c]
+    _ => []
+  }
+  match incarnation_for_attempt(host: operator_host_183527, rebuilt_from_hel: false, attempt: attempt) {
+    Present { value: IncarnationEstablished { incarnation: i } } => match provider_guest_slot_for(incarnation: i, workflow: ci_workflow) {
+      HostUnitSlotBound { slot: slot } => match minted {
+        Cons { head: c, tail: _ } => JitMintReceived { delivery: JitCredentialBoundToAttempt { subject: host_unit_slot_subject(slot: slot), credential: c, runner_id: 4242 } }
+        Empty {} => JitMintAppJwtUnsigned { detail: "fixture: credential did not mint" }
+      }
+      HostUnitSlotRefused { refusal: _ } => JitMintAppJwtUnsigned { detail: "fixture: slot refused" }
+    }
+    _ => JitMintAppJwtUnsigned { detail: "fixture: incarnation refused" }
+  }
+}
+
+fn launch_a1(mint: JitMintPerformance, excused: Bool) -> ProviderGuestLaunchPlan? {
+  match incarnation_of(host: operator_host_183527, rebuilt_from_hel: false) {
+    Present { value: IncarnationEstablished { incarnation: i } } => Present { value: plan_provider_guest_launch(
+      incarnation: i, workflow: ci_workflow, mint: mint, work: GeneralCiWorkload,
+      excuses: if excused { provider_guest_isolation_excuses } else { [] },
+    ) }
+    _ => none
+  }
+}
+
+// INHABITANCE, ASSERTING THE ROUTE: the rebuilt guest's slot, a credential minted for that slot's
+// subject, and general CI admitted with egress the only guarantee excused. The slot answers to the
+// lane label and its own name, never to the fleet's slot class labels.
+test fn one_placed_registration_admits_general_ci_with_only_egress_excused() -> Bool {
+  match launch_a1(mint: delivered_for_attempt(attempt: "a1"), excused: true) {
+    Present { value: ProviderGuestLaunchAdmitted { launch: l } } =>
+      same_set(a: l.excused, b: [DefaultDenyEgress])
+        && (filter(l.offer.evidenced, g => g == AttemptScopedSecrets) |> count) == 1
+        && l.slot.labels == ["self-hosted", provider_guest_ci_lane_label, l.slot.unit as String]
+        && (l.slot.unit as String) == "gunbc-provider-ci-host-183527-a1.service"
+        && (l.credential.runner_name.value as String) == (l.slot.unit as String)
+    _ => false
+  }
+}
+
+// RED: A CREDENTIAL MINTED FOR ANOTHER ATTEMPT'S SLOT IS NOT THIS ATTEMPT'S SECRET.
+test fn a_credential_for_another_attempt_is_refused_at_launch() -> Bool {
+  match launch_a1(mint: delivered_for_attempt(attempt: "a2"), excused: true) {
+    Present { value: ProviderGuestLaunchRefused { refusal: LaunchCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: b } } } } =>
+      (b.name.value as String) == "gunbc-provider-ci-host-183527-a2.service"
+    _ => false
+  }
+}
+
+// RED: PLACING THE REGISTRATION EARNS ATTEMPT SECRETS AND NOTHING ELSE; without the declared drop the
+// launch still refuses, for egress alone.
+test fn without_the_drop_the_launch_refuses_for_egress_alone() -> Bool {
+  match launch_a1(mint: delivered_for_attempt(attempt: "a1"), excused: false) {
+    Present { value: ProviderGuestLaunchRefused { refusal: LaunchIsolationRefused { offer: _, missing: m } } } => same_set(a: m, b: [DefaultDenyEgress])
+    _ => false
+  }
 }

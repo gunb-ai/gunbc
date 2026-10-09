@@ -75,19 +75,16 @@ fn microvm_registration_subject(binding: MicroVmCellBinding) -> JitRegistrationS
   }
 }
 
-// THE LAUNCH'S BINDING CHECK. A delivered credential belongs to this attempt exactly when the
-// subject it was minted for is the subject this attempt yields -- a pure comparison, so the launch
-// needs no constructor of its own and cannot mint a subject it was not handed.
-fn subject_is_microvm_attempt(subject: JitRegistrationSubject, attempt: MicroVmAttempt) -> Bool {
-  subject == microvm_registration_subject_of(attempt: attempt)
+// A BOUND HOST-UNIT SLOT'S SUBJECT. The slot is itself the proof the producer owed (its record is
+// sole_constructor in gunbc.runner.runner_host_unit_slot), so the subject follows from it with no
+// refusal arm; a launch that already holds the slot derives the subject it expects from here.
+fn host_unit_slot_subject(slot: HostUnitSlot) -> JitRegistrationSubject {
+  JitRegistrationSubject { name: JitRunnerName { value: slot.unit }, workflow: slot.workflow, labels: slot.labels }
 }
 
 fn host_unit_registration_subject(standing: HostUnitSlotStanding) -> JitRegistrationSubjectStanding {
   match standing {
     HostUnitSlotRefused { refusal: r } => JitRegistrationSubjectRefused { refusal: SubjectHostUnitSlotRefused { refusal: r } }
-    HostUnitSlotBound { slot: h } =>
-      JitRegistrationSubjectProven {
-        subject: JitRegistrationSubject { name: JitRunnerName { value: h.unit }, workflow: h.workflow, labels: h.labels },
-      }
+    HostUnitSlotBound { slot: h } => JitRegistrationSubjectProven { subject: host_unit_slot_subject(slot: h) }
   }
 }

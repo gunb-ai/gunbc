@@ -12,8 +12,11 @@ import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause,
+  systemd_run_transient_wait_unit_command,
 }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
+import extdeps.github.actions { self_hosted_provenance_label }
+import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
@@ -95,5 +98,49 @@ fn host_unit_slot_for(host: HostControlStanding, attempt: NonEmptyStr, workflow:
         }
       }
     HostControlRefused { refusal: r } => HostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
+  }
+}
+
+// ── the provider guest's slot ───────────────────────────────────────────────────────────────────
+
+// THE LANE A PROVIDER GUEST SERVES, as the one label a workflow names to reach it. A slot on a guest
+// rebuilt per job answers to exactly three labels: the provenance label every self-hosted runner
+// carries, this lane label, and its own registration name. It does NOT answer to the fleet's slot
+// class labels (gunbc.runner_slot_desired, which today include gunbc-heavy) or to the host label,
+// because those are what production lanes target, and a guest registered under them would take a
+// required job onto a host whose egress is uncontained
+// (gunbc.rung_drop.provider_guest_ci_egress_unfiltered). A lane reaches these guests only by naming
+// this label in its runs-on.
+data provider_guest_ci_lane_label: String = "gunbc-provider-guest-ci"
+
+fn provider_guest_slot_unit(incarnation: ProviderGuestIncarnation) -> NonEmptyStr {
+  join(["gunbc-provider-ci-", incarnation.controlled.host as String, "-", incarnation.rebuild.attempt as String, ".service"], "") as NonEmptyStr
+}
+
+// THE SLOT ON ONE INCARNATION, for the attempt that incarnation was rebuilt for. It takes the
+// incarnation rather than a controlled host, so a guest that was not rebuilt for this attempt has no
+// slot to register. The unit carries no resource properties: the whole guest is the attempt's, and
+// the fleet's slot bounds (gunbc.runner_slot_desired) are sized for shared Altra hosts, not for it.
+fn provider_guest_slot_for(incarnation: ProviderGuestIncarnation, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+  match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
+    Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
+    Present { value: artifact } => {
+      let unit = provider_guest_slot_unit(incarnation: incarnation)
+      match systemd_run_transient_wait_unit_command(unit: unit, properties: [], command_argv: host_unit_slot_listener_argv()) {
+        SystemdRunCommandRefused { cause: why } => HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
+        SystemdRunCommandReady { command: command } =>
+          HostUnitSlotBound {
+            slot: HostUnitSlot {
+              host: incarnation.controlled,
+              attempt: incarnation.rebuild.attempt,
+              workflow: workflow,
+              unit: unit,
+              labels: [self_hosted_provenance_label, provider_guest_ci_lane_label, unit as String],
+              argv: command,
+              runner: artifact,
+            },
+          }
+      }
+    }
   }
 }
