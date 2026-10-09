@@ -22,7 +22,6 @@ import v2.std.node {
   BinderTypeEdge,
   BinderDefaultEdge,
   core_edge,
-  Cardinality,
   Ambiguous,
   Atom,
   ArmPayload,
@@ -63,7 +62,7 @@ import v2.std.node {
   ConstructTagElidedEdge,
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present }
-import std.constructors { Cardinality, Required, Optional }
+import std.constructors { Cardinality, Required }
 import std.optional { Optional, optional_absent, optional_present }
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
@@ -80,7 +79,7 @@ fn node_is_coproduct(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: v2.std.node.Cardinality } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -92,7 +91,7 @@ fn edge_field_type_name(target: Node) -> Symbol {
     TypeNode { connective: Conj } => ^coproduct_unresolved_payload
     TypeNode { connective: Disj } => ^coproduct_unresolved_payload
     TypeNode { connective: Arrow } => ^coproduct_unresolved_payload
-    TypeNode { connective: Cardinality } => ^coproduct_unresolved_payload
+    TypeNode { connective: v2.std.node.Cardinality } => ^coproduct_unresolved_payload
     TypeNode { connective: Instantiation } => ^coproduct_unresolved_payload
     ComputationNode { behavior: _ } => ^coproduct_unresolved_payload
   }
@@ -128,7 +127,7 @@ fn arm_payload_from_target(target: Node) -> ArmPayload {
       Typed { target_ref: sym }
     TypeNode { connective: Disj } => Typed { target_ref: ^coproduct_unresolved_payload }
     TypeNode { connective: Arrow } => Typed { target_ref: ^coproduct_unresolved_payload }
-    TypeNode { connective: Cardinality } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: v2.std.node.Cardinality } => Typed { target_ref: ^coproduct_unresolved_payload }
     TypeNode { connective: Instantiation } => Typed { target_ref: ^coproduct_unresolved_payload }
     ComputationNode { behavior: _ } => Typed { target_ref: ^coproduct_unresolved_payload }
   }
@@ -193,14 +192,15 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // second spelling in the tree and so forked the authority std.constructors already holds
 // (DESIGN section 3: each fact lives in exactly one place).
 //
-// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND IT IS NOT THIS
-// MODULE'S. The earlier text said std.constructors Cardinality could not be imported because
-// v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are imported here, both
-// are used in declared_field_cardinality_of_target -- the connective in the match pattern, the type
-// in the return -- and this module resolves.
+// THE NAME `Cardinality` HAS TWO HOMES AT TWO GRAINS, AND THIS MODULE IMPORTS ONLY ONE. std.constructors
+// Cardinality is the TYPE of a field's occupancy; v2.std.node Cardinality is the CONNECTIVE variant
+// of a type node. A module that binds both bare refuses `'Cardinality' AMBIGUOUS` (the N7 native
+// route), so this module imports std.constructors Cardinality and spells the connective qualified,
+// v2.std.node.Cardinality, in every match arm. The fact and its next-rung trigger are the typed row
+// gunbc.recurring_failure_mode cardinality_axis_has_two_homes_at_two_grains, not this prose.
 //
 // WHAT IS TRUE IS A STANDING THREE-WAY FORK ON THE NAME `Optional`, and `.dag` resolves variant
-// names CORPUS-WIDE. Three authorities: the generic v2.std.optional Optional; the Cardinality arm
+// names CORPUS-WIDE. Three authorities: the generic std.optional Optional; the Cardinality arm
 // of std.constructors; and the GrammarExpr arm `Optional { element: GrammarExpr }` in
 // v2.std.grammar. The last two collide, so ANY module reachable to both refuses --
 // `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. This is not a fact about
@@ -223,7 +223,7 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 type DeclaredField {
   name: Symbol
   type_node: Node
-  cardinality: Cardinality
+  cardinality: std.constructors.Cardinality
   default: Optional<Node>
 }
 
@@ -269,9 +269,9 @@ fn is_wildcard_pattern(pattern: Node) -> Bool {
 }
 
 
-fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
+fn declared_field_cardinality_of_target(target: Node) -> std.constructors.Cardinality {
   match target.kind {
-    TypeNode { connective: Cardinality } => Optional
+    TypeNode { connective: v2.std.node.Cardinality } => std.constructors.Optional
     TypeNode { connective: Atom { identity: _ } } => Required
     TypeNode { connective: Conj } => Required
     TypeNode { connective: Disj } => Required
@@ -464,7 +464,7 @@ fn declared_field_list(payload: Node) -> List<DeclaredField> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: v2.std.node.Cardinality } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -562,7 +562,7 @@ fn construct_tag_reading(n: Node) -> ConstructTagReading {
     TypeNode { connective: Atom { identity: _ } } => NotAConstruct
     TypeNode { connective: Disj } => NotAConstruct
     TypeNode { connective: Arrow } => NotAConstruct
-    TypeNode { connective: Cardinality } => NotAConstruct
+    TypeNode { connective: v2.std.node.Cardinality } => NotAConstruct
     TypeNode { connective: Instantiation } => NotAConstruct
     ComputationNode { behavior: _ } => NotAConstruct
   }
@@ -581,7 +581,7 @@ fn construct_tag_reading_of_target(target: Node) -> ConstructTagReading {
     TypeNode { connective: Atom { identity: _ } } => ConstructTagAuthored { reference: target }
     TypeNode { connective: Disj } => ConstructTagAuthored { reference: target }
     TypeNode { connective: Arrow } => ConstructTagAuthored { reference: target }
-    TypeNode { connective: Cardinality } => ConstructTagAuthored { reference: target }
+    TypeNode { connective: v2.std.node.Cardinality } => ConstructTagAuthored { reference: target }
     TypeNode { connective: Instantiation } => ConstructTagAuthored { reference: target }
     ComputationNode { behavior: _ } => ConstructTagAuthored { reference: target }
   }
@@ -726,7 +726,7 @@ fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
     TypeNode { connective: Atom { identity: _ } } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -760,7 +760,7 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
                     TypeNode { connective: Atom { identity: _ } } => optional_absent()
                     TypeNode { connective: Disj } => optional_absent()
                     TypeNode { connective: Arrow } => optional_absent()
-                    TypeNode { connective: Cardinality } => optional_absent()
+                    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
                     TypeNode { connective: Instantiation } => optional_absent()
                     ComputationNode { behavior: _ } => optional_absent()
                   }
@@ -773,7 +773,7 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
     TypeNode { connective: Atom { identity: _ } } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -976,7 +976,7 @@ fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
     TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
     TypeNode { connective: Disj } => NamedChildMissing
     TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
     ComputationNode { behavior: _ } => NamedChildMissing
   }
@@ -991,7 +991,7 @@ fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
     TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
     TypeNode { connective: Disj } => NamedChildMissing
     TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
     ComputationNode { behavior: _ } => NamedChildMissing
   }
@@ -1007,7 +1007,7 @@ fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
     TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
     TypeNode { connective: Disj } => NamedChildMissing
     TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
     ComputationNode { behavior: _ } => NamedChildMissing
   }
@@ -1081,7 +1081,7 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => find_arrow_body_child_otherwise(root: root)
     TypeNode { connective: Conj } => find_arrow_body_child_otherwise(root: root)
     TypeNode { connective: Disj } => find_arrow_body_child_otherwise(root: root)
-    TypeNode { connective: Cardinality } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: v2.std.node.Cardinality } => find_arrow_body_child_otherwise(root: root)
     TypeNode { connective: Instantiation } => find_arrow_body_child_otherwise(root: root)
     ComputationNode { behavior: _ } => find_arrow_body_child_otherwise(root: root)
   }
@@ -1140,7 +1140,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
     TypeNode { connective: Atom { identity: _ } } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
     TypeNode { connective: Disj } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
     TypeNode { connective: Arrow } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
-    TypeNode { connective: Cardinality } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: v2.std.node.Cardinality } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
     TypeNode { connective: Instantiation } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
     ComputationNode { behavior: _ } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
   }
@@ -1168,7 +1168,7 @@ fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
     TypeNode { connective: Atom { identity: _ } } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
     TypeNode { connective: Conj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
     TypeNode { connective: Disj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
-    TypeNode { connective: Cardinality } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: v2.std.node.Cardinality } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
     TypeNode { connective: Instantiation } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
     ComputationNode { behavior: _ } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
   }
@@ -1218,7 +1218,7 @@ fn conj_children_optional(n: Node) -> Optional<List<Edge>> {
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: v2.std.node.Cardinality } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
