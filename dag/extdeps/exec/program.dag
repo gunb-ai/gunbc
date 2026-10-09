@@ -185,6 +185,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_program"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_program"),
+    decl_ref(module_path: "extdeps.tools.util_linux_flock", decl_name: "flock_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_path_resolved_program"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_program"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
