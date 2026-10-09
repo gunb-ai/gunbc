@@ -19,7 +19,7 @@ import gunbc.action_use_admission {
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.repo_self_build { repo_self_build_command }
-import gunbc.fleet_desired_candidate { fleet_desired_candidate_fetch_script, fleet_desired_candidate_fetch_script_row, candidate_scripts_refusal }
+import gunbc.fleet_desired_candidate { fleet_desired_candidate_fetch_script }
 import gunbc.fleet_release_bins_key { compiler_pair_release_product, release_bins_canonical_consumer_script_for }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_toolchain_step }
@@ -37,7 +37,7 @@ import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_action_path,
 }
-import std.optional { Present, Absent }
+import std.optional { Present }
 import std.types { String, List }
 
 // THIS WORKFLOW IS THE ADMISSION GATE'S TRIGGER, AND IT IS SEPARATE FROM THE DEPLOY WORKFLOW
@@ -498,14 +498,10 @@ fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
     WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
         WorkflowToolchainHomesAdmitted =>
-          match candidate_scripts_refusal(rows: [fleet_desired_candidate_fetch_script_row]) {
-          Present { value: refusal } => FleetDesiredGenerationRefused { reason: refusal }
-          Absent =>
           match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow)) {
           EmittedYaml { text: t } => FleetDesiredGenerated { content: t }
           YamlEmitRefused { path: p, reason: r } => FleetDesiredGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet_desired_admission_workflow", path: p, reason: r) }
         }
-          }
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
       }
