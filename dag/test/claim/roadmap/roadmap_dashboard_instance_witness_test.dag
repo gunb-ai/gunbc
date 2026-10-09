@@ -412,7 +412,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       anchor_ref,
     } =>
       controller_repo == srv1_dashboard_controller_repo
-        && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
+        && anchor_ref == "refs/remotes/origin/main"
     _ => false
   })
     && any(plan, op => match op {
@@ -537,8 +537,8 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
 // page all read correctly — no refusal, just unintended content rendered plausibly. Unlike the host
 // facts, which produced identical values on both hosts and therefore no wrong output at all, this
 // one produces a page that looks right and is not.\n\nThe claim asserts the anchors are
-// per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it
-// collapses.
+// per-instance: the synthetic instance's own anchor fails if the constructor collapses back to one
+// shared literal. Two labs may lawfully follow the same ref (srv1 and srv2 labs both follow main).
 
 test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
@@ -546,8 +546,7 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
   synthetic == "refs/heads/witness-anchor"
     && srv2_lab == "refs/remotes/origin/main"
-    && srv1_lab == "refs/heads/session/codex-provider-feedback-v0"
-    && !(srv2_lab == srv1_lab)
+    && srv1_lab == "refs/remotes/origin/main"
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.

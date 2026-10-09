@@ -1,5 +1,6 @@
 module test.claim.devboot_subject_identity_witness
 
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size }
 import std.content_hash {
@@ -734,7 +735,7 @@ fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep
 
 test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
   fold(
-    deployment_ensured_steps(target: deployment_srv1_target()),
+    deployment_ensured_steps(instance: srv1_live_dashboard_instance(), target: deployment_srv1_target()),
     init: 0,
     f: (acc, step) => devboot_ensured_step_projects_layout(acc: acc, step: step),
   ) == 1

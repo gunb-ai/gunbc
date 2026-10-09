@@ -23,7 +23,18 @@ import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_tailnet_door_socket,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired {
+  deployment_spec_srv1,
+  desired_deployment_for_instance_id,
+  selected_deployment_spec,
+  srv1_production_desired_deployment,
+  instance_id_text,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+  DesiredRosterSameHostCollision,
+  DesiredRosterDuplicateInstanceId,
+}
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
   CandidateRelease,
@@ -1127,19 +1138,66 @@ fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
   )
 }
 
+// ONE APPLY ROUTE, SELECTED BY INSTANCE ID. The roster (gunbc.live_deploy.desired
+// desired_deployment_roster) is the selection authority; this is the only place an apply entry
+// turns an instance id into a DeploymentSpec, and the production entries below are this route
+// called with production's id rather than a second fold. A row whose target host is not the host
+// the access reaches refuses: an access is a principal on ONE host, and pointing it at another
+// row would mutate the wrong machine under a correct-looking spec.
+type DesiredApplySelection
+  = DesiredApplySelected { spec: DeploymentSpec }
+  | DesiredApplyRefused { reason: String }
+
+fn live_deploy_desired_apply_selection(instance_id: String, access: DeployAccess) -> DesiredApplySelection {
+  match desired_deployment_for_instance_id(instance_id: instance_id) {
+    DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+      DesiredApplyRefused { reason: join(["live_deploy apply: DesiredDeploymentUnknownInstanceId '", id, "' names no row of desired_deployment_roster"], "") }
+    DesiredDeploymentRosterRefused { refusal } =>
+      match refusal {
+        DesiredRosterSameHostCollision { host } =>
+          DesiredApplyRefused { reason: join(["live_deploy apply: DesiredRosterSameHostCollision on host ", host], "") }
+        DesiredRosterDuplicateInstanceId { instance_id: dup } =>
+          DesiredApplyRefused { reason: join(["live_deploy apply: DesiredRosterDuplicateInstanceId ", dup], "") }
+      }
+    DesiredDeploymentFound { row } =>
+      if (row.target.host.identity as String) != (access.host.identity as String) {
+        DesiredApplyRefused { reason: join(["live_deploy apply: DesiredApplyHostMismatch — row '", instance_id, "' targets ", row.target.host.identity as String, " but the access reaches ", access.host.identity as String], "") }
+      } else {
+        DesiredApplySelected { spec: selected_deployment_spec(row: row) }
+      }
+  }
+}
+
+fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> ProcessExit {
+  match live_deploy_desired_apply_selection(instance_id: instance_id, access: access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { spec } => live_deploy_wet_with_access(spec: spec, access: access)
+  }
+}
+
+// The operator-local apply of any srv1 roster row, e.g.
+// `--function live_deploy_apply_desired_operator_local_wet --arg instance_id=srv1-lab-codex-feedback-v0`.
+fn live_deploy_apply_desired_operator_local_wet(instance_id: String) -> ProcessExit {
+  live_deploy_apply_desired_wet(instance_id: instance_id, access: ci_deploy_srv1_operator_local_access)
+}
+
+fn srv1_production_instance_id() -> String {
+  instance_id_text(id: srv1_production_desired_deployment().instance.instance_id)
+}
+
 fn live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+  live_deploy_apply_desired_wet(instance_id: srv1_production_instance_id(), access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_apply_srv1_operator_wet() -> ProcessExit {
-  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_access)
+  live_deploy_apply_desired_wet(instance_id: srv1_production_instance_id(), access: ci_deploy_srv1_operator_access)
 }
 
 // The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
 // principal on the host itself. Candidate observation, preflight, mutation and the readiness
 // gate are all shared; nothing here is a second deploy.
 fn live_deploy_apply_srv1_operator_local_wet() -> ProcessExit {
-  live_deploy_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_local_access)
+  live_deploy_apply_desired_operator_local_wet(instance_id: srv1_production_instance_id())
 }
 
 fn live_deploy_retract_srv1_wet() -> ProcessExit {
