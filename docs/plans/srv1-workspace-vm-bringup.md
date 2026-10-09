@@ -17,6 +17,7 @@ collected that refusal; its green workflow conclusion is not a boot receipt.
 | Deployment candidate | Compiler startup creates ignored `rung_drop/roster.dag`, which candidate admission rejects | Exclude that exact compiler-derived file alongside the existing failure-mode roster; preserve sibling and secret-file refusals |
 | Workflow dispatch | Main declares 28 inputs; GitHub accepts at most 25 | Keep printer selection separate and carry its five operation fields in one `printer_request` JSON input |
 | Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
+| Job selection | Controller install queues the shared credentialed job as well as its dedicated job | Derive shared job selection from the existing mode-to-job authority |
 | Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
 | Slot budget | `fabric-cell-srv1-13.slice` has no installed unit file | Converge the modeled execution-cell boundary; a synthesized systemd slice is not proof |
 | Cell inventory | Read-only plan `local-2026-10-09T03:18:35Z` refuses foreign `fabric-cell-zp444.slice` | Establish ownership before retiring it; the empty transient slice has no unit file or remaining journal, and is not silently ignored |
@@ -62,7 +63,8 @@ empty commissioning prestate. Do not restore the old CI reservation service:
    disables the agent and agent forwarding. Record the guest identity and a command
    executed in the guest.
 7. Run `workspace_operator_release_wet` with the key and
-   `GUNBC_WORKSPACE_RELEASE_GENERATION` from the observation. Reconcile with
+   `GUNBC_WORKSPACE_RELEASE_GENERATION` from `reservation.generation` in the
+   observation (not the owner-ledger generation). Reconcile with
    another allocation plan/apply, and verify released state and absent guest.
 8. Request a second key, prove the same slot is reused with a new incarnation,
    and let its short lease expire. Explicitly dispatch allocation plan/apply to
@@ -183,3 +185,28 @@ was canceled before installation at `95037360ab1040b9de4efe4671bb53cad473cb34`
 when the operator selected host-local SSH. The verified image artifact from run
 `37882239644` remains the image to install. No commissioning or guest allocation
 has been performed yet.
+
+Controller installation [37887389027](https://github.com/gunb-ai/gunbc/actions/runs/37887389027)
+selects revision `a85cc481af5b07dc89f270925bb55bc6f025c8cd` and image build
+`37882239644`. Both srv1 operation checkouts have that revision. The first live
+readback before installation found no controller process or queued start, and both
+historical root-owned receipts are `ReservationNotObserved` refusals. They are
+preserved. Installation and commissioning remain in progress.
+
+The build job of `37887389027` succeeded. Its source tree is
+`5dcdc0feb191c93ac957850344c88796c5651a39`, with request key
+`release-bins-38e793db9ef32d629136be09416dabc9da34cdd3139f3541c9e025c146cb75a8`.
+The general converge job also queued for this dedicated mode, occupying its shared
+host-mutation concurrency key. Both queued jobs were canceled before starting;
+there was no installation effect from the workflow. The general job condition now derives
+from `fleet_converge_mode_job_id` to remove that second assignment.
+The successful build artifact was downloaded and verified on srv1 using the exact
+existing installer consumer script and the key recorded by the build job. All
+16 binaries passed verification, and the image/kernel hashes still match. The
+existing `microvm_controller_install_srv1_wet` entry is running as `ghrunner`
+under an operator-local 24 GiB/no-swap scope. No workflow identity was fabricated.
+
+The workflow-selection repair passes five focused witnesses. Regeneration succeeds,
+and an independent check of the emitted YAML finds exactly one consumer job for
+each of all 78 dispatch modes. The shared job selector is the only generated
+workflow field that changed. All 8,269 source files parse.
