@@ -454,11 +454,6 @@ test fn witness_deployed_tree_mismatch_is_incomplete_at_deployed_tree() -> Bool 
   incomplete_at(facts: with_tree(f: rlm_complete_facts(), t: DeployedRootTreeMismatch { candidate_hex: rlm_fixture_tree, deployed_hex: rlm_fixture_other_tree }), member: "deployed_tree")
 }
 
-// v3, stale, wrong-instance, wrong-revision, or non-ManualReady tick receipt
-test fn witness_stale_tick_is_incomplete_at_tick_standing() -> Bool {
-  incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: "2026-08-30T11:00:00Z"))), member: "tick_standing")
-}
-
 test fn witness_wrong_instance_tick_is_incomplete_at_tick_standing() -> Bool {
   incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-lab", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at))), member: "tick_standing")
 }

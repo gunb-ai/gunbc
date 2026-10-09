@@ -148,7 +148,7 @@ test fn the_quiesced_set_covers_the_event_paths_the_service_and_the_serve_unit()
 // inversion of what it claims. Refusing "unmask" and "disable" is what makes this discriminating.
 test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
   let cmds = bootstrap_quiesce_commands(names: names(), privileged: true)
-  cmds.length() == 3
+  cmds.length() == bootstrap_quiesced_units(names: names()).length()
     && all(cmds, c => string_contains(s: c, pattern: "mask"))
     && all(cmds, c => string_contains(s: c, pattern: "--now"))
     && all(cmds, c => !string_contains(s: c, pattern: "unmask"))
@@ -163,7 +163,7 @@ test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
 // prior state exactly as found, so the correct restore is strictly smaller than the one it replaces.
 test fn restoration_unmasks_every_unit_and_asserts_nothing_about_prior_state() -> Bool {
   let cmds = bootstrap_restore_commands(names: names(), privileged: true)
-  cmds.length() == 3
+  cmds.length() == bootstrap_quiesced_units(names: names()).length()
     && all(cmds, c => string_contains(s: c, pattern: "unmask"))
     && all(cmds, c => !string_contains(s: c, pattern: "enable"))
     && all(cmds, c => !string_contains(s: c, pattern: "start"))
