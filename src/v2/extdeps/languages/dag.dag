@@ -4835,10 +4835,9 @@ fn dag_node_is_float_literal_atom(node: Node) -> Bool {
 
 // Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects
 // this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding
-// (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals
-// (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement
-// fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this
-// roster folds into it.
+// (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement/meet/join
+// fixtures use the same true/false atoms as match (dag_token_kw_true/false). dissolve-on: general
+// body producer lands grammar-owned literal classification and this roster folds into it.
 
 fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
@@ -4848,7 +4847,7 @@ fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
 }
 
 fn dag_symbol_is_complement_bool_literal(id: Symbol) -> Bool {
-  (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
+  (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
 }
 
 fn dag_symbol_is_fixture_record_literal_atom(id: Symbol) -> Bool {
@@ -5829,11 +5828,11 @@ fn dag_complement_match_body(
   dag_match_body_from_arms(
     scrutinee: scrutinee,
     true_arm: dag_match_arm_node(
-      pattern_lit: ^dag_complement_lit_true,
+      pattern_lit: ^dag_token_kw_true,
       body_lit: true_body_lit
     ),
     false_arm: dag_match_arm_node(
-      pattern_lit: ^dag_complement_lit_false,
+      pattern_lit: ^dag_token_kw_false,
       body_lit: false_body_lit
     )
   )
@@ -5856,16 +5855,16 @@ fn dag_complement_arrow_domain_node() -> Node {
 fn dag_complement_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_false,
-    false_body_lit: ^dag_complement_lit_true
+    true_body_lit: ^dag_token_kw_false,
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
 fn dag_complement_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
@@ -5887,9 +5886,9 @@ fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
 
 fn dag_complement_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_false,
-    false_body_lit: ^dag_complement_lit_true
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_false,
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
@@ -5921,14 +5920,14 @@ fn dag_meet_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
-    false_body_lit: ^dag_complement_lit_false
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
 fn dag_meet_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_false,
+    true_body_lit: ^dag_token_kw_false,
     false_body_lit: ^dag_binding_param_b
   )
 }
@@ -5936,7 +5935,7 @@ fn dag_meet_body_swapped_arms_node() -> Node {
 fn dag_join_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_true,
+    true_body_lit: ^dag_token_kw_true,
     false_body_lit: ^dag_binding_param_b
   )
 }
@@ -5945,23 +5944,23 @@ fn dag_join_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
-    false_body_lit: ^dag_complement_lit_true
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
 fn dag_meet_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
 fn dag_join_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
