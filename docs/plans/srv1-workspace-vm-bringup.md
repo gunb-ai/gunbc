@@ -281,7 +281,9 @@ successfully, including exact executor/policy and guest-image readback. The netw
 plan at that revision also succeeds. Comparison with the installed files finds
 only `LinkLocalAddressing=no` and `IPv6AcceptRA=no` added to the ten enrolled TAP
 configurations; firewall, TAP addresses and IPv4 forwarding remain identical.
-The reviewed apply is running; network convergence is not yet claimed.
+The reviewed apply refused before any network installation: its staging writer
+used exclusive creation against existing root-owned staging files. Network
+convergence is not yet claimed.
 
 Pre-commissioning review found the native executor started its bind interpreter
 alongside the controller in the same 24 GiB slice. The controller already binds
@@ -301,3 +303,15 @@ All eight revised-script cases pass: normal start, invocation replacement,
 surviving PID, refused finish, wait, settle, complete and drain. The optional
 `--reject-active-bind-script` control against the installed `682c32644e8`
 predecessor refuses its premature bind, distinguishing the two schedules.
+
+The local network staging writer now creates a private temporary inode in the
+verified directory, fills it, and atomically replaces the exact staged destination.
+The existing scope admission, root-custody checks and exact byte readback remain
+required. The manual native filesystem control
+`test.manual.runner_microvm_network_local_stage_test.local_stage_replaces_owned_bytes_wet`
+passes creation, changed-content replacement, replay, 0600 mode, trailing-newline
+preservation, out-of-scope refusal and scratch cleanup. The out-of-scope control
+uses an existing allowed directory, so it distinguishes admission refusal from a
+missing-directory failure. It runs as an ordinary user in a fresh scratch directory;
+this is manual evidence, not an enrolled CI claim. The live network apply must
+still pass with the repaired writer before commissioning.

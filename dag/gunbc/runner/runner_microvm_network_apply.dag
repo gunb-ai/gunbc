@@ -13,6 +13,8 @@ import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.git
+import extdeps.shell
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.git.inspect
 import product.host_identity { HostIdentity }
 import gunbc.output_policy { ExpectSuccess }
@@ -438,23 +440,52 @@ fn write_staged_file(
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: _ } => StagedWritten
       }
-      LocalShell => match typed_remote_file_write_seal(path: file.path as FilePath,
-        content: file.content, allowed_scope: runner_microvm_admin_staging_scope) {
-        TypedRemoteFileWriteAdmissionRefused { cause } => StagedWriteRefused { step: "admission", reason: cause as String }
-        TypedRemoteFileWriteAdmitted { write: _ } => {
-          let written = Filesystem.WriteOwnerOnly(path: file.path as String, content: file.content)
-          if !written.success { StagedWriteRefused { step: "local root stage", reason: written.error } }
-          else {
-            let read = Filesystem.Read(path: file.path as String)
-            if read.success && read.content == file.content { StagedWritten }
-            else { StagedWriteRefused { step: "local root readback", reason: "staged bytes differ or cannot be read" } }
-          }
-        }
-      }
+      LocalShell => write_local_staged_file(file: file, scope: runner_microvm_admin_staging_scope)
       SshShell { ssh_host: _ } => StagedWriteRefused { step: "transport", reason: "unanchored SSH is not an administrator transport" }
       EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => StagedWriteRefused { step: "transport", reason: "artifact-only transport cannot write host files" }
     },
   }
+}
+
+// mktemp creates the private 0600 inode; ordinary Write fills that already-owned inode.
+// Rename publishes it atomically on the same filesystem, including on a later converge.
+// WriteOwnerOnly is create-exclusive and therefore cannot update a prior staging artifact.
+// Production establishes root custody of the scope and every ancestor before calling this.
+fn write_local_staged_file(file: StagedFile, scope: FileTreeScope) -> StagedWriteOutcome {
+  match typed_remote_file_write_seal(path: file.path as FilePath, content: file.content, allowed_scope: scope) {
+    TypedRemoteFileWriteAdmissionRefused { cause } => StagedWriteRefused { step: "admission", reason: cause as String }
+    TypedRemoteFileWriteAdmitted { write: _ } => {
+      let temporary = shell.Mktemp.FileInDirectory(dir: scope.root_path as FilePath)
+      if !temporary.success { StagedWriteRefused { step: "local stage", reason: "private staging inode could not be created" } }
+      else {
+        let path = trim(s: temporary.path as String)
+        match typed_remote_file_write_seal(path: path as FilePath, content: file.content, allowed_scope: scope) {
+          TypedRemoteFileWriteAdmissionRefused { cause } => StagedWriteRefused { step: "local temporary admission", reason: cause as String }
+          TypedRemoteFileWriteAdmitted { write: _ } => {
+            let written = Filesystem.Write(path: path, content: file.content)
+            if !written.success { local_stage_cleanup_refusal(path: path, reason: written.error) }
+            else { match run_shell_command_observe_outcome(
+              command: mv_exact_destination_command(source: path, destination: file.path as String), transport: LocalExec) {
+              ProcessNotSpawned { program: _, cause } => local_stage_cleanup_refusal(path: path, reason: cause as String)
+              ProcessRan { observation } => if observation.exit_code != 0 {
+                local_stage_cleanup_refusal(path: path, reason: observation.stderr)
+              } else {
+                let read = Filesystem.Read(path: file.path as String)
+                if read.success && read.content == file.content { StagedWritten }
+                else { StagedWriteRefused { step: "local readback", reason: "staged bytes differ or cannot be read" } }
+              }
+            } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn local_stage_cleanup_refusal(path: String, reason: String) -> StagedWriteOutcome {
+  let removed = shell.Remove.FileForce(path: path as FilePath)
+  StagedWriteRefused { step: "local stage", reason: if removed.success { reason }
+    else { concat(reason, "; private staging inode cleanup also refused") } }
 }
 
 // ── The readback ─────────────────────────────────────────────────────────────────────────────────
