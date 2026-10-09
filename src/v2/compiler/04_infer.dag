@@ -5,8 +5,8 @@ import std.types { List }
 import v2.compiler.construction_confinement { construction_confinement_refusals }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, zip_map }
-import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -21,6 +21,7 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -71,7 +72,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
@@ -121,6 +122,7 @@ import v2.std.inhabitance {
   position_record_field,
   position_let_annotation,
   position_direct_call_argument,
+  position_match_coverage,
   undecidable_argument_type_not_derived,
   undecidable_formal_unresolved,
   undecidable_where_predicate_subject_unmodelled
@@ -150,8 +152,11 @@ import v2.std.diagnostic {
 import v2.std.logic { bool_node }
 import v2.std.node {
   StructuralLabel,
+  symbol_intern_lexeme,
   host_text_type_node,
   symbol_type_node,
+  node_rebuild,
+  node_with_occurrence_id,
   Arrow,
   Atom,
   Bind,
@@ -409,6 +414,17 @@ fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
 fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_match_non_exhaustive,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Undecided exhaustiveness is not exhaustiveness: coverage fails closed (DESIGN 5 -- a failure arm
+// refuses, never widens), and the refusal names its own reason rather than the non-exhaustive one,
+// because the relation did not decide the arms wrong; it could not decide them.
+fn infer_match_coverage_undecidable_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_coverage_undecidable,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1781,15 +1797,194 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
 // unequal and were reported as an arm-type mismatch, while two structurally identical arms
 // compared equal and were reported as unified — both verdicts about node identity, not types.
 
+// A LET BINDER CARRIES NO DECLARED TYPE; ITS TYPE IS ITS VALUE'S. The binding names the binder
+// occurrence (binder_site), and the Bind node that owns it holds the value expression whose facts
+// the fold already derived — so an operand that reads the binder derives the value's type instead
+// of the GroundingNotDerived frontier (gunbc.recurring_failure_mode
+// native_infer_accepts_only_bool_and_int_match_scrutinees: the enrolled variant claims' scrutinees
+// are let-bound). A pattern binder or any other declared-less binding that is not a Bind still
+// falls through to the facts.
+// THE PUBLIC READ stays three-argument: an external caller holds the InferredTree only, whose
+// facts are an opaque partial function, so the construct-facts entries thread is not recoverable
+// there and the read falls back to the facts alone (the let-typed rule needs the entries). The
+// four-argument read below is the inference-internal form, threaded through construct reads.
 fn infer_branch_operand_resolved_type_in_tree(
   node: Node,
   facts: InferredFacts,
   resolved: ResolvedTree,
 ) -> Witness<Node> {
+  infer_branch_operand_resolved_type_with_entries(
+    node: node,
+    facts: facts,
+    entries: Empty,
+    instances: infer_no_type_variable_instances(),
+    resolved: resolved
+  )
+}
+
+fn infer_branch_operand_resolved_type_with_entries(
+  node: Node,
+  facts: InferredFacts,
+  entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
+  resolved: ResolvedTree,
+) -> Witness<Node> {
   match dag_canonical_literal_from_node(node: node) {
     Accepted { value: literal, diagnostics: _ } =>
       infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
-    Rejected { diagnostics: _ } => inferred_facts_resolved_type(facts: facts)
+    Rejected { diagnostics: _ } =>
+      match resolved_tree_lexical_binding(tree: resolved, reference: node) {
+        Present { value: binding } =>
+          match binding.declared {
+            Present { value: declared } =>
+              match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
+                Present { value: instantiated } => Holds { value: instantiated }
+                Absent =>
+                  match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                    Present { value: value_type } => Holds { value: value_type }
+                    Absent => inferred_facts_resolved_type(facts: facts)
+                  }
+              }
+            Absent =>
+              match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                Present { value: value_type } => Holds { value: value_type }
+                Absent => inferred_facts_resolved_type(facts: facts)
+              }
+          }
+        Absent => inferred_facts_resolved_type(facts: facts)
+      }
+  }
+}
+
+// THE DECLARED TYPE AN OPERAND READS IS THE INSTANTIATED ONE. The lexical facts instantiate a
+// binding's declared type with infer_frame_instantiated before deriving from it; a read that
+// preempts the facts with the raw declared node skips exactly that step, so a generic coproduct's
+// field (`Some { value: T }`) would hand the arm body the formal `T` instead of the scrutinee's
+// argument (DESIGN 5: no fabricated plausible output). The instantiation is the one the construct
+// read holds -- at a match, the scrutinee coproduct's instances. An atom no instance binds is held
+// only when it names a type-denoting binding (a concrete literal type, by the same
+// dag_binding_denotation test the facts fold applies); a free formal is NOT held -- the read falls
+// through to the facts, the answer the caller had before the read existed.
+fn infer_operand_declared_type_instantiated(declared: Node, instances: List<TypeVariableInstance>) -> Optional<Node> {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match type_variable_instance_lookup(instances: instances, binder: id) {
+        Present { value: instance } => optional_present(value: instance)
+        Absent =>
+          match dag_binding_denotation(sym: id) {
+            Present { value: _ } =>
+              match infer_declared_type_children_instantiated(children: declared.children, instances: instances) {
+                Present { value: children } =>
+                  if length(xs: children) == 0 {
+                    optional_present(value: declared)
+                  } else {
+                    optional_present(
+                      value: node_with_occurrence_id(
+                        kind: TypeNode { connective: Atom { identity: id } },
+                        children: children,
+                        occurrence_id: declared.occurrence_id
+                      )
+                    )
+                  }
+                Absent => optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
+    TypeNode { connective: _ } =>
+      if any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      ) {
+        optional_absent()
+      } else {
+        optional_present(value: declared)
+      }
+    ComputationNode { behavior: _ } =>
+      if any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      ) {
+        optional_absent()
+      } else {
+        optional_present(value: declared)
+      }
+  }
+}
+
+// Whether a type node still names a formal no instance binds, anywhere in it. A concrete type
+// (every atom either instantiated or type-denoting) is safe to hold as written; a node carrying a
+// free formal is not, whatever connective wraps it.
+fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<TypeVariableInstance>) -> Bool {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match type_variable_instance_lookup(instances: instances, binder: id) {
+        Present { value: _ } => false
+        Absent =>
+          match dag_binding_denotation(sym: id) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      )
+    ComputationNode { behavior: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
+      )
+  }
+}
+
+// Substitution descends through the arguments: a compound declared type
+// (`Box<T>`, `FreeMonoid<T>`) is not held with a formal riding inside it -- an argument no
+// instance binds leaves the whole declared type unheld, and the read falls through to the facts
+// rather than fabricate a partially formal type.
+fn infer_declared_type_children_instantiated(
+  children: FreeMonoid<Edge>,
+  instances: List<TypeVariableInstance>
+) -> Optional<FreeMonoid<Edge>> {
+  match children {
+    Empty => optional_present(value: Empty)
+    Cons { head: c, tail: rest } =>
+      match infer_operand_declared_type_instantiated(declared: c.target, instances: instances) {
+        Present { value: c2 } =>
+          match infer_declared_type_children_instantiated(children: rest, instances: instances) {
+            Present { value: rest2 } =>
+              optional_present(value: Cons { head: Edge { label: c.label, target: c2 }, tail: rest2 })
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+// THE LET'S VALUE IS THE LET'S TYPE. The binding carries the value node beside the binder site --
+// resolve's Bind frame mints it where the Bind node is in hand -- so the read is one map entry and
+// one fold-entry lookup, never a tree walk. Absent -- the binding carries no value (a parameter or
+// pattern binder), or the value's own facts are underived, as for a let over a still-frontier
+// expression -- leaves the caller's answer exactly as it stood.
+fn infer_let_binder_value_type_optional(
+  entries: List<InferredFactsEntry>,
+  binding: LexicalBinding,
+) -> Optional<Node> {
+  match binding.value {
+    Absent => optional_absent()
+    Present { value: value_target } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: value_target) {
+        Absent => optional_absent()
+        Present { value: facts } => inferred_facts_resolved_type_optional(facts: facts)
+      }
+  }
+}
+
+fn inferred_facts_resolved_type_optional(facts: InferredFacts) -> Optional<Node> {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
+    GroundingNotDerived { node: _ } => optional_absent()
   }
 }
 
@@ -1963,6 +2158,71 @@ fn infer_match_bool_arm_rows_accept(
               outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
           }
       }
+  }
+}
+
+// THE ARMS' COVERED CARRIER, JUDGED BY THE ONE RELATION. The covered carrier is the scrutinee
+// coproduct's own alternative edges, rebuilt with only the alternatives the arms name, in
+// declaration order -- arm order and arm repetition cannot flatter the answer, and the relation
+// (declared_type_inhabitance over PositionMatchCoverage) answers exhaustive exactly when the
+// carrier structurally equals the whole coproduct. A wildcard arm covers every alternative, so it
+// contributes the whole coproduct. This replaces the per-tag inline count
+// (infer_coproduct_rows_cover) that stood in while the relation's carrier was missing:
+// gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees.
+//
+// The obligation carries no type variables because neither carrier poses an instantiation
+// question: both are projections of the same declaration (the declared Disj and a subset of its
+// edges), so the exact-structural-equality fold compares atom-for-atom within one declaration and
+// its verdict cannot depend on how the parameters are instantiated at the scrutinee.
+fn infer_coproduct_coverage_obligation(
+  node: Node,
+  scrutinee_target: Node,
+  coproduct: InferMatchCoproduct,
+  rows: List<InferCoproductArmRow>,
+) -> Outcome<Node> {
+  let covered_children = fold(coproduct.variants.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: variant_tag } =>
+        if any(xs: rows, predicate: fn(row) {
+          match row.covers {
+            CoversAll => true
+            CoversVariant { tag: t } => t == variant_tag
+          }
+        }) {
+          list_snoc_item(xs: acc, item: e)
+        } else {
+          acc
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+  let covered_carrier = node_rebuild(n: coproduct.variants, children: covered_children)
+  match declared_type_inhabitance(
+    obligation: DeclaredTypeObligation {
+      position: position_match_coverage(match_node: node, scrutinee: scrutinee_target),
+      parameter_identity: infer_coproduct_coverage_parameter_identity(coproduct: coproduct),
+      declared: coproduct.variants,
+      produced: covered_carrier,
+      produced_declared_carrier: Absent,
+      application: node,
+      type_variables: Empty
+    }
+  ) {
+    Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier)
+    InhabitanceUndecidable { reason: _ } =>
+      outcome_rejected(infer_match_coverage_undecidable_diagnostic(node: node))
+    InhabitanceRefused { find_witness_reason: _ } =>
+      outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+  }
+}
+
+// The obligation's parameter identity names the variant in a refusal: the declaration path the
+// scrutinee's type resolved through, by its last segment.
+fn infer_coproduct_coverage_parameter_identity(coproduct: InferMatchCoproduct) -> Symbol {
+  match qualified_name_last_segment(qn: coproduct.path) {
+    Present { value: s } => s
+    Absent => symbol_intern_lexeme(lexeme: "coproduct_coverage")
   }
 }
 
@@ -2235,9 +2495,11 @@ fn infer_match_bool(
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: _, diagnostics: cd } =>
-                        match infer_branch_operand_resolved_type_in_tree(
+                        match infer_branch_operand_resolved_type_with_entries(
                           node: scrutinee_target,
                           facts: scrutinee_facts,
+                          entries: entries,
+                          instances: infer_no_type_variable_instances(),
                           resolved: resolved
                         ) {
                           Violates { diagnostic: d } => outcome_rejected(d)
@@ -2334,6 +2596,7 @@ fn infer_match(
 // index does not hold -- declares no variants to eliminate, and a count of arguments different from the
 // count of parameters binds no instance at all.
 type InferMatchCoproduct {
+  path: QualifiedName
   variants: Node
   instances: List<TypeVariableInstance>
 }
@@ -2370,17 +2633,18 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
   match declaration_reference_path_optional(node: head_args.head) {
     Absent => CoproductNotDeclared
     Present { value: path } =>
-      match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent => CoproductNotDeclared
         Present { value: declared } =>
           match declared.kind {
             TypeNode { connective: Disj } =>
-              let params = symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: path)
+              let params = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: path)
               if length(xs: params) != length(xs: head_args.args) {
                 CoproductArityMismatch
               } else {
                 CoproductRead {
                   coproduct: InferMatchCoproduct {
+                    path: path,
                     variants: declared,
                     instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
                       TypeVariableInstance { binder: p, instance: arg }
@@ -2414,15 +2678,6 @@ fn infer_match_variant_payload(variants: Node, tag: Symbol) -> Optional<Node> {
   })
 }
 
-fn infer_match_variant_tags(variants: Node) -> List<Symbol> {
-  fold(variants.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Authored { name: tag } => list_snoc_item(xs: acc, item: tag)
-      StructuralLabel { label: _ } => acc
-      Positional => acc
-    }
-  })
-}
 
 // A VARIANT FIELD'S TYPE AT THIS INSTANTIATION, OR NOTHING. A field declared as one of the
 // declaration's type parameters is that parameter's argument -- a type the USE SITE resolved. A field
@@ -2653,14 +2908,6 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
   }
 }
 
-fn infer_coproduct_rows_cover(rows: List<InferCoproductArmRow>, tag: Symbol) -> Bool {
-  any(xs: rows, predicate: fn(row) {
-    match row.covers {
-      CoversAll => true
-      CoversVariant { tag: t } => t == tag
-    }
-  })
-}
 
 // THE ARM BODIES' ONE TYPE. Two DERIVED body types that differ are a mismatch and refuse; a body whose
 // type is not derived leaves the match at the frontier with one located advisory per such body, and
@@ -2675,13 +2922,14 @@ type InferArmBodyTypes {
 fn infer_coproduct_arm_body_types(
   rows: List<InferCoproductArmRow>,
   entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
   resolved: ResolvedTree
 ) -> InferArmBodyTypes {
   fold(rows, init: InferArmBodyTypes { derived: Absent, mismatch: false, underived: None }, f: fn(acc, row) {
     let body_type = match lookup_inferred_facts_in_entries(entries: entries, key: row.body) {
       Absent => Absent
       Present { value: facts } =>
-        match infer_branch_operand_resolved_type_in_tree(node: row.body, facts: facts, resolved: resolved) {
+        match infer_branch_operand_resolved_type_with_entries(node: row.body, facts: facts, entries: entries, instances: instances, resolved: resolved) {
           Holds { value: t } => Present { value: t }
           Violates { diagnostic: _ } => Absent
         }
@@ -2729,6 +2977,7 @@ fn infer_match_coproduct_rows(
   coproduct: InferMatchCoproduct,
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
+  scrutinee_target: Node,
   cd: Diagnostics
 ) -> Outcome<InferredFacts> {
   match fold(arms, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, arm) {
@@ -2743,32 +2992,32 @@ fn infer_match_coproduct_rows(
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: rows, diagnostics: _ } =>
-      if any(xs: infer_match_variant_tags(variants: coproduct.variants), predicate: fn(tag) {
-        !infer_coproduct_rows_cover(rows: rows, tag: tag)
-      }) {
-        outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-      } else {
-        let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, resolved: resolved)
-        if bodies.mismatch {
-          outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
-        } else {
-          match bodies.underived {
-            Some { diagnostics: _ } => infer_match_frontier(node: node, cd: cd, advisories: bodies.underived)
-            None =>
-              match bodies.derived {
-                Absent => infer_match_frontier(node: node, cd: cd, advisories: None)
-                Present { value: t } =>
-                  match infer_descent_witness_for_node(n: node) {
-                    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
-                    Holds { value: descent_proof } =>
-                      bind_outcome(
-                        o: inferred_facts_from_derived_type(node: node, derived_type: t, descent: Holds { value: descent_proof }),
-                        f: fn(facts) { Accepted { value: facts, diagnostics: cd } }
-                      )
+      match infer_coproduct_coverage_obligation(node: node, scrutinee_target: scrutinee_target, coproduct: coproduct, rows: rows) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: _ } =>
+          {
+            let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, resolved: resolved)
+            if bodies.mismatch {
+              outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+            } else {
+              match bodies.underived {
+                Some { diagnostics: _ } => infer_match_frontier(node: node, cd: cd, advisories: bodies.underived)
+                None =>
+                  match bodies.derived {
+                    Absent => infer_match_frontier(node: node, cd: cd, advisories: None)
+                    Present { value: t } =>
+                      match infer_descent_witness_for_node(n: node) {
+                        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                        Holds { value: descent_proof } =>
+                          bind_outcome(
+                            o: inferred_facts_from_derived_type(node: node, derived_type: t, descent: Holds { value: descent_proof }),
+                            f: fn(facts) { Accepted { value: facts, diagnostics: cd } }
+                          )
+                      }
                   }
               }
+            }
           }
-        }
       }
   }
 }
@@ -2795,7 +3044,7 @@ fn infer_match_coproduct(
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
-                    match infer_branch_operand_resolved_type_in_tree(node: scrutinee_target, facts: scrutinee_facts, resolved: resolved) {
+                    match infer_branch_operand_resolved_type_with_entries(node: scrutinee_target, facts: scrutinee_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
                       Violates { diagnostic: _ } =>
                         infer_match_frontier(
                           node: node,
@@ -2807,7 +3056,15 @@ fn infer_match_coproduct(
                           CoproductNotDeclared => outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: scrutinee_target))
                           CoproductArityMismatch => outcome_rejected(infer_match_type_argument_arity_mismatch_diagnostic(node: scrutinee_target))
                           CoproductRead { coproduct: coproduct } =>
-                            infer_match_coproduct_rows(node: node, arms: arms, coproduct: coproduct, entries: entries, resolved: resolved, cd: cd)
+                            infer_match_coproduct_rows(
+                              node: node,
+                              arms: arms,
+                              coproduct: coproduct,
+                              scrutinee_target: scrutinee_target,
+                              entries: entries,
+                              resolved: resolved,
+                              cd: cd
+                            )
                         }
                     }
                 }
@@ -3042,14 +3299,17 @@ fn infer_unify_transform_operand_types(
   left_facts: InferredFacts,
   right_node: Node,
   right_facts: InferredFacts,
+  entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
 ) -> Outcome<Node> {
-  match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, resolved: resolved) {
+  match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
     Violates { diagnostic: d } => outcome_rejected(d)
     Holds { value: left_type } =>
-      match infer_branch_operand_resolved_type_in_tree(
+      match infer_branch_operand_resolved_type_with_entries(
         node: right_node,
         facts: right_facts,
+        entries: entries,
+        instances: infer_no_type_variable_instances(),
         resolved: resolved
       ) {
         Violates { diagnostic: d } => outcome_rejected(d)
@@ -3976,6 +4236,7 @@ fn infer_transform_binary_infix(
                                 left_facts: left_facts,
                                 right_node: right_target,
                                 right_facts: right_facts,
+                                entries: entries,
                                 resolved: resolved
                               ) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -4310,7 +4571,7 @@ fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, res
   match lookup_inferred_facts_in_entries(entries: entries, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
-      match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, resolved: resolved) {
+      match infer_branch_operand_resolved_type_with_entries(node: element, facts: facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: t } => outcome_accepted(value: t)
       }
@@ -5484,10 +5745,13 @@ fn infer_gather_fold_step_merged(
 // trigger are rostered in gunbc.recurring_failure_mode
 // construct_field_value_not_typed_against_the_record_declaration.
 //
-// ONLY A DECLARED RECORD IS READ HERE. The index says which kind of payload a path denotes
-// (symbol_index_declared_payload_at); a variant arm's construct, a tag the guarded reader does not
-// answer for, and a Conj with no tag at all are ConstructNotARecord and keep product introduction,
-// where an underived tag leaves them on the counted frontier as before.
+// ONLY A DECLARED RECORD OR VARIANT ARM IS READ HERE. The index says which kind of payload a path
+// denotes (symbol_index_declared_payload_at); a tag the guarded reader does not answer for and a
+// Conj with no tag at all are ConstructNotARecord and keep product introduction, where an underived
+// tag leaves them on the counted frontier as before. A VARIANT ARM's construct is read at its own
+// path (the arm declares the fields) and derives the VARIANT's type: the declaration reference of
+// the arm path's parent (v2.compiler.body_lowering_fold variant_fields_unlowered_on_the_native_route
+// is retired by this read plus the variant match row beside it).
 type InferRecordFormals
   = RecordFormalsResolved { payload: Node }
   | RecordFormalsAuthored { payload: Node }
@@ -5499,8 +5763,20 @@ type InferRecordConstruct {
   type_params: List<Symbol>
 }
 
+// A variant arm's construct carries the arm path it was read at and the variant path whose
+// declaration reference names the construction's type. The arm's fields are the formals; the
+// variant's declared type params are the ones its fields may cite.
+type InferVariantArmConstruct {
+  record: Node
+  arm_path: QualifiedName
+  variant_path: QualifiedName
+  formals: InferRecordFormals
+  type_params: List<Symbol>
+}
+
 type InferConstructRead
   = ConstructIsRecord { construct: InferRecordConstruct }
+  | ConstructIsVariantArm { construct: InferVariantArmConstruct }
   | ConstructNotARecord
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
@@ -5517,6 +5793,46 @@ fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
   }
 }
 
+// ONE MINT FOR BOTH PATH FORMS. The tag's path is either the variant's declared path (the
+// containment form: `p.Seal.Boxed`) or the module-level unique-variant alias (`p.Boxed`), whose
+// carrier the index carries beside it; by here the path IS the declared path either way, so the
+// construction types by the declaring coproduct, its params, and the variant's own payload.
+fn infer_variant_arm_construct(
+  reference: Node,
+  resolved: ResolvedTree,
+  declared_path: QualifiedName
+) -> InferConstructRead {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
+    Absent => ConstructNotARecord
+    Present { value: resolved_decl } =>
+      match qualified_name_init(qn: declared_path) {
+        Empty => ConstructNotARecord
+        Cons { head: _, tail: _ } =>
+          ConstructIsVariantArm {
+            construct: InferVariantArmConstruct {
+              record: reference,
+              arm_path: declared_path,
+              variant_path: qualified_name_init(qn: declared_path),
+              formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
+              type_params: symbol_index_declared_type_params_at(
+                index: resolved.resolved_declarations,
+                qualified_path: qualified_name_init(qn: declared_path)
+              )
+            }
+          }
+      }
+  }
+}
+
+// A CONSTRUCTION'S TAG IS A RESOLVED REFERENCE, BARE OR QUALIFIED ALIKE: resolve rewrites the tag
+// to the declaration it binds (the qualified door and the atom walk meet in resolve_atom_bound, the
+// same producer the bare door uses), so the variant's declaring path is the reference's own path --
+// no second lookup beside it. Reads go through resolved_declarations: declarations with resolved
+// bodies (gunbc#12629). The global bare index is dead as a mechanism (03_resolve at the global_bare
+// comment) and names no read here. THE DECLARING PATH OF A VARIANT-ARM PAYLOAD PATH: for the
+// variant's own row this is the row itself (no claimants); for its module-level alias the binding
+// filed by symbol_index_fill_containment_node answers the variant's declaring path. One authority,
+// no parallel carrier map.
 fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConstructRead {
   match construct_tag_optional(n: node) {
     Absent => ConstructNotARecord
@@ -5524,21 +5840,32 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
       match declaration_reference_path_optional(node: reference) {
         Absent => ConstructNotARecord
         Present { value: path } =>
-          match symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: path) {
+          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
             Absent => ConstructNotARecord
             Present { value: kind } =>
               match kind {
-                VariantArmPayload => ConstructNotARecord
+                VariantArmPayload =>
+                  infer_variant_arm_construct(
+                    reference: reference,
+                    resolved: resolved,
+                    declared_path: symbol_index_declaring_path_of(
+                      index: resolved.resolved_declarations,
+                      target: path
+                    )
+                  )
                 RecordTypePayload =>
-                  match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+                  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
                     Absent => ConstructNotARecord
-                    Present { value: authored } =>
+                    Present { value: resolved_decl } =>
                       ConstructIsRecord {
                         construct: InferRecordConstruct {
                           record: reference,
                           path: path,
-                          formals: infer_record_formals(resolved: resolved, path: path, authored: authored),
-                          type_params: symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: path)
+                          formals: infer_record_formals(resolved: resolved, path: path, authored: resolved_decl),
+                          type_params: symbol_index_declared_type_params_at(
+                            index: resolved.resolved_declarations,
+                            qualified_path: path
+                          )
                         }
                       }
                   }
@@ -5635,7 +5962,7 @@ fn infer_record_first_positional_actual(actuals: List<Edge>) -> Optional<Edge> {
 
 fn infer_record_construct_binding_refusal(
   node: Node,
-  construct: InferRecordConstruct,
+  record: Node,
   formals: List<InhabitanceFormal>,
   actuals: List<Edge>,
   plan_reason: Symbol,
@@ -5648,7 +5975,7 @@ fn infer_record_construct_binding_refusal(
         infer_record_construct_refusal(
           reason: reason,
           at: node,
-          record: construct.record,
+          record: record,
           field: Edge { label: Authored { name: missing.parameter_identity }, target: missing.declared }
         )
       Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
@@ -5656,7 +5983,7 @@ fn infer_record_construct_binding_refusal(
   } else {
     match list_at_optional(xs: actuals, index: at) {
       Present { value: actual } =>
-        infer_record_construct_refusal(reason: reason, at: actual.target, record: construct.record, field: actual)
+        infer_record_construct_refusal(reason: reason, at: actual.target, record: record, field: actual)
       Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
     }
   }
@@ -5670,8 +5997,8 @@ type InferRecordFieldBinding
   | RecordFieldsRefused { diagnostic: Diagnostic }
   | RecordPayloadUnread
 
-fn infer_record_field_binding(node: Node, construct: InferRecordConstruct) -> InferRecordFieldBinding {
-  match infer_formals_from_domain(domain: infer_record_formals_payload(formals: construct.formals)) {
+fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordFormals) -> InferRecordFieldBinding {
+  match infer_formals_from_domain(domain: infer_record_formals_payload(formals: formals)) {
     Absent => RecordPayloadUnread
     Present { value: formals } =>
       let actuals = construct_field_edges(n: node)
@@ -5681,7 +6008,7 @@ fn infer_record_field_binding(node: Node, construct: InferRecordConstruct) -> In
             diagnostic: infer_record_construct_refusal(
               reason: ^record_construct_field_not_named,
               at: unnamed.target,
-              record: construct.record,
+              record: record,
               field: unnamed
             )
           }
@@ -5691,7 +6018,7 @@ fn infer_record_field_binding(node: Node, construct: InferRecordConstruct) -> In
               RecordFieldsRefused {
                 diagnostic: infer_record_construct_binding_refusal(
                   node: node,
-                  construct: construct,
+                  record: record,
                   formals: formals,
                   actuals: actuals,
                   plan_reason: reason,
@@ -5714,19 +6041,20 @@ fn infer_record_field_binding(node: Node, construct: InferRecordConstruct) -> In
 // field obligation, or a binder no field value fixed, stays on the frontier, exactly as an
 // application does (infer_transform_derived_optional arguments_decided).
 fn infer_record_construct_type(
-  construct: InferRecordConstruct,
+  type_path: QualifiedName,
+  type_params: List<Symbol>,
   instances: List<TypeVariableInstance>,
   decided: Bool
 ) -> Optional<Node> {
   if !decided {
     optional_absent()
   } else {
-    let reference = declaration_reference_node(qn: construct.path, occurrence_id: OccurrenceSynthetic)
-    if length(xs: construct.type_params) == 0 {
+    let reference = declaration_reference_node(qn: type_path, occurrence_id: OccurrenceSynthetic)
+    if length(xs: type_params) == 0 {
       optional_present(value: reference)
     } else {
       match fold(
-        construct.type_params,
+        type_params,
         init: optional_present(value: [Edge { label: Positional, target: reference }]),
         f: fn(acc, binder) {
           match acc {
@@ -5766,6 +6094,50 @@ fn infer_record_construct_facts(
   declarations: SymbolIndex,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
+  infer_construct_facts_on_entries(
+    node: node,
+    record: construct.record,
+    formals: construct.formals,
+    type_path: construct.path,
+    type_params: construct.type_params,
+    entries: entries,
+    declarations: declarations,
+    partials: partials
+  )
+}
+
+// A VARIANT ARM's construction derives the VARIANT's type (the arm path's parent declaration
+// reference), with the arm's fields as the formals: `Boxed(41)` is a value of `Seal`, judged at the
+// arm the construction names (v2.compiler.infer infer_record_construct_read reads the arm's path).
+fn infer_variant_construct_facts(
+  node: Node,
+  construct: InferVariantArmConstruct,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  infer_construct_facts_on_entries(
+    node: node,
+    record: construct.record,
+    formals: construct.formals,
+    type_path: construct.variant_path,
+    type_params: construct.type_params,
+    entries: entries,
+    declarations: declarations,
+    partials: partials
+  )
+}
+
+fn infer_construct_facts_on_entries(
+  node: Node,
+  record: Node,
+  formals: InferRecordFormals,
+  type_path: QualifiedName,
+  type_params: List<Symbol>,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
@@ -5773,12 +6145,12 @@ fn infer_record_construct_facts(
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
-          match infer_record_field_binding(node: node, construct: construct) {
+          match infer_record_field_binding(node: node, record: record, formals: formals) {
             RecordFieldsRefused { diagnostic: d } => outcome_rejected(d)
             RecordPayloadUnread =>
               bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
             RecordFieldsBound { pairs: pairs } =>
-              match construct.formals {
+              match formals {
                 RecordFormalsAuthored { payload: _ } =>
                   bind_outcome_accepted(
                     od: diagnostics_merge(outer: cd, inner: infer_record_fields_unresolved_diagnostics(pairs: pairs)),
@@ -5786,19 +6158,20 @@ fn infer_record_construct_facts(
                   )
                 RecordFormalsResolved { payload: _ } =>
                   match infer_judge_formal_args(
-                    position: position_record_field(record: construct.record),
+                    position: position_record_field(record: record),
                     site: JudgedAtEachActual,
                     entries: entries,
                     declarations: declarations,
                     pairs: pairs,
-                    type_params: construct.type_params
+                    type_params: type_params
                   ) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: instances, diagnostics: jd } =>
                       bind_outcome_accepted(
                         od: diagnostics_merge(outer: cd, inner: jd),
                         inner: match infer_record_construct_type(
-                          construct: construct,
+                          type_path: type_path,
+                          type_params: type_params,
                           instances: instances,
                           decided: infer_diagnostics_none(d: jd)
                         ) {
@@ -5845,6 +6218,22 @@ fn infer_gather_record_construct_row_on_entries(
   infer_gather_formed_facts_row(
     node: node,
     formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
+    entries: entries,
+    pending: pending
+  )
+}
+
+fn infer_gather_variant_construct_row_on_entries(
+  node: Node,
+  construct: InferVariantArmConstruct,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  infer_gather_formed_facts_row(
+    node: node,
+    formed: infer_variant_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
     entries: entries,
     pending: pending
   )
@@ -6068,6 +6457,15 @@ fn infer_gather_settled_unannotated_row(
         match infer_record_construct_read(node: acc.node, resolved: resolved) {
           ConstructIsRecord { construct: construct } =>
             infer_gather_record_construct_row_on_entries(
+              node: acc.node,
+              construct: construct,
+              entries: merged_entries,
+              declarations: resolved.resolved_declarations,
+              pending: merged_pending,
+              partials: partials
+            )
+          ConstructIsVariantArm { construct: construct } =>
+            infer_gather_variant_construct_row_on_entries(
               node: acc.node,
               construct: construct,
               entries: merged_entries,

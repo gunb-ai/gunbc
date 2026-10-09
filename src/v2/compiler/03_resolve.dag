@@ -37,7 +37,7 @@ import v2.extdeps.languages.dag {
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { any, fold_list, length, skip }
+import v2.std.algebra { any, fold_list, length, list_find_first, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -120,6 +120,7 @@ import v2.std.symbol_index {
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
   symbol_index_declared_binders_at,
+  symbol_index_declared_type_params_at,
   symbol_index_lookup,
   symbol_index_renaming_alias_at
 }
@@ -207,6 +208,8 @@ import v2.std.node_query {
   NotAConstruct,
   construct_tag_optional,
   field_projection_node,
+  construct_tag_path_optional,
+  declared_field_named,
   node_positional_child_targets,
   find_named_child,
   is_wildcard_pattern,
@@ -418,6 +421,7 @@ type FrameKind
 type LexicalBinding {
   binder_site: NodeOccurrenceIdentity
   declared: Optional<Node>
+  value: Optional<Node>
 }
 
 // One answered lexical reference: the reference's own minted occurrence and the binding that
@@ -720,7 +724,7 @@ data resolve_variant_visibility_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v2.compiler.symbol_index_fill",
-    decl_name: "symbol_index_fill_unique_variant_aliases",
+    decl_name: "symbol_index_fill_containment_node",
     field: WholeDeclaration
   }
 }
@@ -823,10 +827,15 @@ fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
               fold(domain.children, init: frame_binders_empty(), f: fn(fb, e) {
                 match try_edge_declared_binding(e: e) {
                   Present { value: b } =>
-                    frame_binders_add(fb: fb, name: b.name, binding: LexicalBinding {
-                      binder_site: n.occurrence_id,
-                      declared: member_edge_type_node(e: e)
-                    })
+                    frame_binders_add(
+                      fb: fb,
+                      name: b.name,
+                      binding: LexicalBinding {
+                        binder_site: n.occurrence_id,
+                        declared: member_edge_type_node(e: e),
+                        value: optional_absent()
+                      }
+                    )
                   Absent => fb
                 }
               })
@@ -847,10 +856,15 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
           Present { value: e0 } =>
             match e0.target.kind {
               TypeNode { connective: Atom { identity: sym } } =>
-                frame_binders_add(fb: frame_binders_empty(), name: sym, binding: LexicalBinding {
-                  binder_site: e0.target.occurrence_id,
-                  declared: optional_absent()
-                })
+                frame_binders_add(
+                  fb: frame_binders_empty(),
+                  name: sym,
+                  binding: LexicalBinding {
+                    binder_site: e0.target.occurrence_id,
+                    declared: optional_absent(),
+                    value: list_at_optional(xs: node_positional_child_targets(node: n), index: 1)
+                  }
+                )
               _ => frame_binders_empty()
             }
           Absent => frame_binders_empty()
@@ -2666,26 +2680,250 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOutcome) -> PatternBindersOutcome {
   match construct_tag_optional(n: pat) {
     Absent => acc
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match node_atom_identity_optional(node: e.target) {
-          Present { value: id } =>
-            if is_wildcard_pattern(pattern: e.target) {
-              m
-            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
-              m
-            } else {
-              frame_binders_add(fb: m, name: id, binding: LexicalBinding {
-                binder_site: e.target.occurrence_id,
-                declared: optional_absent()
-              })
+        match m {
+          PatternBindersRefused { diagnostic: _ } => m
+          PatternBindersAdmitted { binders: fb } =>
+            match node_atom_identity_optional(node: e.target) {
+              Present { value: id } =>
+                if is_wildcard_pattern(pattern: e.target) {
+                  m
+                } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+                  m
+                } else {
+                  match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
+                    PatternBinderFormal { at: at } =>
+                      PatternBindersRefused {
+                        diagnostic: pattern_payload_formal_uninstantiated_diagnostic(at: at)
+                      }
+                    PatternBinderTyped { node: t } =>
+                      PatternBindersAdmitted {
+                        binders: frame_binders_add(
+                          fb: fb,
+                          name: id,
+                          binding: LexicalBinding {
+                            binder_site: e.target.occurrence_id,
+                            declared: optional_present(value: t),
+                            value: optional_absent()
+                          }
+                        )
+                      }
+                    PatternBinderUntyped =>
+                      PatternBindersAdmitted {
+                        binders: frame_binders_add(
+                          fb: fb,
+                          name: id,
+                          binding: LexicalBinding {
+                            binder_site: e.target.occurrence_id,
+                            declared: optional_absent(),
+                            value: optional_absent()
+                          }
+                        )
+                      }
+                  }
+                }
+              Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
             }
-          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
+  }
+}
+
+// A PATTERN BINDER'S TYPE IS THE VARIANT FIELD IT CAPTURES (v2.compiler.body_lowering_fold
+// body_lower_field_decl_optional). The arm the pattern's tag names declares the field -- positional
+// "0" and named alike, one grammar -- and the binder's declared type is that field's type node, so
+// the body's reference derives from its binding (v2.compiler.infer infer_lexical_reference_facts)
+// instead of staying on the frontier with the match spine. A tag that names no declared arm, or a
+// field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
+// the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
+//
+// A field whose type names the DECLARING TYPE's formal is neither of those: the type node exists
+// but names a type nothing instantiates at this stage (the scrutinee's arguments flow into the arm
+// frame only with central deep substitution -- the derivation follow-up). Minting the formal
+// fabricates a type the binder does not have (DESIGN 5), and leaving the binder untyped lets the
+// match frontier ACCEPT the arm as an advisory frontier -- the module prepares and the native lane
+// reports a prepared module whose binder has no type. Both fail open. The binders fold therefore
+// refuses the arm walk here, with the payload field as the location
+// (^resolve_reason_pattern_payload_formal_uninstantiated), and the deep-instantiation follow-up
+// flips this refusal to grounding by installing the scrutinee's arguments.
+type PatternBinderDeclared
+  = PatternBinderTyped { node: Node }
+  | PatternBinderUntyped
+  | PatternBinderFormal { at: Node }
+
+// The binders fold carries the mint's outcome so a formal-typed payload field refuses the walk
+// before any binder is admitted under an invented scope.
+type PatternBindersOutcome
+  = PatternBindersAdmitted { binders: FrameBinders }
+  | PatternBindersRefused { diagnostic: Diagnostic }
+
+fn pattern_payload_formal_uninstantiated_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_pattern_payload_formal_uninstantiated,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A payload field whose type still names the declaring type's formal is detected against the
+// declaring type's OWN parameter list -- `symbol_index_declared_type_params_at` at the arm's
+// parent path -- so a concrete user type or another declaration's parameter never trips this gate.
+fn resolve_payload_field_type_holds_declaring_formal(
+  ctx: ResolveContext,
+  arm_path: QualifiedName,
+  t: Node
+) -> Bool {
+  resolve_type_node_mentions_any_name(
+    t: t,
+    names: symbol_index_declared_type_params_at(
+      index: ctx.namespace.symbol_index,
+      qualified_path: qualified_name_init(qn: arm_path)
+    )
+  )
+}
+
+fn resolve_type_node_mentions_any_name(t: Node, names: List<Symbol>) -> Bool {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      any(xs: names, predicate: fn(n) { n == id })
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: t),
+        predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
+      )
+    ComputationNode { behavior: _ } =>
+      any(
+        xs: node_positional_child_targets(node: t),
+        predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
+      )
+  }
+}
+
+fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: Edge) -> PatternBinderDeclared {
+  match resolve_pattern_tag_declared_payload_path_optional(ctx: ctx, pat: pat) {
+    Absent => PatternBinderUntyped
+    Present { value: arm_path } =>
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arm_path) {
+        Absent => PatternBinderUntyped
+        Present { value: payload } =>
+          match field.label {
+            Authored { name: field_name } =>
+              match declared_field_named(payload: payload, name: field_name) {
+                Present { value: f } =>
+                  if resolve_payload_field_type_holds_declaring_formal(
+                    ctx: ctx,
+                    arm_path: arm_path,
+                    t: f.type_node
+                  ) {
+                    PatternBinderFormal { at: field.target }
+                  } else {
+                    PatternBinderTyped { node: f.type_node }
+                  }
+                Absent => PatternBinderUntyped
+              }
+            StructuralLabel { label: _ } => PatternBinderUntyped
+            Positional => PatternBinderUntyped
+          }
+      }
+  }
+}
+
+// The declared arm a pattern's tag names, read BEFORE the walk (the binders mint first, so a
+// refused pattern never leaves the body under an invented scope). A one-segment tag looks up
+// lexically exactly as resolve_pattern_atom_names_constructor does; a qualified tag looks up
+// absolutely; only a candidate the declared-payload authority answers for names an arm.
+fn resolve_pattern_tag_declared_payload_path_optional(ctx: ResolveContext, pat: Node) -> Optional<QualifiedName> {
+  match construct_tag_path_optional(n: pat) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match path {
+        Cons { head: only, tail: rest } =>
+          match rest {
+            Empty => resolve_declared_payload_path_lookup(ctx: ctx, name: only)
+            Cons { head: _, tail: _ } => resolve_qualified_tag_declared_payload(ctx: ctx, path: path)
+          }
+        Empty => resolve_qualified_tag_declared_payload(ctx: ctx, path: path)
+      }
+  }
+}
+
+// A tag naming more than one segment is a qualified path; a zero-segment tag cannot happen at a
+// pattern (the parser requires a tag), so both non-solo shapes share this lookup.
+fn resolve_qualified_tag_declared_payload(ctx: ResolveContext, path: List<Symbol>) -> Optional<QualifiedName> {
+  match resolve_declared_payload_candidates(
+    ctx: ctx,
+    paths: list_map(
+      xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
+      f: fn(c) { c.path }
+    )
+  ) {
+    Cons { head: only, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: only)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: name
+  ) {
+    LexicalHit { node: _, path: path } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: path) {
+        optional_present(value: path)
+      } else {
+        optional_absent()
+      }
+    LexicalAmbiguous { candidates: candidates } =>
+      resolve_sole_declared_payload_path(ctx: ctx, paths: list_map(xs: candidates, f: fn(c) { c.path }))
+    LexicalUnbound =>
+      match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
+        GlobalBareHit { node: _, path: path } =>
+          if resolve_path_is_declared_payload(ctx: ctx, path: path) {
+            optional_present(value: path)
+          } else {
+            optional_absent()
+          }
+        GlobalBareLookupAmbiguous { paths: paths } => resolve_sole_declared_payload_path(ctx: ctx, paths: paths)
+        GlobalBareLookupUnbound => optional_absent()
+      }
+  }
+}
+
+// The declared-payload paths among a candidate set, in lookup order.
+fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: FreeMonoid<QualifiedName>) -> FreeMonoid<QualifiedName> {
+  match paths {
+    Empty => Empty
+    Cons { head: p, tail: rest } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: p) {
+        Cons { head: p, tail: resolve_declared_payload_candidates(ctx: ctx, paths: rest) }
+      } else {
+        resolve_declared_payload_candidates(ctx: ctx, paths: rest)
+      }
+  }
+}
+
+// An ambiguous tag must not name an arm by candidate order: a binder typed by the first of several
+// declared payloads fabricates a plausible output (DESIGN §5 -- a failure arm refuses, never
+// widens). Exactly one declared-payload candidate names the arm; a wider set leaves the binder
+// untyped, the behaviour that preceded binder typing. The arm the binder means is settled by the
+// scrutinee's coproduct at infer, not by name order here.
+fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
+  match resolve_declared_payload_candidates(ctx: ctx, paths: paths) {
+    Cons { head: only, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: only)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
   }
 }
 
@@ -3298,15 +3536,21 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
     Accepted { value: pat, diagnostics: _ } =>
       match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
-        BinderGateAdmitted => resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat)
+        BinderGateAdmitted =>
+          match resolve_pattern_binders(ctx: ctx, pat: pat, acc: PatternBindersAdmitted { binders: frame_binders_empty() }) {
+            PatternBindersRefused { diagnostic: d } =>
+              resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+            PatternBindersAdmitted { binders: fb } =>
+              resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: fb)
+          }
       }
   }
 }
 
-fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node) -> ResolveNodeWalk {
+fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: FrameBinders) -> ResolveNodeWalk {
   let arm_ctx = resolve_ctx_with_scope(
     ctx: ctx,
-    scope: lexical_frame(fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()), outer: ctx.scope)
+    scope: lexical_frame(fb: fb, outer: ctx.scope)
   )
   child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
     child_walk_step(
@@ -3533,9 +3777,11 @@ fn resolve_type_application_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // it must name a coproduct, and an argument inhabits it exactly when the argument resolves to one of
 // that coproduct's variants -- by the DECLARATION the index holds, never by leaf spelling. A unique
 // variant referenced bare resolves to its module-level path (p.Pointer), which
-// v2.compiler.symbol_index_fill symbol_index_fill_unique_variant_aliases files as a second ENTRY over
-// the same arm node rather than as a binding to p.Resolution.Pointer, so
-// symbol_index_declaring_path_of cannot relate the two paths; the arm node they share can. A Nat literal and a type
+// v2.compiler.symbol_index_fill symbol_index_fill_containment_node files as a BINDING to the
+// variant's declaring path (p.Resolution.Pointer) -- the repair the receipt
+// a_binding_position_recorded_as_a_declaring_identity names, landed here: the alias was a second
+// ENTRY over the same arm node, which was the double-entry defect that row describes, and
+// symbol_index_declaring_path_of now relates the two paths with no parallel carrier map. A Nat literal and a type
 // parameter of an enclosing declaration are not judged (v2.std.type_binder KindInhabitance).
 fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
   if dag_node_is_int_literal_atom(node: argument) {
