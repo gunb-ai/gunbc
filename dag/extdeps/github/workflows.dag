@@ -4,12 +4,9 @@ import extdeps.ietf.http_semantics { POST }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
-import std.types { CommitSha, List, NonEmptyStr }
+import std.types { List, Map, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.transports.rest { RestResult }
@@ -37,25 +34,11 @@ type WorkflowDispatchReceipt {
   html_url: NonEmptyStr
 }
 
-// CreateDispatch is the cited GitHub REST shape (Create a workflow dispatch event), not a heal
-// coproduct. It is intentionally single-attempt: silently retrying 401/403/429/5xx into a
-// WorkflowDispatchReceipt would fabricate a run that was refused. The owning workflow may be
-// retriggered after diagnosis; this operation never assumes a git push created a run.
-//
-// FROZEN UPSTREAM SHAPE: tools.ci_heal_dispatch, the only production caller, is deleted. Restoring
-// heal auto-dispatch does not consume this operation. `expected_healed_sha` is the `inputs`
-// key GitHub accepts for this repository's workflow_dispatch contract; it is not a second heal
-// policy and must not grow more heal-specific keys here. Disposition:
-// create_dispatch_unconsumed_frontier_rows.
-
-data create_dispatch_unconsumed_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflows", decl_name: "WorkflowDispatchReceipt"),
-    reason: "github.Workflows CreateDispatch and WorkflowDispatchReceipt are the cited REST shape with no production caller after tools.ci_heal_dispatch was deleted; frozen: no new heal-specific keys or auto-invoke rows",
-    dissolution: unbound_dissolution(description: "a production fold that is not heal auto-dispatch calls github.Workflows CreateDispatch, or CreateDispatch and WorkflowDispatchReceipt are deleted. NOT satisfied by restoring tools.ci_heal_dispatch, nor by a witness constructing WorkflowDispatchReceipt"),
-  )
-]
-
+// CreateDispatch is the cited GitHub REST shape (Create a workflow dispatch event). `inputs` is the
+// request body's own object -- the workflow's declared dispatch inputs by name -- so which inputs a
+// caller sends is the caller's fact, never a key spelled here. It is intentionally single-attempt:
+// silently retrying 401/403/429/5xx into a WorkflowDispatchReceipt would fabricate a run that was
+// refused.
 service github.Workflows {
   config {
     endpoint: default_api_base
@@ -70,7 +53,7 @@ service github.Workflows {
       repo: String
       workflow_id: String
       ref: String
-      expected_healed_sha: CommitSha
+      inputs: Map<String, String>
     }
     output {
       workflow_run_id: Int
@@ -83,7 +66,7 @@ service github.Workflows {
       headers: { "X-GitHub-Api-Version": workflows_api_version },
       body: {
         ref: ref,
-        inputs: { expected_healed_sha: expected_healed_sha }
+        inputs: inputs
       }
     }
     response {

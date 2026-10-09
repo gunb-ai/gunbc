@@ -1,0 +1,132 @@
+module test.claim.branch_run_grant_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, String, Timestamp, CommitSha }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
+import extdeps.github.github { GitHubUser, User }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunStatus, InProgress, Completed }
+import gunbc.auth.heal_publisher_provision { FederationClassified, impersonation_cells, standing_principal_set }
+import gunbc.auth.gcp_iam_converge {
+  GcpIamPlan, GcpIamApply, GcpIamEffect, AddPolicyCells, CreatePool, CreateProvider, CreateServiceAccount, ServiceAccountPolicy, SecretPolicy,
+  PolicyObserved, PolicyResourceAbsent, GrantPolicyReading, plan_dedicated_federation, gcp_iam_converge_targets,
+}
+import gunbc.auth.branch_dispatch_federation {
+  hetzner_cloud_control_federation, branch_dispatch_attribute_condition, branch_run_impersonation_cell, branch_run_principal_set,
+}
+import gunbc.auth.branch_run_grant {
+  BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
+  judge_branch_run, plan_branch_run_grant, branch_run_grant_purpose, run_scoped_federation_named,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data expiry: Timestamp = "2026-10-09T05:00:00Z"
+
+fn a_run(id: Int, path: String, event: String, done: Bool) -> WorkflowRun {
+  WorkflowRun {
+    id: id, name: Present { value: "fleet-converge" }, path: Present { value: path },
+    head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, head_branch: Present { value: "work/cax-onboard" },
+    event: event, status: run_status(done: done), conclusion: none,
+    workflow_id: 15, run_number: 900, run_attempt: 1,
+    actor: none, triggering_actor: Present { value: GitHubUser { login: "operator", id: 1, type: User } },
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/37879231670", created_at: "2026-10-09T04:00:00Z",
+    updated_at: "2026-10-09T04:00:00Z", pull_requests: [],
+  }
+}
+
+fn run_status(done: Bool) -> WorkflowRunStatus {
+  if done { Completed } else { InProgress }
+}
+
+data fleet_converge_path: String = ".github/workflows/fleet-converge.yml"
+
+// THE RUN-SCOPED ACCOUNT HOLDS NO STANDING WAY IN, and its pool does not pin a ref: the two facts
+// that make the approval the only way an account is reached from a branch.
+test fn the_hetzner_account_has_no_standing_impersonation_and_its_pool_admits_branches() -> Bool {
+  let f = hetzner_cloud_control_federation()
+  impersonation_cells(f: f).length() == 0
+    && match standing_principal_set(f: f) { Present { value: _ } => false  Absent => true }
+    && !branch_dispatch_attribute_condition().contains("assertion.ref")
+    && !branch_dispatch_attribute_condition().contains("workflow_ref")
+    && branch_dispatch_attribute_condition().contains("assertion.event_name == 'workflow_dispatch'")
+    && branch_dispatch_attribute_condition().contains("assertion.repository_id == ")
+    && any(gcp_iam_converge_targets, t => (t.service_account as String) == (f.service_account as String))
+}
+
+// THE CONVERGE CREATES THE POOL, PROVIDER AND ACCOUNT AND GRANTS THE TOKEN, AND WRITES NOTHING ON THE
+// ACCOUNT'S OWN POLICY: no empty add, no standing cell.
+test fn the_converge_provisions_the_account_without_touching_its_policy() -> Bool {
+  let f = hetzner_cloud_control_federation()
+  match plan_dedicated_federation(
+    f: f,
+    classification: FederationClassified { create_pool: true, create_provider: true, create_account: true },
+    account_policy: PolicyResourceAbsent,
+    secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "s0", version: 1 } } }),
+  ) {
+    GcpIamApply { diff: d } =>
+      !any(d.effects, e => match e { AddPolicyCells { subject: ServiceAccountPolicy { email: _ }, observed_etag: _, cells: _ } => true  _ => false })
+        && any(d.effects, e => match e { AddPolicyCells { subject: SecretPolicy { secret: s }, observed_etag: _, cells: _ } => (s as String) == "hetzner-cloud-default-api-key"  _ => false })
+        && any(d.effects, e => match e { CreateServiceAccount { account_id: a, display_name: _ } => (a as String) == "hetzner-cloud-control"  _ => false })
+    _ => false
+  }
+}
+
+// THE CELL NAMES ONE RUN AND EXPIRES.
+test fn the_run_cell_names_one_run_and_expires() -> Bool {
+  let c = branch_run_impersonation_cell(run_id: 37879231670, expires_at: expiry)
+  c.role == "roles/iam.workloadIdentityUser"
+    && c.member == branch_run_principal_set(run_id: 37879231670)
+    && c.member.ends_with("/workloadIdentityPools/github-fleet-converge-dispatch/attribute.run_id/37879231670")
+    && match c.condition { Present { value: k } => k.expression == "request.time < timestamp('2026-10-09T05:00:00Z')"  Absent => false }
+}
+
+// ONLY A LIVE DISPATCH OF fleet-converge, ABOUT THE RUN ASKED FOR, IS ADMITTED; its facts are GitHub's.
+test fn only_a_live_fleet_converge_dispatch_is_admitted() -> Bool {
+  match judge_branch_run(run_id: 7, run: a_run(id: 7, path: fleet_converge_path, event: "workflow_dispatch", done: false)) {
+    BranchRunAdmitted { facts: r } => r.branch == "work/cax-onboard" && r.dispatched_by == "operator" && r.run_id == 7
+    BranchRunRefused { reason: _ } => false
+  }
+}
+
+fn refused_for_7(r: WorkflowRun) -> Bool {
+  match judge_branch_run(run_id: 7, run: r) {
+    BranchRunRefused { reason: _ } => true
+    BranchRunAdmitted { facts: _ } => false
+  }
+}
+
+test fn another_workflow_another_event_a_finished_run_or_another_id_is_refused() -> Bool {
+  refused_for_7(r: a_run(id: 7, path: ".github/workflows/witnesses.yml", event: "workflow_dispatch", done: false))
+    && refused_for_7(r: a_run(id: 7, path: fleet_converge_path, event: "push", done: false))
+    && refused_for_7(r: a_run(id: 7, path: fleet_converge_path, event: "workflow_dispatch", done: true))
+    && refused_for_7(r: a_run(id: 8, path: fleet_converge_path, event: "workflow_dispatch", done: false))
+}
+
+fn facts() -> BranchRunFacts {
+  BranchRunFacts { run_id: 7, branch: "work/cax-onboard", head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, dispatched_by: "operator", created_at: "2026-10-09T04:00:00Z" }
+}
+
+// THE GRANT PLANS ONE ADD AT THE OBSERVED ETAG, IS HELD WHEN THE CELL IS ALREADY THERE, AND THE
+// OPERATOR READS WHO ASKED FOR WHAT.
+test fn the_grant_adds_one_cell_and_is_held_once_present() -> Bool {
+  let f = hetzner_cloud_control_federation()
+  let cell = branch_run_impersonation_cell(run_id: 7, expires_at: expiry)
+  let planned = match plan_branch_run_grant(f: f, run: facts(), expires_at: expiry, reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "e1", version: 3 } }) {
+    BranchRunGrantPlanned { grant: g } =>
+      g.observed_etag == "e1" && g.cell == cell
+        && (branch_run_grant_purpose(g: g) as String).contains("on work/cax-onboard at 0123456789abcdef0123456789abcdef01234567 (dispatched by operator) asks to act as hetzner-cloud-control@")
+    _ => false
+  }
+  let held = match plan_branch_run_grant(f: f, run: facts(), expires_at: expiry, reading: PolicyObserved { policy: GcpPolicy { bindings: [GcpBinding { role: cell.role, members: [cell.member], condition: cell.condition }], etag: "e2", version: 3 } }) {
+    BranchRunGrantHeld { run: _ } => true
+    _ => false
+  }
+  planned && held
+}
+
+// THE ROSTER NAMES THE ACCOUNT BY ITS ID AND NOTHING ELSE: an unknown account selects nothing.
+test fn the_roster_selects_only_a_declared_run_scoped_account() -> Bool {
+  match run_scoped_federation_named(account_id: "hetzner-cloud-control") { Present { value: _ } => true  Absent => false }
+    && match run_scoped_federation_named(account_id: "fleet-cloud-convergence") { Present { value: _ } => false  Absent => true }
+}

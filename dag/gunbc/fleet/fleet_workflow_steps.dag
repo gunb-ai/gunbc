@@ -563,10 +563,16 @@ fn ci_release_bins_unpack_verify_step() -> Step {
 }
 
 fn ci_fleet_wif_auth_step() -> Step {
-  ci_wif_auth_step_for(
+  ci_fleet_wif_auth_step_when(if_condition: none)
+}
+
+fn ci_fleet_wif_auth_step_when(if_condition: String?) -> Step {
+  ci_wif_auth_step_with_id_when(
     name: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
+    id: "wif_auth",
     provider_resource: probe_identity_secret_access_requirement.wif_provider_resource,
     service_account: probe_identity_secret_access_requirement.service_account,
+    if_condition: if_condition,
   )
 }
 
@@ -580,6 +586,12 @@ fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account
 // The same step under a caller-chosen id, for a job that federates to more than one identity under
 // disjoint conditions (step ids are unique per job even when their conditions are exclusive).
 fn ci_wif_auth_step_with_id(name: String, id: String, provider_resource: String, service_account: String) -> Step {
+  ci_wif_auth_step_with_id_when(name: name, id: id, provider_resource: provider_resource, service_account: service_account, if_condition: none)
+}
+
+// THE SAME STEP UNDER A CONDITION, for a job whose modes federate to different identities: a mode
+// that must not mint the job's default identity skips it rather than minting and ignoring it.
+fn ci_wif_auth_step_with_id_when(name: String, id: String, provider_resource: String, service_account: String, if_condition: String?) -> Step {
   UsesStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -593,7 +605,7 @@ fn ci_wif_auth_step_with_id(name: String, id: String, provider_resource: String,
       ]
     },
     env: none,
-    if_condition: none,
+    if_condition: if_condition,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }

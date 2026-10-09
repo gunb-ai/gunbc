@@ -1,5 +1,7 @@
 module test.claim.gcp_estate_convergence_binding
 
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, standing_principal_set }
+import std.optional { Present, Absent }
 import std.types { Bool, List }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_admit }
 import gunbc.auth.github_gcp_federation { github_wif_principal_set }
@@ -43,6 +45,10 @@ test fn the_condition_names_the_workflow_and_the_dispatch() -> Bool {
 }
 
 // The estate binding, the consumers' provider and the converge target all name the pinned federation,
+fn standing_set_is(f: DedicatedFederation, ps: String) -> Bool {
+  match standing_principal_set(f: f) { Present { value: v } => v == ps  Absent => false }
+}
+
 // and the repository-wide principal set is nowhere among them: no PR-reachable principal can impersonate it.
 test fn the_account_is_reached_only_through_the_pinned_pool() -> Bool {
   let b = gcp_estate_desired_convergence_binding()
@@ -51,8 +57,8 @@ test fn the_account_is_reached_only_through_the_pinned_pool() -> Bool {
     && b.member != github_wif_principal_set()
     && probe_identity_secret_access_requirement.wif_principal_set == fleet_convergence_principal_set()
     && probe_identity_secret_access_requirement.wif_provider_resource == fleet_convergence_provider_resource()
-    && f.principal_set == fleet_convergence_principal_set()
+    && standing_set_is(f: f, ps: fleet_convergence_principal_set())
     && f.attribute_condition == fleet_convergence_attribute_condition()
-    && gcp_iam_converge_targets.any(t => t.principal_set == fleet_convergence_principal_set() && t.service_account == b.account)
-    && gcp_iam_converge_targets.all(t => t.service_account != b.account || t.principal_set != github_wif_principal_set())
+    && gcp_iam_converge_targets.any(t => standing_set_is(f: t, ps: fleet_convergence_principal_set()) && t.service_account == b.account)
+    && gcp_iam_converge_targets.all(t => t.service_account != b.account || !standing_set_is(f: t, ps: github_wif_principal_set()))
 }

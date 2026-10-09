@@ -1,5 +1,7 @@
 module test.claim.native_product_federation
 
+import gunbc.auth.heal_publisher_provision { standing_principal_set }
+import std.optional { Present, Absent }
 import std.types { Bool, String, List }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_admit }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets }
@@ -45,7 +47,7 @@ test fn each_account_holds_exactly_one_pinned_cell_on_its_own_token() -> Bool {
 // repository-wide principal set cannot reach the write account.
 test fn the_write_account_is_not_reachable_from_the_repository_pool() -> Bool {
   let w = native_product_write_federation()
-  (w.pool_id as String) != (github_wif_pool_id as String) && !w.principal_set.contains(github_wif_pool_id as String)
+  (w.pool_id as String) != (github_wif_pool_id as String) && match standing_principal_set(f: w) { Present { value: ps } => !ps.contains(github_wif_pool_id as String)  Absent => false }
 }
 
 // Deleting the roster row must fail this: both federations are converge targets.

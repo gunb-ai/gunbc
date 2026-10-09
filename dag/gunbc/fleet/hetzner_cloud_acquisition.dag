@@ -15,8 +15,8 @@ data hetzner_cloud_default_project: ProviderApiAccount = ProviderApiAccount {
   api_credential: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "hetzner-cloud-default-api-key"), version: "1"),
 }
 
-// THE ONE CELL THE CONTROLLER NEEDS ON THE TOKEN: read its pinned version's payload. Granted to the
-// fleet convergence principal by gunbc.auth.gcp_iam_converge, never to an operator session; the
+// THE ONE CELL THE CONTROLLER NEEDS ON THE TOKEN: read its pinned version's payload. Held by the
+// run-scoped hetzner-cloud-control account (gunbc.auth.branch_dispatch_federation), never by an operator session; the
 // controller never adds a version, so no viewer or versionAdder cell is owed.
 fn hetzner_cloud_api_grants() -> List<SecretAccessGrant> {
   [secret_accessor_grant(target: hetzner_cloud_default_project.api_credential)]

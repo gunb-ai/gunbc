@@ -1,6 +1,6 @@
 module gunbc.auth.gcp_iam_converge
 
-import gunbc.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
+import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
 import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
@@ -23,9 +23,8 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secret
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
-  heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cell, observe_and_classify,
-  rest_refusal_text, outcome_is_not_found,
-}
+  heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
+  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.native_product_federation { native_product_federations }
@@ -197,7 +196,7 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
     provider_id: gcp_iam_observe_wif_provider_id,
     attribute_mapping: gcp_iam_observe_wif_attribute_mapping,
     attribute_condition: gcp_iam_observe_wif_attribute_condition(),
-    principal_set: gcp_iam_observe_wif_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: gcp_iam_observe_wif_principal_set() },
     service_account: iam_observe_service_account,
     service_account_id: iam_observe_service_account_id,
     service_account_display_name: "GCP IAM converge observer (WIF-only, read-only, no keys)",
@@ -220,7 +219,7 @@ data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
     [heal_publisher_dedicated_federation(), private_heal_publisher_dedicated_federation()],
     map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
   ),
-  concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation()], native_product_federations()),
+  concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation(), hetzner_cloud_control_federation()], native_product_federations()),
 )
 
 fn service_account_resource(email: ServiceAccountEmail) -> String {
@@ -302,7 +301,6 @@ type GrantSet {
 
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
-  GrantSet { label: "hetzner cloud provider api", grants: hetzner_cloud_api_grants() },
 ]
 
 // ONE SECRET CARRIES SEVERAL CELLS (viewer, versionAdder, accessor), so a grant set is planned and
@@ -525,19 +523,23 @@ fn plan_dedicated_federation(
             if ca { [CreateServiceAccount { account_id: f.service_account_id, display_name: f.service_account_display_name }] } else { [] },
           ),
         )
-        let account_delta = policy_delta(
+        // A RUN-SCOPED ACCOUNT OWNS NO STANDING CELL, so its policy is not a subject of this plan at
+        // all: an add of no cells would be an effect with nothing in it, and the run cells on that
+        // policy belong to gunbc.auth.branch_run_grant.
+        let owned = impersonation_cells(f: f)
+        let account_deltas = if owned.length() == 0 { [] } else { [policy_delta(
           subject: ServiceAccountPolicy { email: f.service_account },
-          desired: [impersonation_cell(f: f)],
+          desired: owned,
           reading: account_policy,
           absent_admitted: ca,
-        )
+        )] }
         let secret_deltas = map(secret_policies, gp => policy_delta(
           subject: SecretPolicy { secret: gp.grant.target.secret },
           desired: secret_access_desired_cells(member: f.service_account_member, grant: gp.grant),
           reading: gp.reading,
           absent_admitted: false,
         ))
-        let deltas = concat([account_delta], secret_deltas)
+        let deltas = concat(account_deltas, secret_deltas)
         let refusals = delta_refusals(ds: deltas)
         if refusals.length() > 0 {
           GcpIamRefused { target: f.label, reasons: refusals }
