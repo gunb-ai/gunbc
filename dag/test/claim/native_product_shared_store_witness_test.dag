@@ -1,0 +1,45 @@
+module test.claim.native_product_shared_store
+
+import std.types { String, Bool }
+import std.optional { Present, Absent }
+import gunbc.auth.access_token_source { WorkloadIdentityToken }
+import gunbc.native_product_shared_store {
+  ForkPullRequestRun, SameRepoPullRequestRun, MergeGroupRun, UnattributedRun,
+  NativeProductStoreReadOnly, NativeProductStoreReadWrite, NativeProductStoreNoAccess, native_product_store_access,
+  native_product_blob_address,
+  NativeProductSharedGetNotAdmitted, NativeProductSharedGetAnswered, native_product_shared_get,
+}
+
+data live_key: String = "78fa374e0d6cd0df1339bb3a25abf2e96e9c22bcc6d61d72e2c179d168c8322a"
+
+// A fork and an unattributed run have no standing, a same-repo pull request may only read, and the
+// merge group is the sole writer.
+test fn only_the_merge_group_writes_and_pull_requests_only_read() -> Bool {
+  let fork = match native_product_store_access(standing: ForkPullRequestRun) { NativeProductStoreNoAccess { cause: _ } => true, _ => false }
+  let other = match native_product_store_access(standing: UnattributedRun) { NativeProductStoreNoAccess { cause: _ } => true, _ => false }
+  let pr = match native_product_store_access(standing: SameRepoPullRequestRun) { NativeProductStoreReadOnly => true, _ => false }
+  let mg = match native_product_store_access(standing: MergeGroupRun) { NativeProductStoreReadWrite => true, _ => false }
+  fork && other && pr && mg
+}
+
+// The seed product key (lower hex SHA-256) is the address; anything else has no address.
+test fn the_product_key_is_the_address_and_a_malformed_key_has_none() -> Bool {
+  let ok = match native_product_blob_address(key_hex: live_key) { Present { value: _ } => true, Absent => false }
+  let bad = match native_product_blob_address(key_hex: "not-a-digest") { Present { value: _ } => false, Absent => true }
+  ok && bad
+}
+
+// A fork's read is refused before any credential is reached. The standing arm is not exercised live
+// here: with the credential pinned it would reach the network.
+test fn a_read_without_standing_is_refused_before_any_credential() -> Bool {
+  match native_product_blob_address(key_hex: live_key) {
+    Absent => false
+    Present { value: addr } => {
+      let fork = match native_product_shared_get(standing: ForkPullRequestRun, address: addr, token_source: WorkloadIdentityToken) {
+        NativeProductSharedGetNotAdmitted { cause: _ } => true
+        NativeProductSharedGetAnswered { result: _ } => false
+      }
+      fork
+    }
+  }
+}

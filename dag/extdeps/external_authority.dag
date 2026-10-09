@@ -2,7 +2,7 @@ module extdeps.external_authority
 import std.optional { Absent, Present }
 
 import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
 
@@ -14,14 +14,50 @@ type ExternalAuthority {
 // TwoDpcRateCeilingTable.evidence and std.decision ObjectiveTerm.ground are the same warrant kind:
 // either the figure points at ExternalAuthority, or it carries uncitedness as a read_obligation
 // naming what would ground it. Relocated here so a second CitedToAuthority cannot be minted.
+//
+// THE THIRD ARM IS A FIGURE THIS REPOSITORY OBSERVED. Neither of the first two says "confirmed by our
+// own reading", and that is the strongest of the three when it holds: a vendor's page asserts, a
+// receipt was executed and is re-derived by running its instrument again. The arm carries an
+// ObservedReceipt naming the declaration that holds the reading, and that declaration lives DOWNSTREAM,
+// in the observing product or workflow layer (DESIGN 3, External upstream decomposition) -- this module
+// points at it by reference and never imports it.
+//
+// IT IS SEALED, BECAUSE A REFERENCE ANYONE CAN TYPE IS NOT EVIDENCE. ObservedReceipt is sole_constructor
+// (a seal binds records, not coproduct arms, so the arm carries the sealed record), and its one mint,
+// observed_receipt, admits only folds that take NO argument and read committed in-corpus data -- so no
+// admitted caller can be handed a reference or a reading to mint for, and none is a constructor proxy.
+// Each admitted fold mints only when its own reading passes.
+//
+// THE RUNG OF A RECEIPT'S BINDING IS STATED BY ITS FOLD, NOT HERE. A fold over rows authored in the
+// corpus (an EEPROM dump transcribed into data rows) and a fold over a CI artifact's bytes committed
+// beside the recorded digest of its archive are both BOUNDARY TRANSCRIPTIONS (DESIGN 4b, outside the
+// modeled guarantee): the fold executes on the committed bytes, and nothing in the substrate yet checks
+// those bytes against the run that produced them. Each admitted fold names that seam and its trigger.
+type ObservedReceipt sole_constructor {
+  receipt: DeclarationRef
+}
+
 type CitedFigureStanding
   = CitedToAuthority { authority: ExternalAuthority }
   | TranscribedUncited { read_obligation: NonEmptyStr }
+  | ObservedByReceipt { observed: ObservedReceipt }
+
+fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.cloudflare.r2_conditional_put_race_probe", decl_name: "r2_conditional_put_linearizability_ground"),
+    decl_ref(module_path: "product.breakout_leg_programming", decl_name: "fs_nvidia_eth_leg_coding_standing"),
+  ]
+  = ObservedReceipt { receipt: receipt }
+
+fn observed_receipt_ref(observed: ObservedReceipt) -> DeclarationRef {
+  observed.receipt
+}
 
 fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   match standing {
     CitedToAuthority { authority: _ } => Absent
     TranscribedUncited { read_obligation: o } => Present { value: o }
+    ObservedByReceipt { observed: _ } => Absent
   }
 }
 

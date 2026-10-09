@@ -1,6 +1,13 @@
 module extdeps.boards.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Watt, watt, watt_count,
+  Millimeter, millimeter_count,
+  SquareMillimeter, square_millimeter, square_millimeter_count,
+  MegatransfersPerSecond,
+}
 import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -87,3 +94,51 @@ fn admit_population(
     PopulationUnsupported { slots: candidate }
   }
 }
+
+// A BOARD'S PHYSICAL PROFILE, the one shape two boards are compared by. Authored in
+// extdeps.boards.gigabyte while it had one consumer; moved here on its second (the printed-chassis
+// power feed reads the ASRock row), exactly as the co-location note there said to do. Every field
+// is a READING of a vendor surface, never a measurement of a held board.
+type BaseboardPhysicalProfile {
+  model_label: NonEmptyStr
+  socket_count: Nat
+  max_tdp_per_socket: Watt
+  form_factor_label: NonEmptyStr
+  width: Millimeter
+  depth: Millimeter
+  dimm_slots: Nat
+  max_data_rate: MegatransfersPerSecond
+  atx_24pin_count: Nat
+  eps_8pin_count: Nat
+  onboard_10gbe_ports: Nat
+  dedicated_management_ports: Nat
+  pcie_slots: Nat
+}
+
+fn board_profile_power_headers_match(a: BaseboardPhysicalProfile, b: BaseboardPhysicalProfile) -> Bool {
+  a.atx_24pin_count == b.atx_24pin_count && a.eps_8pin_count == b.eps_8pin_count
+}
+
+fn board_profile_area(p: BaseboardPhysicalProfile) -> SquareMillimeter {
+  square_millimeter(count: millimeter_count(m: p.width) * millimeter_count(m: p.depth))
+}
+
+fn board_profile_sockets_per_area_permille(p: BaseboardPhysicalProfile) -> Nat {
+  p.socket_count * 1000000 / square_millimeter_count(m: board_profile_area(p: p))
+}
+
+fn board_profile_max_socket_power(p: BaseboardPhysicalProfile) -> Watt {
+  watt(count: p.socket_count * watt_count(w: p.max_tdp_per_socket))
+}
+
+// HOW MANY 12 V INPUTS A BOARD NEEDS POPULATED, graded by what the vendor actually said.
+//
+// Three arms because the vendor manual answers three different questions. Specified: the manual
+// states a number for the configuration. MinimumOneStated: the manual says ANY ONE input suffices
+// under its lowest-power condition and says nothing about the rule above it, so one is a floor
+// and the ceiling is the consumer's derivation from connector ratings, never a vendor number.
+// Unresolved: nothing read says anything, and a cable diagram may not draw a count.
+type PowerInputPopulationStanding
+  = PowerInputPopulationSpecified { required_inputs: Nat }
+  | PowerInputMinimumOneStated { available_inputs: Nat, stated_condition: NonEmptyStr }
+  | PowerInputPopulationUnresolved { available_inputs: Nat }

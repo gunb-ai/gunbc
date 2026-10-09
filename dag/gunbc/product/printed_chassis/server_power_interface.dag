@@ -1,0 +1,85 @@
+module product.printed_chassis.server_power_interface
+import std.types {Int,List,NonEmptyStr,String,Bool}
+import std.measure {Watt,watt,watt_count,Volt,volt,volt_count,milliampere_count,Percent,percent,percent_count}
+import std.optional {Present,Absent}
+import extdeps.power.fsp_crps {ServerPowerReference,fsp800_50fs_reference,fsp1200_50fs_reference}
+import product.node_power_envelope {PsuAdequacy,PsuAdequate,PsuUndersized,PsuUndecidable,psu_adequacy_for_load}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_array,json_null}
+
+// Three distinct boundaries: module-to-matched-PDB, protected station-to-node,
+// and internal harness-to-board. A PSU's hot-swap capability does not make the
+// board connection live-mate capable. This module creates no fabrication/start grant.
+type InterfaceObligation = ExactPsuPdbPairAndPinout | PsuEnableAndSense | SharingAndOring
+ | StandbyAndMinimumLoad | PmbusAddressAndOwnership | PerNodeFaultIsolation
+ | KeyedRatedNodeConnector | NodeInrushAndDischarge | GroundingAndStrainRelief
+ | CoolingAndInsertionEnvelope | BoardHeaderPopulation
+
+data server_power_interface_obligations:List<InterfaceObligation> = [ExactPsuPdbPairAndPinout,PsuEnableAndSense,SharingAndOring,StandbyAndMinimumLoad,PmbusAddressAndOwnership,PerNodeFaultIsolation,KeyedRatedNodeConnector,NodeInrushAndDischarge,GroundingAndStrainRelief,CoolingAndInsertionEnvelope,BoardHeaderPopulation]
+type IntegrationStanding = ReferenceArchitectureOnly {open:List<InterfaceObligation>}
+fn integration_standing() -> IntegrationStanding {ReferenceArchitectureOnly {open:server_power_interface_obligations}}
+// Architecture requirements, not concrete interchangeable pinouts or mount geometry.
+// A mechanical insert and an electrical adapter travel together when PSU family changes.
+type CassettePowerBoundary = CommonColumnAttachment | ReplaceableMechanicalInsert
+ | PsuSpecificElectricalAdapter | CommonProtectedNodeInterface
+data cassette_power_boundaries:List<CassettePowerBoundary> = [CommonColumnAttachment,ReplaceableMechanicalInsert,PsuSpecificElectricalAdapter,CommonProtectedNodeInterface]
+type AvailabilityCase = AllModulesPresent | LargestModuleUnavailable
+
+// Pure capacity arithmetic conditional on an already-engineered compatible parallel
+// system. Worst one-module loss removes the LARGEST module. A PDB/bus/harness limit
+// remains binding in either state. This function does not authorize paralleling PSUs.
+fn available_main_power(modules:List<Watt>,path_limit:Watt,state:AvailabilityCase) -> Watt {
+ let total=fold(modules,init:0,f:(n,w)=>n+watt_count(w:w))
+ let largest=fold(modules,init:0,f:(n,w)=>if watt_count(w:w)>n {watt_count(w:w) as Int} else {n})
+ let remaining=match state {AllModulesPresent=>total LargestModuleUnavailable=>total-largest}
+ watt(count:if remaining<watt_count(w:path_limit) {remaining} else {watt_count(w:path_limit) as Int})
+}
+fn reference_main_power(reference:ServerPowerReference,input:Volt) -> Watt? {
+ let rows=filter(reference.main_ratings,r=>volt_count(v:input)>=volt_count(v:r.input_min) && volt_count(v:input)<=volt_count(v:r.input_max))
+ if count(rows)!=1 {none} else {match rows.first() {Absent=>none Present {value:r}=>Present {value:watt(count:volt_count(v:reference.main_voltage)*milliampere_count(i:r.current)/1000)}}}
+}
+// Reserve is a caller-declared engineering allowance, not an electrical-code rule.
+// overhead covers declared DC distribution/controller losses; PSU AC conversion
+// loss affects the wall feed, not a second derating of its rated DC output.
+fn required_station_power(node_loads:List<Watt>,overhead:Watt,reserve:Percent) -> Watt {
+ let sum=fold(node_loads,init:watt_count(w:overhead),f:(n,w)=>n+watt_count(w:w))
+ watt(count:(sum*(100+percent_count(p:reserve))+99)/100)
+}
+fn capacity_screen(node_loads:List<Watt>,overhead:Watt,reserve:Percent,available:Watt) -> PsuAdequacy {
+ psu_adequacy_for_load(load:required_station_power(node_loads:node_loads,overhead:overhead,reserve:reserve),rated:available)
+}
+fn example(reference:ServerPowerReference,input_v:Volt,each_node_w:Watt) -> JsonValue {
+ let required=required_station_power(node_loads:[each_node_w,each_node_w],overhead:watt(count:20),reserve:percent(count:20))
+ let available=reference_main_power(reference:reference,input:input_v)
+ json_object(members:[json_kv(key:"reference",value:json_string(s:reference.model as String)),json_kv(key:"ac_input_v",value:json_int(n:volt_count(v: input_v) as Int)),json_kv(key:"each_node_assumption_w",value:json_int(n:watt_count(w: each_node_w) as Int)),json_kv(key:"required_with_20w_overhead_and_20percent_reserve_w",value:json_int(n:watt_count(w:required) as Int)),json_kv(key:"main_12v_w",value:match available {Absent=>json_null() Present {value:w}=>json_int(n:watt_count(w:w) as Int)}),json_kv(key:"capacity_screen",value:json_string(s:match available {Absent=>"input rating unresolved" Present {value:w}=>match capacity_screen(node_loads:[each_node_w,each_node_w],overhead:watt(count:20),reserve:percent(count:20),available:w) {PsuAdequate {dc_load:_,rated:_,headroom:_}=>"capacity screen only; integration unresolved" PsuUndersized {dc_load:_,rated:_,shortfall:_}=>"insufficient capacity with declared reserve" PsuUndecidable {cause:_}=>"unresolved"}}))])
+}
+fn server_power_review() -> JsonValue {
+ let standing=match integration_standing() {ReferenceArchitectureOnly {open:o}=>count(o)}
+ json_object(members:[json_kv(key:"standing",value:json_string(s:"reference architecture; exact S15-550P1A / S550E004L mating interface is unverified")),json_kv(key:"heterogeneous_node_pairing_example",value:json_string(s:match pairing_example() {PairingCapacityOnly=>"300 W + 200 W + 100 W assigned to independent ports; capacity only" PairingRefused=>"refused"})),json_kv(key:"modular_interface_boundaries",value:json_int(n:count(cassette_power_boundaries))),json_kv(key:"open_interface_obligations",value:json_int(n:standing)),json_kv(key:"two_550w_modules_after_largest_loss_w",value:json_int(n:watt_count(w:available_main_power(modules:[watt(count:550),watt(count:550)],path_limit:watt(count:1100),state:LargestModuleUnavailable)))),json_kv(key:"examples",value:json_array(elements:[example(reference:fsp800_50fs_reference,input_v:volt(count:115),each_node_w:watt(count:300)),example(reference:fsp800_50fs_reference,input_v:volt(count:115),each_node_w:watt(count:400)),example(reference:fsp1200_50fs_reference,input_v:volt(count:115),each_node_w:watt(count:400)),example(reference:fsp1200_50fs_reference,input_v:volt(count:230),each_node_w:watt(count:400))]))])
+}
+
+// Named power cassettes and explicit branch assignments replace a fixed board:PSU ratio.
+// Budgets are usable main-rail output at the selected AC input. Interface identity
+// denotes a selected electrical connector/harness contract, not merely its shape.
+type PowerCassetteBudget {id:NonEmptyStr,interface_id:NonEmptyStr,usable_main:Watt,branch_limits:List<Watt>,overhead:Watt,reserve:Percent}
+type NodePowerAssignment {node:NonEmptyStr,power_cassette:NonEmptyStr,interface_id:NonEmptyStr,branch:Int,load:Watt}
+type PairingScreen = PairingCapacityOnly | PairingRefused
+fn pairing_screen(supplies:List<PowerCassetteBudget>,assignments:List<NodePowerAssignment>) -> PairingScreen {
+ let supply_ids_unique=all(supplies,s=>count(filter(supplies,q=>q.id==s.id))==1)
+ let assignments_valid=all(assignments,a=>{
+  let sources=filter(supplies,s=>s.id==a.power_cassette)
+  let node_unique=count(filter(assignments,b=>b.node==a.node))==1
+  let branch_unique=count(filter(assignments,b=>b.power_cassette==a.power_cassette && b.branch==a.branch))==1
+  let compatible=match sources.first() {Absent=>false Present {value:s}=>{
+   let indexed=fold(s.branch_limits,init:0,f:(n,w)=>n+1)
+   let port=fold(s.branch_limits,init:BranchLookup {index:0,matched:false},f:(r,w)=>BranchLookup {index:r.index+1,matched:r.matched || (r.index==a.branch && watt_count(w:a.load)<=watt_count(w:w))})
+   a.interface_id==s.interface_id && a.branch>=0 && a.branch<indexed && port.matched
+  }}
+  node_unique && branch_unique && count(sources)==1 && compatible
+ })
+ let totals_fit=all(supplies,s=>match capacity_screen(node_loads:map(filter(assignments,a=>a.power_cassette==s.id),a=>a.load),overhead:s.overhead,reserve:s.reserve,available:s.usable_main) {PsuAdequate {dc_load:_,rated:_,headroom:_}=>true PsuUndersized {dc_load:_,rated:_,shortfall:_}=>false PsuUndecidable {cause:_}=>false})
+ if supply_ids_unique && assignments_valid && totals_fit {PairingCapacityOnly} else {PairingRefused}
+}
+type BranchLookup {index:Int,matched:Bool}
+fn pairing_example() -> PairingScreen {
+ pairing_screen(supplies:[PowerCassetteBudget {id:"power-A",interface_id:"proposed-protected-12v",usable_main:watt(count:780),branch_limits:[watt(count:400),watt(count:400),watt(count:400)],overhead:watt(count:20),reserve:percent(count:20)}],assignments:[NodePowerAssignment {node:"node-A",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:0,load:watt(count:300)},NodePowerAssignment {node:"node-B",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:1,load:watt(count:200)},NodePowerAssignment {node:"node-C",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:2,load:watt(count:100)}])
+}

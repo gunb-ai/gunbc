@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
+import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReading, systemd_run_transient_wait_unit_command }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
@@ -118,8 +118,8 @@ fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> List<SystemdRunPrope
   )
 }
 
-fn ephemeral_slot_argv(unit: NonEmptyStr, desired: RunnerSlotDesired, command_argv: List<String>) -> List<String> {
-  systemd_run_transient_wait_unit_argv(unit: unit, properties: ephemeral_slot_properties(desired: desired), command_argv: command_argv)
+fn ephemeral_slot_command(unit: NonEmptyStr, desired: RunnerSlotDesired, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_transient_wait_unit_command(unit: unit, properties: ephemeral_slot_properties(desired: desired), command_argv: command_argv)
 }
 
 // THE ATTEMPT LABEL IS IN runs-on, AND THAT IS THE WHOLE BINDING (gunbc.runner.runner_qualification_receipt
@@ -224,7 +224,7 @@ data mtcollins1_image_leg: RouteLegStanding = LegAuthorityImplemented {
 // authorities but no production caller on this route yet, so they are LegAuthorityImplemented and
 // each names the wiring it still owes. Registration is the one JIT mint, taken over the slot sum
 // whose host-unit arm (gunbc.runner.runner_host_unit_slot host_unit_slot_for) is this route's own
-// ephemeral_slot_unit / ephemeral_slot_argv / ephemeral_slot_labels on a gunbc.managed_host host.
+// ephemeral_slot_unit / ephemeral_slot_command / ephemeral_slot_labels on a gunbc.managed_host host.
 // Deregistration is NOT left to GitHub's ephemeral removal, which holds only when the one job ran:
 // it is an ensure over every slot exit whose success is the runner absent from the organization's
 // listing, with the host-side teardown carried by gunbc.runner.runner_teardown_receipt

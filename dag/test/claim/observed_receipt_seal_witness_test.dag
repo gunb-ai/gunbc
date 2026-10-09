@@ -1,0 +1,58 @@
+module test.claim.observed_receipt_seal_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SEAL ON extdeps.external_authority ObservedReceipt, MEASURED RATHER THAN ASSERTED. An
+// ObservedByReceipt standing grades as grounded, so a module that could write one by hand would turn a
+// typed reference into evidence (review 77677). The arm carries the sole_constructor record
+// ObservedReceipt, and its one mint, observed_receipt, admits only the zero-argument folds that judge
+// committed readings. These fixtures are compiled against the live checkout: a foreign record literal
+// and a foreign call to the mint must each refuse, and a lawful foreign use -- naming the type and
+// matching the arm -- must refuse nothing, so the reds are the forgery and not an import failure.
+
+data forged_literal_source: String = "module probe_observed_receipt_forged_literal\nimport extdeps.external_authority { ObservedReceipt, CitedFigureStanding, ObservedByReceipt }\nimport std.decl_ref { decl_ref }\nfn forged() -> CitedFigureStanding {\n  ObservedByReceipt { observed: ObservedReceipt { receipt: decl_ref(module_path: \"anywhere\", decl_name: \"anything\") } }\n}\n"
+
+data forged_mint_call_source: String = "module probe_observed_receipt_forged_mint\nimport extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt }\nimport std.decl_ref { decl_ref }\nfn forged() -> CitedFigureStanding {\n  ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: \"anywhere\", decl_name: \"anything\")) }\n}\n"
+
+data lawful_source: String = "module probe_observed_receipt_lawful\nimport extdeps.external_authority { ObservedReceipt, CitedFigureStanding, ObservedByReceipt, CitedToAuthority, TranscribedUncited }\nfn observed(s: CitedFigureStanding) -> Bool {\n  match s {\n    ObservedByReceipt { observed: _ } => true\n    CitedToAuthority { authority: _ } => false\n    TranscribedUncited { read_obligation: _ } => false\n  }\n}\nfn passes(o: ObservedReceipt) -> ObservedReceipt { o }\n"
+
+// -1 on the NotRunnable arm, so a harness that never ran satisfies no witness below: every assertion
+// compares against a non-negative quantity.
+fn blocking_of_class(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn w_RED_a_hand_typed_observed_receipt_literal_refuses() -> Bool {
+  blocking_of_class(source: forged_literal_source, class: "SoleConstructorViolation") >= 1
+}
+
+test fn w_RED_a_foreign_call_to_the_observed_receipt_mint_refuses() -> Bool {
+  blocking_of_class(source: forged_mint_call_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// The positive control: same module, the type named and the arm matched, no construction.
+test fn w_naming_and_matching_the_sealed_arm_from_a_foreign_module_is_admitted() -> Bool {
+  blocking_total(source: lawful_source) == 0
+}
