@@ -3,10 +3,13 @@ module gunbc.emitted_subject_build_gate
 import std.types { Bool, String, List }
 import v2.std.algebra { list_map }
 import std.algebra { list_append }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_width { byte_size_saturating_sub }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 // THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
 //
@@ -117,19 +120,28 @@ data native_product_reuse_fresh_value: String = "fresh"
 
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
-// runner retry"). The fleet slot is the fixed hard maximum (gunbc.runner_slot_desired: 22 GiB, no
-// swap). Each subject step passes this input, which gunbc test reads as the kernel bind the
-// governor already offers claim_executor (memory_governor BIND_MEMORY_CGROUP_ENV): the step's own
-// cgroup is capped at 20 GiB, so a product build that outgrows the envelope is tripped inside the
-// step -- exit 137 -- two GiB before the slot's maximum, and the job's runner process is never the
-// kernel's victim. At exit gunbc test prints a MEMORY RECEIPT (peak, high/max events, OOM kills,
-// swap charged) from that cgroup and REFUSES the run on any OOM kill or any swap, whatever the
-// producer answered. There is no larger runner and no retry: a trip is the line stopping.
+// runner retry"). The fleet slot is the fixed hard maximum and the ONE authority for its numbers
+// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Each subject step
+// passes this input, which gunbc test reads as the kernel bind the governor already offers
+// claim_executor (memory_governor BIND_MEMORY_CGROUP_ENV): the step's own cgroup is capped at the
+// TRIP, so a product build that outgrows the envelope is tripped inside the step -- exit 137 --
+// before the slot's throttle line and before its maximum, and the job's runner process is never
+// the kernel's victim. THE TRIP IS DERIVED, NOT AUTHORED: it is the slot's MemoryHigh less the
+// headroom declared here, so this module states only how far under the throttle line the compiler
+// trips, a slot change moves the trip with it, and a step cannot be bound above the slot that holds
+// it. At exit gunbc test prints a MEMORY RECEIPT (peak, high/max events, OOM kills, swap charged)
+// from that cgroup and REFUSES the run on any OOM kill or any swap, whatever the producer answered.
+// There is no larger runner and no retry: a trip is the line stopping.
 data native_step_memory_bind_env_name: String = "GUNBC_BIND_MEMORY_CGROUP_BYTES"
-data native_step_memory_trip_bytes: Int = 21474836480
+data native_step_memory_headroom: ByteSize = byte_size(1073741824)
+
+fn native_step_memory_trip() -> ByteSize {
+  let slot = gunbc_runner_slot_desired()
+  byte_size_saturating_sub(total: slot.memory_high, reserved: native_step_memory_headroom)
+}
 
 fn native_step_memory_trip_text() -> String {
-  to_string(native_step_memory_trip_bytes)
+  to_string(byte_size_count(b: native_step_memory_trip()))
 }
 
 // THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, so a reader of an exit-137 step is told
