@@ -1143,6 +1143,26 @@ fn resolve_probe_compiler() -> Result<PathBuf, String> {
 /// rustup proxy selects its toolchain per working directory, and cargo runs the compiler from
 /// the package dir, so a probe from elsewhere could name a different toolchain than the build
 /// used. Unreadable is a refusal, not an empty identity.
+/// The compiler THIS runner resolves, admitted for a restored native product only when its
+/// `--version --verbose` identity equals the one the product was built with. A cached manifest
+/// records the producing runner's absolute compiler path, which names a file on THAT runner
+/// (`.../srv4-16/_work/_temp/cargo/bin/rustc`); spawning it elsewhere fails, and the door
+/// control then misreports a portability defect as an emitted-program defect. Identity, not
+/// path, is what the product depends on, so the path is re-resolved here and the identity is
+/// the admission check. Err is a refusal cause the caller treats as a rebuild.
+pub(crate) fn current_probe_compiler_matching(recorded_identity: &str) -> Result<String, String> {
+    let compiler = resolve_probe_compiler()?;
+    let identity = probe_compiler_identity(&compiler, Path::new("."))?;
+    if identity != recorded_identity {
+        return Err(format!(
+            "NativeProductCompilerIdentityDiffers: this runner's {} reports {identity:?}; the \
+             product was built with {recorded_identity:?}",
+            compiler.display()
+        ));
+    }
+    Ok(compiler.display().to_string())
+}
+
 fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, String> {
     let output = std::process::Command::new(compiler)
         .arg("--version")

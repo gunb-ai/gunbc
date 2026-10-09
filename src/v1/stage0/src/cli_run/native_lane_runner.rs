@@ -391,6 +391,27 @@ fn prepare_emitted_compiler_for_entry(
             }
             looked = super::native_product_cache::lookup(root, key);
         }
+        // A restored product names the PRODUCING runner's compiler path, which may not exist here.
+        // Re-resolve this runner's compiler and admit the hit only on an identical compiler identity;
+        // otherwise it is a refusal and the entry is rebuilt cold.
+        let looked = match looked {
+            super::native_product_cache::Lookup::Hit {
+                executable,
+                mut manifest,
+            } => match super::emitted_closure_compile_host::current_probe_compiler_matching(
+                &manifest.rustc_identity,
+            ) {
+                Ok(compiler_path) => {
+                    manifest.compiler_path = compiler_path;
+                    super::native_product_cache::Lookup::Hit {
+                        executable,
+                        manifest,
+                    }
+                }
+                Err(cause) => super::native_product_cache::Lookup::Refused { cause },
+            },
+            other => other,
+        };
         // ONE structured record per preparation: the final outcome and, for a miss, the restore cause.
         match &looked {
             super::native_product_cache::Lookup::Hit { .. } => {
