@@ -5895,6 +5895,21 @@ type InferGatherApplicationExtend {
   pairs: Optional<List<InhabitanceFormalArg>>
 }
 
+type InferFormalArgAtAcc {
+  i: Int
+  found: Optional<InhabitanceFormalArg>
+}
+
+fn infer_formal_arg_at(xs: List<InhabitanceFormalArg>, index: Int) -> Optional<InhabitanceFormalArg> {
+  fold(xs, init: InferFormalArgAtAcc { i: 0, found: optional_absent() }, f: fn(acc, pair) {
+    if acc.i == index {
+      InferFormalArgAtAcc { i: acc.i + 1, found: optional_present(value: pair) }
+    } else {
+      InferFormalArgAtAcc { i: acc.i + 1, found: acc.found }
+    }
+  }).found
+}
+
 fn infer_gather_extend_kept(acc: InferGatherFoldAcc) -> InferGatherApplicationExtend {
   InferGatherApplicationExtend { instances: acc.application_instances, pairs: acc.application_pairs }
 }
@@ -5947,9 +5962,10 @@ fn infer_gather_extend_application_instances(
         }
       Present { value: idx } =>
         match acc.application_pairs {
-          Absent => infer_gather_extend_kept_outcome(acc: acc)
+          Absent =>
+            outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
           Present { value: pairs } =>
-            match list_at_optional(xs: pairs, index: idx) {
+            match infer_formal_arg_at(xs: pairs, index: idx) {
               Absent =>
                 outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
               Present { value: pair } =>
@@ -7174,7 +7190,7 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
         actual: edge.target,
         instances: acc.application_instances,
         pairs: acc.application_pairs,
-        idx: optional_present(value: idx)
+        idx: idx
       ) {
         Absent => infer_frame_inherited(frame: frame)
         Present { value: rows } =>
@@ -7191,7 +7207,7 @@ fn infer_application_lambda_expected_binder_types(
   actual: Node,
   instances: List<TypeVariableInstance>,
   pairs: Optional<List<InhabitanceFormalArg>>,
-  idx: Optional<Int>
+  idx: Int
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
@@ -7199,23 +7215,19 @@ fn infer_application_lambda_expected_binder_types(
       match pairs {
         Absent => optional_absent()
         Present { value: ps } =>
-          match idx {
+          match infer_formal_arg_at(xs: ps, index: idx) {
             Absent => optional_absent()
-            Present { value: i } =>
-              match list_at_optional(xs: ps, index: i) {
+            Present { value: pair } =>
+              match infer_operand_declared_type_instantiated(
+                declared: infer_type_instantiated(t: pair.formal.declared, instances: instances),
+                instances: instances
+              ) {
                 Absent => optional_absent()
-                Present { value: pair } =>
-                  match infer_operand_declared_type_instantiated(
-                    declared: infer_type_instantiated(t: pair.formal.declared, instances: instances),
-                    instances: instances
-                  ) {
-                    Absent => optional_absent()
-                    Present { value: expected } =>
-                      if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
-                        optional_absent()
-                      } else {
-                        infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
-                      }
+                Present { value: expected } =>
+                  if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
+                    optional_absent()
+                  } else {
+                    infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
                   }
               }
           }
