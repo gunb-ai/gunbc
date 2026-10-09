@@ -33,10 +33,10 @@ fn bmc_read_telemetry() -> ProcessExit
                   )
                   return match sensors_result {
                     RestAnswered { answer: sensors_body } => ExitSuccess
-                    RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c })
+                    RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b  RestTransportRefused { cause: c } => c  RestBodyUndecodable { status: _, cause: c } => c })
                   }
                 }
-                RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c })
+                RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b  RestTransportRefused { cause: c } => c  RestBodyUndecodable { status: _, cause: c } => c })
               }
             }
         }
