@@ -521,6 +521,33 @@ fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a variant literal of a generic owner takes the expected application of that owner
+// (v1.compiler.infer variant_literal_expected_application). Seeded with a bare constructor in result
+// position, the fold's accumulator used to type as the uninstantiated declaration, so the payload
+// binding `items` carried the formal and `items |> list_push(x)` emitted a `.list_push(` method no
+// Rust type has -- E0599, extdeps.dns.domain_name parse_dns_label_list.
+fn control_collect_nonempty(xs: List<String>) -> ControlOutcome<List<String>, String> {
+  fold(xs, init: ControlGood { value: [] }, f: (acc, x) => match acc {
+    ControlBad { value: e } => ControlBad { value: e }
+    ControlGood { value: items } => if x == "" { ControlBad { value: "empty" } } else { ControlGood { value: items |> list_push(x) } }
+  })
+}
+
+fn control_collected_count(o: ControlOutcome<List<String>, String>) -> Int {
+  match o {
+    ControlGood { value: items } => items |> count
+    ControlBad { value: _ } => 0 - 1
+  }
+}
+
+fn variant_literal_application_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "variant_literal_application_collects_every_element", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "b", "c"])) == 3 },
+    NativeEmissionCase { identity: "variant_literal_application_red_empty_element_refuses", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "", "c"])) == 0 - 1 },
+    NativeEmissionCase { identity: "variant_literal_application_red_empty_list_keeps_init", held: control_collected_count(o: control_collect_nonempty(xs: [])) == 0 }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -573,11 +600,14 @@ data native_emission_expected_identities: List<String> = [
   "generic_return_red_empty_arm_answers_empty",
   "generic_return_effectful_call_answers_empty_on_absent_path",
   "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
-  "generic_empty_map_red_no_repeat_reports_nothing"
+  "generic_empty_map_red_no_repeat_reports_nothing",
+  "variant_literal_application_collects_every_element",
+  "variant_literal_application_red_empty_element_refuses",
+  "variant_literal_application_red_empty_list_keeps_init"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases())
+  concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

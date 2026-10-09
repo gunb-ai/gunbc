@@ -1853,6 +1853,39 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
   }
 }
 
+// A VARIANT LITERAL OF A GENERIC OWNER IS AN APPLICATION OF THAT OWNER WHEN ITS CONTEXT SAYS WHICH.
+// The arm above widens a variant literal to its owner DECLARATION: the expansion that still carries
+// the declaration's formals as params (`Result<ok, err>`). The expected type -- a declared return, a
+// typed let, a fold init whose fold sits in result position -- is the authored APPLICATION of the
+// same declaration (`Result<List<DnsLabel>, DomainNameParseError>`), and every reader before this
+// one dropped its arguments by resolving it back to the declaration (record_lit_expected_coproduct).
+// So the literal typed as an uninstantiated declaration, and each consumer downstream compensated
+// or failed: fold_accumulator_is_unapplied_generic re-derives an accumulator from the step's
+// return, which is itself such a literal, and extdeps.dns.domain_name parse_dns_label_list's
+// `labels |> list_push(label)` reached the emitter with `labels` typed by the formal `ok`
+// (gunbc native broker, E0599). The application is admitted only when the expected's head resolves
+// to the SAME binding as the owner (rc identity, never a spelling comparison) and the owner is
+// generic; anything else answers none and the literal keeps the declaration exactly as before.
+// ONLY A COPRODUCT OWNER. A struct literal never takes this arm: its fields are instantiated from
+// the expected type by record_lit_instantiated_fields, and its type stays the declaration, which
+// the Rust emitter's shared-carrier decision reads by the declaration's name. Measured: admitting a
+// generic STRUCT here (v2.std.artifact generated_artifact_validation, a Validation<Artifact> data
+// row) dropped its Rc carrier and was the one new error on the v2 self-host closure (E0308).
+fn variant_literal_expected_application(owner: Node, expected: Node?, scope: InferScope) -> Node? {
+  if (owner.params |> count) == 0 || owner.connective != Disj { return none }
+  match expected {
+    Present { value: exp } =>
+      if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
+      else {
+        match lookup_type_for(env: scope.type_env, node: exp) {
+          Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
+}
+
 fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
   match expected {
     Present { value: exp } =>
@@ -7066,16 +7099,15 @@ type UnresolvedMethodFrontierRow {
   dissolution: DissolutionCondition
 }
 
+// THE extdeps.dns.domain_name list_push ROW IS DELETED, observed 0 (an equality, so it is deleted,
+// not lowered), and its recorded cause was a misattribution corrected here rather than carried:
+// `ok` was not the variant's name but the owner's FORMAL. The payload `labels` was bound out of an
+// accumulator typed as the uninstantiated declaration Result<ok, err>, because the fold's
+// constructor init `Ok { value: .. }` widened to its owner declaration and dropped the expected
+// application. variant_literal_expected_application types that literal as the declared return's
+// application, so the receiver is List<DnsLabel> and the method resolves at tier0.
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
-    {
-      module_name: "extdeps.dns.domain_name",
-      method: "list_push",
-      occurrences: 1,
-      receiver_shape: "Primitive(ok)",
-      cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.",
-      dissolution: unbound_dissolution(description: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE")
-    },
     {
       module_name: "v1.compiler.trace",
       method: "map",
@@ -11195,7 +11227,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node = if is_present_ctor {
+    let applied_expected_owner = if is_present_ctor { none } else {
+      variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
+    }
+    let resolved_node = if applied_expected_owner != none {
+      applied_expected_owner.value
+    } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       match val_field {
         Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))

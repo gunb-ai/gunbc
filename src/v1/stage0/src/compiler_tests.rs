@@ -2698,7 +2698,7 @@ mod compiler_tests {
                 // row, and the call is STILL refused, because the receiver does not
                 // fail to resolve in the way the row was measured on. A (module, method)
                 // key passed this input; that is the fail-open the third component closes.
-                let listed_wrong_shape = compile_one("listed.dag", frontier_src("extdeps.dns.domain_name", "list_push"));
+                let listed_wrong_shape = compile_one("listed.dag", frontier_src("v1.compiler.trace", "map"));
                 assert!(
                     listed_wrong_shape.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. })),
                     "a declared row must NOT admit a new call in the same module on a receiver whose shape it was never measured on, got: {:?}",
