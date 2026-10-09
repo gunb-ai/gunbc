@@ -1,0 +1,63 @@
+{
+  "@odata.id": "/redfish/v1/TaskService/Tasks/0",
+  "@odata.type": "#Task.v1_4_3.Task",
+  "EndTime": "2026-10-08T01:00:28+00:00",
+  "HidePayload": false,
+  "Id": "0",
+  "Messages": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The task with Id '0' has started.",
+      "MessageArgs": [
+        "0"
+      ],
+      "MessageId": "TaskEvent.1.0.3.TaskStarted",
+      "MessageSeverity": "OK",
+      "Resolution": "None."
+    },
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The task with Id '0' has changed to progress 10 percent complete.",
+      "MessageArgs": [
+        "0",
+        "10"
+      ],
+      "MessageId": "TaskEvent.1.0.3.TaskProgressChanged",
+      "MessageSeverity": "OK",
+      "Resolution": "None."
+    },
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The task with Id '0' has changed to progress 100 percent complete.",
+      "MessageArgs": [
+        "0",
+        "100"
+      ],
+      "MessageId": "TaskEvent.1.0.3.TaskProgressChanged",
+      "MessageSeverity": "OK",
+      "Resolution": "None."
+    },
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The task with Id '0' has completed.",
+      "MessageArgs": [
+        "0"
+      ],
+      "MessageId": "TaskEvent.1.0.3.TaskCompletedOK",
+      "MessageSeverity": "OK",
+      "Resolution": "None."
+    }
+  ],
+  "Name": "Task 0",
+  "Payload": {
+    "HttpHeaders": [],
+    "HttpOperation": "POST",
+    "JsonBody": "null",
+    "TargetUri": "/redfish/v1/UpdateService/update"
+  },
+  "PercentComplete": 100,
+  "StartTime": "2026-10-08T01:00:25+00:00",
+  "TaskMonitor": "/redfish/v1/TaskService/Tasks/0/Monitor",
+  "TaskState": "Completed",
+  "TaskStatus": "OK"
+}
