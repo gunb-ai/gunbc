@@ -602,6 +602,9 @@ fn variant_literal_application_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase { identity: "variant_literal_application_collects_every_element", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "b", "c"])) == 3 },
     NativeEmissionCase { identity: "variant_literal_application_red_empty_element_refuses", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "", "c"])) == 0 - 1 },
     NativeEmissionCase { identity: "variant_literal_application_red_empty_list_keeps_init", held: control_collected_count(o: control_collect_nonempty(xs: [])) == 0 }
+  ]
+}
+
 // RULE: every match whose Rc scrutinee is dereferenced and cloned owes Clone on the generics it
 // carries, wherever the match sits (v1.compiler.emit_rust v1_fn_body_rc_match_clone_bound_param_names).
 // control_first_refusal has the shape of gunbc.product.data_class admit_data_effect: one generic
@@ -710,11 +713,7 @@ data native_emission_expected_identities: List<String> = [
   "generic_empty_map_red_no_repeat_reports_nothing",
   "variant_literal_application_collects_every_element",
   "variant_literal_application_red_empty_element_refuses",
-  "variant_literal_application_red_empty_list_keeps_init"
-]
-
-fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases())
+  "variant_literal_application_red_empty_list_keeps_init",
   "optional_type_param_holds_absent",
   "optional_type_param_red_present_is_not_absent",
   "optional_type_param_holds_present_value",
@@ -722,8 +721,7 @@ fn native_emission_cases() -> List<NativeEmissionCase> {
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), optional_type_parameter_cases())
-  concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), algebra_length_on_string_cases())
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
