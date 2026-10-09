@@ -3,22 +3,18 @@ module test.claim.tailscale_acl_phase2_design_witness
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
-  (match operator_tailscale_acl_secret_bindings.first() {
-      Present { value: v } => v.project == bmc_secrets_project_id
-      Absent => false
-    })
-    && (match operator_tailscale_acl_secret_bindings.first() {
-        Present { value: v } => v.secret == (tailscale_acl_ephemeral_token_secret_id as String)
-        Absent => false
-      })
+  match operator_tailscale_acl_secret_bindings.first() {
+    Present { value: b } => b.project == bmc_secrets_project_id && b.secret == (tailscale_acl_ephemeral_token_secret_id as String)
+    Absent => false
+  }
 }
 
 test fn witness_operator_user_principal_accessor_only() -> Bool {
   operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
-    && (match operator_tailscale_acl_secret_bindings.first() {
-        Present { value: v } => v.role == role_secretmanager_secret_accessor
-        Absent => false
-      })
+    && match operator_tailscale_acl_secret_bindings.first() {
+      Present { value: b } => b.role == role_secretmanager_secret_accessor
+      Absent => false
+    }
     && operator_principal_member() == fleet_operator_gcp_iam_member()
     && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email() as String)
     && tailscale_acl_operator_email() == fleet_operator_email

@@ -5447,7 +5447,7 @@ fn canonical_string_set(items: List<String>) -> List<String> {
 
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
-    let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
+    let module_source = match typed_module_by_name(module_name: this_module_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
       Absent => ""
     }
@@ -18793,8 +18793,12 @@ fn emit_host_source_root_read_rs(crate_name: String) -> String {
     "    let observed = runtime.block_on(", crate_name, "::gunbc_source_root_read::source_root_read(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
     "        Ok(files) => match &*files {\n",
-    "            ", crate_name, "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRead { files } =>\n",
-    "                ", crate_name, "::v2_compiler_source_authority::source_root_ingest_from_files(files.clone()).iter().cloned().collect(),\n",
+    "            ", crate_name, "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRead { files } => match &*", crate_name, "::v2_compiler_source_authority::source_root_ingest_from_files(files.clone()) {\n",
+    "                ", crate_name, "::v2_compiler_source_authority::SourceRootIngestFromFiles::SourceRootIngestFromFilesBuilt { ingest } => ingest.iter().cloned().collect(),\n",
+    "                ", crate_name, "::v2_compiler_source_authority::SourceRootIngestFromFiles::SourceRootIngestFromFilesUnrecognizedRoot { argument, path } => {\n",
+    "                    eprintln!(\"REFUSED: source root is not a dag or src/v2 tree: {} (file {})\", argument, path); std::process::exit(2);\n",
+    "                }\n",
+    "            },\n",
     "            ", crate_name, "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRefused { path, kind, cause } => {\n",
     "                eprintln!(\"REFUSED: could not read source root at {} [{}]: {}\", path, kind, cause); std::process::exit(2);\n",
     "            }\n",
@@ -20832,9 +20836,7 @@ fn emit_main_pipeline_fns(crate_name: String, pipeline_module: String) -> String
   concat(
     emit_collect_dag_files_fn(),
     emit_extract_module_path_fn(),
-    emit_extract_import_paths_fn(),
     emit_dep_pool_type_and_fns(),
-    emit_resolve_transitively_fn(crate_name: crate_name, pipeline_mod: pipeline_mod),
     emit_compile_target_helpers(crate_name: crate_name, pipeline_mod: pipeline_mod, artifact_mod: artifact_mod))
 }
 
@@ -20956,25 +20958,6 @@ fn emit_extract_module_path_fn() -> String {
     "}\n\n")
 }
 
-fn emit_extract_import_paths_fn() -> String {
-  concat(
-    "/// Extract import module paths from a .dag file's import declarations.\n",
-    "fn extract_import_paths(content: &str) -> Vec<String> {\n",
-    "    let mut imports = Vec::new();\n",
-    "    for line in content.lines() {\n",
-    "        let trimmed = line.trim();\n",
-    "        if trimmed.starts_with(\"import \") {\n",
-    "            let rest = trimmed[\"import \".len()..].trim();\n",
-    "            let module_path = rest.split('{').next().unwrap_or(rest).trim();\n",
-    "            if !module_path.is_empty() {\n",
-    "                imports.push(module_path.to_string());\n",
-    "            }\n",
-    "        }\n",
-    "    }\n",
-    "    imports\n",
-    "}\n\n")
-}
-
 fn emit_dep_pool_type_and_fns() -> String {
   concat(
     "#[derive(Clone, Copy, PartialEq, Eq)]\nenum DependencyPoolIndex {\n    Strict,\n    PrimaryPrecedence,\n}\n\n",
@@ -21044,46 +21027,6 @@ fn emit_dep_pool_type_and_fns() -> String {
     "        }\n",
     "    }\n",
     "    index\n",
-    "}\n\n")
-}
-
-fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> String {
-  concat(
-    "/// Resolve imports transitively from entry modules.\n",
-    "/// Fail-closed: panics on unreadable imported files.\n",
-    "/// Returns sources sorted by path for deterministic fixed-point convergence.\n",
-    "fn resolve_transitively_with_seen(\n",
-    "    entry_sources: Vec<(String, String)>,\n",
-    "    index: &HashMap<String, std::path::PathBuf>,\n",
-    "    mut seen: HashMap<String, Rc<", crate_name, "::", pipeline_mod, "::SourceFile>>,\n",
-    ") -> Vec<Rc<", crate_name, "::", pipeline_mod, "::SourceFile>> {\n",
-    "    let mut queue: Vec<(String, String)> = entry_sources;\n",
-    "\n",
-    "    while let Some((_path, content)) = queue.pop() {\n",
-    "        let imports = extract_import_paths(&content);\n",
-    "        for module_path in imports {\n",
-    "            if seen.contains_key(&module_path) {\n",
-    "                continue;\n",
-    "            }\n",
-    "            if let Some(file_path) = index.get(&module_path) {\n",
-    "                let file_content = std::fs::read_to_string(file_path)\n",
-    "                    .unwrap_or_else(|e| panic!(\"failed to read imported module '{}' at {:?}: {}\",\n",
-    "                        module_path, file_path, e));\n",
-    "                let rel_path = file_path.to_string_lossy().to_string();\n",
-    "                let source = Rc::new(", crate_name, "::", pipeline_mod, "::SourceFile {\n",
-    "                    path: rel_path.clone(),\n",
-    "                    content: file_content.clone(),\n",
-    "                });\n",
-    "                seen.insert(module_path, source);\n",
-    "                queue.push((rel_path, file_content));\n",
-    "            }\n",
-    "            // If not found in index, the compiler's resolve stage will report the error.\n",
-    "        }\n",
-    "    }\n",
-    "\n",
-    "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n",
-    "    result.sort_by(|a, b| a.path.cmp(&b.path));\n",
-    "    result\n",
     "}\n\n")
 }
 

@@ -50,6 +50,11 @@ import gunbc.machine_intake_subject {
 import std.types { Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
+import gunbc.ipmitool_fru_text {
+  FruCaptureGap, FruCaptureDigestAgrees, FruCaptureDigestDiffers, fru_capture_digest_check, FruFieldGapped, FruFieldGapKind, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
+  FruSubjectLinkUnobserved, FruBoundToAnotherLink, FruFieldRead, FruFieldValue, FruFieldGap, fru_field, fru_line_key, fru_line_value,
+}
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.machine_intake_megarac_media_attach {
@@ -60,7 +65,7 @@ import gunbc.machine_intake_megarac_media_attach {
 }
 
 // MT. JADE UNIT 1 BMC ACCESS. Every fact below is read from a committed capture; this module invents
-// no host, serial, or BaseboardModel arm. The unit key is not a row here: it is derived by
+// no host, serial, or board enum arm. The unit key is not a row here: it is derived by
 // gunbc.machine_intake_arrival_converge identity_bind_provisional, through bind_unit_key, from the
 // board-serial observations this module reads from the FRU and SMBIOS captures.
 
@@ -399,18 +404,10 @@ fn read_mtjade1_current_manager_read() -> CurrentManagerRead uses fs: std.resour
 // the capture is bound to this unit through Board Extra, which must equal the link observed on the
 // controller's own wire (the same binding the Redfish capture's Oem.Amp.FruInformation.BoardExtra
 // takes). A capture that fails any of these yields its typed gap, never an empty observation list.
-data mtjade1_fru_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt"
+// One home for the capture's path and digest: the board binding's receipt (gunbc.board_authority_binding).
+data mtjade1_fru_capture_path: NonEmptyStr = mtjade1_fru_receipt.artifact_path
 
-data mtjade1_fru_capture_sha256: NonEmptyStr = "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
-
-type FruCaptureGap
-  = FruCaptureUnreadable { error: String }
-  | FruCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
-  | FruFieldAbsent { field: NonEmptyStr }
-  | FruFieldRepeated { field: NonEmptyStr }
-  | FruFieldEmpty { field: NonEmptyStr }
-  | FruSubjectLinkUnobserved
-  | FruBoundToAnotherLink { board_extra: String }
+data mtjade1_fru_capture_sha256: NonEmptyStr = receipt_sha256_hex(receipt: mtjade1_fru_receipt) as NonEmptyStr
 
 // The fields the provisional identity reads, as the capture spells them. Nothing else in the capture
 // is consumed.
@@ -445,59 +442,29 @@ fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
   match gap {
     FruCaptureUnreadable { error: e } => join(["the recorded FRU capture could not be read: ", e], "") as NonEmptyStr
     FruCaptureDigestMismatch { expected: x, observed: o } => join(["the recorded FRU capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
-    FruFieldAbsent { field: f } => join(["the recorded FRU capture carries no ", f as String, " line"], "") as NonEmptyStr
-    FruFieldRepeated { field: f } => join(["the recorded FRU capture carries more than one ", f as String, " line"], "") as NonEmptyStr
-    FruFieldEmpty { field: f } => join(["the recorded FRU capture's ", f as String, " is empty"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldAbsent { field: f } } => join(["the recorded FRU capture carries no ", f as String, " line"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldRepeated { field: f } } => join(["the recorded FRU capture carries more than one ", f as String, " line"], "") as NonEmptyStr
+    FruFieldGapped { gap: FruFieldEmpty { field: f } } => join(["the recorded FRU capture's ", f as String, " is empty"], "") as NonEmptyStr
     FruSubjectLinkUnobserved => "the subject unit has no observed BMC link address to bind the FRU capture to"
     FruBoundToAnotherLink { board_extra: b } => join(["the recorded FRU capture names Board Extra ", b, ", which is not this unit's observed BMC link"], "") as NonEmptyStr
   }
 }
 
-type FruFieldRead
-  = FruFieldValue { value: NonEmptyStr }
-  | FruFieldGap { gap: FruCaptureGap }
-
-fn fru_line_key(line: String) -> String {
-  match split(s: line, delimiter: " : ").first() {
-    Present { value: k } => trim(k)
-    Absent => ""
-  }
-}
-
-fn fru_line_value(line: String) -> String {
-  trim(join(split(s: line, delimiter: " : ").skip(n: 1), " : "))
-}
-
-fn fru_field(content: String, field: NonEmptyStr) -> FruFieldRead {
-  let hits = split(s: content, delimiter: "\n") |> filter(l => fru_line_key(line: l) == (field as String))
-  match hits.first() {
-    Absent => FruFieldGap { gap: FruFieldAbsent { field: field } }
-    Present { value: line } =>
-      if length(hits) > 1 {
-        FruFieldGap { gap: FruFieldRepeated { field: field } }
-      } else if fru_line_value(line: line) == "" {
-        FruFieldGap { gap: FruFieldEmpty { field: field } }
-      } else {
-        FruFieldValue { value: fru_line_value(line: line) as NonEmptyStr }
-      }
-  }
-}
-
 fn decode_fru_fields(content: String) -> FruDecode {
   match fru_field(content: content, field: "Board Serial") {
-    FruFieldGap { gap: g } => FruRefused { gap: g }
+    FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
     FruFieldValue { value: serial } =>
       match fru_field(content: content, field: "Board Part Number") {
-        FruFieldGap { gap: g } => FruRefused { gap: g }
+        FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
         FruFieldValue { value: board_pn } =>
           match fru_field(content: content, field: "Board Product") {
-            FruFieldGap { gap: g } => FruRefused { gap: g }
+            FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
             FruFieldValue { value: product } =>
               match fru_field(content: content, field: "Chassis Part Number") {
-                FruFieldGap { gap: g } => FruRefused { gap: g }
+                FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
                 FruFieldValue { value: chassis_pn } =>
                   match fru_field(content: content, field: "Chassis Serial") {
-                    FruFieldGap { gap: g } => FruRefused { gap: g }
+                    FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
                     FruFieldValue { value: chassis_serial } =>
                       FruDecoded {
                         fields: FruIdentityFields {
@@ -517,15 +484,14 @@ fn decode_fru_fields(content: String) -> FruDecode {
 
 // THE PURE HALF: digest first, then the subject binding through Board Extra, then the fields.
 fn decode_fru_capture(content: String, expected_sha256: NonEmptyStr, link: Eui48Address?) -> FruDecode {
-  let observed = sha256_hex_of_text(text: content)
-  if observed != (expected_sha256 as String) {
-    FruRefused { gap: FruCaptureDigestMismatch { expected: expected_sha256, observed: observed } }
-  } else {
+  match fru_capture_digest_check(content: content, expected_sha256: expected_sha256) {
+  FruCaptureDigestDiffers { gap: g } => FruRefused { gap: g }
+  FruCaptureDigestAgrees =>
     match link {
       Absent => FruRefused { gap: FruSubjectLinkUnobserved }
       Present { value: l } =>
         match fru_field(content: content, field: "Board Extra") {
-          FruFieldGap { gap: g } => FruRefused { gap: g }
+          FruFieldGap { gap: g } => FruRefused { gap: FruFieldGapped { gap: g } }
           FruFieldValue { value: extra } =>
             if (extra as String) == board_extra_spelling(link: l) {
               decode_fru_fields(content: content)

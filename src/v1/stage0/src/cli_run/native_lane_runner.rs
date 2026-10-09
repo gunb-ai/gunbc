@@ -80,8 +80,9 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 /// workspace-relative like every path this harness hands the binary (its working directory is
 /// the workspace root). The receipt records the observed refusal path; the admission authority
 /// requires it non-empty, and this harness requires it to name the materialized specimen.
-const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
-const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
+const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
+const MALFORMED_MATERIALIZED_PATH: &str =
+    "target/v2-native-lane/malformed-control-root/dag/poison.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
@@ -101,7 +102,12 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 /// the text not Rust (gunbc.recurring_failure_mode closure_emit_renders_an_arrow_without_its_body).
 /// So an exit 0 now has to carry the declaration's NAME and its VALUE in text a Rust compiler
 /// ACCEPTS; anything less is that class returning, not an emission.
-const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
+const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
+const NATIVE_INGEST_COPIED_SINGLE_ROOT: &str = "fixtures/native_ingest_copied_single_root";
+const NATIVE_INGEST_SRC_IN_DAG_ROOT: &str = "fixtures/native_ingest_src_in_dag/dag";
+const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
+const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
+const NATIVE_INGEST_DUPLICATE_MODULE_ROOT: &str = "fixtures/native_ingest_duplicate_module/dag";
 const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
@@ -2566,9 +2572,127 @@ fn walk_cli_door(
         }
     }
     eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
+    walk_native_ingest_layout_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
+}
+
+/// THE LAYOUT REDS THE PARENT ASKED THE NATIVE DOOR TO EXECUTE. Claims over `v2_cli_run` supply
+/// ingest at that fold; these walks are the inhabitance that the discovering --source-root, not
+/// the file spelling, tags the tree — deleting any of the four fixture roots makes this control
+/// fail.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no
+/// deleted scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` (lane `v1-hand-queue-drain`). Net seed is
+/// this inhabitance walk over existing `run_cli_door`.
+fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let copied = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
+    let src_in_dag = workspace.join(NATIVE_INGEST_SRC_IN_DAG_ROOT);
+    let two_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
+    let two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
+    let dup = workspace.join(NATIVE_INGEST_DUPLICATE_MODULE_ROOT);
+    for (label, path) in [
+        ("copied-single-root", copied.as_path()),
+        ("src-in-dag", src_in_dag.as_path()),
+        ("two-roots-dag", two_dag.as_path()),
+        ("two-roots-v2", two_v2.as_path()),
+        ("duplicate-module", dup.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeIngestLayoutRootAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+
+    let copied_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.copied_dag".into(),
+            "--source-root".into(),
+            copied.display().to_string(),
+        ],
+    )?;
+    if copied_obs.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !copied_obs.stdout.is_empty()
+        || !copied_obs
+            .stderr
+            .contains("source root is not a dag or src/v2 tree")
+        || !copied_obs.stderr.contains(&copied.display().to_string())
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestCopiedRootNotUnrecognized — status={:?} stderr={}",
+            copied_obs.status,
+            copied_obs.stderr.trim()
+        ));
+    }
+
+    let src_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.src_in_dag".into(),
+            "--source-root".into(),
+            src_in_dag.display().to_string(),
+        ],
+    )?;
+    if src_obs.status != Some(0) || src_obs.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestSrcInDagPathMisclassified — status={:?} stderr={}",
+            src_obs.status,
+            src_obs.stderr.trim()
+        ));
+    }
+
+    let two_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.dag_entry".into(),
+            "--source-root".into(),
+            two_dag.display().to_string(),
+            "--source-root".into(),
+            two_v2.display().to_string(),
+        ],
+    )?;
+    if two_obs.status != Some(0) || two_obs.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmit — status={:?} stderr={}",
+            two_obs.status,
+            two_obs.stderr.trim()
+        ));
+    }
+
+    let dup_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.collision".into(),
+            "--source-root".into(),
+            dup.display().to_string(),
+        ],
+    )?;
+    if dup_obs.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !dup_obs.stderr.contains("closure_census_duplicate_module")
+        || !dup_obs.stderr.contains("collision_a.dag")
+        || !dup_obs.stderr.contains("collision_b.dag")
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateDidNotNameBothFiles — status={:?} stderr={}",
+            dup_obs.status,
+            dup_obs.stderr.trim()
+        ));
+    }
+    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, /src/ under dag, two roots, both-files duplicate)");
+    Ok(())
 }
 
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable

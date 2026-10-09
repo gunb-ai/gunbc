@@ -79,6 +79,7 @@ import gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall { 
 import gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall { compile_pool_provision_wired_but_unreachable_stall }
 import gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall { member_kind_door_binding_executed_by_no_claim_stall }
 import gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall { filesystem_read_outcome_node_grain_census_stall }
+import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall { authored_record_field_list_standing_for_type_population_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -253,6 +254,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   keyed_apply_patch_rebuilds_rows_per_hunk_stall,
   member_kind_door_binding_executed_by_no_claim_stall,
   filesystem_read_outcome_node_grain_census_stall,
+  authored_record_field_list_standing_for_type_population_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

@@ -85,6 +85,7 @@ test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level()
     Mtcollins1CensusImageDerived { input: i } => {
       let nested = UbuntuSeededInstallMediaBuildInput {
         stock_artifact: i.stock_artifact, nocloud_dir_on_iso: "nocloud/srv3", user_data_body: i.user_data_body, seed_files: [],
+        seed_artifacts: [],
         grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision,
       }
       install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: "nocloud/srv3") == ["/nocloud", "/nocloud/srv3"]

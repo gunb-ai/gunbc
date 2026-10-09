@@ -3129,6 +3129,16 @@ pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -
 pub(crate) fn fixture_closure_union_emit_receipt(
     union: &FixtureClosureUnion,
 ) -> Result<FixtureClosureUnionObserved, String> {
+    fixture_closure_union_emit_receipt_staged(union, &|_, _, _| {})
+}
+
+/// The receipt with a stage observer: `on_stage(stage, members, wall_ms)` is called as each stage
+/// completes, BEFORE the next stage's work starts, so a run cancelled inside the phase still
+/// names the stage that was running. The caller owns the printing (a library crate may not).
+pub(crate) fn fixture_closure_union_emit_receipt_staged(
+    union: &FixtureClosureUnion,
+    on_stage: &dyn Fn(&str, usize, u128),
+) -> Result<FixtureClosureUnionObserved, String> {
     let digest = fixture_closure_union_digest(&union.members);
     let refuse = |cause: &str, what: String| {
         format!(
@@ -3171,7 +3181,16 @@ pub(crate) fn fixture_closure_union_emit_receipt(
             })
         })
         .collect();
+    let stage_started = std::time::Instant::now();
+    let stage_line = |stage: &str| {
+        on_stage(
+            stage,
+            union.members.len(),
+            stage_started.elapsed().as_millis(),
+        );
+    };
     let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    stage_line("compile-done");
     let located = |d: &Rc<ErrorNode>| {
         format!(
             "module={} reason=`{}`",
@@ -3198,10 +3217,12 @@ pub(crate) fn fixture_closure_union_emit_receipt(
         ));
     }
     let compile_diagnostics = resolved.diagnostics.len();
+    stage_line("exclusion-done");
     let rendered = v1_compiler_compile::emit_resolved_for_target(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
+    stage_line("emit-done");
     let emitted: Vec<&Rc<ErrorNode>> = rendered
         .diagnostics
         .iter()
@@ -3529,6 +3550,161 @@ mod fixture_closure_union_tests {
 
     const GUNBC_MODULE_REACH_MEMBER: &str =
         "module efr_member\nimport extdeps.gunbc { packages }\nfn ignore() -> Int { 0 }\n";
+
+    /// RED: extending a fixture through the process-shared index left that fixture's
+    /// both-closure in the caches the claim fold reads. GREEN: the same walk still
+    /// closes (syllogism reaches its reference provider) and the shared typed cache
+    /// and both-closure edge map do not grow.
+    #[test]
+    fn fixture_closure_extension_does_not_populate_the_process_shared_index() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let typed_before = shared.typed_module_cache.borrow().len();
+        let edges_before = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let admissions_before = shared.bare_reference_admission.borrow().len();
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        let sources = crate::cli_run::resolve_virtual_source_with_imports(
+            FIXTURE_SOURCE_PATH,
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("fixture closure must still close: {e}"));
+        assert!(
+            sources.len() > 1,
+            "the syllogism specimen must pull its provider, got {}",
+            sources.len()
+        );
+        let typed_after = shared.typed_module_cache.borrow().len();
+        let edges_after = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let admissions_after = shared.bare_reference_admission.borrow().len();
+        assert_eq!(
+            typed_before, typed_after,
+            "fixture closure must not admit typed-cache rows on the process-shared index"
+        );
+        assert_eq!(
+            edges_before, edges_after,
+            "fixture closure must not grow both_closure_edges on the process-shared index"
+        );
+        assert_eq!(
+            admissions_before, admissions_after,
+            "fixture closure must not grow bare-reference admission on the process-shared index"
+        );
+    }
+
+    /// THE DISCRIMINATING RED of the class: the pre-fix loader
+    /// (`try_index_for_run_or_owned_pool` over the layer roots) grows `both_closure_edges`
+    /// on the process-shared index. If this greens, the green control above has no red.
+    #[test]
+    fn fixture_closure_extension_via_shared_index_grows_both_closure_edges() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let edges_before = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        let sources = crate::cli_run::extend_fixture_imports_on_process_shared_index(
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("pre-fix shared-index extension must still close: {e}"));
+        assert!(
+            sources.len() > 1,
+            "the syllogism specimen must pull its provider, got {}",
+            sources.len()
+        );
+        let edges_after = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        assert!(
+            edges_after > edges_before,
+            "the pre-fix route must grow both_closure_edges (before={edges_before} after={edges_after})"
+        );
+    }
+
+    /// PLAN-TIME CLOSURE of the forged-probe witness module (the changed-witness seed), not
+    /// the in-memory probe string. If MegaRAC production paths appear, planning that witness
+    /// compiled the string's imports as both-closure edges and the pin at fold-start is that
+    /// increment. If they do not, the increment is the typed graph of this module itself.
+    #[test]
+    fn forged_probe_witness_module_both_closure_excludes_string_literal_imports() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let scratch = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness_test.dag";
+        let content = std::fs::read_to_string(process_workspace_root().join(rel))
+            .unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let source = Rc::new(v1_compiler_compile::SourceFile {
+            path: rel.to_string(),
+            content,
+        });
+        let closed =
+            crate::cli_run::extend_sources_to_both_closure_fixpoint(vec![source.clone()], &scratch)
+                .unwrap_or_else(|e| panic!("witness-module closure must close: {e}"));
+        let megarac: Vec<String> = closed
+            .iter()
+            .map(|s| s.path.replace('\\', "/"))
+            .filter(|p| p.contains("megarac") && p != rel)
+            .collect();
+        assert!(
+            megarac.is_empty(),
+            "planning the witness must not both-close MegaRAC production named only inside \
+             forged_probe_source; pulled {megarac:?} (closure_len={})",
+            closed.len()
+        );
+    }
+
+    /// Scratch over an already-indexed name set is recorded as `ScratchCachesOverExistingSet`
+    /// and must not refuse as a second `NameSetIndex`.
+    #[test]
+    fn fixture_scratch_shell_is_not_a_second_index_of_the_name_set() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let before = crate::cli_run::multi_entry_index_builds();
+        let _ = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let _ = super::entry_resolve::new_multi_entry_index_scratch_over(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let after = crate::cli_run::multi_entry_index_builds();
+        assert_eq!(
+            after.len(),
+            before.len() + 2,
+            "scratches are countable constructions"
+        );
+        crate::cli_run::multi_entry_index_sharing_control(&after).unwrap_or_else(|e| {
+            panic!("scratch kind must not refuse as a second name-set index: {e}")
+        });
+    }
 
     #[test]
     fn declared_stderr_capture_channels_do_not_refuse_the_union() {

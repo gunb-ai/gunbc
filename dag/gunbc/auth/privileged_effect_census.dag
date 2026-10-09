@@ -2,7 +2,13 @@ module gunbc.auth.privileged_effect_census
 
 import gunbc.fleet.printer_federation {printer_service_account}
 import gunbc.auth.github_gcp_federation {federated_service_account_member}
-import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant }
+import gunbc.auth.standing_operator_grant {
+  group_a_dev_standing_grant, mtjade1_live_standing_grant,
+  StandingBmcSecureAccountWrite, standing_ruling_with_arm_interlock,
+}
+import gunbc.auth.mtjade1_arrival_federation {
+  mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
+}
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -26,7 +32,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
-  InterlockPending, UnconditionalStanding, InterlockedBy,
+  InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -332,24 +338,29 @@ fn route_qualification_channel_access_effect() -> PrivilegedEffect {
   }
 }
 
-// BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
-// account to a stored and exact-fetched generation and retire the published account to a break-glass
-// generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
-// value each write replaces is gone, and the published factory value is not restorable by a reapply
-// (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's accounts, so its reach is one
-// resource. No dispatched run carries it: in this cut it is modeled, with a dry realization only, and
-// the plan mint takes an operator-approved capability (gunbc.auth.approval_broker Redemption) per write,
-// bound to the exact controller, build and request.
+// BMCSECURE ACCOUNT ROTATION (cut O1b, discharge O1c-3). The Apply arm of the state-shaped BmcSecure:
+// set the managed account to a stored and exact-fetched generation and retire the published account
+// to a break-glass generation, each write over a route admitted by admit_rotation_apply.
+// IRREVERSIBLE, AND SAID SO: the value each write replaces is gone, and the published factory value is
+// not restorable by a reapply (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's
+// accounts, so its reach is one resource. arrival_converge_wet federates the archive door; it does
+// not invoke BmcSecure Apply, so this effect stays WorkloadIdentityUnbindable. Irreversibility is
+// discharged by the mtjade1 live-ops standing ruling's StandingBmcSecureAccountWrite arm (InterlockedBy
+// admit_rotation_apply via standing_ruling_with_arm_interlock), not grant-grain InterlockPending.
+// A write still needs a grounded route. Operator-approved capability remains the selected pattern
+// while the workload identity is unbindable, and is the fallback when the grant does not cover the host.
 fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
     frequency: DeviceOnce,
     reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
     surface: ApiSurface,
-    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
+    workload_identity: WorkloadIdentityUnbindable { cause: "arrival_converge_wet does not invoke BmcSecure Apply; account rotation stays capability-selected until a held writer lands in that door" as NonEmptyStr },
     minted_reach: MintsResourceScopedCredential,
     billing: NoBillingConsequence,
-    witness_discharge: NoWitnessDischarge,
+    witness_discharge: StandingRulingUnderInterlock {
+      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite),
+    },
   }
 }
 
@@ -362,10 +373,17 @@ fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
 // active hold.
 type PrivilegedEffectInterlock {
   site: DeclarationRef
-  hold: DeclarationRef
+  hold: DeclarationRef?
   refusal: DeclarationRef
   premise: NonEmptyStr
   hold_owning_roots: List<InterlockRoot>
+}
+
+fn privileged_effect_interlock_hold(interlock: StandingRulingInterlock) -> DeclarationRef? {
+  match interlock {
+    InterlockedBy { hold: i } => Present { value: i }
+    InterlockPending { obligation: _ } => none
+  }
 }
 
 // EVERY PRODUCTION ROOT THAT REACHES A GATED WRITE ON THE UNIT, and the live acquire it owns. The set
@@ -409,39 +427,72 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
+    hold: runner_lifecycle_operator_ruling.interlock,
+    refusal: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
+    premise: "the dispatch takes the slot host's unit hold proof and refuses DispatchHoldForAnotherHost unless the proof's admitted host is the slot's own; the root that acquires it is the route fold the dispatch leg owes (LegAuthorityImplemented wiring_owed), so no production root is rostered yet" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
+  PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
+    hold: privileged_effect_interlock_hold(interlock: group_a_dev_standing_grant.ruling.interlock),
     refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
     premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+    hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+    hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply") },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write"),
+    premise: "BmcSecure Apply discharges the mtjade1 standing ruling only when admit_rotation_apply is rostered against this site; InterlockPending never discharges, and a named hold that is not this site's rostered interlock does not discharge" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and, while ArrivalArchiveSlotHeld, calls arrival_wet_prefix_from_unobserved_world which refuses; it does not fold converge_mtjade1_arrival_prefix or write the prior-life archive until an observed BMC/archive world is bound" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake_arrival_run", decl_name: "arrival_converge_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+        operations: ["typed refusal of unobserved PriorLifeBoundary" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_release"),
+        ],
+      },
+    ],
+  },
 ]
 
 // A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK. InterlockPending never discharges and is
-// always a defect. UnconditionalStanding discharges without a rostered hold. InterlockedBy discharges
-// only when that hold is rostered against the same site.
+// always a defect. InterlockedBy discharges only when that hold is rostered against the same site.
 fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
-  any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
+  any(privileged_effect_interlocks, i =>
+    declaration_ref_eq(a: i.site, b: site_ref)
+      && match i.hold {
+        Present { value: h } => declaration_ref_eq(a: h, b: interlock)
+        Absent => false
+      })
 }
 
 fn ruling_discharge_interlock_defect(site_ref: DeclarationRef, ruling: StandingDestructiveAuthorization) -> DeclarationRef? {
   match ruling.interlock {
     InterlockPending { obligation: _ } => Present { value: site_ref }
-    UnconditionalStanding { reason: _ } => none
     InterlockedBy { hold: i } =>
       if ruling_interlock_is_rostered(site_ref: site_ref, interlock: i) { none } else { Present { value: site_ref } }
   }
@@ -514,6 +565,16 @@ data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
 
 // BOUND TO THE DECLARED FORK ROW: when that dissolution row retires, the fork it names is gone and
 // this reason with it.
+data arrival_archive_prefix_unobserved_world: DivergenceReason = DivergenceReason {
+  statement: "the arrival wet door acquires the archive slot then refuses unobserved PriorLifeBoundary (arrival_wet_prefix_from_unobserved_world); it does not fold the PriorLifeBoundary prefix or write the archive, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: that door binds an observed BMC/archive world and folds converge_mtjade1_arrival_prefix while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying the archive census as RealizedFederatedGrant" as NonEmptyStr),
+}
+
+data firmware_qualification_writer_unlanded: DivergenceReason = DivergenceReason {
+  statement: "the arrival wet door acquires the archive slot then refuses unobserved PriorLifeBoundary; firmware qualification has no writer under ArrivalArchiveSlotHeld, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: a successor of converge_mtjade1_arrival_prefix performs the MegaRAC per-build qualification write while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying StandingJadeFirmwareQualification as InterlockedBy arrival_archive_slot_acquire" as NonEmptyStr),
+}
+
 data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
   statement: "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr,
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on")),
@@ -593,6 +654,60 @@ data printer_operator_token_transition: DivergenceReason = DivergenceReason {
  statement:"The explicit operator compatibility entries bind an operator token file while the printer federation and guarded dispatch are unlanded. A local file is not evidence that the credential was never relayed. The physical start still requires the shared approval/IDLE/durable-claim gate; observation grants no start. This route is classified as operator session, not disguised as federation.",
  dissolution:unbound_dissolution(description:"Retire the operator-token printer entries after the main-pinned printer workflow and LAN host state are deployed and an approved print is observed under its dedicated WIF identity; owner: printer workflow lane.")
 }
+// THE OPERATOR'S 2026-10-03 RUNNER-LIFECYCLE RULING, VERBATIM, AND THE OPERATOR'S 2026-10-05 SCOPE
+// RULING BESIDE IT. The 10-03 text names registration and deregistration and is never rewritten to
+// say more. Its scope beyond those words is the operator's own second ruling, decided through
+// escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb: no agent's reading discharges a site (review
+// 76234, DESIGN §5: approval is external to the diff, so the row cites where the operator decided).
+// covers is the single source of the operator's scope: no census row may take the 10-03 discharge
+// unless covers names its site. The converse does not hold, on purpose: a covered site whose effect
+// the selection already federates on its own parameters -- registration, deregistration and the
+// reversible branch create and delete -- does not consume the discharge, and only a consumer owes a
+// rostered interlock. The dispatch, being irreversible, is the one consumer.
+// THE DEDICATED GROUP'S SELECTED-WORKFLOW PIN IS NOT UNDER EITHER RULING. ensure_qualification_ref_pin
+// is listed for its branch create; the group pin it performs in the same function is authorized by
+// its own federated standing -- the census row's own parameters, selected without any discharge --
+// and the 10-03 and 10-05 rulings say nothing about it (eager-gull-22, 2026-10-05). The interlock is the
+// host-generic unit hold (gunbc.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
+// and refuses unless it is the slot's own host's.
+data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "Runner registration and deregistration are PRE-APPROVED. Approval moves up to the workflow dispatcher (the fleet-converge run's own authorization). There is no per-registration approval step. Classify this through gunbc.auth.authorization_pattern_selection, recording that ruling rather than a per-effect ntfy approval. (operator decision, 2026-10-03)" as NonEmptyStr,
+  effect_subject: "ephemeral JIT runner lifecycle: registration and deregistration" as NonEmptyStr,
+  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+}
+
+type OperatorScopeRuling {
+  ruling: StandingDestructiveAuthorization
+  scope_text: NonEmptyStr
+  decided_on: NonEmptyStr
+  decided_through: NonEmptyStr
+  covers: List<DeclarationRef>
+}
+
+data runner_lifecycle_scope_ruling: OperatorScopeRuling = OperatorScopeRuling {
+  ruling: runner_lifecycle_operator_ruling,
+  scope_text: "decision: 'Yes, confirm the wider scope' (operator, 2026-10-05). Scope as relayed with it by quiet-stag-623 (msg_24760d96-078a-46cf-809e-2c92968dba31): the 2026-10-03 runner pre-approval covers registration, deregistration, the qualification CreateDispatch on that attempt's runner, and the per-attempt qualification/<attempt> branch create and delete" as NonEmptyStr,
+  decided_on: "2026-10-05" as NonEmptyStr,
+  decided_through: "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb" as NonEmptyStr,
+  covers: [
+    decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
+    decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "remove_qualification_ref_pin"),
+  ],
+}
+
+// A SITE IS DISCHARGED BY THE RULING ONLY WHILE THE OPERATOR'S SCOPE RULING NAMES IT. Removing a site
+// from covers turns its discharge into NoWitnessDischarge, and the selection then decides it afresh.
+fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) -> WitnessDischarge {
+  if declaration_ref_in_list(target: site_ref, refs: scope.covers) {
+    StandingRulingUnderInterlock { ruling: scope.ruling }
+  } else {
+    NoWitnessDischarge
+  }
+}
+
 data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
@@ -645,6 +760,54 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       surface: ApiSurface,
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
+    effect: PrivilegedEffect {
+      subject: "dispatch the generated fleet-converge workflow with the slot's attempt label as the input its floor job's runs-on reads, so only the JIT registration minted for that attempt can serve the job, under the gunbai-ci installation token whose App key is read over WIF, checked for actions: write" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: IrreversibleEffect { what_is_lost: "a dispatched run is durable: a second dispatch creates another run and does not undo the first, and a cancel stops it without unmaking it" as NonEmptyStr },
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: ruling_discharge_for(
+        scope: runner_lifecycle_scope_ruling,
+        site_ref: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
+      ),
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
+    effect: PrivilegedEffect {
+      subject: "create the per-attempt branch refs/heads/qualification/<attempt> once at the pinned revision (CreateRef, never moved; 422 on an existing ref is refused), read it back, and pin the dedicated runner-qualification group's selected workflow to the qualification workflow at that branch, read back; under the gunbai-ci installation token, whose contents:write reaches every ref of the repository and whose organization self-hosted-runners write reaches every runner group -- the confinement to the prefix and to the dedicated group is this module's construction, not the token's scope" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "remove_qualification_ref_pin"),
+    effect: PrivilegedEffect {
+      subject: "on every exit, delete the attempt's refs/heads/qualification/<attempt> branch and confirm it absent by readback, under the same installation token" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
@@ -722,6 +885,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: bmc_secure_account_rotation_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
+    effect: mtjade1_arrival_archive_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: arrival_archive_prefix_unobserved_world },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
+    effect: mtjade1_arrival_firmware_qualification_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: firmware_qualification_writer_unlanded },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
