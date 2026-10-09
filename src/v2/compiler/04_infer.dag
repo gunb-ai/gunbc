@@ -71,9 +71,8 @@ import std.optional {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.primitive_authority { primitive_authority_row_is_contract }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
 import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -4629,11 +4628,7 @@ fn infer_application_callee_is_primitive_authority(node: Node, resolved: Resolve
     Present { value: callee } =>
       match declaration_reference_path_optional(node: callee) {
         Absent => false
-        Present { value: path } =>
-          match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-            Present { value: row } => primitive_authority_row_is_contract(row: row, path: path)
-            Absent => false
-          }
+        Present { value: path } => symbol_index_declares_primitive_contract_at(index: resolved.symbol_index, qualified_path: path)
       }
   }
 }

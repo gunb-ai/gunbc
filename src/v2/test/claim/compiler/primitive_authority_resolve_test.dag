@@ -30,6 +30,8 @@ fn par_primitives_peer(rows: String) -> DagSourceReadWitness {
 data par_reverse_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"reverse\"\n}\n"
 data par_any_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata any_contract: PrimitiveContract = {\n  name: \"any\"\n}\n"
 data par_decoy_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  metadata: Meta\n}\n\ntype Meta {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  metadata: { name: \"reverse\" }\n}\n"
+data par_label_fn_row: String = "module std.primitives\n\ntype Label {\n  name: String\n}\n\nfn helper_contract(x: Int) -> Label {\n  Label { name: \"helper\" }\n}\n"
+data par_label_typed_row: String = "module std.primitives\n\ntype Label {\n  name: String\n}\n\ndata reverse_contract: Label = {\n  name: \"reverse\"\n}\n"
 data par_disagreeing_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"rewind\"\n}\n"
 
 fn par_reason(o: Outcome<ResolvedTree>) -> Symbol {
@@ -112,4 +114,22 @@ test fn par_ordinary_fn_at_contract_shaped_path_still_infers() -> Bool {
     p_src: "module p\n\nimport std.primitives.helpers { helper_contract }\n\nfn f(x: Int) -> Int {\n  helper_contract(x)\n}\n",
     peers: [bla_source(src: "module std.primitives.helpers\n\nfn helper_contract(x: Int) -> Int {\n  x\n}\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)]
   )) == ^accepted
+}
+
+// (9) CONTRACT-SHAPED PATH AND MATCHING NAME FIELD ARE NOT ADMISSION: an ordinary fn at std.primitives.helper_contract returning
+// Label { name: "helper" } is not a PrimitiveContract row (its declared type is Label), so it stays ordinary and infer reads its signature.
+test fn par_ordinary_fn_with_matching_name_field_stays_ordinary() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport std.primitives { Label, helper_contract }\n\nfn f(x: Int) -> Label {\n  helper_contract(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_label_fn_row)]
+  )) == ^accepted
+}
+
+// (10) AN UNRELATED DECLARATION AT std.primitives.reverse_contract WITH name "reverse" DOES NOT BIND: its declared type is not
+// PrimitiveContract, so `reverse` stays unbound at resolve.
+test fn par_wrong_typed_row_at_contract_path_does_not_bind() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_label_typed_row)]
+  )) == ^resolve_reason_unbound_symbol
 }
