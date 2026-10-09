@@ -154,11 +154,15 @@ fn standing_statements(standing: String, detail: Node, export: CandidateStanding
   })
 }
 
-fn stop_with(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> Node {
-  bash_build_stmt_list_from_nodes(stmts: concat(
+fn stop_statements(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> List<Node> {
+  concat(
     concat([cmd(ws: [lit(t: "echo"), lit(t: join(["pair-candidate: ", standing, " (", message, ")"], ""))])], standing_statements(standing: standing, detail: detail, export: export)),
     [bash_build_exit(code: "0")],
-  ))
+  )
+}
+
+fn stop_with(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> Node {
+  bash_build_stmt_list_from_nodes(stmts: stop_statements(message: message, standing: standing, detail: detail, export: export))
 }
 
 fn artifact_query_statements() -> List<Node> {
@@ -260,7 +264,7 @@ fn poll_after(state: CandidatePollState, interval: Second, export: CandidateStan
     CandidatePollConcluded { standing: s } => match s {
       CandidatePresent => []
       CandidatePending => []
-      CandidateUnavailable => [stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export)]
+      CandidateUnavailable => stop_statements(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export)
       CandidateObservationOutOfOrder => [refuse(name: "PollObservationOutOfOrder", message: "the candidate poll observed the run in an order its decision does not admit")]
     }
     AwaitingArtifactsAfterCompletion => concat(artifact_query_statements(), [
