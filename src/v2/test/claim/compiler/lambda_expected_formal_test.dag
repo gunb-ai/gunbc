@@ -6,7 +6,6 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Edge, Node, Symbol, Transform }
-import v2.std.algebra { list_map }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty }
 import std.types { Bool, String }
@@ -67,9 +66,18 @@ test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
 // SUPPLIED TREE: the callee edge and the actual edge share one Node. Positional index, not
 // target equality, must still judge that actual at Int; a function does not inhabit Int.
 fn lef_rewrite_child_edges(xs: List<Edge>) -> List<Edge> {
-  list_map(xs: xs, f: fn(e) {
-    Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) }
-  })
+  match xs {
+    Empty => Empty
+    Cons { head: e, tail: rest } =>
+      Cons {
+        head: Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) },
+        tail: lef_rewrite_child_edges(xs: rest)
+      }
+  }
+}
+
+fn lef_lambda_then_value_terminal_reason() -> Symbol {
+  lef_infer_terminal(src: lef_lambda_then_value_src)
 }
 
 fn lef_share_callee_as_actual(n: Node) -> Node {
