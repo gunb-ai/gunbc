@@ -5,11 +5,11 @@ As of 2026-10-09; it includes the operator's side-chat dispositions. There are 1
 | Disposition | PRs | What happens |
 | --- | --- | --- |
 | In the mega branch | 29 | Lands when #13641 lands |
-| Pending fold | 66 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
+| Pending fold | 67 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 38 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
-| Unreported, owned by a live lane | 10 | Waiting on that lane's report |
-| Orphans: no live owner | 14 | Triaged by the closeout: fold if done and clean, otherwise close |
+| Left out | 40 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
+| Unreported, owned by a live lane | 8 | Waiting on that lane's report |
+| Orphans: no live owner | 13 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
 ## In the mega branch
@@ -115,6 +115,7 @@ These are merged into `integration/v1-closeout`.
 | [#13625](https://github.com/gunb-ai/gunbc/pull/13625) | CAX41 guest onboarding; fleet-converge from a branch after a per-run n | draft / BLOCKED | side chat, draft; folds when CI green (touches fleet-converge.yml) |
 | [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / CLEAN | side chat, folds when CI green |
 | [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / CLEAN | side chat, folds when CI green |
+| [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | side chat, in progress: kernel activation/readback, VM commissioning + SSH, release/reuse/expiry checks, CI |
 | [#13597](https://github.com/gunb-ai/gunbc/pull/13597) | Make the crate partitioner the only emitted-Rust layout; delete single | draft / DIRTY | side chat, not yet done: needs a main merge + regen, the remaining acceptance runs, and a PR body update; folds once marked ready |
 | [#13610](https://github.com/gunb-ai/gunbc/pull/13610) | walk_cgroup, entry_presence: tail-position self-recursion so both modu | ready / CLEAN | via silent-lark-156 |
 | [#13472](https://github.com/gunb-ai/gunbc/pull/13472) | Realize rust shell stderr-capture channels (unblocks #13217 floor) | ready / DIRTY | via silent-lark-156 |
@@ -171,6 +172,8 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13339](https://github.com/gunb-ai/gunbc/pull/13339) | D2 follow-up: role-singleton observation by host self-report (ssh prob | draft / CLEAN | silent-lark: left out |
 | [#13217](https://github.com/gunb-ai/gunbc/pull/13217) | Deployment risk D2: role-following singletons resolve the prod-role ho | ready / DIRTY | silent-lark: left out |
 | [#13429](https://github.com/gunb-ai/gunbc/pull/13429) | Workspace pack: same-size synthetic transcript placeholders; withhold  | ready / DIRTY | superseded by 13442 |
+| [#13617](https://github.com/gunb-ai/gunbc/pull/13617) | Key native producer_compiler on the running seed executable | draft / BLOCKED | swift-bat-828 (error): seed producer_compiler provenance; author paused it (v1/CI programme); legacy |
+| [#13629](https://github.com/gunb-ai/gunbc/pull/13629) | Floor: reach differential reuses the prepared required_floor authority | draft / BLOCKED | swift-bat-828 (error): v1 floor reach-differential reuse; legacy (the floor is retired by the v1 withdrawal) |
 | [#13578](https://github.com/gunb-ai/gunbc/pull/13578) | Generalize hosted OpenAI-compat failures (one classifier, no retry) | ready / CLEAN | swift-ibex: left out (RC) |
 
 ## Unreported, owned by a live lane
@@ -184,8 +187,6 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13642](https://github.com/gunb-ai/gunbc/pull/13642) | Census: quoted-key brace is not a record field at resolve, not lowerin | ready / BLOCKED | sharp-raven-357 (session sharp-raven-357) |
 | [#13428](https://github.com/gunb-ai/gunbc/pull/13428) | Carry the alias declaration: its name resolves to its target (ruling B | ready / CLEAN | sharp-raven-357 (session sharp-raven-357) |
 | [#13639](https://github.com/gunb-ai/gunbc/pull/13639) | Deployment risk conformance: one environment model for the repo | draft / BLOCKED | silent-lark-156 (session silent-lark-156) |
-| [#13629](https://github.com/gunb-ai/gunbc/pull/13629) | Floor: reach differential reuses the prepared required_floor authority | draft / BLOCKED | swift-bat-828 (session swift-bat-828) |
-| [#13617](https://github.com/gunb-ai/gunbc/pull/13617) | Key native producer_compiler on the running seed executable | draft / BLOCKED | swift-bat-828 (session swift-bat-828) |
 | [#13212](https://github.com/gunb-ai/gunbc/pull/13212) | Starter eval set: .dag modeling and DESIGN.md adherence, graded mechan | ready / CLEAN | valiant-crab-775 (session valiant-crab-775) |
 
 ## Orphans
@@ -194,7 +195,6 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | opened 2026-10-09; proposed: close (record remaining work first) |
 | [#13603](https://github.com/gunb-ai/gunbc/pull/13603) | Fix fleet convergence pool display name length | draft / CLEAN | opened 2026-10-09; proposed: close (record remaining work first) |
 | [#13565](https://github.com/gunb-ai/gunbc/pull/13565) | ROADMAP #117: Realize node HTTP serve smoke as typed ops, not heredoc | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13564](https://github.com/gunb-ai/gunbc/pull/13564) | argv dissolution: replace hand-typed id/hostname argv with typed build | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
@@ -273,6 +273,10 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 ### Lanes not yet reported
 
 eager-gull-22, gentle-dove-36, sharp-raven-357 and silent-lark-156 are finishing their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
+
+### swift-bat-828 branches (checked by a side chat)
+
+#13505, #13542, #13551, #13562 and #13619 are merged. #13628 is closed. `swift-bat-828/lens-explicit-imports` is identical to main and has no PR, so the branch can be deleted.
 
 ## Notes
 
