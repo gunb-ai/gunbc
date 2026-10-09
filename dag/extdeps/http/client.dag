@@ -82,96 +82,101 @@ service http.Client {
   operation GetLocalhostBounded {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      timeout_seconds: http_client_localhost_max_time_flag()
+    transport shell {
+      argv: [
+        "curl",
+        "-fsS",
+        "--connect-timeout",
+        http_client_localhost_connect_timeout_flag(),
+        "--max-time",
+        http_client_localhost_max_time_flag(),
+        "{url}",
+      ]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client bounded localhost GET failed"
     }
     mock_response {
-      0 => { body: "" } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
     }
   }
 
   operation GetBounded {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      timeout_seconds: http_client_localhost_max_time_flag()
+    transport shell {
+      argv: [
+        "curl",
+        "-fsS",
+        "--connect-timeout",
+        http_client_localhost_connect_timeout_flag(),
+        "--max-time",
+        http_client_localhost_max_time_flag(),
+        "{url}",
+      ]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client bounded GET failed"
     }
     mock_response {
-      0 => { body: "" } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
     }
   }
 
   operation GetWithin {
     requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fsS", "--max-time", "{max_seconds}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client GET within a caller deadline failed"
     }
     mock_response {
-      0 => { body: "" } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
     }
   }
 
   operation GetWithinUnixSocket {
     requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      unix_socket: socket,
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--max-time", "{max_seconds}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client GET over a unix socket within a caller deadline failed"
     }
     mock_response {
-      0 => { body: "" } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
+      0 => { body: "", success: false } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
     }
   }
 
   operation StatusWithin {
     requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { status: String }
+    output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%\{http_code}", "--max-time", "{max_seconds}", "{url}"]
     }
-    // A STATUS IS AN ANSWER; ONLY NO STATUS IS SILENCE. The shell realization deliberately
-    // left out -f so that a 401 or 500 means something answered. The refusal arms are for
-    // transport failures (no response arrived).
-    response {
-      2xx => String
-      4xx => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client status GET within a caller deadline received no response"
     }
     mock_response {
-      0 => { status: "000" } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
+      0 => { status: "", success: false, exit_code: 28 } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
     }
   }
 
@@ -183,14 +188,12 @@ service http.Client {
       body: String
     }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      query: query,
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "{url}", "--data", "{query}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client GET with query within deadlines failed"
     }
     mock_response {
       0 => { success: false, body: "" } "hermetic: no live HTTP endpoint"
@@ -206,18 +209,12 @@ service http.Client {
       body: String
       stderr: String
     }
-    transport rest {
-      method: POST,
-      path: "{url}",
-      body: { json: request_body },
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
     }
-    // The output carries curl transport exit codes (6 resolve, 7 connect, 28 timeout, 35 TLS, etc.)
-    // HTTP status is in the body for non-2xx. 2xx arm: success=true, exit_code=0.
-    response {
-      2xx => { exit_code: 0, success: true, body: String, stderr: "" }
-      4xx => { exit_code: Int, success: false, body: String, stderr: "" }
-      5xx => { exit_code: Int, success: false, body: String, stderr: "" }
+    exit {
+      0 => Unit
+      nonzero => String "http client POST within deadlines failed"
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -233,17 +230,12 @@ service http.Client {
       body: String
       stderr: String
     }
-    transport rest {
-      method: POST,
-      path: "{url}",
-      unix_socket: socket,
-      body: { json: request_body },
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
     }
-    response {
-      2xx => { exit_code: 0, success: true, body: String, stderr: "" }
-      4xx => { exit_code: Int, success: false, body: String, stderr: "" }
-      5xx => { exit_code: Int, success: false, body: String, stderr: "" }
+    exit {
+      0 => Unit
+      nonzero => String "http client POST over unix socket within deadlines failed"
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live socket" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -259,8 +251,7 @@ service http.Client {
       method: POST,
       path: "{url}",
       headers: { "Content-Type": "application/json" },
-      body: { from_file: request_body_file },
-      timeout_seconds: max_seconds
+      body: { from_file: request_body_file }
     }
     response {
       2xx => String
@@ -275,8 +266,7 @@ service http.Client {
       method: POST,
       path: "{url}",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { from_file: request_body_file },
-      timeout_seconds: max_seconds
+      body: { from_file: request_body_file }
     }
     response {
       2xx => String
@@ -304,14 +294,12 @@ service http.Client {
     input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
     output { body: String }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      headers: { "Accept": accept },
-      timeout_seconds: max_seconds
+    transport shell {
+      argv: ["curl", "-fL", "--max-time", "{max_seconds}", "-H", "Accept: {accept}", "-H", "@{header_file}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client GET with redirects and header file failed"
     }
     mock_response {
       0 => { body: "" } "hermetic: no live registry; observation refuses rather than fabricate a body"
@@ -322,25 +310,20 @@ service http.Client {
     requires Network
     input { url: NonEmptyStr, connect_time: Second, max_time: Second }
     output {
-      status: String
-      answered: Bool
-      exit_code: Int
+      status: String from "stdout",
+      success: Bool from "exit_success",
+      exit_code: Int from "exit_code"
     }
     readonly
-    transport rest {
-      method: GET,
-      path: "{url}",
-      timeout_seconds: http_client_max_time_flag(max_time: max_time)
+    transport shell {
+      argv: ["curl", "-fsS", "--connect-timeout", http_client_max_time_flag(max_time: connect_time), "--max-time", http_client_max_time_flag(max_time: max_time), "-o", "/dev/null", "-w", "%\{http_code}", "{url}"]
     }
-    // PROBE SEMANTICS: 2xx = answered=true (exit_code=0), 4xx/5xx = answered=false with real status.
-    // Transport failures (curl exit 7, 28, etc.) go to RestRefused, not here.
-    response {
-      2xx => { status: String, answered: true, exit_code: 0 }
-      4xx => { status: String, answered: false, exit_code: 0 }
-      5xx => { status: String, answered: false, exit_code: 0 }
+    exit {
+      0 => Unit
+      nonzero => String "http client probe within deadlines received no response"
     }
     mock_response {
-      0 => { status: "000", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
+      0 => { status: "000", success: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
 }
