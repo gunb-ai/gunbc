@@ -369,14 +369,10 @@ fn prepare_emitted_compiler_for_entry(
                 }) => {
                     eprintln!(
                         "v2-native-route: native product NativeProductProducerUnobserved \
-                     cause={} — {cause}; counted as a MISS, building cold",
-                        super::native_product_cache::PRODUCER_UNOBSERVED_CAUSE,
+                     cause={cause}; counted as a MISS, building cold",
                     );
                     super::native_product_cache::record_unkeyed_outcome(
-                        root,
-                        entry,
-                        "miss",
-                        super::native_product_cache::PRODUCER_UNOBSERVED_CAUSE,
+                        root, entry, "miss", &cause,
                     );
                     None
                 }

@@ -23,10 +23,16 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is the running seed executable itself (`/proc/self/exe` bytes). That captures
-//! sources, profile, `.cargo/config.toml` overrides, flags and features by construction. Seed
-//! builds remap the checkout path (`--remap-path-prefix=<checkout>=.`) so the same tree hashes
-//! the same across runner directories. An unreadable executable is a counted MISS
+//! the producer is the running seed executable itself (`/proc/self/exe` bytes) with the
+//! build-script provenance string masked. `src/v1/stage0/build.rs` has exactly one
+//! `cargo:rustc-env`: `GUNBC_BUILD_IDENTITY` (git HEAD, or `GUNBC_MATERIALIZED_TREE_IDENTITY`
+//! when that input is set — not a second embed). That string is baked into the image, so a
+//! docs-only commit would otherwise re-key every native product (the same defect
+//! `closure_identity::transform_content_digest` documents and still carries). The axis replaces
+//! every occurrence of `env!("GUNBC_BUILD_IDENTITY")` with a same-length placeholder, then
+//! hashes. Empty identity, identity shorter than a git SHA (40 bytes), or zero occurrences is a
+//! counted MISS (`producer_identity_unmasked`). Seed builds remap checkout, isolated cargo home
+//! and rustup home so host paths do not remain. An unreadable executable is a counted MISS
 //! (`producer_image_unreadable`), never a lane refusal and never a whole-tree fallback. The
 //! closure and the census-only declaration universe are hashed at content grain (a span-insensitive
 //! heads hash would narrow the latter and is a declared next step, not assumed here).
@@ -51,6 +57,11 @@ const RECEIPT: &str = "receipt.jsonl";
 pub(super) const COMMITTED_MARKER: &str = "committed-this-run";
 /// Counted MISS cause when the running seed image cannot be read for `producer_compiler`.
 pub(super) const PRODUCER_UNOBSERVED_CAUSE: &str = "producer_image_unreadable";
+/// Counted MISS cause when `GUNBC_BUILD_IDENTITY` cannot be masked out of the seed image.
+pub(super) const PRODUCER_IDENTITY_UNMASKED_CAUSE: &str = "producer_identity_unmasked";
+/// Git SHA length; shorter provenance would collide inside ordinary binary bytes.
+const MIN_EMBEDDED_PROVENANCE_LEN: usize = 40;
+const PROVENANCE_PLACEHOLDER_BYTE: u8 = b'*';
 
 /// The axes in declared order, each already a SHA-256 hex digest of its own preimage.
 #[derive(Debug, Clone)]
@@ -68,8 +79,8 @@ fn hex(bytes: &[u8]) -> String {
 /// the key would have been.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DeriveKeyError {
-    /// The running seed executable could not be read. Named cause `producer_image_unreadable`.
-    /// Never a lane refusal.
+    /// Producer image unreadable or provenance unmaskable. Named causes
+    /// `producer_image_unreadable` / `producer_identity_unmasked`. Never a lane refusal.
     ProducerInputsUnobserved {
         cause: String,
     },
@@ -94,14 +105,41 @@ fn running_seed_image() -> Result<PathBuf, DeriveKeyError> {
     std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))
 }
 
-/// Producer axis: the running seed. An unreadable image is `ProducerInputsUnobserved`.
+fn mask_embedded_provenance(image: &[u8], identity: &str) -> Result<Vec<u8>, DeriveKeyError> {
+    if identity.is_empty() || identity.len() < MIN_EMBEDDED_PROVENANCE_LEN {
+        return Err(miss(PRODUCER_IDENTITY_UNMASKED_CAUSE));
+    }
+    let needle = identity.as_bytes();
+    let mut out = image.to_vec();
+    let mut hits = 0usize;
+    let mut i = 0usize;
+    while i + needle.len() <= out.len() {
+        if &out[i..i + needle.len()] == needle {
+            for byte in &mut out[i..i + needle.len()] {
+                *byte = PROVENANCE_PLACEHOLDER_BYTE;
+            }
+            hits += 1;
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    if hits == 0 {
+        return Err(miss(PRODUCER_IDENTITY_UNMASKED_CAUSE));
+    }
+    Ok(out)
+}
+
+/// Producer axis: the running seed with build identity masked. Unreadable image or
+/// unmaskable provenance is `ProducerInputsUnobserved`.
 fn producer_axis(_workspace: &Path) -> Result<String, DeriveKeyError> {
     let path = running_seed_image()?;
-    let bytes = std::fs::read(&path).map_err(|e| miss(format!("{}: {e}", path.display())))?;
+    let bytes = std::fs::read(&path).map_err(|_| miss(PRODUCER_UNOBSERVED_CAUSE))?;
     if bytes.is_empty() {
-        return Err(miss(format!("{} is empty", path.display())));
+        return Err(miss(PRODUCER_UNOBSERVED_CAUSE));
     }
-    Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
+    let masked = mask_embedded_provenance(&bytes, env!("GUNBC_BUILD_IDENTITY"))?;
+    Ok(format!("{:x}", sha2::Sha256::digest(&masked)))
 }
 
 fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>]) -> String {
@@ -698,12 +736,55 @@ mod tests {
     }
 
     #[test]
-    fn producer_axis_is_the_sha256_of_the_running_executable() {
+    fn mask_replaces_every_identity_occurrence_with_a_same_length_placeholder() {
+        let id = "a".repeat(40);
+        let image = [b"pre", id.as_bytes(), b"mid", id.as_bytes(), b"post"].concat();
+        let masked = mask_embedded_provenance(&image, &id).unwrap();
+        assert_eq!(masked.len(), image.len());
+        assert!(!masked.windows(id.len()).any(|w| w == id.as_bytes()));
+        assert_eq!(
+            masked
+                .windows(40)
+                .filter(|w| w.iter().all(|b| *b == b'*'))
+                .count(),
+            2
+        );
+        assert_ne!(
+            format!("{:x}", sha2::Sha256::digest(&masked)),
+            format!("{:x}", sha2::Sha256::digest(&image))
+        );
+    }
+
+    #[test]
+    fn empty_short_or_absent_identity_is_a_counted_miss() {
+        let image = b"no-identity-here";
+        assert_eq!(
+            mask_embedded_provenance(image, "").unwrap_err(),
+            miss(PRODUCER_IDENTITY_UNMASKED_CAUSE)
+        );
+        assert_eq!(
+            mask_embedded_provenance(image, &"a".repeat(39)).unwrap_err(),
+            miss(PRODUCER_IDENTITY_UNMASKED_CAUSE)
+        );
+        assert_eq!(
+            mask_embedded_provenance(image, &"b".repeat(40)).unwrap_err(),
+            miss(PRODUCER_IDENTITY_UNMASKED_CAUSE)
+        );
+    }
+
+    #[test]
+    fn producer_axis_is_the_sha256_of_the_masked_running_executable() {
         let path = running_seed_image().unwrap();
         let bytes = std::fs::read(&path).unwrap();
+        let identity = env!("GUNBC_BUILD_IDENTITY");
+        let masked = mask_embedded_provenance(&bytes, identity).unwrap();
+        assert_ne!(
+            format!("{:x}", sha2::Sha256::digest(&bytes)),
+            format!("{:x}", sha2::Sha256::digest(&masked))
+        );
         assert_eq!(
             producer_axis(&super::super::process_workspace_root()).unwrap(),
-            format!("{:x}", sha2::Sha256::digest(&bytes))
+            format!("{:x}", sha2::Sha256::digest(&masked))
         );
     }
 
