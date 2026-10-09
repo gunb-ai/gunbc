@@ -12,7 +12,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max }
 import gunbc.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
-import gunbc.runner_microvm_slot_controller { bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused }
+import gunbc.runner_microvm_slot_controller { bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused, refusal_text }
 import gunbc.runner_microvm_slot_unit { microvm_controller_root, microvm_controller_gunbc_binary, microvm_slot_unit_instance_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
 import gunbc.auth.approval_broker_cutover { observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
@@ -106,9 +106,9 @@ fn workspace_commissioning_candidate_slot(slot: RunnerSlotIdentity, revision: Co
             TreeReceiptMalformed { detail: _ } => WorkspaceCommissioningFleetRefused { reason: "installed tree receipt is unreadable" }
           }
         }
-        WorkspaceInitialSanitationUnavailable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "slot sanitation is unreadable" }
+        WorkspaceInitialSanitationUnavailable { reason } => WorkspaceCommissioningFleetRefused { reason: concat("slot sanitation is unreadable: ", reason) }
       }
-      NetworkSubjectRefused { refusal: _ } => WorkspaceCommissioningFleetRefused { reason: "slot network subject is unavailable" }
+      NetworkSubjectRefused { refusal } => WorkspaceCommissioningFleetRefused { reason: concat("slot network subject is unavailable: ", refusal_text(r: refusal)) }
     }
     MicrovmHostBindingRefused { cause: _ } => WorkspaceCommissioningFleetRefused { reason: "commissioning candidate is not on its host" }
   }
@@ -188,9 +188,9 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
                     }
                     WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "controller prestate is unreadable" }
                   } }
-                  WorkspaceInitialSanitationUnavailable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "fresh sanitation is unreadable" }
+                  WorkspaceInitialSanitationUnavailable { reason } => WorkspaceCommissioningFleetRefused { reason: concat("fresh sanitation is unreadable: ", reason) }
                 }
-                NetworkSubjectRefused { refusal: _ } => WorkspaceCommissioningFleetRefused { reason: "network subject is unreadable" }
+                NetworkSubjectRefused { refusal } => WorkspaceCommissioningFleetRefused { reason: concat("network subject is unreadable: ", refusal_text(r: refusal)) }
               } }
             }
             WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "executor journal is unreadable" }

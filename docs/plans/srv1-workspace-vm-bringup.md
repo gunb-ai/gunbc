@@ -315,3 +315,28 @@ uses an existing allowed directory, so it distinguishes admission refusal from a
 missing-directory failure. It runs as an ordinary user in a fresh scratch directory;
 this is manual evidence, not an enrolled CI claim. The live network apply must
 still pass with the repaired writer before commissioning.
+
+Controller installation at `83dcbb4d6ab51e0e05a519dd930dc41ef0539eaa` passes
+its complete readback. The fresh network plan has identical staged bytes and
+operation argv to the reviewed `682c32644e8` plan. Network apply now passes,
+including replacement of existing staging files; its live nft digest is
+`da7a00c54f267b39227a02557ebef28c90282376673cef9c78784caca7479099`.
+Independent readback observes `gunbc-tap13.disable_ipv6=1`, IPv4 forwarding enabled,
+and both `gunbc-microvm-nft.service` and fabric storage active with successful
+results. The initializer passes and publishes root:root `0644`
+`/var/lib/gunbc/microvm-network/converged-slot-network.txt`, generation
+`local-83dcbb4d6ab51e0e05a519dd930dc41ef0539eaa-2026-10-09T07:45:19Z`.
+Its live readings cover all ten enrolled TAPs with IPv6 disabled and count zero
+helper attachments and expectations across all observed surfaces. The initial
+commissioning plan refused before writing an artifact; no commissioning effect or
+allocation has started. Its coordinator compiled in 451 seconds and its installed
+privileged observer in 327 seconds. The observer stopped immediately after reading
+the network receipt. The controller supplied `fabric_execution_slot_identities()`
+to the parser, which admits only slot 13 on srv1; the publisher's enrolled network
+population also contains TAPs 1 through 9. The reader now takes the host and derives
+the network population from the same deployment authority as the publisher.
+Workload admission remains a separate controller check. The regression fixture is
+the actual published ten-slot receipt, including the predecessor's rejecting parse.
+All three focused checks pass: the complete host population reaches the workspace
+consumer, another receipt host refuses, and an unenrolled network slot refuses.
+Commissioning diagnostics now retain the underlying network/sanitation refusal.

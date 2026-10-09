@@ -180,7 +180,7 @@ fn workspace_dispatch_plan_cli() -> CliWireResponse {
       workspace_dispatch_refused(reason: "plan revision is malformed")
     } else { match workspace_commissioning_candidate(host: host as NonEmptyStr, revision: revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => CliWirePrintable { bytes: workspace_commissioning_basis_rows(basis: basis), exit: ExitSuccess }
-      WorkspaceCommissioningFleetRefused { reason: _ } => workspace_dispatch_refused(reason: "privileged commissioning observation refused")
+      WorkspaceCommissioningFleetRefused { reason } => workspace_dispatch_refused(reason: concat("privileged commissioning observation refused: ", reason))
     } }
   }
 }

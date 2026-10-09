@@ -186,7 +186,7 @@ fn network_read_outcome(transport: HostEffectTransport, op: ExecutorPrivilegedOp
 fn runner_microvm_network_initialize_local_wet(host: String, expected_revision: String) -> ProcessExit {
   match microvm_network_local_subject(host: host, expected_revision: expected_revision) {
     MicrovmNetworkApplyRefused { cause } => exit_failure(reason: cause)
-    MicrovmNetworkApplyAdmitted { subject } => match read_network_receipt(candidates: subject.slots) {
+    MicrovmNetworkApplyAdmitted { subject } => match read_network_receipt(host: subject.host) {
       StoredNetworkReceiptUnreadable { reason } => exit_failure(reason: reason)
       NetworkReceiptPresent { receipt } => initialize_local_network_receipt(subject: subject, generation: receipt.generation as NonEmptyStr)
       NetworkReceiptAbsent => match clock_now_probed_at() {
@@ -206,7 +206,7 @@ fn initialize_local_network_receipt(subject: MicrovmNetworkApplySubject, generat
   if !artifact.success { exit_failure(reason: artifact.error) }
   else { match outcome {
     ConvergeRefused { refusal: _ } => exit_failure(reason: receipt_text(o: outcome))
-    ConvergedNetwork { receipt } => match publish_initial_network_receipt(receipt: receipt, candidates: subject.slots) {
+    ConvergedNetwork { receipt } => match publish_initial_network_receipt(receipt: receipt) {
       NetworkReceiptPresent { receipt: _ } => ExitSuccess
       NetworkReceiptAbsent => exit_failure(reason: "network receipt was not published")
       StoredNetworkReceiptUnreadable { reason } => exit_failure(reason: reason)

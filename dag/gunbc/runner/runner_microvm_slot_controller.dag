@@ -407,7 +407,7 @@ type NetworkSubjectResolution
 fn resolve_network_subject(slot: RunnerSlotIdentity) -> NetworkSubjectResolution
   uses fs: Filesystem
 {
-  match read_network_receipt(candidates: fabric_execution_slot_identities()) {
+  match read_network_receipt(host: slot.host) {
     NetworkReceiptAbsent => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: "network receipt is absent" } }
     StoredNetworkReceiptUnreadable { reason } => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: reason } }
     NetworkReceiptPresent { receipt } => match slot_network_sanitation_subject(slot: slot, receipt: receipt) {
