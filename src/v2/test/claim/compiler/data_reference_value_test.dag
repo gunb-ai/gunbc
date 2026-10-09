@@ -1,8 +1,9 @@
 module v2.test.claim.compiler.data_reference_value
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
-import v2.test.claim.callexec.declaration_reference_eval { CrefReading, cref_assemble, cref_executes_to, cref_reading }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree, fmi_reason }
+import v2.compiler.infer { infer_reference_value_type }
+import v2.test.claim.callexec.declaration_reference_eval { cref_assemble, cref_executes_to, cref_reading }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.node { Arrow, Atom, Symbol, Authored, ConstantMemberEdge, Conj, Edge, Node, Positional, TypeNode, core_edge, edge_is_core, node_subtree_nodes }
 import v2.std.node_query { arrow_constant_member_codomain }
@@ -31,8 +32,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // constant, a String constant read by a String constant, and a fn whose body is a constant reference.
 data drv_source: String = "module p\n\ndata k: Int = 7\n\ndata j: Int = k\n\ndata t: String = \"t\"\n\ndata u: String = t\n\nfn callee() -> Int {\n  k\n}\n\nfn consumer() -> Int {\n  callee()\n}\n"
 
+// ONE ASSEMBLY, read whole by every real-path row below (the infer rows, the marker row and the eval row),
+// so the floor fills it once. The call-execution route's assembly is used because the eval row needs
+// exactly the tree that route evaluates, and this source needs no peer modules.
 fn drv_assembled() -> Outcome<ResolvedTree> {
-  fmi_assemble(src: drv_source)
+  cref_assemble(src: drv_source)
 }
 
 fn drv_infer_reason(o: Outcome<ResolvedTree>) -> Symbol {
@@ -91,13 +95,20 @@ test fn drv_lowering_marks_the_four_data_arrows_and_not_the_two_fn_arrows() -> B
 // VALUE 7 -- not a closure, and not the binding-miss refusal a value-position declaration reference took
 // before. Same source, same assembly route the call-execution rows use (cref_assemble admits `p`).
 test fn drv_a_data_reference_evaluates_to_its_value() -> Bool {
-  cref_executes_to(r: cref_reading(o: cref_assemble(src: drv_source), name: ^callee), n: 7)
+  cref_executes_to(r: cref_reading(o: drv_assembled(), name: ^callee), n: 7)
 }
 
-// (4) A WRONG-TYPE DATA REFERENCE STILL REFUSES: typing the reference at the constant's declared type is not
-// admitting it anywhere, so an Int constant at a String position refuses at the judge.
-test fn drv_an_int_data_reference_at_a_string_position_refuses() -> Bool {
-  drv_infer_reason(o: fmi_assemble(src: "module p\n\ndata k: Int = 1\n\ndata s: String = k\n")) == ^arrow_body_does_not_inhabit_declared_return
+// (4) TYPING THE REFERENCE AT T IS NOT ADMITTING IT ANYWHERE: a reference to a marked Arrow is typed at
+// EXACTLY its declared codomain (v2.compiler.infer infer_reference_value_type), so an Int constant presents
+// Int to the judge and an Int-at-String position refuses there by the judge's own existing rule. The input
+// is supplied (DESIGN section 3: one interface); the real path that types references through it is row (1).
+test fn drv_a_marked_reference_is_typed_at_exactly_its_codomain() -> Bool {
+  infer_reference_value_type(callable: drv_nullary_arrow(extra: [drv_marker()])) == drv_int()
+}
+
+test fn drv_an_unmarked_callable_is_typed_as_itself() -> Bool {
+  let f = drv_nullary_arrow(extra: [])
+  infer_reference_value_type(callable: f) == f
 }
 
 // THE MARKER READER, SUPPLIED (DESIGN section 3: a witness discriminates at one interface). Its subject is
