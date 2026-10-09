@@ -1,5 +1,7 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_claim_controller, WorkspaceExecutorControllerAdmitted, WorkspaceExecutorControllerRefused }
 
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
@@ -405,18 +407,12 @@ type NetworkSubjectResolution
 fn resolve_network_subject(slot: RunnerSlotIdentity) -> NetworkSubjectResolution
   uses fs: Filesystem
 {
-  let read = Filesystem.Read(path: runner_microvm_converged_receipt_path)
-  if !read.success {
-    NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: read.error } }
-  } else {
-    match parse_converged_slot_network(text: read.content, candidates: fabric_execution_slot_identities()) {
-      ConvergedSlotNetworkMalformed { cause: c } =>
-        NetworkSubjectRefused { refusal: NetworkReceiptMalformed { path: runner_microvm_converged_receipt_path, cause: c } }
-      ConvergedSlotNetworkParsed { receipt: r } =>
-        match slot_network_sanitation_subject(slot: slot, receipt: r) {
-          SanitationSubjectRefused { refusal: rf } => NetworkSubjectRefused { refusal: SanitationSubjectNotAdmitted { refusal: rf } }
-          SanitationSubjectAdmitted { subject: s } => NetworkSubjectResolved { subject: s }
-        }
+  match read_network_receipt(candidates: fabric_execution_slot_identities()) {
+    NetworkReceiptAbsent => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: "network receipt is absent" } }
+    StoredNetworkReceiptUnreadable { reason } => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: reason } }
+    NetworkReceiptPresent { receipt } => match slot_network_sanitation_subject(slot: slot, receipt: receipt) {
+      SanitationSubjectRefused { refusal } => NetworkSubjectRefused { refusal: SanitationSubjectNotAdmitted { refusal: refusal } }
+      SanitationSubjectAdmitted { subject } => NetworkSubjectResolved { subject: subject }
     }
   }
 }

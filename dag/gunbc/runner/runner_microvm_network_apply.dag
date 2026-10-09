@@ -2,6 +2,12 @@ module gunbc.runner_microvm_network_apply
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.live_deploy.candidate { CandidateCheckoutObservation, CandidateCheckoutClean, CandidateCheckoutDirty, CandidateCheckoutUnobservable, observe_candidate_checkout }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -25,7 +31,7 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConv
 import gunbc.typed_remote_file_write {
   RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
-  typed_remote_file_write_seal, converge_typed_remote_file,
+  typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileWriteAdmissionRefused, TypedRemoteFileWriteAdmitted,
 }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy, runner_host_deploy_for, runner_slot_identities_of,
@@ -40,15 +46,16 @@ import gunbc.runner_host_file_converge {
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import extdeps.tools { CliTool, apt_package_of }
 import gunbc.host_cli_dependency { microvm_network_host_cli_requirements }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host_effect { HostEffectTransport, FleetSsh, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.host_effect_realize {
   Srv3HostPredicate,
   Srv3PredicateHolds,
   Srv3PredicateFails,
   Srv3PredicateUnobserved,
   srv3_ensure_apt_tool,
+  srv3_read_token, Srv3EffectiveUserId, Srv3TokenObserved, Srv3TokenAbsent, Srv3TokenUnobserved,
 }
-import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv, executor_privileged_operation_elevated_command }
 import gunbc.runner_microvm_network {
   runner_microvm_shared_host_grain,
   runner_microvm_nft_read_operation,
@@ -220,13 +227,23 @@ type ApplyLeg
 
 fn run_admin_leg(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
-  argv: List<String>,
+  transport: HostEffectTransport,
+  command: ArgvCommand,
 ) -> ApplyLeg
 {
-  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
-    TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
-    TypedArgvExecConverged { result: r } => ApplyLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  match transport {
+    FleetSsh { target, context } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+      TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
+      TypedArgvExecConverged { result: r } => ApplyLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+    }
+    LocalShell => match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+      ProcessNotSpawned { program: _, cause } => ApplyLegRefused { reason: cause as String }
+      ProcessRan { observation: run } => {
+        ApplyLegRan { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
+      }
+    }
+    SshShell { ssh_host: _ } => ApplyLegRefused { reason: "network administration requires a verified fleet session or the local administrator" }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ApplyLegRefused { reason: "network administration cannot use artifact-only transport" }
   }
 }
 
@@ -236,10 +253,10 @@ type AdministratorPrivilege
 
 fn observe_administrator_privilege(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
 ) -> AdministratorPrivilege
 {
-  match run_admin_leg(subject: subject, context: context, argv: elevated_argv(command: ["true"])) {
+  match run_admin_leg(subject: subject, transport: transport, command: sudo_elevate_command(command: ["true"])) {
     ApplyLegRefused { reason: why } => AdministratorPrivilegeMissing { reason: why }
     ApplyLegRan { exit_code: c, stdout: _, stderr: e } =>
       if c == 0 {
@@ -264,17 +281,22 @@ fn observe_administrator_privilege(
 // produced the defect. Split out as its own row so a claim can discriminate the sudo prefix without
 // a host.
 fn runner_microvm_root_only_probe_argv(paths: List<String>, kind: String) -> List<String> {
-  elevated_argv(command: runner_host_root_only_find_argv(paths: paths, kind: kind))
+  argv_words(command: runner_microvm_root_only_probe_command(paths: paths, kind: kind))
+}
+
+fn runner_microvm_root_only_probe_command(paths: List<String>, kind: String) -> ArgvCommand {
+  sudo_elevate_command(command: runner_host_root_only_find_argv(paths: paths, kind: kind))
 }
 
 fn observe_paths_root_only(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   paths: List<String>,
   kind: String,
 ) -> RunnerHostPathMetadata
 {
-  match run_admin_leg(subject: subject, context: context, argv: runner_microvm_root_only_probe_argv(paths: paths, kind: kind)) {
+  match run_admin_leg(subject: subject, transport: transport,
+    command: runner_microvm_root_only_probe_command(paths: paths, kind: kind)) {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
     ApplyLegRan { exit_code: c, stdout: o, stderr: e } => classify_root_only_paths(requested: paths, exit_code: c, stdout: o, stderr: e)
   }
@@ -293,14 +315,14 @@ fn staging_dir_ensure_operation() -> ExecutorPrivilegedOperation {
 
 fn run_operation(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   op: ExecutorPrivilegedOperation,
 ) -> ApplyLeg
 {
   run_admin_leg(
     subject: subject,
-    context: context,
-    argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
+    transport: transport,
+    command: executor_privileged_operation_elevated_command(op: op),
   )
 }
 
@@ -346,7 +368,7 @@ type OperationSequence {
 
 fn run_operations_until_failure(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   ops: List<ExecutorPrivilegedOperation>,
 ) -> List<OperationResult>
 {
@@ -360,7 +382,7 @@ fn run_operations_until_failure(
         {
           let r = OperationResult {
             argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
-            leg: run_operation(subject: subject, context: context, op: op),
+            leg: run_operation(subject: subject, transport: transport, op: op),
           }
           OperationSequence {
             still_running: operation_result_ok(r: r),
@@ -401,25 +423,36 @@ fn staged_write_wire(r: StagedWriteResult) -> String {
 // second matters less for these files than for a key, and costs nothing.
 fn write_staged_file(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   file: StagedFile,
 ) -> StagedWriteResult
 {
   StagedWriteResult {
     path: file.path,
-    outcome: match converge_typed_remote_file(
-      target: subject.target,
-      context: context,
-      admission: typed_remote_file_write_seal(
-        path: file.path as FilePath,
-        content: file.content,
-        allowed_scope: runner_microvm_admin_staging_scope,
-      ),
-      mode: RemoteFileModeOwnerReadWrite,
-      privilege: RemoteFileViaNonInteractiveSudo,
-    ) {
-      TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
-      TypedRemoteFileConverged { converged: _ } => StagedWritten
+    outcome: match transport {
+      FleetSsh { target, context } => match converge_typed_remote_file(
+        target: target, context: context,
+        admission: typed_remote_file_write_seal(path: file.path as FilePath,
+          content: file.content, allowed_scope: runner_microvm_admin_staging_scope),
+        mode: RemoteFileModeOwnerReadWrite, privilege: RemoteFileViaNonInteractiveSudo) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
+        TypedRemoteFileConverged { converged: _ } => StagedWritten
+      }
+      LocalShell => match typed_remote_file_write_seal(path: file.path as FilePath,
+        content: file.content, allowed_scope: runner_microvm_admin_staging_scope) {
+        TypedRemoteFileWriteAdmissionRefused { cause } => StagedWriteRefused { step: "admission", reason: cause as String }
+        TypedRemoteFileWriteAdmitted { write: _ } => {
+          let written = Filesystem.WriteOwnerOnly(path: file.path as String, content: file.content)
+          if !written.success { StagedWriteRefused { step: "local root stage", reason: written.error } }
+          else {
+            let read = Filesystem.Read(path: file.path as String)
+            if read.success && read.content == file.content { StagedWritten }
+            else { StagedWriteRefused { step: "local root readback", reason: "staged bytes differ or cannot be read" } }
+          }
+        }
+      }
+      SshShell { ssh_host: _ } => StagedWriteRefused { step: "transport", reason: "unanchored SSH is not an administrator transport" }
+      EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => StagedWriteRefused { step: "transport", reason: "artifact-only transport cannot write host files" }
     },
   }
 }
@@ -454,10 +487,10 @@ fn listing_digest(d: Sha256FileDigest, listing: String) -> RulesetReadback {
 // which refuses; it does not fall back to the rendered text.
 fn read_back_ruleset(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
 ) -> RulesetReadback
 {
-  match run_operation(subject: subject, context: context, op: runner_microvm_nft_read_operation()) {
+  match run_operation(subject: subject, transport: transport, op: runner_microvm_nft_read_operation()) {
     ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
     ApplyLegRan { exit_code: c, stdout: o, stderr: e } =>
       if c != 0 {
@@ -483,7 +516,7 @@ type HostToolPrerequisite {
   verdict: Srv3HostPredicate
 }
 
-fn ensure_host_tool(tool: CliTool, subject: MicrovmNetworkApplySubject, context: FleetSshExecutionContext) -> HostToolPrerequisite
+fn ensure_host_tool(tool: CliTool, subject: MicrovmNetworkApplySubject, transport: HostEffectTransport) -> HostToolPrerequisite
   uses net: Network
 {
   match apt_package_of(tool: tool) {
@@ -501,7 +534,7 @@ fn ensure_host_tool(tool: CliTool, subject: MicrovmNetworkApplySubject, context:
           tool: tool,
           package: p,
           require_version_probe: false,
-          transport: FleetSsh { target: subject.target, context: context },
+          transport: transport,
         ),
       }
   }
@@ -596,10 +629,10 @@ fn apply_run_text(run: MicrovmNetworkApplyRun) -> String {
 // optional: without it the run could report only that the operations exited zero.
 fn run_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
 ) -> MicrovmNetworkApplyRun
 {
-  let privilege = observe_administrator_privilege(subject: subject, context: context)
+  let privilege = observe_administrator_privilege(subject: subject, transport: transport)
   match privilege {
     AdministratorPrivilegeMissing { reason: _ } =>
       MicrovmNetworkApplyRun {
@@ -613,9 +646,9 @@ fn run_microvm_network_apply(
         readback: RulesetNotListed { reason: "the administrator holds no non-interactive sudo on this host, so nothing was staged, installed or read back" },
       }
     AdministratorPrivilegeHeld => {
-      let prerequisites = map(microvm_network_host_cli_requirements, t => ensure_host_tool(tool: t, subject: subject, context: context))
+      let prerequisites = map(microvm_network_host_cli_requirements, t => ensure_host_tool(tool: t, subject: subject, transport: transport))
       if fold(prerequisites, init: true, f: (acc, r) => acc && host_tool_prerequisite_holds(r: r)) {
-        run_privileged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites)
+        run_privileged_microvm_network_apply(subject: subject, transport: transport, privilege: privilege, prerequisites: prerequisites)
       } else {
         MicrovmNetworkApplyRun {
           subject: subject,
@@ -653,24 +686,24 @@ fn unstaged_microvm_network_apply_run(
 
 fn run_privileged_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   privilege: AdministratorPrivilege,
   prerequisites: List<HostToolPrerequisite>,
 ) -> MicrovmNetworkApplyRun
 {
-  let ensured = run_operation(subject: subject, context: context, op: staging_dir_ensure_operation())
+  let ensured = run_operation(subject: subject, transport: transport, op: staging_dir_ensure_operation())
   let dir = match ensured {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: concat("the staging directory could not be created: ", why) }
     ApplyLegRan { exit_code: c, stdout: _, stderr: e } =>
       if c != 0 {
         PathsUnobservable { reason: join(["the staging directory could not be created; install -d exit=", to_string(c), " ", trim(s: e)], "") }
       } else {
-        observe_paths_root_only(subject: subject, context: context, paths: staging_ancestor_paths(), kind: "d")
+        observe_paths_root_only(subject: subject, transport: transport, paths: staging_ancestor_paths(), kind: "d")
       }
   }
   match dir {
     PathsRootOnly =>
-      run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites, dir: dir)
+      run_staged_microvm_network_apply(subject: subject, transport: transport, privilege: privilege, prerequisites: prerequisites, dir: dir)
     PathsNotRootOnly { paths: _, detail: _ } => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
     PathsUnobservable { reason: _ } => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
     PathsNotApplicable => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
@@ -700,7 +733,7 @@ fn uninstalled_microvm_network_apply_run(
 
 fn run_staged_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   privilege: AdministratorPrivilege,
   prerequisites: List<HostToolPrerequisite>,
   dir: RunnerHostPathMetadata,
@@ -711,16 +744,16 @@ fn run_staged_microvm_network_apply(
     host: runner_microvm_shared_host_grain,
     tap_owner: subject.tap_owner,
   )
-  let staged = map(files, f => write_staged_file(subject: subject, context: context, file: f))
+  let staged = map(files, f => write_staged_file(subject: subject, transport: transport, file: f))
   let all_staged = fold(staged, init: true, f: (acc, r) => acc && staged_write_ok(r: r))
   let staged_meta = if !all_staged {
     PathsNotApplicable
   } else {
-    observe_paths_root_only(subject: subject, context: context, paths: map(files, f => f.path as String), kind: "f")
+    observe_paths_root_only(subject: subject, transport: transport, paths: map(files, f => f.path as String), kind: "f")
   }
   match staged_meta {
     PathsRootOnly => {
-        let ops = run_operations_until_failure(subject: subject, context: context, ops: microvm_network_converge_operations(slots: subject.slots))
+        let ops = run_operations_until_failure(subject: subject, transport: transport, ops: microvm_network_converge_operations(slots: subject.slots))
       let all_ops = length(ops) > 0 && fold(ops, init: true, f: (acc, r) => acc && operation_result_ok(r: r))
       MicrovmNetworkApplyRun {
         subject: subject,
@@ -731,7 +764,7 @@ fn run_staged_microvm_network_apply(
         staged_root_only: staged_meta,
         operations: ops,
         readback: if all_ops {
-          read_back_ruleset(subject: subject, context: context)
+          read_back_ruleset(subject: subject, transport: transport)
         } else {
           RulesetNotListed { reason: "an install operation did not succeed, so the listing would not describe the declared ruleset" }
         },
@@ -780,7 +813,7 @@ fn runner_microvm_network_apply_ci_wet() -> ProcessExit
       match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_apply_attempt_raw) {
         FleetSshContextRefused { cause: c } => exit_failure(reason: c)
         FleetSshContextReady { context: context, receipt: context_receipt } => {
-          let run = run_microvm_network_apply(subject: subject, context: context)
+          let run = run_microvm_network_apply(subject: subject, transport: FleetSsh { target: subject.target, context: context })
           let body = join([
             "runner_microvm_network_apply probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
             context_receipt,
@@ -796,5 +829,76 @@ fn runner_microvm_network_apply_ci_wet() -> ProcessExit
           }
         }
       }
+  }
+}
+
+
+// The same staged-file and operation folds are available on the subject host. A local caller
+// must already be root: this entry adds no grant, consumes no agent and cannot select a peer.
+fn microvm_network_local_admission(host: String, observed_host: String, effective_uid: String,
+  expected_revision: String, checked_out_revision: String) -> MicrovmNetworkApplyAdmission {
+  if trim(s: host) == "" || trim(s: host) != trim(s: observed_host) {
+    MicrovmNetworkApplyRefused { cause: "local network administration must name this host" }
+  } else if trim(s: effective_uid) != "0" {
+    MicrovmNetworkApplyRefused { cause: "local network administration requires the administrator's root process" }
+  } else { microvm_network_apply_admission(host: host, expected_revision: expected_revision,
+    checked_out_revision: checked_out_revision) }
+}
+
+fn microvm_network_local_subject(host: String, expected_revision: String) -> MicrovmNetworkApplyAdmission {
+  match observe_candidate_checkout() {
+    CandidateCheckoutClean => microvm_network_local_subject_from_clean_checkout(host: host, expected_revision: expected_revision)
+    CandidateCheckoutDirty { tracked_changes: _, staged_changes: _, untracked_deployed_paths: _, ignored_deployed_paths: _ } =>
+      MicrovmNetworkApplyRefused { cause: "local network administration requires a clean checkout of the named revision" }
+    CandidateCheckoutUnobservable { detail } => MicrovmNetworkApplyRefused { cause: detail }
+  }
+}
+
+fn microvm_network_local_subject_from_clean_checkout(host: String, expected_revision: String) -> MicrovmNetworkApplyAdmission {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptureRefused { reason } => MicrovmNetworkApplyRefused { cause: reason }
+    HostnameShortCaptured { value: actual } => {
+      let candidate = microvm_network_apply_admission(host: host, expected_revision: expected_revision,
+        checked_out_revision: apply_checked_out_revision())
+      match candidate {
+        MicrovmNetworkApplyRefused { cause } => MicrovmNetworkApplyRefused { cause: cause }
+        MicrovmNetworkApplyAdmitted { subject } => match srv3_read_token(subject: Srv3EffectiveUserId, transport: LocalShell) {
+          Srv3TokenUnobserved { reason } => MicrovmNetworkApplyRefused { cause: reason }
+          Srv3TokenAbsent =>
+            MicrovmNetworkApplyRefused { cause: "local administrator identity could not be read" }
+          Srv3TokenObserved { value: uid } => microvm_network_local_admission(host: host, observed_host: actual, effective_uid: uid,
+            expected_revision: expected_revision, checked_out_revision: subject.revision)
+        }
+      }
+    }
+  }
+}
+
+fn runner_microvm_network_plan_local_wet(host: String, expected_revision: String) -> ProcessExit {
+  match microvm_network_local_subject(host: host, expected_revision: expected_revision) {
+    MicrovmNetworkApplyRefused { cause } => exit_failure(reason: cause)
+    MicrovmNetworkApplyAdmitted { subject } => {
+      let files = converge_staged_files(slots: subject.slots, host: runner_microvm_shared_host_grain, tap_owner: subject.tap_owner)
+      let body = join(["host=", host, " revision=", subject.revision, " execution=local-root\n",
+        join(map(files, file => join(["FILE ", file.path as String, "\n", file.content, "\n"], "")), ""),
+        join(map(microvm_network_converge_operations(slots: subject.slots), op =>
+          concat(to_string(executor_privileged_operation_argv(op: op)), "\n")), "")], "")
+      let written = Filesystem.Write(path: "target/microvm-network-local-plan.txt", content: body)
+      if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+    }
+  }
+}
+
+fn runner_microvm_network_apply_local_wet(host: String, expected_revision: String) -> ProcessExit {
+  match microvm_network_local_subject(host: host, expected_revision: expected_revision) {
+    MicrovmNetworkApplyRefused { cause } => exit_failure(reason: cause)
+    MicrovmNetworkApplyAdmitted { subject } => {
+      let run = run_microvm_network_apply(subject: subject, transport: LocalShell)
+      let written = Filesystem.Write(path: runner_microvm_network_apply_receipt_path,
+        content: concat("execution=local-root\n", apply_run_text(run: run)))
+      if !written.success { exit_failure(reason: written.error) }
+      else if apply_run_succeeded(run: run) { ExitSuccess }
+      else { exit_failure(reason: apply_run_text(run: run)) }
+    }
   }
 }

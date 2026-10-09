@@ -18,6 +18,8 @@ collected that refusal; its green workflow conclusion is not a boot receipt.
 | Workflow dispatch | Main declares 28 inputs; GitHub accepts at most 25 | Keep printer selection separate and carry its five operation fields in one `printer_request` JSON input |
 | Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
 | Job selection | Controller install queues the shared credentialed job as well as its dedicated job | Derive shared job selection from the existing mode-to-job authority |
+| Network receipt | The historical TAP/firewall installation exists, but the controller receipt is absent and the workflow observer entry was overwritten | Restore the observer, publish a root-owned initial receipt from live reads, and keep later sanitation observation separate |
+| TAP IPv6 | Installed sysctl disables IPv6; networkd leaves it enabled on the live TAP | Disable networkd IPv6 autoconfiguration in the same generated TAP policy, then converge and read back |
 | Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
 | Slot budget | `fabric-cell-srv1-13.slice` has no installed unit file | Converge the modeled execution-cell boundary; a synthesized systemd slice is not proof |
 | Cell inventory | Read-only plan `local-2026-10-09T03:18:35Z` refuses foreign `fabric-cell-zp444.slice` | Establish ownership before retiring it; the empty transient slice has no unit file or remaining journal, and is not silently ignored |
@@ -43,7 +45,17 @@ empty commissioning prestate. Do not restore the old CI reservation service:
    not authorize them. The installer checks the reviewed kernel and rootfs pins
    after copying into the root-owned release directory, then independently reads
    back the image and installed executor.
-3. Converge the execution-cell boundary and authenticated state service, then run
+3. Converge the execution-cell boundary and authenticated state service. On srv1,
+   the local administrator can run `runner_microvm_network_plan_local_wet`,
+   review `target/microvm-network-local-plan.txt`, then run
+   `runner_microvm_network_apply_local_wet` from
+   `dag/gunbc/runner/runner_microvm_network_apply.dag`. Both require `host=srv1`,
+   `expected_revision` equal to the clean checkout's HEAD, and effective UID 0.
+   Run `runner_microvm_network_initialize_local_wet` from
+   `dag/gunbc/runner/runner_microvm_network_observe.dag` with those same arguments
+   to publish the controller receipt from live readback. This uses the installed
+   root-owned receipt directory and refuses replacement of a different generation.
+   These local entries require no SSH agent. Then run
    `workspace_commissioning_plan` and its reviewed `apply` on srv1. The existing
    operator-local fleet plan/apply path is available for pre-merge validation;
    do not widen the main-only GCP login to run branch workflows.
@@ -228,3 +240,38 @@ and the existing prohibition on workflow-created operator intent. The verified
 `a85cc481af5` compiler binary can interpret this DAG-only repair; its build identity
 remains `a85cc481af5`, separately from the new installed source revision. It is not
 represented as a rebuilt compiler pack for the new tree.
+
+
+The read-only commissioning preflight at `a85cc481af5` refused because
+`/var/lib/gunbc/microvm-network/converged-slot-network.txt` and its parent directory
+are absent. The network workflow still names `runner_microvm_network_observe_wet`,
+but that function was overwritten when the same module was repurposed for
+per-attempt sanitation. The previous implementation was recovered from source
+revision `34ac2fefab51e912e9499dd23aa92bb3ebdac824`; sanitation keeps its own current
+producer. The repair restores the workflow entry and adds an explicit local root
+initializer which observes the host, publishes once with create-only semantics,
+and verifies existing generations against fresh observations without overwriting.
+
+The live `gunbc-tap13` holds `172.30.13.1/30`, and the existing microVM nft service
+is active. However, `disable_ipv6` reads `0` despite the installed sysctl file
+requesting `1`. systemd 255's [link IPv6 decision](https://github.com/systemd/systemd/blob/v255/src/network/networkd-link.c)
+and [sysctl writer](https://github.com/systemd/systemd/blob/v255/src/network/networkd-sysctl.c)
+show why the generated `.network` file must also disable link-local IPv6:
+networkd re-enables IPv6 when its configuration calls for it. The local network
+plan/apply entries use the existing staged-file and ordered-operation producers,
+require root on the named host at the named revision, and use no forwarded agent.
+Network changes have not yet been applied.
+
+The `edad20b0ded` controller installer completed its mutations and installed the
+exact policy read grant. A real `ghrunner` invocation can now read that policy,
+and `visudo` accepts it, but exact adapter readback still refused. The next
+boundary diagnosis identified `bounded_shell_host_drain`'s `trim_end` capture contract:
+the final newline cannot survive a `cat` through that transport. Policy readback
+now compares the actual file's SHA-256 with a digest of the expected bytes. The
+exact grant becomes `sha256sum -- <policy path>`; it grants neither arbitrary
+file reads nor the protected-state credential. The focused validation passes all
+34 checks across network apply/convergence, observer production, policy readback
+and allocation dispatch. The final network-path retry passes its 12 checks after
+using the existing command executor and effective-UID reader. All 8,272 source
+files parse, and formatting checks pass. Live reinstallation and network
+convergence are next; no VM has been commissioned, allocated or booted.

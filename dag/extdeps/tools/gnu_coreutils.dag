@@ -39,10 +39,6 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 fn cat_program() -> ProgramIdentity = uncataloged_program(invocation: "cat")
 
-// Observed on srv1, 2026-10-09: command -v cat is /usr/bin/cat, root:root mode 0755.
-// Privileged policy readback needs an absolute argv shared with its exact sudoers match.
-data cat_binary_path: NonEmptyStr = "/usr/bin/cat"
-
 fn mktemp_program() -> ProgramIdentity = uncataloged_program(invocation: "mktemp")
 fn cp_program() -> ProgramIdentity = uncataloged_program(invocation: "cp")
 fn printf_program() -> ProgramIdentity = uncataloged_program(invocation: "printf")

@@ -19,6 +19,7 @@ import gunbc.fleet_generation_execution { fleet_generation_lock }
 
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.runner_microvm_network { runner_microvm_converged_receipt_root }
 import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -2258,6 +2259,7 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: runner_microvm_converged_receipt_root)),
         ],
         concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),

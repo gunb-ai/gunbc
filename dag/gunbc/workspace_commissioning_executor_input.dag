@@ -7,7 +7,10 @@ import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_gr
 import gunbc.executor_privileged_operation { executor_privileged_operation_elevated_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+
+import extdeps.crypto.hash { Digest, sha256sum_line_digest }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 
 import std.types { String, NonEmptyStr, CommitSha, Bool }
 import std.algebra { trim }
@@ -94,15 +97,26 @@ fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool 
   }
 }
 
-// Installer readback runs as the job user. Sudoers custody is checked before using the exact
-// read-only grant; changing permissions or substituting a successful install is not a readback.
+// Captured command text trims trailing whitespace. Digest the file under its exact grant,
+// and the expected bytes through stdin, so a missing or added final newline still refuses.
+fn workspace_executor_grant_digest_matches(expected: Digest, observed: ProcessOutcome) -> Bool {
+  match observed {
+    ProcessOutputPresent { text } => match sha256sum_line_digest(line: text) {
+      Present { value: actual } => actual == expected
+      Absent => false
+    }
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
 fn workspace_executor_grant_matches(expected: String) -> Bool {
   match read_store_ownership(path: workspace_dispatch_grant_path) {
-    OwnershipRead { ownership: StoreRootOwned } => match run_shell_command_capture(
-      command: executor_privileged_operation_elevated_command(op: workspace_dispatch_grant_read_operation()), transport: LocalExec) {
-      ProcessOutputPresent { text } => text == expected
-      ProcessOutputAbsent => false
-      ProcessRefused { exit_code: _, stderr: _ } => false
+    OwnershipRead { ownership: StoreRootOwned } => match sha256sum_stdin_digest_via_shell(content: expected) {
+      Sha256FileDigest { digest } => workspace_executor_grant_digest_matches(expected: digest,
+        observed: run_shell_command_capture(command: executor_privileged_operation_elevated_command(
+          op: workspace_dispatch_grant_read_operation()), transport: LocalExec))
+      Sha256FileDigestUnavailable { path: _, reason: _ } => false
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
     OwnershipUnread { reason: _ } => false

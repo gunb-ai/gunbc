@@ -23,7 +23,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDisp
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv, sudo_elevate_command, sudo_elevate_as_command }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_binary_path, cat_command }
+import extdeps.tools.sha256sum { sha256sum_binary_path }
+import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.tools.env { env_prefixed_argv }
 import v2.std.orchestration { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
@@ -83,7 +84,7 @@ type ExecutorPrivilegedOperation
   | SystemdRestartUnit { unit: NonEmptyStr }
   | ReadNftTable { family: NonEmptyStr, table: NonEmptyStr }
   | ReadNftRuleset
-  | ReadFile { path: NonEmptyStr }
+  | ReadFileSha256 { path: NonEmptyStr }
   | ReadConntrackExpectations
   | ReadLegacyXtablesRules
   | ReadUserspaceConntrackHelpers
@@ -198,7 +199,7 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_restart_verb,
       u
     ]
-    ReadFile { path: p } => concat([cat_binary_path], map(cat_command(path: p as String).arguments, word => word as NonEmptyStr))
+    ReadFileSha256 { path: p } => concat([sha256sum_binary_path], map(sha256sum_file_command(path: p as String).arguments, word => word as NonEmptyStr))
     ReadNftRuleset => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_ruleset_arguments)
     ReadConntrackExpectations => concat([ci_runner_sudo_binary_path(b: SudoConntrack)], conntrack_list_expectations_arguments)
     ReadLegacyXtablesRules => concat([ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)], iptables_legacy_save_arguments)
@@ -245,7 +246,7 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdReloadUnit { unit: _ } => RunsAsRoot
     SystemdRestartUnit { unit: _ } => RunsAsRoot
     ReadNftTable { family: _, table: _ } => RunsAsRoot
-    ReadFile { path: _ } => RunsAsRoot
+    ReadFileSha256 { path: _ } => RunsAsRoot
     ReadNftRuleset => RunsAsRoot
     ReadConntrackExpectations => RunsAsRoot
     ReadLegacyXtablesRules => RunsAsRoot
@@ -478,7 +479,7 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     SystemdReloadUnit { unit: _ } => NoPrecondition
     SystemdRestartUnit { unit: _ } => NoPrecondition
     ReadNftTable { family: _, table: _ } => NoPrecondition
-    ReadFile { path: _ } => NoPrecondition
+    ReadFileSha256 { path: _ } => NoPrecondition
     ReadNftRuleset => NoPrecondition
     ReadConntrackExpectations => NoPrecondition
     ReadLegacyXtablesRules => NoPrecondition
