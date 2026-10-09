@@ -52,6 +52,17 @@ use std::process::Command;
 const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
 const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
 
+/// THE PRODUCT-REUSE INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_product_reuse_env_name` / `native_product_reuse_fresh_value` by the same witness.
+/// `fresh` (operator ruling 2026-10-09: the required job "requires fresh emission/build of both
+/// retained products and refuses a restored final-product hit; ordinary Cargo reuse may remain")
+/// means the native product store is NOT consulted for serving: the closure is emitted and built
+/// here, and a run that binds a store root while asking for `fresh` is REFUSED rather than served
+/// -- two inputs that contradict each other are a defect in the invocation, never a quiet miss.
+/// Absent or any other value keeps the store's own behaviour (consulted only when a root is bound).
+const PRODUCT_REUSE_ENV: &str = "GUNBC_NATIVE_PRODUCT_REUSE";
+const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -359,7 +370,32 @@ fn prepare_emitted_compiler_for_entry(
     // anything is emitted. A verified hit stands in for reconcile + emit + build + the red that
     // admitted the entry; the caller's door and refusal controls then run against the reused
     // executable exactly as they would against a fresh one.
-    let store = super::native_product_cache::store_root();
+    //
+    // UNLESS THE CALLER ASKED FOR A FRESH PRODUCT (`PRODUCT_REUSE_ENV`): then no store is consulted
+    // and nothing is committed, and a bound store root is a contradiction the run refuses.
+    let fresh_required =
+        std::env::var(PRODUCT_REUSE_ENV).ok().as_deref() == Some(PRODUCT_REUSE_FRESH_VALUE);
+    let store = if fresh_required {
+        if let Some(root) = super::native_product_cache::store_root() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeProductReuseRefused — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE} \
+                 requires this run to emit and build {entry} itself, yet GUNBC_NATIVE_CACHE_ROOT binds a native \
+                 product store at {}; a restored final product may not stand in for the build this run owes, so \
+                 unbind the store or withdraw the input",
+                root.display()
+            ));
+        }
+        eprintln!(
+            "v2-native-route: FRESH PRODUCT REQUIRED — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE}: the native \
+             product store is not consulted and nothing is committed; {entry} is emitted and built by this run"
+        );
+        None
+    } else {
+        super::native_product_cache::store_root()
+    };
+    // Under `fresh` NO key is derived: `derive_key` re-ingests the corpus index and reloads the
+    // closure only to hash it, which the emission below does again -- the same work twice (DESIGN
+    // section 2) for a receipt that can be written from what this run already computes.
     let product_key = match &store {
         Some(_) => Some(
             super::native_product_cache::derive_key(source_roots, entry, &workspace)
@@ -624,6 +660,28 @@ fn prepare_emitted_compiler_for_entry(
     let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
         format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
     })?)?;
+    // THE FRESH-PRODUCT RECEIPT (operator ruling 2026-10-09): one line per product stating that THIS
+    // run realized it, with the identities a reader needs to tie the executable to its inputs: the
+    // source tree the run judged (GITHUB_SHA where a workflow set it; the receipt says so when it
+    // did not), the emitted closure, the seed executable, the toolchain and build configuration
+    // (the same two helpers the product key hashes), and the built executable. Printed only under
+    // `fresh`, because only then is `realization=fresh` a fact this run owns. Nothing here is
+    // computed for the receipt alone.
+    if fresh_required {
+        let source_tree = std::env::var("GITHUB_SHA")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "unset(GITHUB_SHA absent: an operator-local run)".to_string());
+        let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()?;
+        let build_configuration =
+            super::emitted_closure_compile_host::probe_build_configuration_for_key();
+        eprintln!(
+            "v2-native-route: FRESH PRODUCT RECEIPT entry={entry} realization=fresh \
+             source_tree={source_tree} closure_identity={closure_identity} \
+             seed_sha256={seed_identity} toolchain={toolchain} \
+             build_configuration={build_configuration} executable_sha256={binary_identity}"
+        );
+    }
     eprintln!(
         "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()

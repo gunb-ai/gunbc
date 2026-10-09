@@ -208,6 +208,15 @@ fn ci_setup_rust_step() -> Step {
 }
 
 fn ci_cache_cargo_step() -> Step {
+  ci_cache_cargo_step_under(condition: Present { value: release_bins_build_condition() })
+}
+
+// THE SAME CACHE STEP UNDER A CALLER-SUPPLIED CONDITION. The keyed-miss condition above belongs to
+// the compiler-pair product; a job that builds the seed on every run (gunbc.compiler_gate_workflow's
+// required `witnesses` job, which may reuse Cargo dependencies and ordinary compilation
+// intermediates but never a restored final product -- operator ruling 2026-10-09) restores and saves
+// the cache unconditionally. One step, two conditions, rather than two spellings of the paths and key.
+fn ci_cache_cargo_step_under(condition: String?) -> Step {
   UsesStep {
     name: Present { value: "Cache Cargo" },
     id: none,
@@ -220,7 +229,7 @@ fn ci_cache_cargo_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: release_bins_build_condition() },
+    if_condition: condition,
     continue_on_error: none,
     timeout_minutes: none
   }

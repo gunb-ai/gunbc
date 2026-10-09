@@ -1,40 +1,30 @@
 module test.claim.compiler_gate_workflow_witness_test
 
 import std.types { Bool, String }
-import std.optional { Present, Absent }
-import extdeps.github.actions { Step, RunStep, UsesStep, SelfHosted, RunsOnExpression }
+import extdeps.github.actions { SelfHosted, RunsOnExpression }
 import gunbc.compiler_gate_workflow {
-  compiler_gate_emit_build_native_cache_root_bound_step, compiler_gate_native_cache_condition,
-  compiler_gate_native_cache_root_script, compiler_gate_native_read_condition, compiler_gate_native_write_condition, compiler_gate_native_save_command,
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
   compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids,
-  compiler_gate_emit_build_job_id, compiler_gate_aggregate_job_id
+  compiler_gate_required_job_id
 }
 
 // THE CLAIMS OVER THE `floor` AND `generated` JOBS LEFT WITH THOSE JOBS (operator ruling 2026-10-09,
 // the v1 withdrawal; gunbc.rung_drop v1_required_lanes_withdrawn): the receipt adjudicator bound after
 // its producer, the stage0 mirrors adjudicated on every event, and the lint under the status guard
-// alone were facts about lanes this workflow no longer runs.
-
-fn step_if_text(step: Step) -> String {
-  match step {
-    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c {
-      Present { value: v } => v
-      Absent => ""
-    }
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
-  }
-}
+// alone were facts about lanes this workflow no longer runs. The claims over the native product
+// store's steps left with the same ruling's second correction: the required job emits and builds
+// both products fresh and binds no store (test.claim.compiler_gate_emit_build_lane_witness_test
+// holds the absence).
 
 // ── THE MERGE PATH RUNS ON THE FLEET ──────────────────────────────────────────────────────────
 //
-// operator ruling 2026-09-28: no lane the required context reads, and not the aggregate, runs on a
-// hosted runner. compiler_gate_merge_path_runs_on_the_fleet is an emission conjunct, so a workflow
-// that breaks the ruling is refused rather than emitted; these claims establish that the predicate
-// discriminates (a supplied merge path that meets the hosted set refuses, one that does not is
-// admitted), that a runner decided at dispatch counts as hosted, and that the live merge path both
-// holds and is not vacuous -- it names the one lane and the aggregate. The supplied sets below are
-// designed values, not the live roster.
+// operator ruling 2026-09-28: no lane the required context reads runs on a hosted runner.
+// compiler_gate_merge_path_runs_on_the_fleet is an emission conjunct, so a workflow that breaks the
+// ruling is refused rather than emitted; these claims establish that the predicate discriminates (a
+// supplied merge path that meets the hosted set refuses, one that does not is admitted), that a
+// runner decided at dispatch counts as hosted, and that the live merge path both holds and is not
+// vacuous -- it names the one required job. The supplied sets below are designed values, not the
+// live roster.
 test fn w_RED_a_hosted_job_on_the_merge_path_refuses() -> Bool {
   compiler_gate_no_merge_path_job_is_hosted(
     merge_path: ["lane-a", "lane-b", "witnesses"],
@@ -54,40 +44,12 @@ test fn w_RED_a_runner_decided_at_dispatch_counts_as_hosted() -> Bool {
     && (compiler_gate_runner_is_hosted(runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] }) == false)
 }
 
-test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
+// THE LIVE MERGE PATH IS EXACTLY THE REQUIRED JOB, at identity grain in both directions: a path that
+// grew a second job without the operator sign-off the design document's CI row requires reds here,
+// and so does a path that lost the required job.
+test fn the_live_merge_path_runs_on_the_fleet_and_is_the_required_job() -> Bool {
   let path = compiler_gate_merge_path_job_ids()
   compiler_gate_merge_path_runs_on_the_fleet()
-    && any(path, id => id == compiler_gate_emit_build_job_id)
-    && any(path, id => id == compiler_gate_aggregate_job_id)
-}
-
-// THE NATIVE PRODUCT STORE IS BOUND ON PULL REQUESTS AND THE MERGE QUEUE, NEVER ELSEWHERE: the root is
-// job-private (under RUNNER_TEMP, empty at job start), so a pull request's job cannot seed the compiler
-// the queue judges; the queue also restores from the shared store and publishes only admitted entries.
-// Narrowing the condition off merge_group, or widening it to other events, makes this refuse.
-test fn the_native_cache_root_step_runs_on_pull_requests_and_the_merge_queue_only() -> Bool {
-  let condition = step_if_text(step: compiler_gate_emit_build_native_cache_root_bound_step().step)
-  condition == compiler_gate_native_cache_condition()
-    && string_contains(s: condition, pattern: "pull_request")
-    && string_contains(s: condition, pattern: "merge_group")
-}
-
-// THE STORE ROOT IS JOB-PRIVATE: a shared host directory (RUNNER_TOOL_CACHE) is writable by any job's
-// code, so an entry planted there would be served as a HIT. Restoring the shared-tool-cache root makes
-// this refuse.
-test fn the_native_cache_root_is_job_private_and_never_the_shared_tool_cache() -> Bool {
-  string_contains(s: compiler_gate_native_cache_root_script, pattern: "$RUNNER_TEMP/")
-    && !string_contains(s: compiler_gate_native_cache_root_script, pattern: "RUNNER_TOOL_CACHE")
-}
-
-// The credentialed store transfer is wired: the read identity is gated to same-repository pull
-// requests (a fork is issued no token), the write identity and the save to the merge queue alone, and
-// only the emit-build job may mint an id-token.
-test fn the_native_store_transfer_is_wired_by_event() -> Bool {
-  string_contains(s: compiler_gate_native_read_condition(), pattern: "head.repo.full_name == github.repository")
-    && string_contains(s: compiler_gate_native_read_condition(), pattern: "github.event_name == 'merge_group'")
-    && !string_contains(s: compiler_gate_native_write_condition(), pattern: "pull_request")
-    && compiler_gate_native_write_condition() == "github.event_name == 'merge_group'"
-    && string_contains(s: compiler_gate_native_save_command(), pattern: "native_product_save_wet")
-    && !string_contains(s: compiler_gate_native_save_command(), pattern: "pull_request")
+    && any(path, id => id == compiler_gate_required_job_id)
+    && all(path, id => id == compiler_gate_required_job_id)
 }

@@ -1,10 +1,13 @@
 module gunbc.compiler_gate_workflow
 
-// THE REQUIRED CONTEXT READS ONE LANE (operator ruling 2026-10-09, the v1 withdrawal): "v1 is
+// THE REQUIRED CONTEXT IS ONE JOB (operator ruling 2026-10-09, the v1 withdrawal): "v1 is
 // effectively bankrupt due to memory instability - i want to go back to pure v2 native compiler
-// development - that means deleting most of our current CI jobs".
+// development - that means deleting most of our current CI jobs", and, on the first cut of this
+// change, "collapse emit-build plus the aggregate into one required job named witnesses, and make
+// the job's regeneration claim true: this version requires fresh emission/build of both retained
+// products and refuses a restored final-product hit. Ordinary Cargo reuse may remain."
 //
-// This module emits .github/workflows/witnesses.yml. Until that ruling the `witnesses` aggregate read
+// This module emits .github/workflows/witnesses.yml. Until that ruling a `witnesses` aggregate read
 // five lanes, and four of them judged through the v1 interpreter or judged v1's own Rust: `floor`
 // (the interpreter folding the rostered witnesses), `generated` (the stage0 mirrors, the registry
 // drift discriminator with its repair chain, and the lint), `rust-unit-tests`, and `seed` (the
@@ -13,24 +16,42 @@ module gunbc.compiler_gate_workflow
 // declared drop gunbc.rung_drop v1_required_lanes_withdrawn, and its trigger names the native
 // compiler judging that population, never the return of these lanes.
 //
-// WHAT REMAINS IS `emit-build`: the seed emits the two retained v2 closures, cargo builds the emitted
-// crates, and the built binaries are started (gunbc.emitted_subject_build_gate states the subject).
-// That is the one use the ruling leaves the seed. A verdict this gate gains from here is a row of
-// emitted_subject_build_rows judged by a binary built from that emission, not a lane that hands the
-// corpus to the v1 interpreter.
+// WHAT REMAINS IS ONE JOB, `witnesses` -- the id the repository ruleset requires, so the job's own
+// check IS the required context and no aggregate reads it: the seed emits the two retained v2
+// closures, cargo builds the emitted crates, and the built binaries are started
+// (gunbc.emitted_subject_build_gate states the subject). Every run emits and builds both products
+// FRESH: the native product store's restore and save steps left this job, and each subject step
+// passes native_product_reuse_env_name=fresh, under which the runner refuses a restored hit rather
+// than serving it. That is the one use the ruling leaves the seed. A verdict this gate gains from
+// here is a row of emitted_subject_build_rows judged by a binary built from that emission, not a
+// lane that hands the corpus to the v1 interpreter.
+//
+// ONE JOB MEANS NO LANE ROSTER. The derived aggregate -- lane rows, standings, the env block and
+// shell conditionals folded from them -- existed so that several lanes could block through one
+// required context without a hand-written `needs` edge; with one job there is nothing to join, and
+// keeping the fold over a one-row roster would be a second representation of the job list (DESIGN
+// section 2). A second required job is a roster growth the operator must sign off (the design
+// document's CI row); the job that lands it brings the fold back with it.
+//
+// FORK PULL REQUESTS CARRY NO REQUIRED CONTEXT. The job keeps the fleet guard
+// (compiler_gate_fleet_job_condition): fork code does not run on the fleet, so on a fork pull
+// request the job is skipped and the `witnesses` check is never produced -- the head is UNOBSERVED
+// and cannot merge until a same-repository branch carries it. The deleted aggregate excused that
+// skip with a notice and a green context; a green over no verdict is the fail-open DESIGN section
+// 5 refuses, and nothing in this repository lands from a fork.
 //
 // THE NAME `witnesses` NOW CARRIES A DIFFERENT CONTRACT, AND THE EPOCH SAYS SO. The ruleset requires a
-// context of that name and it lives outside the repository, so the aggregate keeps the id; what a
+// context of that name and it lives outside the repository, so the job keeps the id; what a
 // success entitles a consumer to conclude changed materially, which is the case
 // gunbc.required_ci_contract_epoch says to bump for. The epoch moved in the change that made this
 // cut, so gunbc.fleet_revision_acceptance cannot admit a revision judged under the old contract as
 // though it were judged under this one, nor the reverse.
 //
-// NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28), and that
-// outlives the cut: `emit-build` and the aggregate run on the fleet, and
-// compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which either runs
-// hosted. The ruling's receipts were merge-queue runs 36478070174 and 36464765845, where every hosted
-// job waited minutes for a slot in a pool this repository does not control.
+// THE REQUIRED JOB RUNS ON THE FLEET (operator ruling 2026-09-28: no lane the required context
+// reads runs on a hosted runner), and compiler_gate_merge_path_runs_on_the_fleet refuses emission
+// of a workflow in which it runs hosted. The ruling's receipts were merge-queue runs 36478070174 and
+// 36464765845, where every hosted job waited minutes for a slot in a pool this repository does not
+// control.
 //
 // SUPERSESSION CANCELS A FLEET JOB. The concurrency policy cancels a running pull-request run on the
 // next push. gunbc.compile_permit_scope fleet_compile_cancellation_standing still reads NotSafe
@@ -39,18 +60,15 @@ module gunbc.compiler_gate_workflow
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
 import std.types { Bool, Int, List, String }
-import std.optional { Present, Absent }
-import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import std.optional { Present }
+import v2.std.algebra { list_map, filter }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, UsesStep, RunStep,
-  WorkflowPermissions, PermRead, PermWrite,
-  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
-  github_event_name_pull_request,
-  github_event_name_merge_group
+  Workflow, Job, Step, UsesStep, RunStep, WorkflowPermissions, PermRead, RunnerSpec, HostedRunner,
+  SelfHosted, RunsOnExpression, github_event_name_pull_request
 }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted,
@@ -67,7 +85,6 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
@@ -76,19 +93,14 @@ import gunbc.witness_floor_workflow {
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.fleet_workflow_steps { ci_cache_cargo_step_under }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
-// The fork clause is heal's authorship; the fleet lane inherited the work it guarded.
+// The fork clause is heal's authorship; the required job inherited the work it guarded.
 import gunbc.heal_workflow { heal_same_repository_clause }
-import gunbc.fleet_workflow_steps { ci_wif_auth_step_with_id }
-import gunbc.native_product_federation {
-  native_product_read_service_account, native_product_write_service_account, native_product_write_provider_resource,
-}
-import gunbc.auth.github_gcp_federation { github_wif_provider_resource }
-import gunbc.gunbc_cli_command { gunbc_run_command }
 import extdeps.exec.command { shell_command_render }
 import gunbc.repo_self_build { repo_self_build_command }
 import extdeps.exec.command { shell_command_render }
-import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
+import extdeps.github.expressions { ContextAccess, Github, Expression }
 import extdeps.github.log_annotations { emit_line_shell }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
@@ -98,7 +110,12 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_step_name,
   native_fault_experiment_env_name,
   native_fault_experiment_skip_value,
-  native_fault_experiment_run_value
+  native_fault_experiment_run_value,
+  native_product_reuse_env_name,
+  native_product_reuse_fresh_value,
+  native_step_memory_bind_env_name,
+  native_step_memory_trip_text,
+  emit_build_memory_envelope_lines
 }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
@@ -175,39 +192,12 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
   id_token: none
 }
 
-// THE EMIT-BUILD JOB ALONE MAY MINT AN OIDC TOKEN: the shared native product store's credentialed
-// restore (pull requests) and save (merge queue) federate through it. Every other job keeps
-// id_token unset, so the grant is the narrowest that serves the store.
-data compiler_gate_native_permissions: WorkflowPermissions = WorkflowPermissions {
-  contents: Present { value: PermRead },
-  pull_requests: none,
-  issues: none,
-  actions: none,
-  id_token: Present { value: PermWrite }
-}
-
-// THE REQUIRED STATUS MUST READ EVERY LANE, OR A LANE IS MERELY WAITED ON.
-//
-// The repository ruleset requires ONE status, `witnesses`. A lane that publishes its own status
-// beside it is not a gate: the required status is green over a red lane and the pull request still
-// merges. A hosted `clippy` job once did exactly that -- it restored an executing step and left the
-// wall unbuilt, which is the decoration DESIGN section 4b names, one level up from the missing check.
-//
-// So `witnesses` is the AGGREGATOR and the lanes run beneath it. It runs always() so a failed lane
-// cannot skip the verdict, and it reads each lane's own result rather than inferring one from its own
-// success -- that reading is what makes a lane block rather than merely be waited on.
-//
-// IT IS KEPT WITH ONE LANE BENEATH IT. The lane's job is named for what it does and the required
-// context is named by a ruleset outside the repository; fusing the two would put the next lane's
-// author back at a hand-written `needs` edge, the forgotten-edge fail-open the roster below removes
-// by construction. The job checks nothing out and holds a slot for seconds.
-//
-// The ruleset is not the place to fix this. It lives outside the repository, so requiring a second
-// status there would put a merge-blocking fact where the model cannot see it or regenerate it.
-//
-// A lane that did not conclude success is a refusal, including skipped and cancelled, and the
-// verdict distinguishes a RED lane from one that produced NO CONCLUSION: those are different facts
-// and only the first is a statement about the diff.
+// THE REQUIRED STATUS IS THE JOB'S OWN CHECK. The repository ruleset requires ONE status,
+// `witnesses`, and a job's check is named by its id, so the job carries that id and nothing reads
+// its result on its behalf. A job that did not conclude success produces no success, and a job the
+// fleet guard skips produces no check at all: both leave the head unmergeable, which is the
+// fail-closed arm. The ruleset is not the place to add a second status: it lives outside the
+// repository, so a merge-blocking fact there is one the model cannot see or regenerate.
 
 // FORK CODE DOES NOT RUN ON THE FLEET. The clause is heal's authorship (gunbc.heal_workflow
 // heal_same_repository_clause), and the checkout below is an attacker-authored head sha on a runner
@@ -268,21 +258,21 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
   ]
 }
 
-// THE EMIT-AND-BUILD LANE. Its subject and the discriminating red it buys are
+// THE REQUIRED JOB. Its subject and the discriminating red it buys are
 // `gunbc.emitted_subject_build_gate`'s to state; read that module before this one. What is decided
-// HERE is only its realization as a job: which runner, which prelude, and how its verdict reaches
-// the required context. Since the 2026-10-09 ruling it is the only lane (header).
+// HERE is only its realization as a job: which runner, which prelude, and that its own check is the
+// required context (header).
 //
-// THE FLEET RUNNER, because the lane blocks (compiler_gate_lane_rows) and a blocking lane may not
-// run hosted (compiler_gate_merge_path_runs_on_the_fleet). That makes it a standing claim on the
-// fleet for every pull request and merge_group, which the operator signed off on 2026-10-02. It
-// carries the exposure the header names: a superseded pull-request run is cancelled, and
-// fleet_compile_cancellation_standing still reads NotSafe. THE WALL IS MEASURED ON THIS RUNNER CLASS BY THIS LANE'S OWN RUNS and is
-// not restated here (DESIGN section 6: name the instrument, never transcribe its output) -- the
-// producer is the `emit-build` job of any run of this workflow, and the two instrument steps carry
-// one label each so the split between the two compilations is readable from the step timings
-// rather than inferred.
-data compiler_gate_emit_build_job_id: String = "emit-build"
+// THE FLEET RUNNER, because the required job may not run hosted
+// (compiler_gate_merge_path_runs_on_the_fleet). That makes it a standing claim on the fleet for
+// every pull request and merge_group, which the operator signed off on 2026-10-02 for the emit-build
+// steps it carries. It carries the exposure the header names: a superseded pull-request run is
+// cancelled, and fleet_compile_cancellation_standing still reads NotSafe. THE WALL IS MEASURED ON
+// THIS RUNNER CLASS BY THIS JOB'S OWN RUNS and is not restated here (DESIGN section 6: name the
+// instrument, never transcribe its output) -- the producer is the `witnesses` job of any run of this
+// workflow, and the two instrument steps carry one label each so the split between the two
+// compilations is readable from the step timings rather than inferred.
+data compiler_gate_required_job_id: String = "witnesses"
 
 // THE TIMEOUT IS A BOUND, NOT A BUDGET, and it is deliberately well above the measured wall: a
 // timeout that trims a slow-but-honest run converts a subject verdict into silence on the required
@@ -292,8 +282,15 @@ data compiler_gate_emit_build_timeout_minutes: Int = 90
 
 // ONE STEP PER SUBJECT, EACH WITH ITS OWN ID. `witness_floor_build_step` cannot be reused: it binds
 // the fixed step id `build_witness_fold`, and two steps in one job may not share an id. The
-// failure-class wrapper is kept -- a new lane is exactly where a runner hiccup must read as `infra`
-// rather than as a defect in the diff.
+// failure-class wrapper is kept -- this is exactly where a runner hiccup must read as `infra`
+// rather than as a defect in the diff. EVERY SUBJECT STEP PASSES THE FRESH-PRODUCT INPUT
+// (gunbc.emitted_subject_build_gate native_product_reuse_env_name), so the runner consults no
+// native product store and refuses one if bound: the job's claim is that THIS run emitted and
+// built the product, and a restored hit would make that claim false while the step stayed green.
+// AND THE MEMORY ENVELOPE INPUT (native_step_memory_bind_env_name = the trip bytes): gunbc test
+// binds the step's cgroup at that limit with no swap, prints the peak-and-swap receipt at exit,
+// and refuses a run that was OOM-killed or charged swap. The slot's own MemoryMax and
+// MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed hard maximum above it.
 fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
   RunStep {
     name: Present { value: emitted_subject_build_step_name(row: row) },
@@ -311,8 +308,8 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
           key: native_fault_experiment_env_name,
           value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
         ),
-        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_read_wif_id, ".outputs.access_token }}"], ""))),
-        kv(key: "GUNBC_PULL_REQUEST_HEAD_REPOSITORY", value: yaml_string(s: "${{ github.event.pull_request.head.repo.full_name }}"))
+        kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_fresh_value)),
+        kv(key: native_step_memory_bind_env_name, value: yaml_string(s: native_step_memory_trip_text()))
       ]
     },
     working_directory: none,
@@ -338,15 +335,12 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
 // IT ECHOES RATHER THAN ANNOTATES. A `::error::` would add a second red to a job that already has
 // one, and a `::notice::` on a failed job is rendered where nobody looking at the failure will
 // read it. Plain stdout at the end of the step list is where the eye already is.
-// THE LIVE NOTICE: the standing row composed with THIS lane row's blocking status, so "does NOT
-// block your merge" is printed only while `compiler_gate_lane_rows` says so, and the one-word flip
-// to `LaneBlocks` changes the notice in the same edit.
+// THE LIVE NOTICE: the standing row composed with the fact that this job IS the required context,
+// so the non-blocking reassurance arm of emit_build_standing_notice_for is unreachable from here.
 fn compiler_gate_emit_build_notice_lines() -> List<String> {
-  emit_build_standing_notice_for(
-    standing: emit_build_standing,
-    lane_blocks: length(xs: filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
-      row.job_id == compiler_gate_emit_build_job_id
-    })) > 0
+  list_append(
+    left: emit_build_standing_notice_for(standing: emit_build_standing, lane_blocks: true),
+    right: emit_build_memory_envelope_lines()
   )
 }
 
@@ -376,133 +370,29 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 
 // THE PRELUDE IS THE FLEET HEAD PLUS THE SEED BUILD, because the subject steps need exactly that on
 // the fleet: the judged checkout, an isolated toolchain home (and the guard requiring it), a pinned
-// default, and the `gunbc` binary the instruments are invoked through.
-// THE NATIVE PRODUCT STORE'S ROOT IS JOB-PRIVATE (`$RUNNER_TEMP/gunbc-native-products`), NEVER A SHARED
-// HOST DIRECTORY. `$RUNNER_TOOL_CACHE` is shared by every job on a self-hosted host, so a pull
-// request's job could plant a self-consistent entry (verify-on-read checks an entry against its own
-// manifest, which its writer controls) that a later job would serve as a HIT. A private directory is
-// empty at job start, so the only filler is the credentialed shared-store restore, whose writer is the
-// merge_group-only federation (`gunbc.native_product_shared_store`); until the federations are provisioned the
-// store is empty and every run builds cold. The product key carries the toolchain axis, so the root
-// needs no toolchain segment.
-// THE ROOT IS BOUND ON PULL REQUESTS AND ON THE MERGE QUEUE: both restore into it through the read
-// federation, the queue's seed publishes into it after a completed red on a miss, and the save step
-// uploads that. A restore that cannot run is a typed, counted MISS in the seed's log
-// (NativeProductRestoreUnavailable, with its cause), never a silent slow build.
-fn compiler_gate_native_cache_condition() -> String {
-  join(["github.event_name == '", github_event_name_pull_request, "' || github.event_name == '", github_event_name_merge_group, "'"], "")
-}
-
-// THE READ CREDENTIAL IS GIVEN TO SAME-REPOSITORY PULL REQUESTS AND TO THE MERGE QUEUE. The queue runs
-// reviewed, composed code and the store is writable only by the queue's own write federation, so a
-// restored product there is one a queue run published; the key still names every input of the product.
-// A fork pull request is issued no id-token, so it has no credential and builds cold.
-fn compiler_gate_native_read_condition() -> String {
-  join(["(github.event_name == '", github_event_name_pull_request, "' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == '", github_event_name_merge_group, "'"], "")
-}
-
-fn compiler_gate_native_write_condition() -> String {
-  join(["github.event_name == '", github_event_name_merge_group, "'"], "")
-}
-
-data compiler_gate_native_read_wif_id: String = "native_read_wif"
-
-data compiler_gate_native_write_wif_id: String = "native_write_wif"
-
-data compiler_gate_native_read_auth_step_name: String = "WIF auth (OIDC -> native-product-read, pull requests)"
-
-data compiler_gate_native_write_auth_step_name: String = "WIF auth (OIDC -> native-product-write, merge queue)"
-
-data compiler_gate_native_save_step_name: String = "Save admitted native products to the shared store"
-
-fn compiler_gate_native_wif_step(name: String, id: String, provider_resource: String, service_account: String, condition: String) -> Step {
-  match ci_wif_auth_step_with_id(name: name, id: id, provider_resource: provider_resource, service_account: service_account) {
-    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
-      UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: Present { value: condition }, continue_on_error: Present { value: true }, timeout_minutes: t }
-    other => other
-  }
-}
-
-fn compiler_gate_native_read_auth_step() -> Step {
-  compiler_gate_native_wif_step(
-    name: compiler_gate_native_read_auth_step_name,
-    id: compiler_gate_native_read_wif_id,
-    provider_resource: github_wif_provider_resource(),
-    service_account: native_product_read_service_account as String,
-    condition: compiler_gate_native_read_condition(),
-  )
-}
-
-fn compiler_gate_native_write_auth_step() -> Step {
-  compiler_gate_native_wif_step(
-    name: compiler_gate_native_write_auth_step_name,
-    id: compiler_gate_native_write_wif_id,
-    provider_resource: native_product_write_provider_resource(),
-    service_account: native_product_write_service_account as String,
-    condition: compiler_gate_native_write_condition(),
-  )
-}
-
-// THE SAVE IS THE ENTRY'S OWN `gunbc run`, DERIVED AS ARGV rather than spelled: it uploads every
-// admitted entry of the job-private store (only a merge_group run with a completed red publishes one)
-// create-only, and runs only on the queue, after the instruments, with the write federation's token.
-fn compiler_gate_native_save_command() -> String {
-  shell_command_render(command: gunbc_run_command(
-    entry: "dag/gunbc/native_product_shared_transfer.dag",
-    functions: ["native_product_save_wet"],
-  ))
-}
-
-fn compiler_gate_native_save_step() -> Step {
-  RunStep {
-    name: Present { value: compiler_gate_native_save_step_name },
-    id: none,
-    run: concat(compiler_gate_native_save_command(), "\n"),
-    shell: none,
-    env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_write_wif_id, ".outputs.access_token }}"], "")))] },
-    working_directory: none,
-    if_condition: Present { value: join(["success() && ", compiler_gate_native_write_condition()], "") },
-    continue_on_error: Present { value: true },
-    timeout_minutes: Present { value: 10 }
-  }
-}
-
-data compiler_gate_native_cache_root_step_name: String = "Bind job-private native product store root"
-
-data compiler_gate_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compiler_gate_native_cache_root_script — hand-authored two-line shell binding the job-private native product store root under RUNNER_TEMP. DISSOLVES WHEN the restore of the shared native product store is an emitted intent that names its job-private directory (a typed host-effect realization through v2.workflow.bash_emit bash_emit_program), so the mkdir and the GITHUB_ENV append are derived from that intent rather than spelled here.")
-
-data compiler_gate_native_cache_root_script: String = concat("# ", concat(dissolution_description(condition: compiler_gate_native_cache_root_shell_emit_dissolution_trigger), concat("\n", "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\"")))
-
-fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
-  RunStep {
-    name: Present { value: compiler_gate_native_cache_root_step_name },
-    id: none,
-    run: compiler_gate_native_cache_root_script,
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: compiler_gate_native_cache_condition() },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundStep {
-  CompilerGateBoundStep {
-    step: compiler_gate_native_cache_root_step_for_pull_requests(),
-    role: consumes_only(capabilities: [RustcCapability]),
-    step_name: compiler_gate_native_cache_root_step_name,
-  }
-}
-
+// default, and the `gunbc` binary the instruments are invoked through. NO NATIVE PRODUCT STORE STEP:
+// the job-private store root, the read and write federations and the save left with the 2026-10-09
+// ruling (header), because a job that may serve a restored final product cannot claim to have
+// emitted and built it.
+//
+// THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
+// wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
+// compiles every dependency cold (measured on run 37976254311: 3m38s for `Build the compiler`).
+// gunbc.fleet_workflow_steps ci_cache_cargo_step_under restores exactly the isolated home's
+// registry index, crate cache and git db plus the workspace `target/`, keyed by the lockfile hash
+// (gunbc.ci_workflow_expressions ci_cache_key_template), and saves them at job end. It caches the
+// SEED's build and its dependencies; the two emitted products are built in a private probe root
+// the cache never sees. The condition is Absent: this job builds the seed on every run.
 // THE LANE BUILDS `gunbc` IN ITS OWN CHECKOUT. `gunbc test` refuses a binary whose cargo dep-info it
 // cannot read inside this checkout (BinaryFreshnessUndecided, #13007), so a binary restored from
 // anywhere else is one the freshness guard rightly cannot judge.
 fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_head_bound_steps(), [
-    compiler_gate_emit_build_native_cache_root_bound_step(),
-    CompilerGateBoundStep { step: compiler_gate_native_read_auth_step(), role: capability_neutral, step_name: compiler_gate_native_read_auth_step_name },
-    CompilerGateBoundStep { step: compiler_gate_native_write_auth_step(), role: capability_neutral, step_name: compiler_gate_native_write_auth_step_name },
+    CompilerGateBoundStep {
+      step: ci_cache_cargo_step_under(condition: none),
+      role: capability_neutral,
+      step_name: "Cache Cargo",
+    },
     CompilerGateBoundStep {
       step: witness_floor_build_step(
         step_name: compiler_gate_build_step_name,
@@ -521,10 +411,7 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(
-      concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
-      [CompilerGateBoundStep { step: compiler_gate_native_save_step(), role: consumes_only(capabilities: [CargoCapability]), step_name: compiler_gate_native_save_step_name }],
-    ),
+    concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -554,9 +441,9 @@ fn compiler_gate_emit_build_scripts_are_renderable() -> Bool {
       wrap_command_is_renderable(command: shell_command_render(command: emitted_subject_build_command(row: row))))
 }
 
-fn compiler_gate_emit_build_job() -> Job {
+fn compiler_gate_required_job() -> Job {
   Job {
-    id: compiler_gate_emit_build_job_id,
+    id: compiler_gate_required_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     environment: none,
@@ -572,394 +459,15 @@ fn compiler_gate_emit_build_job() -> Job {
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present { value: compiler_gate_native_permissions }
-  }
-}
-
-// A LANE RESULT IS AN EXPRESSION, NOT SHELL TEXT, AND THE JOB ID IS NOT ALWAYS DOT-SAFE.
-//
-// `-` is the SUBTRACTION OPERATOR in the Actions expression language, so `needs.emit-build.result`
-// does not dereference a job: it parses as arithmetic over three undefined operands and renders
-// EMPTY. Downstream that compares unequal to `success` on every run, including all-green ones -- a
-// gate whose only reachable state is red, which carries exactly as much information as one that
-// can never go red. gunbc#6f358d269b found that on the previous workflow's hyphenated lane ids and
-// taught `extdeps.github.expressions` to choose index form (`needs['emit-build'].result`) from the
-// segment; this module was then written with THREE dot-safe job ids and hand-spelled its
-// interpolations as string literals, which agreed with the authority by coincidence and stopped
-// agreeing the moment a lane id carried a hyphen.
-//
-// So every lane result now renders through that authority, the dot-safe ones included: their bytes
-// are unchanged, which is the point -- the four call sites become one rule instead of three
-// literals that happen to be right and one that is not.
-fn compiler_gate_lane_result_expression(job_id: String) -> String {
-  interpolate(expression: ContextAccess { context: Needs, path: [job_id, "result"] })
-}
-
-// The ruleset requires a check named `witnesses`, and a job's check is named by its id.
-data compiler_gate_aggregate_job_id: String = "witnesses"
-
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// THE GATE IS DERIVED FROM THE ROSTER -- ALL OF IT, NOT THE `needs` EDGE ALONE
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-//
-// THE DEFECT THIS CLOSES, AND IT WAS IN THE FIRST CUT OF THIS ROSTER (review 69973). `needs` is
-// NOT what makes a lane block. This job is `if: always()`, so a `needs` edge only orders it; the
-// verdict is computed entirely from the env bindings and the shell conditionals below. A roster
-// joined against `needs` alone therefore moved the silent absence from the `needs` list to the
-// ENV list rather than removing it -- and it did so while ASSERTING that the two representations
-// agree, which is worse than the state it replaced, because an inflated claim never ranks for
-// climbing (DESIGN section 4b(1)).
-//
-// The scenario the row itself scheduled: the follow-up that flips `emit-build` to `LaneBlocks`
-// adds the row word and gains the `needs` edge, forgets the script clause, and gets a green
-// `compiler_gate_lane_standings_hold`, a green emission, and a lane that still cannot block.
-//
-// SO THE REMEDY IS CONSTRUCTION, NOT A WIDER CHECK (DESIGN section 5). The env block, every
-// conditional and the echo line are FOLDED FROM `compiler_gate_lane_rows`, so a blocking lane
-// without a variable, or a variable no clause reads, has no constructor. The only join left is
-// jobs-list against roster, because the workflow's job list is the one surface this module does
-// not derive from the roster.
-//
-// THE VARIABLE NAME IS A ROW FIELD rather than a transformation of the job id, for the reason
-// the step id is: a shell variable name and a job id are different namespaces with different
-// alphabets -- `emit-build` is not a variable name -- so deriving one from the other means
-// authoring a mangling rule whose only consumer is this list.
-
-fn compiler_gate_var_read(row: CompilerGateLaneRow) -> String {
-  join(["\"$", row.var_name, "\""], "")
-}
-
-fn compiler_gate_var_report(row: CompilerGateLaneRow) -> String {
-  join([row.job_id, "=$", row.var_name], "")
-}
-
-fn compiler_gate_blocking_rows() -> List<CompilerGateLaneRow> {
-  compiler_gate_blocking_rows_of(rows: compiler_gate_lane_rows())
-}
-
-// THE AGGREGATE IS A FUNCTION OF A SUPPLIED ROSTER, and the live gate is that function applied to
-// `compiler_gate_lane_rows`. The roster is the one input every surface below derives from, so
-// taking it as a parameter lets a witness state a LAW over any roster -- an announced lane binds no
-// variable, a blocking lane is read by every arm -- over a supplied row, while the live claims
-// assert which lanes block today (DESIGN section 3: a witness discriminates at one interface).
-fn compiler_gate_blocking_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
-  filter(xs: rows, predicate: compiler_gate_lane_blocks)
-}
-
-fn compiler_gate_strict_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
-    match row.arm {
-      GateArmStrict => true
-      GateArmSkippableOnFork { notice: _, unobserved_error: _ } => false
-    }
-  })
-}
-
-fn compiler_gate_fork_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
-    match row.arm {
-      GateArmStrict => false
-      GateArmSkippableOnFork { notice: _, unobserved_error: _ } => true
-    }
-  })
-}
-
-fn compiler_gate_report_text(rows: List<CompilerGateLaneRow>) -> String {
-  join(list_map(xs: rows, f: compiler_gate_var_report), " ")
-}
-
-// THE COMPARISON IS `!= success` AND NOT A LIST OF BAD STATES, carried over from the roster this
-// module displaced and still a measured fact rather than a preference: run 32883390033 read
-// `FLOOR="abandoned"`, a `needs.*.result` value nobody knew was reachable, and an enumerated
-// guard would have admitted it and reported the required context GREEN over two lanes that never
-// ran. The strict inequality admits exactly one state and refuses every other, including ones the
-// author has never heard of.
-fn compiler_gate_is_failure_clause(row: CompilerGateLaneRow) -> String {
-  join(["[ ", compiler_gate_var_read(row: row), " = failure ]"], "")
-}
-
-fn compiler_gate_not_success_clause(row: CompilerGateLaneRow) -> String {
-  join(["[ ", compiler_gate_var_read(row: row), " != success ]"], "")
-}
-
-fn compiler_gate_echo_line(rows: List<CompilerGateLaneRow>) -> String {
-  join([
-    "echo \"required lanes: ",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
-    " (same_repo=$SAME_REPO)\""
-  ], "")
-}
-
-fn compiler_gate_failure_line(rows: List<CompilerGateLaneRow>) -> String {
-  join([
-    "if ",
-    join(list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: compiler_gate_is_failure_clause), " || "),
-    "; then echo \"::error::a required lane concluded failure (",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
-    ") - open that job's log\" >&2; exit 1; fi"
-  ], "")
-}
-
-// THE SECOND ARM SAYS SOMETHING THE FIRST DOES NOT, and keeping them apart is the whole reason
-// there are two: a lane that FAILED is a verdict about the diff, and a lane that produced no
-// conclusion of its own leaves the head UNOBSERVED. Both block; they send a reader to different
-// places.
-fn compiler_gate_unobserved_line(rows: List<CompilerGateLaneRow>) -> String {
-  join([
-    "if ",
-    join(list_map(xs: compiler_gate_strict_rows_of(rows: rows), f: compiler_gate_not_success_clause), " || "),
-    "; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (",
-    compiler_gate_report_text(rows: compiler_gate_strict_rows_of(rows: rows)),
-    ")\" >&2; exit 1; fi"
-  ], "")
-}
-
-fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
-  match row.arm {
-    GateArmStrict => ""
-    GateArmSkippableOnFork { notice: n, unobserved_error: e } =>
-      join([
-        "if ", compiler_gate_not_success_clause(row: row),
-        "; then if [ \"$SAME_REPO\" = false ] && [ ", compiler_gate_var_read(row: row), " = skipped ]",
-        "; then echo \"::notice::", n, "\"",
-        "; else echo \"::error::", e, " (", compiler_gate_var_report(row: row),
-        "), so this head carries no verdict from that lane\"; exit 1; fi; fi"
-      ], "")
-  }
-}
-
-// THE STRICT ARM IS A LINE ONLY WHILE A STRICT LANE BLOCKS. Since the 2026-09-28 ruling every
-// blocking lane runs on the fleet and is skippable on a fork, so no blocking row is strict, and the
-// unobserved line over zero rows would render `if ; then` -- a shell syntax error that reds the
-// required context on every run, a gate whose only reachable state is red. The fork lines already
-// refuse `!= success` for every fleet lane, so omitting the empty line loses no refusal.
-fn compiler_gate_unobserved_lines(rows: List<CompilerGateLaneRow>) -> List<String> {
-  if length(xs: compiler_gate_strict_rows_of(rows: rows)) == 0 { [] } else { [compiler_gate_unobserved_line(rows: rows)] }
-}
-
-fn compiler_gate_aggregate_script_lines() -> List<String> {
-  compiler_gate_aggregate_script_lines_for(rows: compiler_gate_lane_rows())
-}
-
-fn compiler_gate_aggregate_script_lines_for(rows: List<CompilerGateLaneRow>) -> List<String> {
-  list_append(
-    left: list_append(left: [compiler_gate_echo_line(rows: rows), compiler_gate_failure_line(rows: rows)], right: compiler_gate_unobserved_lines(rows: rows)),
-    right: list_map(xs: compiler_gate_fork_rows_of(rows: rows), f: compiler_gate_fork_line)
-  )
-}
-
-// THE FORK PREDICATE HAS ONE AUTHORITY AND THIS IS NOT IT (review 69999). The first cut of the
-// derived gate promoted the inline `${{ ... }}` literal to a `data` row, which looked like
-// consolidation and was the opposite: a verbatim re-spelling of the predicate
-// `compiler_gate_fleet_job_condition` already derives one screen up from
-// `gunbc.heal_workflow` `heal_same_repository_clause`, which this module already imports.
-//
-// THE COUPLING IS LOAD-BEARING, NOT COSMETIC, which is why a second spelling is a defect rather
-// than untidiness: the fleet lane SKIPS exactly when that condition is false, and the gate's fork
-// carve-out EXCUSES that skip exactly when `$SAME_REPO` is false. Two sources for one predicate
-// and the two failure modes are opposite and both silent -- the fleet lane skips while the gate
-// refuses (a merge-queue stall on every fork PR), or the gate excuses a skip that was not
-// fork-driven (an unobserved head admitted). One authority makes both unwritable.
-//
-// ONLY THE INTERPOLATION DELIMITERS ARE ADDED HERE, and they are read from the expression
-// writer's own spellings rather than typed, for the same reason the lane results are: a job `if`
-// takes a bare expression and a step `env` value takes an interpolated one, which is a difference
-// of TRANSPORT, not of predicate.
-fn compiler_gate_same_repo_expression() -> String {
-  join([
-    default_expression_spellings.interp_open,
-    compiler_gate_fleet_job_condition(),
-    default_expression_spellings.interp_close
-  ], "")
-}
-
-fn compiler_gate_aggregate_step_env() -> List<YamlKeyValue> {
-  compiler_gate_aggregate_step_env_for(rows: compiler_gate_lane_rows())
-}
-
-fn compiler_gate_aggregate_step_env_for(rows: List<CompilerGateLaneRow>) -> List<YamlKeyValue> {
-  list_append(
-    left: list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: fn(row) {
-      kv(key: row.var_name, value: yaml_string(s: compiler_gate_lane_result_expression(job_id: row.job_id)))
-    }),
-    right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression()))]
-  )
-}
-
-fn compiler_gate_aggregate_step() -> Step {
-  RunStep {
-    name: Present { value: "Every required lane must have succeeded" },
-    id: none,
-    run: join(compiler_gate_aggregate_script_lines(), "\n"),
-    shell: none,
-    env: Present { value: compiler_gate_aggregate_step_env() },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// ON THE FLEET, AND WITH NO FORK GUARD (operator ruling 2026-09-28). The job checks nothing out,
-// installs no toolchain and runs one short script over its lanes' results, so it runs no pull-request
-// code of its own and holds a slot for seconds -- where on the hosted pool it waited minutes for one
-// (the header's receipts). It carries no `if` beyond always() because a skipped job's check is not
-// a refusal: the required context must be produced on every run, and the fork carve-out lives in the
-// lane rows the script reads.
-fn compiler_gate_aggregate_job() -> Job {
-  Job {
-    id: compiler_gate_aggregate_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    environment: none,
-    steps: [compiler_gate_aggregate_step()],
-    needs: compiler_gate_blocking_job_ids(),
-    env: none,
-    outputs: none,
-    if_condition: Present { value: "always()" },
-    timeout_minutes: Present { value: 5 },
-    continue_on_error: none,
-    concurrency: none,
     permissions: Present { value: compiler_gate_permissions }
   }
-}
-
-// EVERY JOB THAT IS NOT THE AGGREGATE DECLARES WHETHER IT BLOCKS, AND THE TWO STATES ARE
-// DERIVED FROM ONE ROSTER RATHER THAN FROM THE ABSENCE OF AN EDGE.
-//
-// THE FAIL-OPEN THIS CLOSES. A job present in the workflow but absent from the aggregate's
-// `needs` RUNS AND CANNOT BLOCK: it publishes its own check, which no ruleset requires, while the
-// one required context concludes success over a lane it never read. Before this roster the jobs
-// list and the `needs` list were two spellings of one fact, and that state was reachable by
-// forgetting an edge -- silently, with a green gate.
-//
-// WHY THE ANSWER IS NOT "EVERY JOB MUST BE NEEDED". A lane that runs and does not block is a
-// LEGITIMATE INTERIM: `emit-build` stood in it from 2026-09-22 (operator ruling, v2 foundation
-// manager: land it PRESENT and NOT BLOCKING while main could not self-host) until 2026-10-02, when
-// the operator signed off its fleet claim and its row became LaneBlocks. No lane stands in it today;
-// the arm is kept because the next lane to land may need it. The defect is not that such a lane exists; it is that its non-blocking standing was
-// INFERRABLE FROM AN ABSENCE, where a forgotten edge and a deliberate interim are the same bytes.
-//
-// So the standing is DECLARED and it carries the trigger that retires it -- and, since review
-// 69973, EVERY GATING SURFACE IS FOLDED FROM THIS ROSTER rather than joined against it. The first
-// cut joined the roster against the aggregate's `needs` and claimed the representations agreed;
-// they did not, because this job is `if: always()` and a `needs` edge only orders it. The verdict
-// is computed from the env bindings and the shell conditionals, so joining `needs` moved the
-// silent absence one surface along while asserting it had been removed. `needs`, the env block,
-// the echo line and every conditional now derive from these rows, so a blocking lane without a
-// variable, or a variable no clause reads, has no constructor (DESIGN section 5: construction
-// over validation). Flipping `emit-build` to required is one word on one row plus the job's move
-// onto the fleet, which compiler_gate_merge_path_runs_on_the_fleet refuses to let anyone forget; and
-// forgetting to flip it leaves a row whose trigger anyone reading the roster can see -- not an edge,
-// and not a variable, that nobody can see is missing.
-type CompilerGateLaneStanding
-  = LaneBlocks
-  | LaneAnnouncedNotBlocking { flip_trigger: String }
-
-// THE GATE ARM IS A PROPERTY OF THE LANE, NOT A SPECIAL CASE IN THE SCRIPT. Two lanes differ in
-// what a non-success MEANS. For a strict lane -- one that runs on every pull request, forks included,
-// as the deleted hosted compiler and lint lanes did -- any non-success is a head this gate cannot
-// vouch for. A fleet lane legitimately SKIPS on a fork pull request -- no fork code runs there, so
-// that head carries no verdict from the lane, and saying so is a notice rather than a refusal.
-// Carrying that as a row field is what lets the whole script be derived; carrying it as a
-// hand-written fourth line is what let the script drift from the roster. Since the 2026-09-28 ruling
-// every blocking lane is a fleet lane, so today no live row carries GateArmStrict (emit-build left it when it moved),
-// and a hosted lane cannot turn blocking without moving (compiler_gate_merge_path_runs_on_the_fleet).
-// The arm that excused a lane skipped on every pull_request left with its one inhabitant, the v1
-// unit-test lane (2026-10-09).
-type CompilerGateArm
-  = GateArmStrict
-  | GateArmSkippableOnFork { notice: String, unobserved_error: String }
-
-type CompilerGateLaneRow {
-  job_id: String
-  var_name: String
-  standing: CompilerGateLaneStanding
-  arm: CompilerGateArm
-}
-
-// ONE ROW, BECAUSE ONE LANE BLOCKS. The rows for `rust-unit-tests`, `seed`, `floor` and `generated`
-// left with their jobs (header), and compiler_gate_standings_agree refuses a row for a job the
-// workflow does not run, so a deleted lane cannot linger here as bookkeeping.
-fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
-  [
-    CompilerGateLaneRow {
-      job_id: compiler_gate_emit_build_job_id,
-      var_name: "EMIT_BUILD",
-      standing: LaneBlocks,
-      arm: GateArmSkippableOnFork {
-        notice: "the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head",
-        unobserved_error: "the emit-build lane produced no success"
-      }
-    },
-  ]
-}
-
-fn compiler_gate_lane_blocks(row: CompilerGateLaneRow) -> Bool {
-  match row.standing {
-    LaneBlocks => true
-    LaneAnnouncedNotBlocking { flip_trigger: _ } => false
-  }
-}
-
-fn compiler_gate_blocking_job_ids() -> List<String> {
-  list_map(xs: compiler_gate_blocking_rows(), f: fn(row) { row.job_id })
-}
-
-// THE ONE JOIN THAT REMAINS, AND IT IS AN EMISSION CONJUNCT RATHER THAN A WITNESS because the
-// remedy is refusal, not a report: a workflow whose gate does not match its declared standings
-// must not be emitted at all, and `expected_compiler_gate_yml` already refuses to produce yaml
-// when a capability closure fails. The drift gate then reds on the refusal marker rather than on
-// a workflow that would have run.
-//
-// IT IS PARAMETERIZED ON ALL THREE SIDES so the RED is authorable at the fixture boundary, which
-// is the boundary that decides whether a top-rung check carries information (DESIGN section 4b):
-// a witness hands it disagreeing sets and reads the refusal, rather than waiting for a future
-// author to supply the only counterexample.
-//
-// WHY IT STILL TAKES `blocking` AND `needs` WHEN BOTH ARE NOW DERIVED FROM THE SAME ROSTER. Those
-// two arms are trivially true today and are kept because they are cheap and because the property
-// they state -- the gate reads exactly the lanes declared to block -- is the one a future author
-// would break by reintroducing a hand-written `needs` list. What they do NOT establish is that the
-// env and script agree, and that is not a gap: those are folded, so the claims over them live in
-// the witness as readings of a derived value rather than as a join between two authorities.
-fn compiler_gate_standings_agree(
-  job_ids: List<String>,
-  rostered: List<String>,
-  blocking: List<String>,
-  needs: List<String>
-) -> Bool {
-  let every_job_rostered = all(job_ids, id => any(rostered, r => r == id))
-  let no_phantom_row = all(rostered, r => any(job_ids, id => id == r))
-  let every_blocker_needed = all(blocking, b => any(needs, n => n == b))
-  let no_unblocking_need = all(needs, n => any(blocking, b => b == n))
-  every_job_rostered && no_phantom_row && every_blocker_needed && no_unblocking_need
-}
-
-fn compiler_gate_non_aggregate_job_ids() -> List<String> {
-  list_map(
-    xs: filter(
-      xs: compiler_gate_workflow.jobs,
-      predicate: fn(j) { j.id != compiler_gate_aggregate_job_id }
-    ),
-    f: fn(j) { j.id }
-  )
-}
-
-fn compiler_gate_lane_standings_hold() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: compiler_gate_non_aggregate_job_ids(),
-    rostered: list_map(xs: compiler_gate_lane_rows(), f: fn(row) { row.job_id }),
-    blocking: compiler_gate_blocking_job_ids(),
-    needs: compiler_gate_aggregate_job().needs
-  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE MERGE PATH RUNS ON THE FLEET -- AN EMISSION CONJUNCT, NOT A CONVENTION (operator ruling 2026-09-28)
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// The merge path is every lane the required context reads plus the aggregate that reads them. A
+// The merge path is the required job. A
 // hosted job on it makes every landing wait for a slot in a pool this repository does not control,
 // which is the stall the header records. A workflow that puts one there must not be emitted at all,
 // for the reason compiler_gate_standings_agree gives for being a conjunct: the remedy is refusal.
@@ -993,7 +501,7 @@ fn compiler_gate_hosted_job_ids() -> List<String> {
 }
 
 fn compiler_gate_merge_path_job_ids() -> List<String> {
-  list_append(left: compiler_gate_blocking_job_ids(), right: [compiler_gate_aggregate_job_id])
+  [compiler_gate_required_job_id]
 }
 
 fn compiler_gate_merge_path_runs_on_the_fleet() -> Bool {
@@ -1024,10 +532,10 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_emit_build_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_required_job()]
 }
 
-data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a subject step's script is not renderable, the workflow runs a job that compiler_gate_lane_rows does not roster, or a blocking lane or the aggregate runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the lane's bound steps, add the job's row, or put the merge-path job on gunbc_ci_selected_runner_spec. The gate's needs, env bindings and every conditional are FOLDED from that roster, so they cannot disagree with it and this refusal has nothing to say about them."
+data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the required job's capability closure does not hold, a subject step's script is not renderable, or the required job runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the job's bound steps, or put the job on gunbc_ci_selected_runner_spec."
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
@@ -1042,7 +550,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
+          if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }

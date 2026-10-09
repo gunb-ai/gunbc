@@ -9,7 +9,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // v2 native compiler development - that means deleting most of our current CI jobs", and "i suggest
 // we bankrupt the current CI first". The change that carries this row deletes four of the five lanes
 // the required context read -- `floor`, `generated`, `rust-unit-tests` and `seed` -- from
-// gunbc.compiler_gate_workflow and leaves `emit-build`.
+// gunbc.compiler_gate_workflow and leaves the emit-and-build steps as the one required job,
+// `witnesses` (the same ruling collapsed `emit-build` and the aggregate that read it into that job,
+// and requires it to emit and build both products fresh on every run).
 //
 // WHY THE LANES ARE DELETED AND NOT GIVEN HEADROOM. The floor already ran at its slot's throttle
 // line (gunbc.recurring_failure_mode required_floor_runs_at_its_memory_ceiling carries that receipt),
@@ -18,7 +20,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // not ask for a cheaper v1 gate.
 //
 // THIS IS A DROP AND NOT A CLEAN-UP, WHICH IS WHY IT IS ONE ROW WITH A WIDE POPULATION. Nothing the
-// four lanes held is held by anything else today. The surviving lane establishes that the seed emits
+// four lanes held is held by anything else today. The surviving job establishes that the seed emits
 // two v2 closures and that the emitted crates build and start, and a green required context says
 // that and nothing more.
 //
@@ -31,11 +33,11 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data v1_required_lanes_withdrawn_population: List<String> = [
   "every claim the `floor` lane folded on a pull request or a merge_group: the prepared subject of `v2.workflow.required_floor` `required_gate_prefixes` with its seeds, plus the changed-witness and touched-entry selection. `claim_executor --required-ci --required-lane witnesses` is run by no job",
-  "the stage0 mirrors equal one emission by the seed built from them, and the registry-rostered generated artifacts (`gunbc.generated_artifact_registry` `committed_generated_artifacts`) equal one emission of their authorities: `claim_executor --required-ci --required-lane build` is run by no job. That population includes `.github/workflows/witnesses.yml` and `DESIGN.md`, so the gate's own workflow file is compared with `gunbc.compiler_gate_workflow` by nothing, and no pull request run seals a repair candidate for `gunbc.heal_publisher_workflow` to publish",
+  "the stage0 mirrors equal one emission by the seed built from them, and the registry-rostered generated artifacts (`gunbc.generated_artifact_registry` `committed_generated_artifacts`) equal one emission of their authorities: `claim_executor --required-ci --required-lane build` is run by no job. That population includes `.github/workflows/witnesses.yml` and `DESIGN.md`, so the gate's own workflow file is compared with `gunbc.compiler_gate_workflow` by nothing; the heal publisher workflow that published repair candidates was deleted with the lanes (nothing sealed one), and its WIF pool (`gunbc.auth.heal_publisher_federation`) stands dead until retired by hand -- an external-estate obligation, not a drop",
   "the lint: `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`), the only command that compiles the integration-test and example targets",
   "the v1 unit tests: `cargo test --release -p v1-compiler --lib` (`gunbc.repo_self_build` `repo_self_test_command`), which ran on merge_group and workflow_dispatch",
   "module resolution: every module the source-root ingestion admits under dag/ and src/v2/ that is outside the import closures of `gunbc.instrument_targets` `self_host_entry` and `v2_native_cli_entry` is handed to a compiler by no required step, so it can stop resolving on main with the required context green. Enumerated BY IDENTITY, not by count, by `gunbc test //gunbc/instruments:required-lane-resolution-census` (`gunbc.required_lane_resolution_census_live`), which from this change does not hold by design",
-  "the consumers of those lanes' products: no merge_group run uploads a compiler pair candidate, so `gunbc.fleet_desired_admission_workflow` builds the pair itself; and `gunbc.fleet_revision_acceptance` admits a revision on a required-CI success that carries the emit-build verdict alone, under the contract epoch `gunbc.required_ci_contract_epoch` moved to with this change",
+  "the consumers of those lanes' products: no merge_group run uploads a compiler pair candidate, so `gunbc.fleet_desired_admission_workflow` builds the pair itself; and `gunbc.fleet_revision_acceptance` admits a revision on a required-CI success that carries the `witnesses` job's emit-and-build verdict alone, under the contract epoch `gunbc.required_ci_contract_epoch` moved to with this change",
   "NOT ENUMERATED HERE, and named so the gap is not read as empty: every `gunbc.recurring_failure_mode` row and every standing `gunbc.rung_drop` row whose stated current rung is held by a step of the four lanes. Those rows are not amended by this change, and each now sits no higher than this row's temporary rung",
 ]
 

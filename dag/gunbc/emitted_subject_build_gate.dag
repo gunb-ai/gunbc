@@ -104,6 +104,44 @@ data native_fault_experiment_env_name: String = "GUNBC_NATIVE_FAULT_EXPERIMENT"
 data native_fault_experiment_skip_value: String = "skip_pull_request"
 data native_fault_experiment_run_value: String = "run"
 
+// THE REQUIRED JOB EMITS AND BUILDS BOTH PRODUCTS FRESH (operator ruling 2026-10-09: "this version
+// requires fresh emission/build of both retained products and refuses a restored final-product
+// hit. Ordinary Cargo reuse may remain"). The workflow passes this input on every subject step;
+// native_lane_runner reads it and, under `fresh`, consults no native product store and commits
+// nothing -- and REFUSES a run that also binds a store root, because an invocation asking for a
+// fresh product while offering a store to serve it from is a contradiction, not a miss. The store
+// steps (job-private root, the two federations, the save) left the required job with this ruling;
+// cargo's own dependency reuse inside the job's checkout is untouched.
+data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
+data native_product_reuse_fresh_value: String = "fresh"
+
+// THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
+// hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
+// runner retry"). The fleet slot is the fixed hard maximum (gunbc.runner_slot_desired: 22 GiB, no
+// swap). Each subject step passes this input, which gunbc test reads as the kernel bind the
+// governor already offers claim_executor (memory_governor BIND_MEMORY_CGROUP_ENV): the step's own
+// cgroup is capped at 20 GiB, so a product build that outgrows the envelope is tripped inside the
+// step -- exit 137 -- two GiB before the slot's maximum, and the job's runner process is never the
+// kernel's victim. At exit gunbc test prints a MEMORY RECEIPT (peak, high/max events, OOM kills,
+// swap charged) from that cgroup and REFUSES the run on any OOM kill or any swap, whatever the
+// producer answered. There is no larger runner and no retry: a trip is the line stopping.
+data native_step_memory_bind_env_name: String = "GUNBC_BIND_MEMORY_CGROUP_BYTES"
+data native_step_memory_trip_bytes: Int = 21474836480
+
+fn native_step_memory_trip_text() -> String {
+  to_string(native_step_memory_trip_bytes)
+}
+
+// THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, so a reader of an exit-137 step is told
+// what tripped and that nothing will retry it bigger.
+fn emit_build_memory_envelope_lines() -> List<String> {
+  [
+    join(["This step ran inside a cgroup bound at ", native_step_memory_trip_text(), " bytes (memory.max) with no swap, below the fleet slot's hard maximum."], ""),
+    "An exit of 137 here is the kernel tripping that bound: the compiler outgrew its envelope. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
+    "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
+  ]
+}
+
 fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
   gunbc_test_command(label: emitted_subject_build_label_text(row: row))
 }

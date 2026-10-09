@@ -1,24 +1,15 @@
 module test.claim.compiler_gate_emit_build_lane_witness_test
 
 import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
+import extdeps.languages.yaml.types { YamlString }
 import gunbc.compiler_gate_workflow {
-  compiler_gate_standings_agree,
-  compiler_gate_non_aggregate_job_ids,
-  compiler_gate_lane_standings_hold,
-  compiler_gate_lane_rows, compiler_gate_lane_blocks,
-  compiler_gate_blocking_job_ids,
-  CompilerGateLaneRow, LaneBlocks, LaneAnnouncedNotBlocking,
-  compiler_gate_aggregate_job,
-  compiler_gate_emit_build_job_id,
+  compiler_gate_workflow,
+  compiler_gate_required_job, compiler_gate_required_job_id,
+  compiler_gate_fleet_job_condition,
   compiler_gate_emit_build_bound_steps,
   compiler_gate_emit_build_capability_closure_holds,
-  compiler_gate_lane_result_expression,
-  compiler_gate_aggregate_step_env,
-  compiler_gate_aggregate_script_lines,
-  compiler_gate_aggregate_script_lines_for, compiler_gate_aggregate_step_env_for,
-  compiler_gate_blocking_rows_of, CompilerGateLaneStanding, GateArmStrict,
-  compiler_gate_blocking_rows, compiler_gate_lane_rows,
-  compiler_gate_same_repo_expression, compiler_gate_fleet_job_condition,
   compiler_gate_emit_build_notice_step,
   compiler_gate_emit_build_notice_lines,
   compiler_gate_emit_build_step
@@ -30,146 +21,97 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_label_text,
   emitted_subject_build_command,
   emitted_subject_build_step_name,
-  native_fault_experiment_env_name, native_fault_experiment_skip_value
+  native_fault_experiment_env_name, native_fault_experiment_skip_value,
+  native_product_reuse_env_name, native_product_reuse_fresh_value,
+  native_step_memory_bind_env_name, native_step_memory_trip_text
 }
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
-// WHAT THIS FILE DISCRIMINATES. Three facts, and each has a red that is authorable HERE rather
-// than only by a future edit to the workflow: the aggregate-enrollment predicate refuses a lane
-// that runs without being needed and refuses a `needs` entry naming no job; the emit-build lane is
-// actually enrolled in the live workflow; and the lane's steps invoke the two declared instrument
-// labels rather than a spelling of them.
+// WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
+// lane and the aggregate that read it into ONE required job named `witnesses`: that the workflow
+// runs exactly that job and nothing beside it; that the job's steps invoke the two declared
+// instrument labels rather than a spelling of them, one step per subject; that every subject step
+// asks for a FRESH product and the job binds no native product store, so a restored final product
+// cannot stand in for the emission and build the job claims; that the job is fleet-guarded; and
+// that the failure notice a stranger reads is rendered blocking, discriminating and owner-free.
+//
+// THE CLAIMS OVER THE DERIVED AGGREGATE LEFT WITH IT -- lane rows, standings, the env block and the
+// shell conditionals folded from them. With one job there is no roster to join, and a claim that
+// the job list equals a one-row roster would be a count of one standing where the job list is.
 //
 // THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (DESIGN section 3, the pairing obligation):
-// every claim below that supplies a job set or a needs list is paired with one that reads
-// `compiler_gate_lane_standings_hold` and `compiler_gate_emit_build_job` on the real value,
-// so deleting the enrollment from the workflow reddens this file even though the parameterized
-// claims would still pass.
+// every claim below reads `compiler_gate_workflow` or `compiler_gate_required_job` on the real
+// value, so a change to the emitted workflow reddens this file.
 
-data fixture_jobs: List<String> = ["compiler", "clippy", "emit-build", "floor"]
-data fixture_all_blocking: List<String> = ["compiler", "clippy", "emit-build", "floor"]
-
-test fn standings_agree_when_every_blocker_is_needed_and_nothing_else_is() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: fixture_jobs,
-    rostered: fixture_jobs,
-    blocking: fixture_all_blocking,
-    needs: fixture_all_blocking
-  )
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
 }
 
-// A DECLARED NON-BLOCKING LANE IS ADMITTED, which is the state this change lands in. It is in the
-// workflow and in the roster and deliberately NOT in `needs`.
-test fn a_declared_non_blocking_lane_is_admitted() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: fixture_jobs,
-    rostered: fixture_jobs,
-    blocking: ["compiler", "clippy", "floor"],
-    needs: ["compiler", "clippy", "floor"]
-  )
+fn step_name_text(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
 }
 
-// THE FAIL-OPEN. A job in the workflow that no row accounts for -- its non-blocking standing
-// inferrable from an absence, where a forgotten edge and a deliberate interim are the same bytes.
-test fn w_RED_a_job_with_no_standing_row_refuses() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: fixture_jobs,
-    rostered: ["compiler", "clippy", "floor"],
-    blocking: ["compiler", "clippy", "floor"],
-    needs: ["compiler", "clippy", "floor"]
-  ) == false
+fn step_env_has(step: Step, key: String, value: String) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => any(kvs, k =>
+          k.key == key && (match k.value { YamlString { value: v } => v == value  _ => false }))
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
 }
 
-// A LANE DECLARED BLOCKING THAT THE GATE DOES NOT READ. This is the original fail-open: the row
-// says it blocks, the aggregate never asked, and the required context greens over it.
-test fn w_RED_a_blocking_lane_absent_from_needs_refuses() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: fixture_jobs,
-    rostered: fixture_jobs,
-    blocking: fixture_all_blocking,
-    needs: ["compiler", "clippy", "floor"]
-  ) == false
+// ═══ ONE JOB, AND IT CARRIES THE RULESET'S CONTEXT ═══
+
+// THE WORKFLOW RUNS EXACTLY THE REQUIRED JOB. Read at identity grain in both directions: a second
+// job (an aggregate regrown, a lane returned) reds this, and so does a workflow that lost the job.
+test fn the_workflow_runs_exactly_the_required_job() -> Bool {
+  let ids = compiler_gate_workflow.jobs |> map(j => j.id)
+  compiler_gate_required_job_id == "witnesses"
+    && any(ids, id => id == compiler_gate_required_job_id)
+    && all(ids, id => id == compiler_gate_required_job_id)
 }
 
-// THE OTHER DIRECTION, WHICH FAILS DIFFERENTLY AND SILENTLY: an unknown `needs` context renders
-// as the empty string, which is not `success`, so a stale name refuses every run and reads as a
-// broken lane rather than a broken reference.
-test fn w_RED_a_needs_entry_that_no_row_declares_blocking_refuses() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: fixture_jobs,
-    rostered: fixture_jobs,
-    blocking: ["compiler", "clippy", "floor"],
-    needs: ["compiler", "clippy", "floor", "required-v2-native"]
-  ) == false
+// THE FOUR WITHDRAWN LANES ARE NOT JOBS (operator ruling 2026-10-09, gunbc.rung_drop
+// v1_required_lanes_withdrawn). Each id is named, because a workflow carrying one of them again is
+// exactly the state a partial revert of the cut would leave; the claim above is the positive half.
+data withdrawn_lane_job_ids: List<String> = ["rust-unit-tests", "seed", "floor", "generated", "emit-build"]
+
+test fn w_RED_the_withdrawn_lanes_are_not_jobs() -> Bool {
+  let ids = compiler_gate_workflow.jobs |> map(j => j.id)
+  all(withdrawn_lane_job_ids, w => any(ids, id => id == w) == false)
 }
 
-// A ROW FOR A JOB THE WORKFLOW DOES NOT RUN. Bookkeeping about nothing, and the shape a roster
-// takes as it rots.
-test fn w_RED_a_standing_row_for_a_job_that_does_not_exist_refuses() -> Bool {
-  compiler_gate_standings_agree(
-    job_ids: ["compiler", "clippy", "floor"],
-    rostered: fixture_jobs,
-    blocking: ["compiler", "clippy", "floor"],
-    needs: ["compiler", "clippy", "floor"]
-  ) == false
+// THE JOB IS FLEET-GUARDED: fork code does not run on the fleet, so a fork pull request produces no
+// `witnesses` check (unobserved, never excused). The guard is the one authority
+// (compiler_gate_fleet_job_condition) rather than a second spelling of it.
+test fn the_required_job_is_fleet_guarded() -> Bool {
+  match compiler_gate_required_job().if_condition {
+    Present { value: c } =>
+      c == compiler_gate_fleet_job_condition() && string_contains(s: c, pattern: "github.repository")
+    Absent => false
+  }
 }
 
-// INHABITANCE: the predicate is not merely true of fixtures, it is true of the workflow this
-// module emits -- and emission refuses if it is not.
-test fn the_live_workflow_standings_agree_with_its_gate() -> Bool {
-  compiler_gate_lane_standings_hold()
-}
-
-// INHABITANCE: the emit-build lane is a job in the live workflow and carries a row.
-test fn the_emit_build_lane_is_a_job_and_is_rostered() -> Bool {
-  any(compiler_gate_non_aggregate_job_ids(), id => id == compiler_gate_emit_build_job_id)
-    && any(
-      compiler_gate_lane_rows() |> map(r => r.job_id),
-      id => id == compiler_gate_emit_build_job_id
-    )
-}
-
-// AND IT BLOCKS. The E0573 standing is retired and the operator signed off the fleet claim on
-// 2026-10-02, so the row is LaneBlocks. Reads the LIVE roster and aggregate, so a revert of the
-// row, or a flip that forgets the fleet move (refused by compiler_gate_merge_path_runs_on_the_fleet),
-// is seen here.
-test fn the_emit_build_lane_blocks_and_is_read_by_the_gate() -> Bool {
-  any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id)
-    && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
-}
-
-// THE BLOCKING SET IS EXACTLY THE ONE LANE, NAMED RATHER THAN COUNTED. Without this, the claim above
-// would be satisfied by a gate that reads other lanes too. It joins at identity grain in both
-// directions (DESIGN section 5: completeness is an identity join, not a count equality), so dropping
-// the lane, or adding one that blocks without being named here, reds it. The v1 unit-test, floor and
-// generated-artifact lanes left the set with the 2026-10-09 ruling that deleted them
-// (gunbc.rung_drop v1_required_lanes_withdrawn); a change that returns one of them reds here.
-test fn the_established_lanes_still_block() -> Bool {
-  let blocking = compiler_gate_blocking_job_ids()
-  let established = [compiler_gate_emit_build_job_id]
-  all(established, id => any(blocking, b => b == id))
-    && all(blocking, b => any(established, id => id == b))
-    && all(blocking, id => any(compiler_gate_aggregate_job().needs, n => n == id))
-}
-
-// A NON-BLOCKING STANDING CARRIES ITS FLIP TRIGGER. A standing with no trigger is an indefinite
-// exemption wearing an interim's clothes (DESIGN section 4b(2): a class below its ceiling must
-// name its next-rung trigger), and an empty string would satisfy a presence-only check.
-test fn every_non_blocking_lane_names_what_would_flip_it() -> Bool {
-  all(compiler_gate_lane_rows(), row =>
-    match row.standing {
-      LaneBlocks => true
-      LaneAnnouncedNotBlocking { flip_trigger: t } => string_contains(s: t, pattern: "Sufficient for:")
-    }
-  )
-}
+// ═══ THE SUBJECTS ═══
 
 // THE SUBJECTS ARE THE TWO RETAINED NATIVE COMPILATIONS, BY LABEL. A green here that named one
-// subject would be the coverage claim without the coverage.
-test fn the_lane_runs_both_retained_emit_build_subjects() -> Bool {
+// subject would be the coverage claim without the coverage; a third row is the growth the operator
+// vetoed on 2026-10-09 (the roster "remains the two compiler products").
+test fn the_job_runs_both_retained_emit_build_subjects() -> Bool {
   (emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))) == [
     "//gunbc/instruments:self-host",
     "//gunbc/instruments:v2-native-cli"
@@ -187,15 +129,11 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
   )
 }
 
-// ONE STEP PER SUBJECT, JOINED AT IDENTITY RATHER THAN COUNTED. A lane that grew a subject without
-// growing a step would run one compilation and report on two; a lane that kept a step for a
-// subject no row declares would report on a compilation nobody rostered. Both directions are read
-// by step NAME, which gunbc.emitted_subject_build_gate derives from the row's label. This replaced
-// `length(steps) == 6 + rows + 1`: that literal was the lane's shape on the day it was written, the
-// native-product steps (store root, two federations, the save) grew the lane past it, and the
-// count went red without the property it stood for having changed -- a measurement copied from the
-// tree, which DESIGN section 5 refuses as an oracle.
-test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
+// ONE STEP PER SUBJECT, JOINED AT IDENTITY RATHER THAN COUNTED. A job that grew a subject without
+// growing a step would run one compilation and report on two; a job that kept a step for a subject
+// no row declares would report on a compilation nobody rostered. Both directions are read by step
+// NAME, which gunbc.emitted_subject_build_gate derives from the row's label.
+test fn the_job_binds_one_step_per_subject() -> Bool {
   let names = compiler_gate_emit_build_bound_steps() |> map(b => b.step_name)
   let subject_names = emitted_subject_build_rows() |> map(r => emitted_subject_build_step_name(row: r))
   all(subject_names, s => length(xs: filter(xs: names, predicate: fn(n) { n == s })) == 1)
@@ -203,142 +141,80 @@ test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
       == length(xs: subject_names)
 }
 
-// THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT. This is the same closure check every other
-// lane in the workflow carries, asked of the lane this change adds.
-test fn the_lane_capability_closure_holds() -> Bool {
+// THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT.
+test fn the_job_capability_closure_holds() -> Bool {
   compiler_gate_emit_build_capability_closure_holds()
 }
 
-// THE HYPHEN TRAP, ASKED OF THE LANE THIS CHANGE ADDS. `-` is subtraction in the Actions
-// expression language, so `needs.emit-build.result` renders EMPTY on every run -- including
-// all-green ones -- and the aggregate would compare empty against `success` and refuse forever: a
-// gate whose only reachable state is red. The claim asserts the INDEX FORM IS PRESENT and the
-// DOTTED FORM IS ABSENT, because a renderer that emitted both would satisfy a presence-only check
-// while still carrying the arithmetic.
-test fn a_hyphenated_lane_result_renders_as_an_index() -> Bool {
-  let rendered = compiler_gate_lane_result_expression(job_id: compiler_gate_emit_build_job_id)
-  string_contains(s: rendered, pattern: "needs['emit-build'].result")
-    && (string_contains(s: rendered, pattern: "needs.emit-build") == false)
+// ═══ FRESH PRODUCTS, NO STORE (operator ruling 2026-10-09, second correction) ═══
+
+// EVERY SUBJECT STEP ASKS FOR A FRESH PRODUCT, BY VALUE. The runner under this input consults no
+// native product store and refuses one if bound (native_lane_runner PRODUCT_REUSE_ENV), so the
+// step's green means THIS run emitted and built the product. A step lacking the input, or carrying
+// a different value, would let a restored hit satisfy the step.
+test fn every_subject_step_requires_a_fresh_product() -> Bool {
+  all(emitted_subject_build_rows(), row =>
+    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_product_reuse_env_name, value: native_product_reuse_fresh_value))
 }
 
-// AND THE DOT-SAFE LANES ARE UNCHANGED BY ROUTING THEM THROUGH THE SAME AUTHORITY, which is the
-// claim that makes the consolidation safe rather than merely tidy.
-test fn a_dot_safe_lane_result_still_renders_as_a_dereference() -> Bool {
-  compiler_gate_lane_result_expression(job_id: "probe_lane") == "${{ needs.probe_lane.result }}"
+// EVERY SUBJECT STEP CARRIES THE MEMORY ENVELOPE, BY VALUE: the bind input whose bytes gunbc test
+// hands the kernel (gunbc.emitted_subject_build_gate native_step_memory_trip_bytes). A step without
+// it runs unbounded inside the slot, and a trip would then be the slot's OOM rather than the
+// step's -- the runner process among the kernel's candidates.
+test fn every_subject_step_carries_the_memory_envelope() -> Bool {
+  all(emitted_subject_build_rows(), row =>
+    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
 }
 
-// ═══ THE GATE IS DERIVED, WHICH IS WHAT `needs` ALONE COULD NOT ESTABLISH (review 69973) ═══
-//
-// This job is `if: always()`, so a `needs` edge only ORDERS it: the verdict is computed from the
-// env bindings and the shell conditionals. A roster joined against `needs` alone therefore moved
-// the silent absence from the `needs` list to the ENV list rather than removing it. These claims
-// are over the surfaces that actually decide.
-
-// EVERY BLOCKING LANE BINDS A VARIABLE AND NOTHING ELSE DOES. The `+ 1` is SAME_REPO, which is
-// not a lane result; asserting the exact count is what refuses a stray binding as well as a
-// missing one.
-test fn the_env_block_binds_exactly_the_blocking_lanes_and_same_repo() -> Bool {
-  let env = compiler_gate_aggregate_step_env()
-  length(xs: env) == length(xs: compiler_gate_blocking_rows()) + 1
-    && all(compiler_gate_blocking_rows(), row =>
-      any(env, e => e.key == row.var_name))
+// AND THE FAILURE NOTICE EXPLAINS THE TRIP: the bytes, the exit code the kernel leaves, and that
+// nothing retries bigger. A reader of an exit-137 step would otherwise read it as a crash.
+test fn the_notice_names_the_trip_and_refuses_a_bigger_retry() -> Bool {
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
+  string_contains(s: text, pattern: native_step_memory_trip_text())
+    && string_contains(s: text, pattern: "exit of 137")
+    && string_contains(s: text, pattern: "no larger runner and no retry")
+    && string_contains(s: text, pattern: "MEMORY RECEIPT")
 }
 
-// EVERY BLOCKING LANE IS READ BY A CONDITIONAL. A variable bound and never read is the same
-// fail-open one surface further in: the gate would carry the lane's result and never consult it.
-test fn every_blocking_lane_is_read_by_a_conditional() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  all(compiler_gate_blocking_rows(), row =>
-    string_contains(s: script, pattern: join(["\"$", row.var_name, "\" = failure"], "")))
+// THE JOB BINDS NO NATIVE PRODUCT STORE: no step names the store root variable, no step is a store
+// federation or save, and the job mints no id-token (the store's federations were its only
+// consumer). A store step returning beside the fresh input would make the two contradict, which
+// the runner refuses -- but the contradiction is caught here first, at the authority.
+data native_product_store_step_markers: List<String> = ["GUNBC_NATIVE_CACHE_ROOT", "native-product-read", "native-product-write", "native_product_save_wet"]
+
+test fn w_RED_the_job_binds_no_native_product_store() -> Bool {
+  let steps = compiler_gate_required_job().steps
+  let no_store_text = all(steps, s =>
+    all(native_product_store_step_markers, m =>
+      (string_contains(s: step_run_text(step: s), pattern: m) == false)
+        && (string_contains(s: step_name_text(step: s), pattern: m) == false)))
+  let no_id_token = match compiler_gate_required_job().permissions {
+    Present { value: p } => match p.id_token { Absent => true  Present { value: _ } => false }
+    Absent => true
+  }
+  no_store_text && no_id_token
 }
 
-// AN ANNOUNCED LANE REACHES NO SURFACE OF THE GATE -- a LAW over any roster, so it is stated over a
-// SUPPLIED LaneAnnouncedNotBlocking row rather than over a live lane, which today has none. Were an
-// announced lane bound, its variable would render EMPTY, compare unequal to `success`, and refuse
-// every run. The positive half renders the SAME row as LaneBlocks and requires it to reach every
-// surface, so the claim cannot pass by the builders emitting nothing for that row.
-fn announced_probe_row(standing: CompilerGateLaneStanding) -> CompilerGateLaneRow {
-  CompilerGateLaneRow { job_id: "probe-lane", var_name: "PROBE_LANE", standing: standing, arm: GateArmStrict }
-}
-
-test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> Bool {
-  let announced = [announced_probe_row(standing: LaneAnnouncedNotBlocking { flip_trigger: "Sufficient for: probe" })]
-  let blocking = [announced_probe_row(standing: LaneBlocks)]
-  let announced_script = join(compiler_gate_aggregate_script_lines_for(rows: announced), "\n")
-  let blocking_script = join(compiler_gate_aggregate_script_lines_for(rows: blocking), "\n")
-  (any(compiler_gate_aggregate_step_env_for(rows: announced), e => e.key == "PROBE_LANE") == false)
-    && (string_contains(s: announced_script, pattern: "PROBE_LANE") == false)
-    && (length(xs: compiler_gate_blocking_rows_of(rows: announced)) == 0)
-    && any(compiler_gate_aggregate_step_env_for(rows: blocking), e => e.key == "PROBE_LANE")
-    && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" = failure ]")
-    && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" != success ]")
-}
-
-// AND THE FOUR WITHDRAWN LANES REACH NEITHER SURFACE (operator ruling 2026-10-09). Without this the
-// gate could read a lane that no longer runs -- whose variable would render EMPTY, compare unequal to
-// `success`, and refuse every run. Each variable is named, because a gate still binding one of them
-// is exactly the state a partial revert of the cut would leave. The positive half is
-// the_emit_build_lane_blocks_and_is_read_by_the_gate: the surfaces are not empty.
-data withdrawn_lane_variables: List<String> = ["RUST_UNIT_TESTS", "SEED", "FLOOR", "GENERATED"]
-
-test fn w_RED_the_withdrawn_v1_lanes_reach_neither_surface() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  let env = compiler_gate_aggregate_step_env()
-  all(withdrawn_lane_variables, v =>
-    (any(env, e => e.key == v) == false)
-      && (string_contains(s: script, pattern: join(["$", v, "\""], "")) == false))
-}
-
-// THE FORK CARVE-OUT IS A ROW FIELD, SO IT TRAVELS WITH ITS LANE. A fleet lane legitimately skips
-// on a fork pull request, and since the 2026-09-28 ruling every blocking lane is a fleet lane, so
-// each carries its own carve-out clause -- read per lane, because a script that excused one lane's
-// skip under another lane's variable would admit an unobserved head.
-test fn every_blocking_fleet_lane_carries_its_own_skip_notice() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  string_contains(s: script, pattern: "$SAME_REPO\" = false ] && [ \"$EMIT_BUILD\" = skipped")
-}
-
-// THE COMPARISON IS `!= success`, NOT AN ENUMERATION OF BAD STATES. Run 32883390033 read
-// FLOOR="abandoned", a needs-result value nobody knew was reachable; an enumerated guard would
-// have greened over two lanes that never ran. Derivation must not have quietly widened it.
-test fn the_unobserved_arm_refuses_every_state_but_success() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  string_contains(s: script, pattern: "\"$EMIT_BUILD\" != success")
-    && (string_contains(s: script, pattern: "= cancelled") == false)
-    && (string_contains(s: script, pattern: "= abandoned") == false)
-}
-
-// NO CONDITIONAL OVER ZERO LANES. With no strict lane left blocking, the strict arm's line would
-// render `if ; then` -- a shell syntax error that reds the required context on every run. The
-// strict arm is omitted instead (compiler_gate_unobserved_lines); rendering it anyway reds this.
-test fn w_RED_the_gate_script_renders_no_empty_conditional() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  (string_contains(s: script, pattern: "if ; then") == false)
-    && (string_contains(s: script, pattern: "if  || ") == false)
-}
-
-// THE FORK PREDICATE IS ONE PREDICATE IN TWO TRANSPORTS (review 69999). The fleet lane's job `if`
-// takes it bare; the gate's step env takes it interpolated. If those ever became two spellings,
-// the two failure modes are opposite and both silent: the fleet lane skips while the gate refuses
-// (a merge-queue stall on every fork PR), or the gate excuses a skip that was not fork-driven (an
-// unobserved head admitted). The claim asserts CONTAINMENT rather than equality, because the
-// transports legitimately differ by exactly the delimiters.
-test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
-  string_contains(
-    s: compiler_gate_same_repo_expression(),
-    pattern: compiler_gate_fleet_job_condition()
-  )
-    && string_contains(s: compiler_gate_same_repo_expression(), pattern: "${{ ")
-    && string_contains(s: compiler_gate_fleet_job_condition(), pattern: "github.repository")
+// THE PER-PR RELIEF IS A MODELED INPUT ON EVERY SUBJECT STEP (gunbc.rung_drop
+// native_fault_experiment_off_pull_requests): each step passes the env var, whose expression skips
+// on pull_request and runs otherwise. A step lacking it would run the fault experiment on PRs.
+test fn every_subject_step_passes_the_fault_experiment_input() -> Bool {
+  all(emitted_subject_build_rows(), row => match compiler_gate_emit_build_step(row: row) {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => any(kvs, k => k.key == native_fault_experiment_env_name)
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  })
 }
 
 // ═══ THE STANDING NOTICE: WHAT A STRANGER READS WHEN THEY CLICK THE RED X ═══
 //
-// THE LIVE STANDING IS GREEN (both instruments exit zero on main 5bfe79be45c; hosted emit-build
-// green on main c39426540c, run 36580079634), so the red arm is
-// reachable only over a SUPPLIED standing. These claims render it through this probe, so the
-// discriminator, the no-owner rule and the retirement condition stay exercised while no red is
-// declared; the live claim below asserts the green, blocking notice.
+// THE LIVE STANDING IS GREEN, so the red arm is reachable only over a SUPPLIED standing. These
+// claims render it through this probe, so the discriminator, the no-owner rule and the retirement
+// condition stay exercised while no red is declared; the live claim asserts the green, blocking
+// notice -- blocking because the job IS the required context, not because a row says so.
 fn advisory_red_probe_notice() -> String {
   join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
@@ -355,28 +231,19 @@ test fn the_live_notice_is_green_and_blocking() -> Bool {
 }
 
 // THE REASSURANCE ALONE WOULD BE WORSE THAN NOTHING: a standing red teaches every lane to ignore
-// this lane, which is how a detector dies without anyone deciding to kill it. So the notice must
+// this job, which is how a detector dies without anyone deciding to kill it. So the notice must
 // carry the DISCRIMINATOR -- what would be a genuinely new finding -- and not only the comfort.
 test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  let probe = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
-    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
-  }, lane_blocks: false), "\n")
+  let probe = advisory_red_probe_notice()
   string_contains(s: probe, pattern: "does NOT block your merge")
     && string_contains(s: probe, pattern: "E9999 Probe at src/probe.rs")
     && string_contains(s: probe, pattern: "DIFFERENT error code")
     && string_contains(s: text, pattern: "REAL FINDING")
 }
 
-// THE NOTICE NAMES NO OWNING PULL REQUEST, and this claim exists because the first cut DID.
-// `owned_by: "gunbc#12070"` was false within the hour -- that repair was measured insufficient for
-// this site, and ownership moved twice in one evening. The typed standing makes the REASSURANCE
-// unprintable once it stops being true and does nothing at all for a volatile fact in a field
-// beside it: a `String` naming a PR rots exactly as fast inside a well-typed row as in a comment.
-//
-// So the guard is a claim rather than a resolution to remember. Any `#` followed by a digit in the
-// rendered notice is a pointer to something that moves, on a surface a stranger reads as
-// authoritative because they have no other source.
+// THE NOTICE NAMES NO OWNING PULL REQUEST, and this claim exists because the first cut DID: a
+// `String` naming a PR rots exactly as fast inside a well-typed row as in a comment.
 test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   (string_contains(s: text, pattern: "#1") == false)
@@ -386,23 +253,16 @@ test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
     && (string_contains(s: advisory_red_probe_notice(), pattern: "#1") == false)
 }
 
-// AND IT TELLS A READER WHY THE CAUSE LINE CANNOT BE THE DISCRIMINATOR, because that is the trap:
-// every break at this step shares `cause=EmittedCompilerBuildFailed`, so a reader comparing cause
-// lines concludes "known break" for a defect that is new.
+// AND IT TELLS A READER WHY THE CAUSE LINE CANNOT BE THE DISCRIMINATOR.
 test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
   string_contains(s: advisory_red_probe_notice(), pattern: "cause=EmittedCompilerBuildFailed")
 }
 
-// THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS. This renders the Green arm over a
-// SUPPLIED standing, because in production that arm is reachable only by editing the data row --
-// so pasting the reassurance into the Green arm reds here today rather than on the day main
-// self-hosts. The positive half: the same rendering over the Red arm DOES print it, so the claim
-// cannot pass by the renderer printing nothing.
+// THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, rendered over a SUPPLIED standing because
+// in production the Green arm is reachable only by editing the data row.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
   let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false), "\n")
-  let red = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
-    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
-  }, lane_blocks: false), "\n")
+  let red = advisory_red_probe_notice()
   (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
     && (string_contains(s: green, pattern: "E9999") == false)
     && string_contains(s: green, pattern: "REAL FINDING")
@@ -410,10 +270,7 @@ test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> 
     && string_contains(s: red, pattern: "E9999 Probe at src/probe.rs")
 }
 
-// THE RETIREMENT CONDITION IS CONSUMED BY THE NOTICE, AND NAMES A CAPABILITY. A reader who can see
-// main self-host again is told the notice is stale and which row to flip. Nothing flips the row
-// automatically when the condition holds -- that stays review diligence, and this claim does not
-// pretend otherwise; it establishes only that the condition reaches the surface a reader sees.
+// THE RETIREMENT CONDITION IS CONSUMED BY THE NOTICE, AND NAMES A CAPABILITY.
 test fn the_live_notice_prints_its_retirement_capability() -> Bool {
   let text = advisory_red_probe_notice()
   string_contains(s: text, pattern: "THIS STANDING RETIRES WHEN: ")
@@ -422,11 +279,10 @@ test fn the_live_notice_prints_its_retirement_capability() -> Bool {
     && string_contains(s: text, pattern: "all exit zero")
 }
 
-// WHETHER THE LANE BLOCKS IS READ FROM THE LANE ROW, NOT WRITTEN INTO THE NOTICE. Rendered with the
-// status supplied both ways: a blocking lane never prints the non-blocking reassurance, and a
-// blocking lane with a still-Red standing prints the contradiction rather than "nothing for you to
-// fix". The live half: today's row is `LaneBlocks`, so the live notice says so.
-test fn w_RED_a_blocking_lane_never_prints_the_non_blocking_reassurance() -> Bool {
+// A BLOCKING RENDERING NEVER PRINTS THE NON-BLOCKING REASSURANCE, and a blocking rendering with a
+// still-Red standing prints the contradiction rather than "nothing for you to fix". The live job is
+// always rendered blocking, so the advisory arm is exercised only through the probe.
+test fn w_RED_a_blocking_rendering_never_prints_the_non_blocking_reassurance() -> Bool {
   let probe = EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
   }
@@ -441,16 +297,7 @@ test fn w_RED_a_blocking_lane_never_prints_the_non_blocking_reassurance() -> Boo
     && string_contains(s: advisory_red, pattern: "does NOT block")
 }
 
-test fn the_live_notice_agrees_with_the_live_lane_row() -> Bool {
-  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  let blocks = length(xs: filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
-    row.job_id == compiler_gate_emit_build_job_id
-  })) > 0
-  string_contains(s: text, pattern: "does NOT block") == (blocks == false)
-}
-
-// THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing --
-// a reassurance with no subject is noise charged to every other lane.
+// THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing.
 test fn the_notice_step_runs_only_on_failure() -> Bool {
   match compiler_gate_emit_build_notice_step() {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
@@ -463,9 +310,8 @@ test fn the_notice_step_runs_only_on_failure() -> Bool {
 }
 
 // AND IT IS THE LAST STEP, so it appears directly beneath the diagnostic a reader is trying to
-// interpret rather than scrolled away above it. Asserted by POSITION rather than by count, because
-// the count is already the claim above and a second copy of it would establish nothing new.
-test fn the_notice_is_the_last_step_in_the_lane() -> Bool {
+// interpret rather than scrolled away above it. Asserted by POSITION rather than by count.
+test fn the_notice_is_the_last_step_in_the_job() -> Bool {
   fold(
     compiler_gate_emit_build_bound_steps(),
     init: "",
@@ -473,12 +319,13 @@ test fn the_notice_is_the_last_step_in_the_lane() -> Bool {
   ) == "Why this lane is red, and what would be a real finding"
 }
 
-// THE SEED'S TWO LANE ENTRIES AGREE WITH THE INSTRUMENT ROWS. The emit-build lane's census subject is
-// read from gunbc.instrument_targets, while the producer that actually emits is the seed's native
-// lane runner, whose entries are Rust constants that cannot read a .dag row yet. This joins them, so
-// moving either entry on one side alone reds here rather than leaving the census reporting a closure
-// the lane no longer compiles. Each constant is matched as its whole declaration line, so the join
-// pins the NAME to the VALUE, not two substrings that could come from different lines.
+// ═══ THE SEED'S CONSTANTS ARE PINNED TO THE .dag ROWS ═══
+//
+// The producer that emits is the seed's native lane runner, whose entries and inputs are Rust
+// constants that cannot read a .dag row yet. These joins hold them equal to the rows, so moving
+// either side alone reds here rather than leaving the runner silently ignoring the workflow's
+// input or the census reporting a closure the job no longer compiles. Each constant is matched as
+// its whole declaration line, so the join pins the NAME to the VALUE.
 data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
 
 fn rust_str_const_line(name: String, value: String) -> String {
@@ -491,25 +338,27 @@ test fn the_seed_lane_entries_are_the_instrument_rows() -> Bool {
     && string_contains(s: runner, pattern: rust_str_const_line(name: "V2_NATIVE_CLI_ENTRY", value: v2_native_cli_entry()))
 }
 
-// THE PER-PR RELIEF IS A MODELED INPUT ON EVERY EMIT-BUILD SUBJECT STEP (gunbc.rung_drop
-// native_fault_experiment_off_pull_requests): each step passes the env var, whose expression skips
-// on pull_request and runs otherwise. A step lacking it would run the fault experiment on PRs.
-test fn every_emit_build_subject_step_passes_the_fault_experiment_input() -> Bool {
-  all(emitted_subject_build_rows(), row => match compiler_gate_emit_build_step(row: row) {
-    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match e {
-        Present { value: kvs } => any(kvs, k => k.key == native_fault_experiment_env_name)
-        Absent => false
-      }
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-  })
-}
-
-// THE RUNNER'S COPY OF THE SKIP CONTRACT IS PINNED TO THE .dag ROWS (review 77571): renaming the env
-// var or the skip value on one side alone reds here instead of leaving the runner silently ignoring
-// the workflow's input.
 test fn the_seed_fault_experiment_input_is_the_dag_rows() -> Bool {
   let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
   string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_ENV", value: native_fault_experiment_env_name))
     && string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_SKIP_VALUE", value: native_fault_experiment_skip_value))
+}
+
+// THE MEMORY BIND INPUT IS THE GOVERNOR'S OWN CONSTANT (memory_governor BIND_MEMORY_CGROUP_ENV),
+// the variable claim_executor and claim_batch already read; the row and the constant are joined
+// here so the workflow cannot ask for a bind in words the seed does not read.
+data memory_governor_source_path: String = "src/v1/stage0/src/memory_governor.rs"
+
+test fn the_seed_memory_bind_input_is_the_dag_row() -> Bool {
+  let governor = Filesystem.Read(path: memory_governor_source_path, expect: ExpectSuccess).content
+  string_contains(s: governor, pattern: rust_str_const_line(name: "BIND_MEMORY_CGROUP_ENV", value: native_step_memory_bind_env_name))
+}
+
+// THE FRESH-PRODUCT INPUT IS PINNED THE SAME WAY: the workflow passes the row's name and value, and
+// the runner reads the constants; a rename on one side alone would leave the required job asking
+// for a fresh product in words the runner does not read, and the store would serve a hit again.
+test fn the_seed_product_reuse_input_is_the_dag_rows() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: rust_str_const_line(name: "PRODUCT_REUSE_ENV", value: native_product_reuse_env_name))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PRODUCT_REUSE_FRESH_VALUE", value: native_product_reuse_fresh_value))
 }
