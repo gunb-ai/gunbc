@@ -168,9 +168,9 @@ import gunbc.fleet_release_bins_key {
   release_bins_base_compiler_script_for,
 }
 import gunbc.fleet_desired_candidate {
-  compiler_pair_candidate_fetch_statements, compiler_pair_candidate_fetch_script,
+  compiler_pair_candidate_fetch_statements, CandidateScriptRow, candidate_script_row, candidate_script_text, candidate_scripts_refusal,
   PollForCandidate, CandidateStandingToBaseCompilerEnv,
-  base_compiler_demand_script, base_compiler_not_demanded_script, base_compiler_demanded_revision,
+  base_compiler_demand_script_row, base_compiler_not_demanded_script_row, base_compiler_demanded_revision,
   base_compiler_demanded_revision_env,
 }
 import gunbc.claim_executor_cli { claim_executor_program }
@@ -1041,15 +1041,23 @@ fn compiler_gate_base_compiler_polls() -> Int {
 
 data compiler_gate_base_compiler_fetch_step_id: String = "base_compiler"
 
-fn compiler_gate_base_compiler_fetch_script() -> String {
-  compiler_pair_candidate_fetch_script(statements: compiler_pair_candidate_fetch_statements(
+data compiler_gate_base_compiler_fetch_script_row: CandidateScriptRow = candidate_script_row(
+  script: "gunbc.compiler_gate_workflow compiler_gate_base_compiler_fetch_script_row",
+  statements: compiler_pair_candidate_fetch_statements(
     revision: base_compiler_demanded_revision(),
     wait: PollForCandidate {
       polls: compiler_gate_base_compiler_polls(),
       interval: compiler_gate_base_compiler_poll_interval(),
     },
     export: CandidateStandingToBaseCompilerEnv,
-  ))
+  ),
+)
+
+data compiler_gate_base_compiler_demand_script_row: CandidateScriptRow = base_compiler_demand_script_row(program: claim_executor_program().invocation as String)
+
+// Every candidate script the floor job carries; workflow generation refuses on the first refused one.
+fn compiler_gate_candidate_script_rows() -> List<CandidateScriptRow> {
+  [compiler_gate_base_compiler_demand_script_row, base_compiler_not_demanded_script_row, compiler_gate_base_compiler_fetch_script_row]
 }
 
 fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
@@ -1058,7 +1066,7 @@ fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
       step: compiler_gate_seed_run_step(
         name: "Decide which base the floor judges against and whether it reads a base fact there",
         id: Present { value: compiler_gate_base_compiler_demand_step_id },
-        script: base_compiler_demand_script(program: claim_executor_program().invocation as String),
+        script: candidate_script_text(row: compiler_gate_base_compiler_demand_script_row),
         env: [],
         condition: Present { value: "steps.build_witness_fold.outcome == 'success'" },
         timeout: none,
@@ -1070,7 +1078,7 @@ fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
       step: compiler_gate_seed_run_step(
         name: "Record that the floor reads no base fact",
         id: none,
-        script: base_compiler_not_demanded_script(),
+        script: candidate_script_text(row: base_compiler_not_demanded_script_row),
         env: [compiler_gate_base_compiler_demanded_revision_env()],
         condition: Present { value: join([compiler_gate_base_compiler_demand_output(key: "demanded"), " == 'false'"], "") },
         timeout: none,
@@ -1082,7 +1090,7 @@ fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
       step: RunStep {
         name: Present { value: "Fetch the base revision's compiler pair candidate" },
         id: Present { value: compiler_gate_base_compiler_fetch_step_id },
-        run: compiler_gate_base_compiler_fetch_script(),
+        run: candidate_script_text(row: compiler_gate_base_compiler_fetch_script_row),
         shell: none,
         env: Present { value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")), compiler_gate_base_compiler_demanded_revision_env()] },
         working_directory: none,
@@ -2198,6 +2206,9 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
+          match candidate_scripts_refusal(rows: compiler_gate_candidate_script_rows()) {
+          Present { value: r } => WitnessFloorGenerationRefused { reason: r }
+          Absent =>
           if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_seed_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
@@ -2205,6 +2216,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
             }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }
+          }
           }
       }
   }

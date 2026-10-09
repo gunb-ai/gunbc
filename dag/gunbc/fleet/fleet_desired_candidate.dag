@@ -2,8 +2,9 @@ module gunbc.fleet_desired_candidate
 
 import std.types { String, List, Int }
 import std.measure { Second, second_count }
+import std.optional { Present, Absent }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst,
@@ -12,7 +13,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
   bash_build_pipe,
 }
-import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name }
+import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name, script_emission_refused_text }
 
 // WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
 //
@@ -389,15 +390,48 @@ fn absent_or_stop(reason: String, export: CandidateStandingExport) -> Node {
   }
 }
 
+data fleet_desired_candidate_fetch_script_row: CandidateScriptRow = candidate_script_row(
+  script: "gunbc.fleet_desired_candidate fleet_desired_candidate_fetch_script",
+  statements: fleet_desired_candidate_fetch_statements(),
+)
+
 fn fleet_desired_candidate_fetch_script() -> String {
-  compiler_pair_candidate_fetch_script(statements: fleet_desired_candidate_fetch_statements())
+  candidate_script_text(row: fleet_desired_candidate_fetch_script_row)
 }
 
-fn compiler_pair_candidate_fetch_script(statements: List<Node>) -> String {
-  match bash_emit_stmts(statements: statements, set_e: true) {
+// A REFUSED EMISSION IS DATA, NEVER TEXT. bash_emit refuses statements its grammar has no
+// production for, and that refusal used to be read here as the empty string: the step was then
+// generated with no script at all, and the workflow carried no trace of why. Each script is instead a
+// row holding the fold's own outcome beside the symbol that produced it, so the two readers --
+// workflow generation, which refuses to emit (candidate_scripts_refusal), and the step's text,
+// which a step must carry -- answer from one value. A Rejected row's text is a step that refuses
+// at runtime, naming the script and the fold's reasons; it is never empty and never a success.
+type CandidateScriptRow { script: String, outcome: Outcome<String> }
+
+fn candidate_script_row(script: String, statements: List<Node>) -> CandidateScriptRow {
+  CandidateScriptRow { script: script, outcome: bash_emit_stmts(statements: statements, set_e: true) }
+}
+
+fn candidate_script_refusal_text(row: CandidateScriptRow, diagnostics: NonEmptyDiagnostics) -> String {
+  join(["REFUSED ", row.script, ": v2.workflow.bash_emit refused its statements (", diagnostics_reason_lexemes(diagnostics: diagnostics), ")"], "")
+}
+
+fn candidate_script_text(row: CandidateScriptRow) -> String {
+  match row.outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: row.script, diagnostics: ds)
   }
+}
+
+// The first refused row, as the generation refusal a workflow emits instead of its YAML.
+fn candidate_scripts_refusal(rows: List<CandidateScriptRow>) -> String? {
+  fold(rows, Absent, (found, row) => match found {
+    Present { value: _ } => found
+    Absent => match row.outcome {
+      Accepted { value: _, diagnostics: _ } => Absent
+      Rejected { diagnostics: ds } => Present { value: candidate_script_refusal_text(row: row, diagnostics: ds) }
+    }
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -434,10 +468,11 @@ fn base_compiler_demanded_revision() -> Node {
   cmd(ws: [lit(t: "printf"), lit(t: "%s"), var(n: base_compiler_demanded_revision_env)])
 }
 
-fn base_compiler_demand_script(program: String) -> String {
-  compiler_pair_candidate_fetch_script(statements: base_compiler_demand_statements(program: program))
+fn base_compiler_demand_script_row(program: String) -> CandidateScriptRow {
+  candidate_script_row(script: "gunbc.fleet_desired_candidate base_compiler_demand_script_row", statements: base_compiler_demand_statements(program: program))
 }
 
-fn base_compiler_not_demanded_script() -> String {
-  compiler_pair_candidate_fetch_script(statements: base_compiler_not_demanded_statements())
-}
+data base_compiler_not_demanded_script_row: CandidateScriptRow = candidate_script_row(
+  script: "gunbc.fleet_desired_candidate base_compiler_not_demanded_script_row",
+  statements: base_compiler_not_demanded_statements(),
+)
