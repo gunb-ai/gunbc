@@ -7122,6 +7122,10 @@ fn infer_application_formal_at(application: Node, entries: List<InferredFactsEnt
   }
 }
 
+// ONE ROW PER LAMBDA, AND ONLY FOR A SINGLE DOMAIN BINDER. Resolve sites every Arrow domain
+// binder at the Arrow (v2.compiler.resolve arrow_domain_frame_binders); infer_payload_binder_derived_type
+// returns the first site match. Mapping fn(a, b) onto fn(Int, String) -> … would type both as Int.
+// Until resolve gives distinct sites, n != 1 stays untyped (DESIGN §5).
 fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<List<InferBinderType>> {
   match list_at_optional(xs: node_positional_child_targets(node: lambda), index: 0) {
     Absent => optional_absent()
@@ -7129,13 +7133,13 @@ fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<Li
       match infer_lambda_domain_binder_count(domain: domain) {
         Absent => optional_absent()
         Present { value: n } =>
-          if n == 0 {
+          if n != 1 {
             optional_absent()
           } else {
             match infer_expected_domain_types(expected: expected) {
               Absent => optional_absent()
               Present { value: types } =>
-                if length(xs: types) == n {
+                if length(xs: types) == 1 {
                   optional_present(
                     value: list_map(xs: types, f: fn(t) {
                       InferBinderType { site: lambda.occurrence_id, derived: t }

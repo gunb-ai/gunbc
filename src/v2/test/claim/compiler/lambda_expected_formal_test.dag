@@ -21,9 +21,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // instantiating actual (n stays underived). If that red later supplies its tree, this inhabitance
 // remains the one real path.
 
-data lef_value_then_lambda_src: String = "module p\n\nfn after(x: Int, f: fn(Int) -> Int) -> Int {\n  f(x)\n}\n\nfn k() -> Int {\n  after(1, fn(n) { n })\n}"
+data lef_value_then_lambda_src: String = "module p\n\nfn after<T>(x: T, f: fn(T) -> T) -> T {\n  f(x)\n}\n\nfn k() -> Int {\n  after(1, fn(n) { n })\n}"
 
-data lef_lambda_then_value_src: String = "module p\n\nfn before(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n\nfn k() -> Int {\n  before(fn(n) { n }, 1)\n}"
+data lef_lambda_then_value_src: String = "module p\n\nfn before<T>(f: fn(T) -> T, x: T) -> T {\n  f(x)\n}\n\nfn k() -> Int {\n  before(fn(n) { n }, 1)\n}"
 
 fn lef_infer_terminal(src: String) -> Symbol {
   match tpb_assemble(src: src) {
