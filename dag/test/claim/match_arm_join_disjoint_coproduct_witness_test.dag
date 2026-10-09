@@ -1,5 +1,26 @@
 module test.claim.match_arm_join_disjoint_coproduct_witness_test
 
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn maj_blocking_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 // A MATCH JOIN ANSWERED WITH ONE ARM AND NEVER JUDGED THE REST, SO THE VERDICT FLIPPED WITH ARM
 // ORDER. v1.compiler.infer builds a match expression's type by folding every arm's body type through
 // v1.compiler.infer_types prefer_specific_type, whose tie-break for two disjoint coproducts is the
@@ -177,4 +198,19 @@ test fn maj_matching_ground_element_collection_arms_still_compile() -> Bool {
     [],
     []
   )
+}
+
+// A DISJOINT ARM IS A SOURCE TYPE ERROR, so it is a typed TypeMismatch located at the offending arm,
+// never an InternalError: InternalError names a compiler defect (a state the compiler could not
+// have been handed), and reading it as one sent authors looking for a bug in a correct compiler.
+// Both the scalar and the collection ground relations are asserted by CLASS, and the InternalError
+// count is pinned to zero so the reclassification cannot silently revert.
+test fn maj_kernel_arm_mismatch_is_a_typed_mismatch() -> Bool {
+  maj_blocking_count(source: maj_kernel_arm_mismatch_fixture_source(), wanted: "TypeMismatch") == 1
+    && maj_blocking_count(source: maj_kernel_arm_mismatch_fixture_source(), wanted: "InternalError") == 0
+}
+
+test fn maj_collection_arm_mismatch_is_a_typed_mismatch() -> Bool {
+  maj_blocking_count(source: maj_ground_element_collection_mismatch_fixture_source(), wanted: "TypeMismatch") >= 1
+    && maj_blocking_count(source: maj_ground_element_collection_mismatch_fixture_source(), wanted: "InternalError") == 0
 }

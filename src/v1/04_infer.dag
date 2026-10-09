@@ -3081,13 +3081,9 @@ fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope
     arm_type: arm.body_type,
     scope: scope
   ) {
-    [inference_error(
-      message: concat(
-        "match arms produce proven-disjoint types: ",
-        node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
-        " vs ",
-        node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices)
-      ),
+    [type_mismatch_error(
+      expected: node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
+      got: node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices),
       span: arm_body(n: arm.typed_arm).span,
       module_name: scope.module_name
     )]
