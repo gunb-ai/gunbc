@@ -19,6 +19,7 @@ collected that refusal; its green workflow conclusion is not a boot receipt.
 | Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
 | Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
 | Slot budget | `fabric-cell-srv1-13.slice` has no installed unit file | Converge the modeled execution-cell boundary; a synthesized systemd slice is not proof |
+| Cell inventory | Read-only plan `local-2026-10-09T03:18:35Z` refuses foreign `fabric-cell-zp444.slice` | Establish ownership before retiring it; the empty transient slice has no unit file or remaining journal, and is not silently ignored |
 | Commissioning | No commissioning or readiness record | Run reviewed commissioning plan/apply and verify its protected transaction |
 | Protected state service | Running revision `5b96cab749088aa5cec71ce9ad52e1857724d252` predates the authenticated state route | Converge fabric storage through its existing deployment path |
 | State-key custody | Key exists; operator can read it; `ghrunner` cannot | Preserve custody; exact installed helpers reconcile admitted intent and read the selected allocation |
@@ -78,9 +79,31 @@ same-slot reuse with a new incarnation, expiry cleanup, and final released/ready
 state. Record run IDs, revisions, allocation IDs and generations here as they are
 observed. Never record private keys, tokens or signed state-request envelopes.
 
-Local validation so far: the image builder produced an ext4 image whose `/root`
-and `/usr/sbin/sshd` are owned by UID/GID 0, and the fresh compiler parsed the full
-source tree. Live acceptance is pending.
+Local validation: 39 focused witnesses passed across allocation dispatch, lifecycle,
+launch directives, host offers, owner policy, gateway refresh, workflow dispatch and
+deployment candidate admission. The image builder produced an ext4 image whose
+`/root` and `/usr/sbin/sshd` are owned by UID/GID 0. The fresh compiler parsed the
+full source tree, and full generated-artifact regeneration completed successfully.
+The combined workflow witness process needed a 24 GiB memory cap; its earlier
+16 GiB run was killed by the cgroup limit, then passed with the larger cap.
+
+[Image build 37878358778](https://github.com/gunb-ai/gunbc/actions/runs/37878358778)
+was accepted at revision `521085ab254290029f8dfbaa312a218f84a6be7b` and is waiting
+for runner capacity. The current rootfs pin is the measured local build and must
+be updated to that archived build's digest before controller installation. No
+service deployment, commissioning, allocation or VM mutation has been performed
+for this acceptance run yet.
+
+The read-only deployment probe admitted clean candidate
+`19b12d88d6c0206c3f259cf85b0b664e65000b26` after the derived-roster repair. Its
+release-member plan is: install executable
+`sha256:5cbf98426843aebd1fad3c2f9cc52c6ba04ba6fbb71f6bbde1ea40eff8391543`,
+publish that source revision, write `gunbc-roadmap.service`, reload systemd and
+restart the roadmap service. The existing deployment additionally reinstalls its
+fabric-storage, approval-broker, tailnet-door and timer members, which do not yet
+have differential member identities. Consequently this prerequisite is a shared
+production deployment with service interruption, not a slot-only mutation.
+Operator approval is pending before applying that broader deployment.
 
 The dispatch transport repair preserves the printer's existing domain validation.
 Printer callers now supply `printer` and `printer_request`, for example
