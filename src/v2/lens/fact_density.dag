@@ -2,6 +2,7 @@ module v2.lens.fact_density
 
 import std.nat { Nat, Succ, Zero }
 import v2.std.node { Authored, StructuralLabel }
+import v2.extdeps.languages.dag { dag_node_is_module_surface }
 import v2.lens.common.construction_justification { ConstructionJustification }
 
 import v2.std.witness { Holds }
@@ -61,10 +62,14 @@ fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
 }
 
 fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
-  match carrier.kind {
-    ComputationNode { behavior: _ } => NotATypeCarrier
-    TypeNode { connective: c } =>
-      connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
+  if dag_node_is_module_surface(node: carrier) {
+    NotATypeCarrier
+  } else {
+    match carrier.kind {
+      ComputationNode { behavior: _ } => NotATypeCarrier
+      TypeNode { connective: c } =>
+        connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
+    }
   }
 }
 // Node-local predicate (DESIGN 6 bare-minimum-cost): carrier_spec_fact reads only the node's direct

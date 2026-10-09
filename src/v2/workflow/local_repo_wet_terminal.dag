@@ -496,6 +496,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness", function: "a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_exit_drain_wet_witness_test.dag",
+      function: "a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness", function: "a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_exit_drain_wet_witness_test.dag",
+      function: "a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness", function: "a_collected_workers_exit_is_read_from_the_spool_alone" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_exit_drain_wet_witness_test.dag",
+      function: "a_collected_workers_exit_is_read_from_the_spool_alone",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness_test.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",

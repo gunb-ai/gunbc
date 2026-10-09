@@ -1,7 +1,16 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
+import v2.compiler.normalized_tree { MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
+import v2.std.member_declaration_kind {
+  DeclaredMember,
+  declared_members_have_duplicate,
+  MemberKindChannel,
+  MemberKindsCaptured,
+  MemberKindsUnavailable,
+  QualifiedDeclaredMember,
+  no_member_declaration_kinds
+}
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -261,6 +270,7 @@ type ResolvedTree {
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
   unavailable_providers: List<ClosureProviderRefusal>
+  member_kinds: MemberKindChannel
 }
 
 // A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
@@ -331,6 +341,7 @@ fn resolved_tree_of(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   unavailable_providers: List<ClosureProviderRefusal>,
+  member_kinds: MemberKindChannel,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
@@ -338,7 +349,49 @@ fn resolved_tree_of(
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
-    unavailable_providers: unavailable_providers
+    unavailable_providers: unavailable_providers,
+    member_kinds: member_kinds
+  }
+}
+
+// THE SUBJECT'S MEMBER-KIND CHANNEL, keyed by the DECLARING path (this module's qualified name + the member's
+// name). The channel covers the subject module only -- the one root mandatory_tag runs on -- so resolve pays
+// one pass over one module's members, not one per root in the closure. A tree normalize read no members for
+// (a hand-built root) is Unavailable, never an empty captured list. Roots are unique by name already
+// (ModuleRootsDuplicate refuses a second root for one module), so the only merge that can conflict is two
+// members of one module sharing a name: that refuses, located at the root, and is never first-wins.
+fn member_kind_channel_of_tree(tree: NormalizedTree) -> Outcome<MemberKindChannel> {
+  match tree.member_declarations {
+    MemberDeclarationsNotRead => Accepted { value: no_member_declaration_kinds(), diagnostics: None }
+    MemberDeclarationsRead { members: members } =>
+      match qualified_name_from_module_node(root: tree.root) {
+        Rejected { diagnostics: _ } => Accepted { value: no_member_declaration_kinds(), diagnostics: None }
+        Accepted { value: module_qn, diagnostics: _ } =>
+          let duplicated = declared_members_have_duplicate(members: members)
+          if duplicated {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: Diagnostic {
+                  reason: ^resolve_reason_member_kind_duplicate_declaration,
+                  at: node_locus(node: tree.root),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            }
+          } else {
+            Accepted {
+              value: MemberKindsCaptured {
+                covered: [module_qn],
+                members: fold_list(
+                  xs: members,
+                  empty: [],
+                  cons: fn(acc, m) { list_snoc_item(xs: acc, item: QualifiedDeclaredMember { module: module_qn, name: m.name, kind: m.kind }) }
+                )
+              },
+              diagnostics: None
+            }
+          }
+      }
   }
 }
 
@@ -2369,12 +2422,13 @@ fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ClosureProviderRefusal>
+  unavailable_providers: List<ClosureProviderRefusal>,
+  member_kinds: MemberKindChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -4655,7 +4709,10 @@ fn resolve_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  resolved_tree_outcome(
+  match member_kind_channel_of_tree(tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: channel, diagnostics: _ } =>
+      resolved_tree_outcome(
     w: resolve_walk_with_namespace_policy(
       tree: tree,
       namespace: namespace,
@@ -4664,8 +4721,10 @@ fn resolve_with_namespace_policy(
     ),
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
-    unavailable_providers: []
+    unavailable_providers: [],
+    member_kinds: channel
   )
+  }
 }
 
 fn resolve_walk_with_namespace_policy(

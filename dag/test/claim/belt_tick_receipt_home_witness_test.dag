@@ -20,8 +20,8 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
   gunbc_service_user,
-  BeltTimerUnit,
-  deployment_belt_timer_unit_path,
+  BeltEventPathUnit,
+  deployment_belt_exit_path_unit_path,
   srv1_live_deployment_names,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
@@ -119,8 +119,8 @@ fn has_command(cmds: List<String>, want: String) -> Bool {
 fn belt_upsert_commands() -> List<String> {
   let spec = deployment_spec_srv1()
   let art = DeploymentArtifactStep {
-    kind: BeltTimerUnit,
-    path: deployment_belt_timer_unit_path(
+    kind: BeltEventPathUnit,
+    path: deployment_belt_exit_path_unit_path(
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ) as String as NonEmptyStr,
   }

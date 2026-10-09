@@ -36,6 +36,8 @@ data native_test_universe_artifact_kind: ArtifactKindId = "native_test_universe"
 
 data native_module_verdict_bundle_artifact_kind: ArtifactKindId = "native_module_verdict_bundle"
 
+data compute_work_artifact_kind: ArtifactKindId = "compute_work"
+
 data native_module_resolve_artifact_kind: ArtifactKindId = "native_module_resolve"
 
 data native_module_infer_artifact_kind: ArtifactKindId = "native_module_infer"
