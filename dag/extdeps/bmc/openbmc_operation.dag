@@ -39,15 +39,6 @@ type OpenBmcOperation
       sensor_path: NonEmptyStr,
       threshold: OpenBmcThresholdProperty,
     }
-  | OpenBmcFanConfigScalar {
-      config_path: NonEmptyStr,
-      query: OpenBmcFanConfigQuery,
-    }
-  | OpenBmcFanConfigValidate { config_path: NonEmptyStr }
-  | OpenBmcFanConfigVerify {
-      config_path: NonEmptyStr,
-      desired: OpenBmcFanConfigDesired,
-    }
   | OpenBmcPathIsWritable { path: NonEmptyStr }
   | OpenBmcPathExists { path: NonEmptyStr }
   | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
