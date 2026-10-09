@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_workflow
 
+import extdeps.github.actions { workflow_dispatch_max_inputs }
+
 import gunbc.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke }
 import gunbc.workspace_image_delivery { workspace_image_artifact_name, workspace_image_staging_root, workspace_image_artifact_paths }
 
@@ -5135,11 +5137,7 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
     type: InputString,
   },
   DispatchInput { name: "printer", description: Present { value: "Printer identity; required for printer mode" }, required: false, default: none, type: InputChoice { options: map(printer_access_code_loci,p=>p.printer as String) } },
-  DispatchInput { name: "printer_operation", description: Present { value: "Observe credential identity or start one pinned project" }, required: false, default: none, type: InputChoice { options: ["observe", "print"] } },
-  DispatchInput { name: "printer_project_path", description: Present { value: "Absolute path of staged sliced project on srv1" }, required: false, default: none, type: InputString },
-  DispatchInput { name: "printer_project_sha256", description: Present { value: "SHA-256 of the reviewed sliced project" }, required: false, default: none, type: InputString },
-  DispatchInput { name: "printer_credential_version", description: Present { value: "Numeric Secret Manager version returned by observation" }, required: false, default: none, type: InputString },
-  DispatchInput { name: "printer_bed_clear", description: Present { value: "Operator reports this printer bed is clear for this dispatch" }, required: false, default: none, type: InputChoice { options: ["false", "true"] } },
+  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe/print), project_path, project_sha256, credential_version, bed_clear (string true/false). The existing printer admission validates every field." }, required: false, default: none, type: InputString },
   DispatchInput {
     name: "workspace_source_object",
     description: Present { value: "workspace_checkpoint_measure only: the lower-hex SHA-256 the workspace_source_pack receipt printed as address= (the archive's own digest; the fetched bytes must hash to it)" },
@@ -5194,6 +5192,12 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
+    FleetConvergeYamlGenerationRefused { reason: "fleet-converge exceeds GitHub's workflow_dispatch input limit" }
+  } else { fleet_converge_yml_after_input_admission() }
+}
+
+fn fleet_converge_yml_after_input_admission() -> FleetConvergeYamlGenerationOutcome {
   match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
       FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
@@ -5345,11 +5349,11 @@ fn fleet_converge_printer_job() -> Job {
           kv(key:approval_capability_mac_key_path_env as String,value:yaml_string(s:approval_mac_key_path as String)),
           kv(key:approval_store_receipt_mac_key_path_env as String,value:yaml_string(s:approval_store_receipt_mac_key_path as String)),
           kv(key: "PRINTER_TARGET", value: yaml_string(s: "${{ inputs.printer }}")),
-          kv(key: "PRINTER_OPERATION", value: yaml_string(s: "${{ inputs.printer_operation }}")),
-          kv(key: "PRINTER_PROJECT_PATH", value: yaml_string(s: "${{ inputs.printer_project_path }}")),
-          kv(key: "PRINTER_PROJECT_SHA256", value: yaml_string(s: "${{ inputs.printer_project_sha256 }}")),
-          kv(key: "PRINTER_CREDENTIAL_VERSION", value: yaml_string(s: "${{ inputs.printer_credential_version }}")),
-          kv(key: "PRINTER_BED_CLEAR", value: yaml_string(s: "${{ inputs.printer_bed_clear }}")),
+          kv(key: "PRINTER_OPERATION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').operation }}")),
+          kv(key: "PRINTER_PROJECT_PATH", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_path }}")),
+          kv(key: "PRINTER_PROJECT_SHA256", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_sha256 }}")),
+          kv(key: "PRINTER_CREDENTIAL_VERSION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').credential_version }}")),
+          kv(key: "PRINTER_BED_CLEAR", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').bed_clear }}")),
         ] },
         working_directory: none, if_condition: none, continue_on_error: none,
         timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },

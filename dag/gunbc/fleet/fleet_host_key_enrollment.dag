@@ -109,6 +109,14 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     provenance: ScannedFirstContact { scanned_from: "srv1 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
   },
   KnownHostKeyRow {
+    host: "srv1" as HostIdentity,
+    endpoint: "srv1.tailecbe08.ts.net",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
+    sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
+    provenance: ScannedFirstContact { scanned_from: "2026-10-09 srv2 ssh-keyscan of srv1.tailecbe08.ts.net matched the existing srv1 enrollment byte-for-byte; the authenticated srv1 SSH session independently reported this DNSName through tailscale status" },
+  },
+  KnownHostKeyRow {
     host: "srv2" as HostIdentity,
     endpoint: "srv2",
     key_type: "ssh-ed25519",

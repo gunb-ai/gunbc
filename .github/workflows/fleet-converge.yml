@@ -100,28 +100,10 @@ on:
         required: false
         options: [printer-01, printer-02]
         type: choice
-      printer_operation:
-        description: Observe credential identity or start one pinned project
-        required: false
-        options: [observe, print]
-        type: choice
-      printer_project_path:
-        description: Absolute path of staged sliced project on srv1
+      printer_request:
+        description: "Printer operation JSON: operation (observe/print), project_path, project_sha256, credential_version, bed_clear (string true/false). The existing printer admission validates every field."
         required: false
         type: string
-      printer_project_sha256:
-        description: SHA-256 of the reviewed sliced project
-        required: false
-        type: string
-      printer_credential_version:
-        description: Numeric Secret Manager version returned by observation
-        required: false
-        type: string
-      printer_bed_clear:
-        description: Operator reports this printer bed is clear for this dispatch
-        required: false
-        options: ["false", "true"]
-        type: choice
       workspace_source_object:
         description: "workspace_checkpoint_measure only: the lower-hex SHA-256 the workspace_source_pack receipt printed as address= (the archive's own digest; the fetched bytes must hash to it)"
         required: false
@@ -3810,11 +3792,11 @@ jobs:
           GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-mac-key
           GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-store-receipt-mac-key
           PRINTER_TARGET: ${{ inputs.printer }}
-          PRINTER_OPERATION: ${{ inputs.printer_operation }}
-          PRINTER_PROJECT_PATH: ${{ inputs.printer_project_path }}
-          PRINTER_PROJECT_SHA256: ${{ inputs.printer_project_sha256 }}
-          PRINTER_CREDENTIAL_VERSION: ${{ inputs.printer_credential_version }}
-          PRINTER_BED_CLEAR: ${{ inputs.printer_bed_clear }}
+          PRINTER_OPERATION: ${{ fromJSON(inputs.printer_request || '{}').operation }}
+          PRINTER_PROJECT_PATH: ${{ fromJSON(inputs.printer_request || '{}').project_path }}
+          PRINTER_PROJECT_SHA256: ${{ fromJSON(inputs.printer_request || '{}').project_sha256 }}
+          PRINTER_CREDENTIAL_VERSION: ${{ fromJSON(inputs.printer_request || '{}').credential_version }}
+          PRINTER_BED_CLEAR: ${{ fromJSON(inputs.printer_request || '{}').bed_clear }}
         timeout-minutes: 15
       - name: Upload printer operation receipt
         id: printer_receipt

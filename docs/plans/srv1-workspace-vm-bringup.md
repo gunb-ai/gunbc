@@ -14,6 +14,7 @@ collected that refusal; its green workflow conclusion is not a boot receipt.
 
 | Boundary | Observed state | Required change |
 | --- | --- | --- |
+| Workflow dispatch | Main declares 28 inputs; GitHub accepts at most 25 | Keep printer selection separate and carry its five operation fields in one `printer_request` JSON input |
 | Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
 | Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
 | Slot budget | `fabric-cell-srv1-13.slice` has no installed unit file | Converge the modeled execution-cell boundary; a synthesized systemd slice is not proof |
@@ -79,3 +80,9 @@ observed. Never record private keys, tokens or signed state-request envelopes.
 Local validation so far: the image builder produced an ext4 image whose `/root`
 and `/usr/sbin/sshd` are owned by UID/GID 0, and the fresh compiler parsed the full
 source tree. Live acceptance is pending.
+
+The dispatch transport repair preserves the printer's existing domain validation.
+Printer callers now supply `printer` and `printer_request`, for example
+`{"operation":"observe"}` or
+`{"operation":"print","project_path":"/absolute/project.3mf","project_sha256":"<reviewed digest>","credential_version":"<observed numeric version>","bed_clear":"true"}`.
+No printer action is performed by VM bringup.
