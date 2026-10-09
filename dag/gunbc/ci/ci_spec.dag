@@ -1,5 +1,7 @@
 module gunbc.ci_spec
 
+import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
@@ -931,6 +933,11 @@ data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = Gun
   function: "runner_browser_toolchain_converge_ci_wet",
 }
 
+data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/printer_workflow_run.dag",
+  function: "run",
+}
+
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
@@ -1413,7 +1420,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
+
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_microvm_slot_reserve_target,
@@ -4084,4 +4093,11 @@ fn gunbc_ci_arrival_converge_invoke() -> String {
     claim_run: false,
     receipt_rel: none
   )
+}
+
+fn gunbc_ci_printer_workflow_invoke() -> String {
+  gunbc_run_step_script(source_roots: witness_layer_roots,
+    entry: gunbc_ci_printer_workflow_target.entry,
+    function: gunbc_ci_printer_workflow_target.function,
+    claim_run: false, receipt_rel: printer_workflow_receipt_path)
 }

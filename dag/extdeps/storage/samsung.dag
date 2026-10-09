@@ -1,6 +1,6 @@
 module extdeps.storage.samsung
 
-import std.measure { ByteSize, byte_size, bandwidth }
+import std.measure { ByteSize, byte_size, bandwidth, Gram, gram }
 import std.types { NonEmptyStr }
 import extdeps.storage.types { NvmeDeviceCatalogRow, PcieLink, PcieGeneration, NvmeFormFactor }
 import extdeps.vendor.samsung { samsung }
@@ -47,3 +47,9 @@ data samsung_970_evo_500gb_catalog: NvmeDeviceCatalogRow = samsung_970_evo(
   part_number: "MZ-V7E500BW",
   capacity_bytes: byte_size(500107862016),
 )
+
+// Primary Samsung product brochures, directly read 2026-10-04. Maximum, not nominal.
+data samsung_970_evo_mass_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"download.semiconductor.samsung.com/resources/brochure/SAMSUNG_SSD_970_Brochure_Web.pdf"}}
+data samsung_970_evo_plus_mass_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"semiconductor.samsung.com/resources/brochure/SSD_970_PRO_EVO_Plus_Brochure_210712.pdf"}}
+data samsung_970_evo_family_max_mass: Gram = gram(count:8)
+data samsung_970_evo_plus_family_max_mass: Gram = gram(count:8)

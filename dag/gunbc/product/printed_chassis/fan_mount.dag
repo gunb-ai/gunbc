@@ -122,8 +122,8 @@ fn admit_fan_mount(
 }
 
 // THE FIRST PART TO PRINT. A 92 mm plate carries the 71.5 mm pattern with material to spare, 4 mm of
-// thickness is stiff enough to hold a fan without warping on a textured plate, and a 76 mm bore clears the
-// blades while staying well inside the 50.6 mm screw-hole circle.
+// thickness is an unqualified prototype choice, and the 76 mm aperture stays inside the
+// screw-hole circle. Held-fan fit, stiffness, cassette attachment and guarding remain to be checked.
 data arctic_p8_mount_plate_edge: Micrometer = micrometer(count: 92000)
 data arctic_p8_mount_plate_thickness: Micrometer = micrometer(count: 4000)
 data arctic_p8_mount_bore: Micrometer = micrometer(count: 76000)

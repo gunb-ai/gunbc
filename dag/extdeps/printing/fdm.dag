@@ -4,7 +4,8 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Millimeter, millimeter_count, Micrometer, micrometer_count, Celsius, celsius_count }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
+import std.measure {Megapascal,KilogramPerCubicMetre}
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -327,4 +328,16 @@ fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMa
   } else {
     SuitabilityResolved { suitability: scan.value }
   }
+}
+
+// Manufacturer-specific typical test values; HDT is not a continuous service rating.
+type FilamentTechnicalDataSheetRow {
+  product_label: NonEmptyStr
+  material: FilamentMaterial
+  density: KilogramPerCubicMetre
+  heat_deflection_at_0_45_mpa: Celsius
+  tensile_strength: Megapascal
+  bending_strength: Megapascal
+  bending_modulus: Megapascal
+  standing: CitedFigureStanding
 }

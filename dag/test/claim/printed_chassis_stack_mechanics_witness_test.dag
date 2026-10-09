@@ -1,0 +1,108 @@
+module test.claim.printed_chassis_stack_mechanics_witness
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import std.measure { gram, gram_count, watt, newton, newton_count, percent, millinewton_count, kilopascal_count, micrometre_per_second_squared, micrometre_per_second_squared_count }
+import std.optional { Present, Absent }
+import product.printed_chassis.stack_mechanics {
+  DeclaredMass, StackPolicy, tip_acceleration, tip_force, stack_screening, StackAdmission, StackScreeningOnly, StackLimited, StackRefusedUnweighed,
+  StackLimit, PillarBucklingExceeded, TipsUnderServicePush, TipsUnderServiceAcceleration, max_screened_height, mass_roster, MassRosterReading, MassRosterComplete, MassRosterIncomplete,
+}
+import product.printed_chassis.stack_geometry { stack_pitch, pillar_height, tallest_cassette_part_top, lowest_cassette_part_bottom }
+import product.printed_chassis.power_cassette { PowerCassette, TopOfColumn, BottomOfColumn, BesideColumn }
+import product.node_power_envelope { Gold }
+import extdeps.printing.bambu_lab_filament { bambu_pla_basic_tds, bambu_petg_hf_tds }
+
+fn station(top: Bool) -> PowerCassette {
+  PowerCassette { nodes_fed: 4, placement: if top { TopOfColumn } else { BottomOfColumn }, supply_rated_output: watt(count: 1600), supply_efficiency: Gold, mass: gram(count: 4000) }
+}
+
+// DECLARED, not measured: the board and DIMM masses no vendor publishes. These are the
+// witness's hypotheses and the admission reports that it rests on three of them.
+fn declared() -> List<DeclaredMass> {
+  [DeclaredMass { part_id: "BOARD", mass: gram(count: 1200), basis: "witness hypothesis: typical deep micro-ATX server board; weigh the held board to retire" },
+   DeclaredMass { part_id: "RAM1", mass: gram(count: 200), basis: "witness hypothesis: four RDIMMs at 50 g; weigh to retire" },
+   DeclaredMass { part_id: "RAM2", mass: gram(count: 200), basis: "witness hypothesis: four RDIMMs at 50 g; weigh to retire" }]
+}
+
+// A 0.02 g bump criterion is lax enough that only the push criterion can bind in the tests
+// below; policy_g names the bump criterion in hundredths of g for the height question.
+fn policy(push_n: Nat) -> StackPolicy {
+  StackPolicy { effective_length_factor_percent: 100, service_push: newton(count: push_n), service_acceleration: micrometre_per_second_squared(count: 196133) }
+}
+fn policy_g(hundredths_of_g: Nat) -> StackPolicy {
+  StackPolicy { effective_length_factor_percent: 100, service_push: newton(count: 1), service_acceleration: micrometre_per_second_squared(count: 9806650 * hundredths_of_g / 100) }
+}
+
+// The pitch is derived, not the frame proposal's 158 mm: it is the tallest part over the lowest
+// hanging part plus the clearance, and both ends are real cassette parts.
+test fn the_pitch_is_derived_from_the_cassette_parts() -> Bool {
+  tallest_cassette_part_top() > 90000 && lowest_cassette_part_bottom() < 0
+  && stack_pitch() == tallest_cassette_part_top() - lowest_cassette_part_bottom() + 20000
+  && pillar_height() < stack_pitch()
+}
+
+// Without a board mass the admission refuses and names what was not weighed; it never weighs
+// the board at zero.
+test fn an_unweighed_board_refuses_the_admission_by_name() -> Bool {
+  match stack_screening(sheet: bambu_petg_hf_tds, declared: [], station: station(top: false), policy: policy(push_n: 1), node_count: 4) {
+    StackRefusedUnweighed { unweighed: u } => any(u, id => id == "BOARD") && any(u, id => id == "RAM1")
+    StackScreeningOnly { verdict: _, creep_unqualified: _ } => false
+    StackLimited { first_limit: _, verdict: _ } => false
+  }
+}
+
+// With the hypotheses declared, four nodes on a bottom station are screened and the verdict
+// reports three declared masses. The reported stress is not compared against
+// a fabricated compressive allowable; ideal Euler buckling is only a screen.
+test fn four_nodes_screen_on_declared_masses_and_report_the_dependence() -> Bool {
+  match stack_screening(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: false), policy: policy(push_n: 1), node_count: 4) {
+    StackScreeningOnly { verdict: v, creep_unqualified: _ } => v.rests_on_declared_masses == 3 && v.node_count == 4
+      && gram_count(g: v.unit_mass) > 3000 && gram_count(g: v.unit_mass) < 8000
+      && millinewton_count(f: v.bottom_pillar_load) > 0 && kilopascal_count(p: v.bottom_bearing_stress) > 0
+      && millinewton_count(f: v.pillar_critical_load) > millinewton_count(f: v.bottom_pillar_load)
+      && newton_count(f: v.tip_force) > 1
+    StackRefusedUnweighed { unweighed: _ } => false
+    StackLimited { first_limit: _, verdict: _ } => false
+  }
+}
+
+// Tipping is the limit that binds first: a push the stack cannot survive is a typed limit, and
+// a heavier station at the bottom improves base-acceleration tolerance, but not
+// the top-applied push threshold for equal total mass and height.
+test fn tipping_binds_first_and_a_top_station_tips_sooner() -> Bool {
+  let limited = match stack_screening(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: true), policy: policy(push_n: 100000), node_count: 8) {
+    StackLimited { first_limit: l, verdict: _ } => match l { TipsUnderServicePush { tip_force: _, push: _ } => true PillarBucklingExceeded { level_from_bottom: _, pillar_load: _, critical: _ } => false TipsUnderServiceAcceleration { tip_acceleration: _, required: _ } => false }
+    StackScreeningOnly { verdict: _, creep_unqualified: _ } => false
+    StackRefusedUnweighed { unweighed: _ } => false
+  }
+  let top = micrometre_per_second_squared_count(a:tip_acceleration(unit:gram(count:2000),station:station(top:true),node_count:8))
+  let bottom = micrometre_per_second_squared_count(a:tip_acceleration(unit:gram(count:2000),station:station(top:false),node_count:8))
+  limited && bottom > top && top > 0
+  && newton_count(f:tip_force(unit:gram(count:2000),station:station(top:true),node_count:8))==newton_count(f:tip_force(unit:gram(count:2000),station:station(top:false),node_count:8))
+
+}
+
+// Sensitivity of this explicit uniform-mass fixture, not physical height admission.
+// The ideal Euler/material inputs do not capture printed-joint strength or creep.
+test fn the_screened_height_answers_the_operator_question() -> Bool {
+  let bottom = max_screened_height(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: false), policy: policy_g(hundredths_of_g: 20), ceiling: 16)
+  let top = max_screened_height(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: true), policy: policy_g(hundredths_of_g: 20), ceiling: 16)
+  let pla = max_screened_height(sheet: bambu_pla_basic_tds, declared: declared(), station: station(top: false), policy: policy_g(hundredths_of_g: 20), ceiling: 16)
+  let lax = max_screened_height(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: false), policy: policy_g(hundredths_of_g: 5), ceiling: 16)
+  bottom >= 4 && bottom < 16 && bottom >= top && pla == bottom && lax > bottom
+  && max_screened_height(sheet: bambu_petg_hf_tds, declared: [], station: station(top: false), policy: policy_g(hundredths_of_g: 20), ceiling: 16) == 0
+}
+
+// The instrument's answer under the witness's declared masses, exposed so a reader can run it:
+// the column height a 0.2 g bump screens with the station at the bottom.
+fn screened_height_at_0_2g_bottom_station() -> Nat {
+  max_screened_height(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: false), policy: policy_g(hundredths_of_g: 20), ceiling: 16)
+}
+test fn the_0_2g_height_is_reported_not_guessed() -> Bool {
+  let n = screened_height_at_0_2g_bottom_station()
+  match stack_screening(sheet: bambu_petg_hf_tds, declared: declared(), station: station(top: false), policy: policy_g(hundredths_of_g: 20), node_count: n + 1) {
+    StackLimited { first_limit: l, verdict: _ } => match l { TipsUnderServiceAcceleration { tip_acceleration: _, required: _ } => true TipsUnderServicePush { tip_force: _, push: _ } => false PillarBucklingExceeded { level_from_bottom: _, pillar_load: _, critical: _ } => false }
+    StackScreeningOnly { verdict: _, creep_unqualified: _ } => false
+    StackRefusedUnweighed { unweighed: _ } => false
+  }
+}

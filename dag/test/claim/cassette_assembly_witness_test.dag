@@ -1,0 +1,38 @@
+module test.claim.cassette_assembly_witness_test
+import std.types {Bool,List}
+import std.affine_space {signed_frame_component_count}
+import product.printed_chassis.review_realization {bundle_for}
+import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
+import std.process {ExitSuccess,ExitFailure}
+import product.printed_chassis.assembly_geometry {AssemblyPart,part,block,Printed,Cassette,LayOnXZ,placed}
+import product.printed_chassis.assembly_review_checks {review_model_checks,within_bed}
+import product.printed_chassis.cassette_review {all_parts}
+import product.printed_chassis.cassette {interfaces}
+
+fn displaced(p:AssemblyPart) -> AssemblyPart {
+ AssemblyPart {id:p.id,name:p.name,kind:p.kind,scope:p.scope,adds:p.adds,cuts:p.cuts,at:placed(x:signed_frame_component_count(c:p.at.x)+1000,y:signed_frame_component_count(c:p.at.y),z:signed_frame_component_count(c:p.at.z)),explode:p.explode,print_plane:p.print_plane,notes:p.notes}
+}
+test fn assembly_source_has_mates_and_fits_declared_bed() -> Bool {review_model_checks(parts:all_parts(),interfaces:interfaces())}
+test fn moved_guard_is_not_admitted() -> Bool {
+ !review_model_checks(parts:map(all_parts(),p=>if p.id=="G2" {displaced(p:p)} else {p}),interfaces:interfaces())
+}
+test fn missing_member_is_not_admitted() -> Bool {
+ !review_model_checks(parts:filter(all_parts(),p=>p.id!="M2"),interfaces:interfaces())
+}
+test fn oversized_piece_is_not_admitted() -> Bool {
+ let p=part(id:"oversized",name:"negative control",kind:Printed,scope:Cassette,adds:[block(w:181000,h:8000,d:90000,x:0,y:0,z:0)],cuts:[],x:0,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"")
+ !within_bed(p:p)
+}
+
+fn packaging_fixture() -> AssemblyPart {
+ part(id:"packaging-fixture",name:"packaging fixture",kind:Printed,scope:Cassette,adds:[block(w:10000,h:8000,d:10000,x:0,y:0,z:0)],cuts:[],x:0,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"")
+}
+// Full assembly admission is witnessed above; packaging exercises the same producer
+// on a small model so this contract does not repeatedly serialize the whole rack.
+test fn review_bundle_requires_the_same_admitted_source_manifest() -> Bool {
+ match bundle_for(parts:[packaging_fixture()],joints:[]) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>string_contains(s:b,pattern:"packaging-fixture")&&string_contains(s:b,pattern:"Manifest differs from the emitted geometry")&&string_contains(s:b,pattern:"_review_shapes") ExitFailure {code:_,reason:_}=>false} CliWireUnprintable {cause:_}=>false}
+}
+
+test fn review_bundle_refuses_duplicate_members() -> Bool {
+ match bundle_for(parts:[packaging_fixture(),packaging_fixture()],joints:[]) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>false ExitFailure {code:_,reason:_}=>string_contains(s:b,pattern:"Assembly source checks refused")} CliWireUnprintable {cause:_}=>false}
+}
