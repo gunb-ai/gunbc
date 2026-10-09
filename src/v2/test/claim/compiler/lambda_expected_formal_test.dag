@@ -8,7 +8,7 @@ import v2.compiler.resolve { LexicalBinding, LexicalUntyped, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_has_reason }
 import v2.std.collection { List, empty_map, map_insert }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
@@ -66,17 +66,6 @@ fn lef_lambda() -> Node {
       signature.domain,
       signature.order,
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge {
-        label: core_edge_label(marker: TypeParamsEdge),
-        target: node_synthetic(
-          kind: TypeNode { connective: Conj },
-          children: type_binder_set_children(
-            binders: [],
-            source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-          )
-        )
-      },
       Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: lef_occ(n: 1)
@@ -91,9 +80,33 @@ fn lef_fn_t_to_t() -> Node {
   )
 }
 
+fn lef_poly_arrow(formals: List<Edge>) -> Node {
+  let signature = declared_signature(
+    params: formals,
+    source: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      signature.order,
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge {
+        label: core_edge_label(marker: TypeParamsEdge),
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: type_binder_set_children(
+            binders: [Edge { label: Authored { name: ^T }, target: dag_type_atom_node(identity: ^T) }],
+            source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+          )
+        )
+      }
+    ]
+  )
+}
+
 fn lef_after_arrow() -> Node {
-  tpb_generic_arrow(
-    type_params: [^T],
+  lef_poly_arrow(
     formals: [
       tpb_formal(name: ^x, declared: ^T),
       binder_edge(name: ^f, type_node: lef_fn_t_to_t())
@@ -102,8 +115,7 @@ fn lef_after_arrow() -> Node {
 }
 
 fn lef_before_arrow() -> Node {
-  tpb_generic_arrow(
-    type_params: [^T],
+  lef_poly_arrow(
     formals: [
       binder_edge(name: ^f, type_node: lef_fn_t_to_t()),
       tpb_formal(name: ^x, declared: ^T)
@@ -188,7 +200,25 @@ test fn lef_value_then_lambda_infers_holds() -> Bool {
 }
 
 test fn lef_lambda_then_value_does_not_infer_as_int_holds() -> Bool {
-  lef_infer_terminal(tree: lef_lambda_then_value_tree()) != ^infers
+  match infer(tree: lef_lambda_then_value_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: d } =>
+      match inferred.facts.lookup(lef_n_ref()) {
+        Absent => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+            Holds { value: t } =>
+              match t.kind {
+                TypeNode { connective: Atom { identity: id } } =>
+                  (id != ^dag_binding_type_int)
+                    && diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+                TypeNode { connective: _ } => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+                ComputationNode { behavior: _ } => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+              }
+          }
+      }
+  }
 }
 
 test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
@@ -213,7 +243,10 @@ test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
 }
 
 fn lef_lambda_then_value_terminal_reason() -> Bool {
-  lef_infer_terminal(tree: lef_lambda_then_value_tree()) != ^infers
+  match infer(tree: lef_lambda_then_value_tree()) {
+    Rejected { diagnostics: r } => lef_last_reason(xs: r.tail, last: r.head.reason) == ^inhabitance_undecidable_generic_formal
+    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
 }
 
 test fn lef_shared_callee_actual_is_judged_holds() -> Bool {
