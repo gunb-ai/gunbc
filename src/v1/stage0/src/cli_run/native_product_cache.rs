@@ -23,9 +23,12 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is the files cargo compiled into THIS running seed (its dep-info, the same reader
-//! the floor uses), never a walk of the whole `src/v1` tree; a missing or unreadable record
-//! REFUSES to key (counted MISS, named cause) rather than hashing a superset. The closure and the
+//! the producer is rustc's own per-crate dep-info for the seed (`target/<profile>/deps/<crate>-<hash>.d`),
+//! not cargo's combined beside-binary `.d` (that one carries build-script directory watches and
+//! `.git` identity files). File contents are hashed, keyed by workspace-relative path, including
+//! OUT_DIR-generated files even when they sit outside the workspace; registry crates are Cargo.lock
+//! plus the existing toolchain axis. A directory or unreadable entry is a counted MISS
+//! (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The closure and the
 //! census-only declaration universe are hashed at content grain (a span-insensitive heads hash
 //! would narrow the latter and is a declared next step, not assumed here).
 //!
@@ -64,8 +67,8 @@ fn hex(bytes: &[u8]) -> String {
 /// the key would have been.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DeriveKeyError {
-    /// Cargo's dep-info (or the restored-pair sidecar the same reader admits) was missing,
-    /// unreadable, or not the cargo form. Named cause `producer_dep_info`.
+    /// rustc's per-crate dep-info was missing, listed a directory, or named an unreadable file.
+    /// Named cause `producer_dep_info`. Never a lane refusal.
     ProducerInputsUnobserved {
         cause: String,
     },
@@ -74,46 +77,253 @@ pub(super) enum DeriveKeyError {
     },
 }
 
-/// Hash the listed workspace-relative files' contents, in the order the observer already sorted
-/// them. A listed path that cannot be read is a refusal, never a skipped member.
-fn hash_workspace_paths(workspace: &Path, relative_paths: &[String]) -> Result<String, String> {
-    if relative_paths.is_empty() {
-        return Err(
-            "NativeProductProducerEmpty — the compiled-input observer returned no paths".into(),
-        );
+fn miss(cause: impl Into<String>) -> DeriveKeyError {
+    DeriveKeyError::ProducerInputsUnobserved {
+        cause: cause.into(),
     }
+}
+
+/// Hash compiled-input contents, keyed by identity (workspace-relative, or the rustc-spelled
+/// path for an OUT_DIR file outside the workspace). A directory or unreadable path is a counted
+/// MISS, never a skipped member and never a whole-tree fallback.
+fn hash_compiled_inputs(entries: &[(String, PathBuf)]) -> Result<String, DeriveKeyError> {
+    if entries.is_empty() {
+        return Err(miss(
+            "NativeProductProducerEmpty — rustc dep-info named no compiled file",
+        ));
+    }
+    let mut sorted = entries.to_vec();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
     let mut h = sha2::Sha256::new();
-    for rel in relative_paths {
-        let path = workspace.join(rel);
-        let bytes =
-            std::fs::read(&path).map_err(|e| format!("NativeProductKeyUnreadable — {rel}: {e}"))?;
-        h.update((rel.len() as u64).to_le_bytes());
-        h.update(rel.as_bytes());
+    let mut prev: Option<String> = None;
+    for (key, path) in &sorted {
+        if prev.as_deref() == Some(key.as_str()) {
+            continue;
+        }
+        prev = Some(key.clone());
+        if path.is_dir() {
+            return Err(miss(format!(
+                "rustc dep-info names directory {key}, which has no file contents to hash"
+            )));
+        }
+        let bytes = std::fs::read(path).map_err(|e| miss(format!("{key}: {e}")))?;
+        h.update((key.len() as u64).to_le_bytes());
+        h.update(key.as_bytes());
         h.update((bytes.len() as u64).to_le_bytes());
         h.update(&bytes);
     }
     Ok(format!("{:x}", h.finalize()))
 }
 
-/// Producer axis: the files cargo compiled into the running seed. THE READER IS
-/// `observe_checker_input_paths` — the same dep-info / restored-pair sidecar the floor uses. There
-/// is no second file list. An unobserved set is `ProducerInputsUnobserved`, never a walk of `src/v1`.
-fn producer_axis(workspace: &Path) -> Result<String, DeriveKeyError> {
-    producer_axis_from_observation(
-        workspace,
-        super::checker_dependency::observe_checker_input_paths(workspace),
-    )
+/// `.../build/<pkg>-<hash>/out/...` — cargo's generated-sources directory, which may sit
+/// outside the workspace when `CARGO_TARGET_DIR` does.
+fn is_cargo_out_dir_file(path: &Path) -> bool {
+    let mut parts = path.iter().map(|s| s.to_string_lossy());
+    while let Some(part) = parts.next() {
+        if part == "build" {
+            let _pkg = parts.next();
+            return parts.next().as_deref() == Some("out");
+        }
+    }
+    false
 }
 
-fn producer_axis_from_observation(
-    workspace: &Path,
-    observation: Result<Vec<String>, String>,
-) -> Result<String, DeriveKeyError> {
-    match observation {
-        Ok(paths) => hash_workspace_paths(workspace, &paths)
-            .map_err(|cause| DeriveKeyError::Unreadable { cause }),
-        Err(cause) => Err(DeriveKeyError::ProducerInputsUnobserved { cause }),
+fn producer_entry_key(workspace: &Path, prerequisite: &str) -> (String, PathBuf) {
+    let raw = PathBuf::from(prerequisite);
+    let path = if raw.is_absolute() {
+        raw
+    } else {
+        workspace.join(prerequisite)
+    };
+    if let Ok(rel) = path.strip_prefix(workspace) {
+        return (rel.to_string_lossy().replace('\\', "/"), path);
     }
+    (prerequisite.replace('\\', "/"), path)
+}
+
+fn keep_compiled_prerequisite(workspace: &Path, prerequisite: &str) -> bool {
+    let (_, path) = producer_entry_key(workspace, prerequisite);
+    if let Ok(rel) = path.strip_prefix(workspace) {
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        if rel.starts_with(".git/") || rel == ".git" {
+            return false;
+        }
+        return true;
+    }
+    is_cargo_out_dir_file(&path)
+}
+
+/// rustc's per-crate dep-info in `deps/`: `<crate>-<metadata>.d` beside the rlib/rmeta/bin object.
+fn select_rustc_dep_info(deps_dir: &Path, rustc_crate: &str) -> Result<PathBuf, DeriveKeyError> {
+    let prefix = format!("{rustc_crate}-");
+    let mut candidates = Vec::new();
+    let entries = std::fs::read_dir(deps_dir).map_err(|e| {
+        miss(format!(
+            "rustc deps directory {} unreadable: {e}",
+            deps_dir.display()
+        ))
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| miss(format!("listing {}: {e}", deps_dir.display())))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(rest) = name
+            .strip_prefix(&prefix)
+            .and_then(|s| s.strip_suffix(".d"))
+        else {
+            continue;
+        };
+        if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            continue;
+        }
+        let rlib = deps_dir.join(format!("lib{rustc_crate}-{rest}.rlib"));
+        let rmeta = deps_dir.join(format!("lib{rustc_crate}-{rest}.rmeta"));
+        let obj = deps_dir.join(format!("{rustc_crate}-{rest}"));
+        if rlib.exists() || rmeta.exists() || obj.exists() {
+            let modified = entry.metadata().and_then(|m| m.modified()).ok();
+            candidates.push((modified, entry.path()));
+        }
+    }
+    if candidates.is_empty() {
+        return Err(miss(format!(
+            "no rustc dep-info for crate {rustc_crate} in {}",
+            deps_dir.display()
+        )));
+    }
+    candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(candidates.pop().unwrap().1)
+}
+
+fn cargo_package_name(manifest_text: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in manifest_text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_package = t == "[package]";
+            continue;
+        }
+        if in_package {
+            if let Some(rest) = t.strip_prefix("name") {
+                let rest = rest.trim().strip_prefix('=')?.trim();
+                let name = rest.trim_matches('"').trim_matches('\'').to_string();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn rustc_crate_name(package: &str) -> String {
+    package.replace('-', "_")
+}
+
+const LINKED_PARTITION_CRATES: &str = "src/v1/stage0/linked_partition_crates.generated.txt";
+
+fn linked_partition_rustc_crates(workspace: &Path) -> Result<Vec<String>, DeriveKeyError> {
+    let listing = workspace.join(LINKED_PARTITION_CRATES);
+    let text = std::fs::read_to_string(&listing)
+        .map_err(|e| miss(format!("{}: {e}", listing.display())))?;
+    let mut crates = Vec::new();
+    for line in text.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let manifest = workspace.join(line).join("Cargo.toml");
+        let body = std::fs::read_to_string(&manifest)
+            .map_err(|e| miss(format!("{}: {e}", manifest.display())))?;
+        let package = cargo_package_name(&body).ok_or_else(|| {
+            miss(format!(
+                "{} has no [package] name, so its rustc crate is unknown",
+                manifest.display()
+            ))
+        })?;
+        crates.push(rustc_crate_name(&package));
+    }
+    if crates.is_empty() {
+        return Err(miss(
+            "linked-partition-crates projection named no crate; the seed's infer crate would be missing from the producer key",
+        ));
+    }
+    Ok(crates)
+}
+
+fn entries_from_rustc_dep_info(
+    workspace: &Path,
+    text: &str,
+) -> Result<Vec<(String, PathBuf)>, DeriveKeyError> {
+    let mut out = Vec::new();
+    for prerequisite in super::checker_dependency::parse_dep_info_prerequisites(text) {
+        if !keep_compiled_prerequisite(workspace, &prerequisite) {
+            continue;
+        }
+        let (key, path) = producer_entry_key(workspace, &prerequisite);
+        if path.is_dir() {
+            return Err(miss(format!(
+                "rustc dep-info names directory {key}, which has no file contents to hash"
+            )));
+        }
+        out.push((key, path));
+    }
+    Ok(out)
+}
+
+/// rustc crate units whose sources the running seed binary was compiled from: this package's
+/// lib, the running bin, and every linked partition crate. rustc's per-crate `.d` omits
+/// dependency crates, so the infer crate is not in `gunbc-<hash>.d` alone.
+fn seed_rustc_units(workspace: &Path) -> Result<Vec<String>, DeriveKeyError> {
+    let mut units = vec![rustc_crate_name(env!("CARGO_PKG_NAME"))];
+    let exe = std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))?;
+    if let Some(stem) = exe.file_stem().and_then(|s| s.to_str()) {
+        let bin = rustc_crate_name(stem);
+        if !units.iter().any(|u| u == &bin) {
+            units.push(bin);
+        }
+    }
+    for crate_name in linked_partition_rustc_crates(workspace)? {
+        if !units.iter().any(|u| u == &crate_name) {
+            units.push(crate_name);
+        }
+    }
+    Ok(units)
+}
+
+fn observe_rustc_compiled_inputs(
+    workspace: &Path,
+) -> Result<Vec<(String, PathBuf)>, DeriveKeyError> {
+    let exe = std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))?;
+    let Some(profile_dir) = exe.parent() else {
+        return Err(miss("running seed has no parent directory"));
+    };
+    let deps_dir = profile_dir.join("deps");
+    if !deps_dir.is_dir() {
+        return Err(miss(format!(
+            "rustc deps directory {} is absent; producer key needs the seed cargo built in this workspace",
+            deps_dir.display()
+        )));
+    }
+    let mut entries = Vec::new();
+    for unit in seed_rustc_units(workspace)? {
+        let record = select_rustc_dep_info(&deps_dir, &unit)?;
+        let text = std::fs::read_to_string(&record)
+            .map_err(|e| miss(format!("{}: {e}", record.display())))?;
+        entries.extend(entries_from_rustc_dep_info(workspace, &text)?);
+    }
+    let lock = workspace.join("Cargo.lock");
+    if !lock.is_file() {
+        return Err(miss(
+            "Cargo.lock is unreadable; registry crates have no producer coverage",
+        ));
+    }
+    entries.push(("Cargo.lock".into(), lock));
+    Ok(entries)
+}
+
+/// Producer axis: rustc's compiled-file set for the seed crate graph. Not cargo's combined
+/// beside-binary `.d`. An unobserved set is `ProducerInputsUnobserved`, never a walk of `src/v1`.
+fn producer_axis(workspace: &Path) -> Result<String, DeriveKeyError> {
+    hash_compiled_inputs(&observe_rustc_compiled_inputs(workspace)?)
 }
 
 fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>]) -> String {
@@ -709,50 +919,123 @@ mod tests {
         assert!(text.contains("\"cause\":\"auth\"") && text.contains("\"outcome\":\"miss\""));
     }
 
-    // Control (1)+(2): the producer digest is the compiled set's contents. A file cargo did not
-    // compile into the seed cannot move the key; a compiled file must.
+    fn compiled(workspace: &Path, rel: &str) -> (String, PathBuf) {
+        (rel.to_string(), workspace.join(rel))
+    }
+
+    // Control: a commit that touches only .git or unrelated docs leaves the producer digest.
+    // A compiled .rs change moves it.
     #[test]
     fn a_seed_file_outside_the_compiled_set_leaves_the_producer_key_unchanged() {
         let root = scratch("producer-set");
         std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
         std::fs::write(root.join("src/compiled.rs"), b"seed").unwrap();
-        std::fs::write(root.join("src/uncompiled.rs"), b"noise").unwrap();
-        let compiled = vec!["src/compiled.rs".to_string()];
-        let h0 = hash_workspace_paths(&root, &compiled).unwrap();
-        std::fs::write(root.join("src/uncompiled.rs"), b"noise-changed").unwrap();
-        assert_eq!(h0, hash_workspace_paths(&root, &compiled).unwrap());
+        std::fs::write(root.join("docs/note.md"), b"docs").unwrap();
+        std::fs::write(root.join(".git/HEAD"), b"ref: refs/heads/main\n").unwrap();
+        let set = vec![compiled(&root, "src/compiled.rs")];
+        let h0 = hash_compiled_inputs(&set).unwrap();
+        std::fs::write(root.join("docs/note.md"), b"docs-changed").unwrap();
+        std::fs::write(root.join(".git/HEAD"), b"ref: refs/heads/other\n").unwrap();
+        assert_eq!(h0, hash_compiled_inputs(&set).unwrap());
         std::fs::write(root.join("src/compiled.rs"), b"seed-changed").unwrap();
-        assert_ne!(h0, hash_workspace_paths(&root, &compiled).unwrap());
+        assert_ne!(h0, hash_compiled_inputs(&set).unwrap());
     }
 
-    // Control (3): missing dep-info is a refusal to key, never a digest over a fallback tree.
     #[test]
-    fn missing_dep_info_refuses_to_key() {
-        let err = producer_axis_from_observation(
-            Path::new("/unused"),
-            Err("the checker's dependency record is unreadable".into()),
-        )
-        .expect_err("an unobserved producer set must not mint a key");
+    fn a_changed_out_dir_file_changes_the_producer_key() {
+        let root = scratch("producer-out");
+        let out_root = scratch("producer-target");
+        let gen = out_root
+            .join("release")
+            .join("build")
+            .join("v1-compiler-deadbeef")
+            .join("out")
+            .join("generated.rs");
+        std::fs::create_dir_all(gen.parent().unwrap()).unwrap();
+        std::fs::write(&gen, b"gen-1").unwrap();
+        std::fs::write(root.join("src.rs"), b"src").unwrap();
+        let set = vec![
+            compiled(&root, "src.rs"),
+            (gen.to_string_lossy().into_owned(), gen.clone()),
+        ];
+        let h0 = hash_compiled_inputs(&set).unwrap();
+        std::fs::write(&gen, b"gen-2").unwrap();
+        assert_ne!(h0, hash_compiled_inputs(&set).unwrap());
+        assert!(keep_compiled_prerequisite(&root, &gen.to_string_lossy()));
+    }
+
+    #[test]
+    fn a_directory_or_unreadable_compiled_entry_is_a_counted_miss() {
+        let root = scratch("producer-dir");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let dir_err = hash_compiled_inputs(&[compiled(&root, "src")])
+            .expect_err("a directory must not mint a producer digest");
+        assert!(
+            matches!(dir_err, DeriveKeyError::ProducerInputsUnobserved { .. }),
+            "{dir_err:?}"
+        );
+        let missing = hash_compiled_inputs(&[("src/gone.rs".into(), root.join("src/gone.rs"))])
+            .expect_err("an unreadable file must not mint a producer digest");
+        assert!(
+            matches!(missing, DeriveKeyError::ProducerInputsUnobserved { .. }),
+            "{missing:?}"
+        );
+    }
+
+    #[test]
+    fn rustc_dep_info_without_cargo_toml_is_the_compiled_set() {
+        let root = scratch("rustc-d");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), b"lib").unwrap();
+        std::fs::write(root.join("src/v1_compiler_infer.rs"), b"infer").unwrap();
+        let bin_d = format!(
+            "{}: {}\n",
+            root.join("deps/gunbc-abcd.d").display(),
+            root.join("src/lib.rs").display()
+        );
+        let infer_d = format!(
+            "{}: {}\n",
+            root.join("deps/v1_stage0_v1_infer-abcd.d").display(),
+            root.join("src/v1_compiler_infer.rs").display()
+        );
+        let bin = entries_from_rustc_dep_info(&root, &bin_d).unwrap();
+        let infer = entries_from_rustc_dep_info(&root, &infer_d).unwrap();
+        assert!(bin.iter().any(|(k, _)| k == "src/lib.rs"));
+        assert!(infer.iter().any(|(k, _)| k == "src/v1_compiler_infer.rs"));
+        assert!(!keep_compiled_prerequisite(
+            &root,
+            &root.join(".git/HEAD").to_string_lossy()
+        ));
+    }
+
+    #[test]
+    fn an_empty_compiled_set_is_a_miss_not_a_key() {
+        let err = hash_compiled_inputs(&[])
+            .expect_err("an empty compiled set must not mint a producer digest");
         assert!(
             matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
             "{err:?}"
         );
     }
 
+    // Inhabitance: the unit-test harness is not target/<profile>/gunbc, so rustc's seed
+    // crate-graph dep-info is not beside it. producer_axis must miss, not walk src/v1.
     #[test]
-    fn an_empty_compiled_set_is_unreadable_not_a_key() {
-        let root = scratch("producer-empty");
-        let err = producer_axis_from_observation(&root, Ok(vec![]))
-            .expect_err("an empty compiled set must not mint a producer digest");
-        assert!(matches!(err, DeriveKeyError::Unreadable { .. }), "{err:?}");
+    fn linked_partition_crates_include_the_infer_crate() {
+        let crates =
+            linked_partition_rustc_crates(&super::super::process_workspace_root()).unwrap();
+        assert!(
+            crates.iter().any(|c| c == "v1_stage0_v1_infer"),
+            "partition rustc units {crates:?} must include the infer crate; gunbc-<hash>.d alone omits it"
+        );
     }
 
-    // Inhabitance: this unit-test binary carries rustc's per-crate `.d`, which the shared reader
-    // refuses. producer_axis must surface that as ProducerInputsUnobserved, not walk src/v1.
     #[test]
     fn this_test_binary_does_not_mint_a_producer_key() {
         let err = producer_axis(&super::super::process_workspace_root())
-            .expect_err("a test binary has no cargo dep-info for the seed");
+            .expect_err("a test binary has no rustc seed-graph dep-info beside it");
         assert!(
             matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
             "{err:?}"
