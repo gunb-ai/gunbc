@@ -45,6 +45,7 @@ import v2.std.compilers.sugar {
 }
 import v2.compiler.body_lowering_fold {
   BodyLowering,
+  body_term_of,
   BodyLoweredTree,
   WrapperRetention,
   body_lowering_after_pending,
@@ -315,12 +316,42 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
   }
 }
 
+// A LEAF HAS NO INTERIOR (MQ-5). A literal token the parse minted with its payload already attached --
+// an Int literal's magnitude, a fold-list spine of digits (v2.std.integer) -- is one term
+// (body_term_of answers RawLeaf), and body_lower_fold already takes it whole. This
+// outer fold used to descend into its payload anyway, so the digit spine reached body_term_of as a
+// composite with no projection edge and no seal and refused as an unrecognised lowered shape; every
+// `data x: Int = <literal>` refused (the native door's accepting control, #12942). A leaf's edges are
+// kept as they stand; the leaf itself is still lowered below, as every node is. The question is asked
+// of the term authority, never of a second leaf predicate; a node it refuses is still descended, so
+// the refusal is raised, located, by the reader that lowers it rather than absorbed here.
+// ONE CLASSIFICATION PER PARENT (review 75069). Whether a child is kept whole depends only on the
+// parent n, so body_term_of is asked once here and the answer is carried into the fold, rather
+// than re-read once per child edge (DESIGN section 6, bare minimum cost: a quadratic fold is always
+// fixed). A RawLeaf parent keeps its payload whole; every other arm, Rejected included, descends.
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
+  normalize_node_fold_children_classified(
+    n: n,
+    under_fn_decl: under_fn_decl,
+    keep_children_whole: match body_term_of(node: n) {
+      Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => true
+      Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
+      Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
+  )
+}
+
+fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_children_whole: Bool) -> Outcome<BodyLoweredTree> {
   match fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
       edge: e,
-      child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+      child: if keep_children_whole {
+        Accepted { value: body_lowered_tree_over(node: e.target, retained: no_wrapper_retentions()), diagnostics: None }
+      } else {
+        normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+      }
     )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }

@@ -117,7 +117,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_unrecognised_lowered_shape,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a reader in v2.compiler.body_lowering_fold meets a node that is lowered output (no grammar projection edge) but that body_lower_is_core_substrate does not name, and refuses at it instead of re-reading it as raw parse and answering a part of it (body_lower_is_unrecognised_lowered_shape). The MQ-5 census found no producer that reaches this today. Flips when every producer declares the shape it emits (LoweredShape carried in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30), so a reader never classifies a node by shape and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
+    flip_trigger: "v2.compiler.body_lowering_fold body_term_of reads a node in the fold's tree that is neither under the sealed Lowered marker a producer writes (body_term_seal), nor a composite the parse stamped, nor a leaf, and refuses at it: lowered output no producer declared, never re-read as raw parse. Since MQ-5 every producer seals its result and the shape allowlist is deleted, so this fires only on an unsealed producer output. Flips when the fold's tree is a typed BodyTerm term tree that normalize consumes, so an unsealed composite has no representation and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_form_not_admitted,
