@@ -17,6 +17,7 @@ import v2.compiler.source_authority {
   SourceRootCoverageComplete,
   frontier_probe_discovered_closure_seal
 }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.source_authority_read {
   source_ref_for_observed_storage_path
 }
@@ -34,11 +35,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // exact-head eval (784772ms / 742109ms).
 
 fn fp_matrix_ref_a() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
+  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag", source_root: DagTree)
 }
 
 fn fp_matrix_ref_v2() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
+  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag", source_root: V2Tree)
 }
 
 fn fp_matrix_closure_subject_matching_digest(
