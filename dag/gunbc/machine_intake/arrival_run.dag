@@ -25,15 +25,15 @@ import gunbc.managed_host_unit_hold { unit_hold_store_root }
 // THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
 // admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
 // WIF bearer, in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, and
-// arrival_archive_slot_release. It does NOT fold mtjade1_unobserved_prior_life_world into
-// ExitSuccess: that world is unobserved, and a green converge from it is fabricated plausible
-// output (DESIGN §5). Until a live BMC/archive observation is bound as the prefix input, the
-// held door refuses with a typed cause. Witnesses still supply the dry world to
-// converge_mtjade1_arrival_prefix. BMC account writes and the pinned bmc-mtjade1-gunbc accessor
-// stay behind this door: the locus is SecretLocusReservedNotOnAccessorRoster until FamilyObserved.
+// arrival_archive_slot_release. It does not fold a dry/unobserved PriorLifeBoundary into
+// ExitSuccess: that would be fabricated plausible output (DESIGN §5). Until a live BMC/archive
+// observation is bound as the prefix input, the held door refuses with a typed cause. Witnesses
+// still supply a DryPriorLifeWorld to converge_mtjade1_arrival_prefix. BMC account writes and
+// the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus is
+// SecretLocusReservedNotOnAccessorRoster until FamilyObserved.
 
 fn arrival_wet_prefix_from_unobserved_world() -> ProcessExit {
-  exit_failure(reason: "arrival_converge refuses unobserved PriorLifeBoundary: mtjade1_unobserved_prior_life_world is not a production observation")
+  exit_failure(reason: "arrival_converge refuses unobserved PriorLifeBoundary: no production observation is bound")
 }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {

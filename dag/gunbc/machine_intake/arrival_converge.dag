@@ -1,7 +1,6 @@
 module gunbc.machine_intake_arrival_converge
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
@@ -98,11 +97,7 @@ import gunbc.machine_intake_bmc_rotation_route {
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
-import gunbc.bmc_model { bmc_world, BmcPowerOn }
 import gunbc.machine_intake_prior_life_boundary {
-  ArchivedObject,
-  DryArchiveStore,
-  DryArchiveStoreKeepsWrites,
   DryPriorLifeWorld,
   PriorLifeBoundaryEstablished,
   PriorLifeRefusal,
@@ -1156,31 +1151,4 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
     bmc: bmc,
   )
-}
-
-// No committed prior-life capture for mtjade1. Witnesses and dry prefix folds supply this world.
-// The production wet door must not (review 77746): it refuses until an observed world is bound.
-fn mtjade1_unobserved_prior_life_world() -> DryPriorLifeWorld {
-  DryPriorLifeWorld {
-    bmc: bmc_world(power: BmcPowerOn),
-    store: DryArchiveStore { objects: [] as List<ArchivedObject>, behaviour: DryArchiveStoreKeepsWrites },
-    read_at_millis: 0 as EpochMs,
-    write_returned_at_millis: 1 as EpochMs,
-  }
-}
-
-fn arrival_prefix_process_exit(v: ArrivalPrefixVerdict) -> ProcessExit {
-  match v {
-    ArrivalPrefixUnstepped { phase: _ } =>
-      exit_failure(reason: "arrival_converge: a prefix phase was unstepped")
-    ArrivalPlanRefused { cause: _ } =>
-      exit_failure(reason: "arrival_converge: the arrival plan was refused")
-    ArrivalRunFolded { verdict: RunConverged { run: _ } } => ExitSuccess
-    ArrivalRunFolded { verdict: RunStopped { ledger: _, at: _ } } =>
-      exit_failure(reason: "arrival_converge: prefix run stopped")
-    ArrivalRunFolded { verdict: RunIncomplete { ledger: _, at: _ } } =>
-      exit_failure(reason: "arrival_converge: prefix run incomplete")
-    ArrivalRunFolded { verdict: RunOutcomesRefused { cause: _ } } =>
-      exit_failure(reason: "arrival_converge: prefix outcomes refused")
-  }
 }
