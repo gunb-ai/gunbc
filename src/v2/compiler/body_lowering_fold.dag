@@ -130,7 +130,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -10024,8 +10024,8 @@ fn declared_resource_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Sy
 // A CLOSED VOCABULARY, NOT A FLAG PER SPELLING. The slot is where the ruled nominal-type plan
 // (docs/plans/nominal-type-declaration-plan.md S1) puts constructor and view visibility, so a later
 // modifier is a new variant here and a new terminal in the grammar's slot, never a second carrier.
-// Carrying a modifier enforces nothing by itself: the sealing property is checked by
-// v2.compiler.construction_confinement, which reads it through the symbol index.
+// Carrying a modifier ENFORCES nothing: the sealing property v1 parsed_sole_constructor_properties
+// mints is still not checked on this route, which is the half of that drop this does not restore.
 type TypeDeclModifier
   = NominalOpaqueModifier
   | SoleConstructorModifier
@@ -10150,179 +10150,6 @@ fn body_lower_type_decl_declared_modifiers(shell: Node) -> Outcome<DeclaredTypeM
                 Empty => outcome_accepted(value: DeclaredTypeModifiersAbsent)
                 Cons { head: _, tail: _ } =>
                   outcome_accepted(value: DeclaredTypeModifiersPresent { row: DeclaredTypeModifiers { name: name, modifiers: ms } })
-              }
-          }
-      }
-  }
-}
-
-// A FN'S `admit_callers` LIST IS CARRIED, NOT DISCARDED (gunbc.rung_drop
-// admit_callers_discarded_on_the_native_route). The clause is read HERE, off the fn_decl parse shell,
-// for the reason the type-decl modifier slot is: lowering the fn to an Arrow leaves no trace of it,
-// and the Arrow is not widened to hold it (v2.std.node arrow_signature_edges_conform admits only the
-// body edge, and a caller list is a fact ABOUT the declaration, not a part of its signature). One
-// row per fn that declares the clause, its callers as declaring paths; the consumer is
-// v2.compiler.construction_confinement, through the symbol index.
-//
-// EACH ENTRY IS EXACTLY `decl_ref(module_path: "<m>", decl_name: "<d>")`, the spelling v1
-// fn_admit_callers reads, with the two arguments in either order. Anything else refuses, located at
-// the clause -- the seed refuses the same population (AdmitCallersEntryNotDeclRef), and reading an
-// entry it could not interpret as "no caller" would be the absorbing widen DESIGN section 5 forbids.
-type DeclaredAdmittedCallers {
-  name: Symbol
-  callers: FreeMonoid<QualifiedName>
-}
-
-type DeclaredAdmittedCallersCapture
-  = DeclaredAdmittedCallersAbsent
-  | DeclaredAdmittedCallersPresent { row: DeclaredAdmittedCallers }
-
-// The clause's meaningful leaves in source order: an identifier by its spelling, a string literal by
-// its decoded value. Punctuation (a lexer token class) carries nothing the entry shape needs, and a
-// production shell is read through its captured child, never through its identity projection.
-type AdmitCallersLeaf
-  = AdmitCallersIdent { name: Symbol }
-  | AdmitCallersString { value: Symbol }
-
-fn body_lower_admit_callers_leaves(node: Node) -> FreeMonoid<AdmitCallersLeaf> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: _ } =>
-      match parse_production_captured_child_optional(node: node) {
-        Present { value: captured } => body_lower_admit_callers_leaves(node: captured)
-        Absent => Empty
-      }
-    Absent =>
-      match dag_string_literal_value_symbol_optional(node: node) {
-        Present { value: v } => Cons { head: AdmitCallersString { value: v }, tail: Empty }
-        Absent =>
-          match node_atom_identity_optional(node: node) {
-            Present { value: id } =>
-              if dag_lex_token_symbol(sym: id) {
-                Empty
-              } else {
-                Cons { head: AdmitCallersIdent { name: id }, tail: Empty }
-              }
-            Absent =>
-              fold(node.children, init: Empty, f: fn(acc, e) {
-                list_append(left: acc, right: body_lower_admit_callers_leaves(node: e.target))
-              })
-          }
-      }
-  }
-}
-
-// The reader's state over the leaves: entries of five leaves each. The clause's head word is the
-// grammar's literal terminal, a token class and so no leaf; the production itself is its presence.
-type AdmitCallersRead
-  = AdmitCallersEntries { callers: FreeMonoid<QualifiedName>, pending: FreeMonoid<AdmitCallersLeaf> }
-  | AdmitCallersUnreadable
-
-fn body_lower_admit_callers_leaf_ident_is(leaf: AdmitCallersLeaf, name: String) -> Bool {
-  match leaf {
-    AdmitCallersIdent { name: n } => symbol_lexeme(sym: n) == name
-    AdmitCallersString { value: _ } => false
-  }
-}
-
-fn body_lower_admit_callers_leaf_string(leaf: AdmitCallersLeaf) -> Optional<Symbol> {
-  match leaf {
-    AdmitCallersString { value: v } => optional_present(value: v)
-    AdmitCallersIdent { name: _ } => optional_absent()
-  }
-}
-
-// One complete entry -- [decl_ref, label, "v", label, "v"] -- to its caller's declaring path.
-fn body_lower_admit_callers_entry(leaves: List<AdmitCallersLeaf>) -> Optional<QualifiedName> {
-  match list_at_optional(xs: leaves, index: 0) {
-    Absent => optional_absent()
-    Present { value: head } =>
-      if !body_lower_admit_callers_leaf_ident_is(leaf: head, name: "decl_ref") {
-        optional_absent()
-      } else {
-        match body_lower_admit_callers_labeled(leaves: leaves, label_at: 1, label: "module_path") {
-          Present { value: m } =>
-            match body_lower_admit_callers_labeled(leaves: leaves, label_at: 3, label: "decl_name") {
-              Present { value: d } => optional_present(value: qualified_name_snoc(qn: qualified_name_from_dotted_string(dotted: symbol_lexeme(sym: m)), segment: d))
-              Absent => optional_absent()
-            }
-          Absent =>
-            match body_lower_admit_callers_labeled(leaves: leaves, label_at: 1, label: "decl_name") {
-              Absent => optional_absent()
-              Present { value: d } =>
-                match body_lower_admit_callers_labeled(leaves: leaves, label_at: 3, label: "module_path") {
-                  Present { value: m } => optional_present(value: qualified_name_snoc(qn: qualified_name_from_dotted_string(dotted: symbol_lexeme(sym: m)), segment: d))
-                  Absent => optional_absent()
-                }
-            }
-        }
-      }
-  }
-}
-
-// The string value after the identifier `label` at position `label_at`, or Absent.
-fn body_lower_admit_callers_labeled(leaves: List<AdmitCallersLeaf>, label_at: Int, label: String) -> Optional<Symbol> {
-  match list_at_optional(xs: leaves, index: label_at) {
-    Absent => optional_absent()
-    Present { value: l } =>
-      if !body_lower_admit_callers_leaf_ident_is(leaf: l, name: label) {
-        optional_absent()
-      } else {
-        match list_at_optional(xs: leaves, index: label_at + 1) {
-          Absent => optional_absent()
-          Present { value: v } => body_lower_admit_callers_leaf_string(leaf: v)
-        }
-      }
-  }
-}
-
-fn body_lower_admit_callers_step(acc: AdmitCallersRead, leaf: AdmitCallersLeaf) -> AdmitCallersRead {
-  match acc {
-    AdmitCallersUnreadable => AdmitCallersUnreadable
-    AdmitCallersEntries { callers: cs, pending: p } =>
-      let grown = list_snoc_item(xs: p, item: leaf)
-      if length(xs: grown) < 5 {
-        AdmitCallersEntries { callers: cs, pending: grown }
-      } else {
-        match body_lower_admit_callers_entry(leaves: grown) {
-          Present { value: caller } => AdmitCallersEntries { callers: list_snoc_item(xs: cs, item: caller), pending: Empty }
-          Absent => AdmitCallersUnreadable
-        }
-      }
-  }
-}
-
-fn body_lower_admit_callers_entry_unreadable_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^body_lowering_reason_admit_callers_entry_not_decl_ref,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-// THE ONE QUESTION normalize asks of a fn_decl shell about its callers. No clause is no row; a clause
-// whose entries are not all decl_refs, or that names no caller, refuses located at the clause.
-fn body_lower_fn_decl_declared_admitted_callers(shell: Node) -> Outcome<DeclaredAdmittedCallersCapture> {
-  match parse_production_captured_child_optional(node: shell) {
-    Absent => outcome_accepted(value: DeclaredAdmittedCallersAbsent)
-    Present { value: captured } =>
-      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
-        Absent => outcome_accepted(value: DeclaredAdmittedCallersAbsent)
-        Present { value: clause } =>
-          match dag_surface_kw_then_ident_from_captured(captured: captured) {
-            Absent => Rejected { diagnostics: diagnostics_singleton(d: body_lower_admit_callers_entry_unreadable_diagnostic(at: clause)) }
-            Present { value: name } =>
-              match fold_list(xs: body_lower_admit_callers_leaves(node: clause), empty: AdmitCallersEntries { callers: Empty, pending: Empty }, cons: fn(acc, leaf) { body_lower_admit_callers_step(acc: acc, leaf: leaf) }) {
-                AdmitCallersEntries { callers: cs, pending: p } =>
-                  match p {
-                    Empty =>
-                      match cs {
-                        Empty => Rejected { diagnostics: diagnostics_singleton(d: body_lower_admit_callers_entry_unreadable_diagnostic(at: clause)) }
-                        Cons { head: _, tail: _ } =>
-                          outcome_accepted(value: DeclaredAdmittedCallersPresent { row: DeclaredAdmittedCallers { name: name, callers: cs } })
-                      }
-                    Cons { head: _, tail: _ } => Rejected { diagnostics: diagnostics_singleton(d: body_lower_admit_callers_entry_unreadable_diagnostic(at: clause)) }
-                  }
-                AdmitCallersUnreadable => Rejected { diagnostics: diagnostics_singleton(d: body_lower_admit_callers_entry_unreadable_diagnostic(at: clause)) }
               }
           }
       }

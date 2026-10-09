@@ -833,12 +833,6 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // is SHARED; what remains over the new-witness budget on floor run 37207183924 is each claim's OWN
 // stage (its route, infer or front end), which the bundle had been netting from the claim silently.
 // That transfer is named here per claim instead.
-// One more was added from floor run 37145732420 (gunbc#13123): the construction-confinement module was
-// restructured per the witness rule -- six decision claims supplied at
-// v2.compiler.construction_confinement construction_confinement_member, each ~5ms -- and its ONE
-// real-route inhabitance claim, the sole demander of cc_real_route_reading, exceeds the new-witness
-// budget on that run (re-derive its step count there); that claim IS the kept front-end path, so its
-// fill is the debt this row exposes.
 // One more for gunbc#13325, from floor run 37247019357 (930,914 eval steps): the ONE real-path
 // inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
 // their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
@@ -867,11 +861,6 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // assembly -- or the shared_precondition_re_derived_once_per_claim_frame trigger above, whichever lands first.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.construction_confinement.construction_confinement",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "cc_real_route_refuses_exactly_the_outside_introductions_holds", standing: ActiveFillDebt }
-    ]
-  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.literal_elaboration",
     claims: [

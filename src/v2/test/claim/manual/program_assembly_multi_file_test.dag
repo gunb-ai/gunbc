@@ -5,7 +5,7 @@ import v2.compiler.normalized_tree {
   NormalizedTree,
   admit_normalized_tree,
   admit_unmarked_normalized_roots,
-  no_type_declaration_kinds, no_type_declaration_modifiers, no_declared_admitted_callers
+  no_type_declaration_kinds, no_type_declaration_modifiers
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow }
@@ -140,7 +140,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
     test_markers: test_marker_channel_empty(),
     import_bindings: pa_subject_import_bindings(),
     type_declaration_kinds: no_type_declaration_kinds(),
-    type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
     diagnostics: None
   ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }

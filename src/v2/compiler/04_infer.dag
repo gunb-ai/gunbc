@@ -2,7 +2,6 @@ module v2.compiler.infer
 
 import std.types { List }
 
-import v2.compiler.construction_confinement { construction_confinement_refusals }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
@@ -7158,17 +7157,11 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
 // INFER ADMITS ONLY A WELL-FORMED TREE. Resolve refuses an ill-formed root, but infer is also entered
 // directly with a ResolvedTree, so the Node-admission wall (v2.std.node well_formed -- including A4's
 // Named-binder domain without an order edge) is held here too, and the rung is the same on every path.
-// AND ONLY A TREE WHOSE INTRODUCTIONS ITS CONFINEMENTS ADMIT: a sole_constructor type built or cast
-// outside its module, or an admit_callers fn referenced from a declaration off its list, refuses
-// here, located, before any fact is derived (v2.compiler.construction_confinement).
 fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
   if !well_formed(n: tree.root) {
     outcome_rejected(infer_malformed_tree_diagnostic(n: tree.root))
   } else {
-    match construction_confinement_refusals(tree: tree) {
-      Some { diagnostics: refused } => Rejected { diagnostics: refused }
-      None => infer_well_formed(tree: tree)
-    }
+    infer_well_formed(tree: tree)
   }
 }
 

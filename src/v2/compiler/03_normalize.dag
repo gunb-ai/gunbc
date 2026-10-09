@@ -62,10 +62,6 @@ import v2.compiler.body_lowering_fold {
   body_lower_resource_decl_declared_kind_optional,
   body_lower_is_deferred_lower_at_normalize,
   DeclaredTypeKind,
-  DeclaredAdmittedCallers,
-  DeclaredAdmittedCallersAbsent,
-  DeclaredAdmittedCallersPresent,
-  body_lower_fn_decl_declared_admitted_callers,
   DeclaredTypeModifiers,
   DeclaredTypeModifiersAbsent,
   DeclaredTypeModifiersPresent,
@@ -412,35 +408,6 @@ fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKi
   )
 }
 
-// WHICH CALLERS EACH FN ADMITS, read from the parse tree for the reason the modifier slot is: the fn's
-// Arrow carries no trace of its `admit_callers` clause. Answered by the lowering's own reader
-// (v2.compiler.body_lowering_fold body_lower_fn_decl_declared_admitted_callers); a clause it cannot
-// read refuses the module, located -- never a fn silently carried as admitting every caller.
-fn admitted_callers_capture(nodes: List<Node>) -> Outcome<FreeMonoid<DeclaredAdmittedCallers>> {
-  fold_list(
-    xs: nodes,
-    empty: outcome_accepted(value: Empty),
-    cons: fn(acc, n) {
-      bind_outcome(o: acc, f: fn(rows) {
-        match parse_production_emitted_identity_optional(node: n) {
-          Absent => outcome_accepted(value: rows)
-          Present { value: id } =>
-            if id == ^dag_surface_fn_decl {
-              bind_outcome(o: body_lower_fn_decl_declared_admitted_callers(shell: n), f: fn(capture) {
-                match capture {
-                  DeclaredAdmittedCallersAbsent => outcome_accepted(value: rows)
-                  DeclaredAdmittedCallersPresent { row: row } => outcome_accepted(value: list_snoc_item(xs: rows, item: row))
-                }
-              })
-            } else {
-              outcome_accepted(value: rows)
-            }
-        }
-      })
-    }
-  )
-}
-
 // WHICH MODIFIERS EACH TYPE DECLARATION'S SLOT CARRIES, read from the parse tree for the reason
 // type_declaration_kind_capture is: lowering leaves no trace of the slot in the node. The question is
 // answered by the lowering's own reader (v2.compiler.body_lowering_fold
@@ -530,23 +497,17 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                       Rejected { diagnostics: r } =>
                         Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                       Accepted { value: modifiers, diagnostics: _ } =>
-                        match admitted_callers_capture(nodes: parse_nodes) {
-                          Rejected { diagnostics: r } =>
-                            Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-                          Accepted { value: admitted, diagnostics: _ } =>
-                            match admit_normalized_tree(
-                              root: grafted,
-                              test_markers: markers,
-                              import_bindings: bindings,
-                              type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
-                              type_declaration_modifiers: modifiers,
-                              declared_admitted_callers: admitted,
-                              diagnostics: d1
-                            ) {
-                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                              Accepted { value: tree, diagnostics: d2 } =>
-                                Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
-                            }
+                        match admit_normalized_tree(
+                          root: grafted,
+                          test_markers: markers,
+                          import_bindings: bindings,
+                          type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
+                          type_declaration_modifiers: modifiers,
+                          diagnostics: d1
+                        ) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: tree, diagnostics: d2 } =>
+                            Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
                         }
                     }
                 }

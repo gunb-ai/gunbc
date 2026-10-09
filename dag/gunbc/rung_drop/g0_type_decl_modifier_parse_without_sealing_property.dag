@@ -1,7 +1,7 @@
 module gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-18 (reviews 67821, 67834). G0 now consumes the two type-decl modifiers
@@ -12,7 +12,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // UPDATED 2026-10-02: v2 now carries the slot as a closed-vocabulary declaration property
 // (v2.compiler.body_lowering_fold TypeDeclModifier, on NormalizedTree type_declaration_modifiers;
 // controls test.claim.parse_test_type_decl_modifier_carrier). That is the MINTING half only; nothing on the
-// native route enforced sole_constructor yet. RETIRED 2026-10-03: v2.compiler.construction_confinement.
+// native route enforces sole_constructor yet, so the trigger below has not fired and this stays standing.
 // native route refused the modifier with parse_g0_tokens_remain; after the grammar
 // row a sole_constructor type parses and the construction wall is not recorded on
 // the native path.
@@ -26,7 +26,7 @@ data g0_type_decl_modifier_parse_without_sealing_property: RungDrop = RungDrop {
   identity: "g0_type_decl_modifier_parse_without_sealing_property" as NonEmptyStr,
   subject: "native G0 path records sole_constructor as a type-item property, the way v1 parsed_sole_constructor_properties does",
   declared: "2026-09-18",
-  standing: Retired { trigger_fired: "2026-10-03 -- the capability, observed on the native route (v2.test.claim.construction_confinement.construction_confinement): the captured sole_constructor terminal (v2.compiler.body_lowering_fold TypeDeclModifier, on NormalizedTree type_declaration_modifiers) is minted as a construction property -- v2.compiler.normalized_tree normalized_tree_confinements projects it to v2.std.symbol_index ConstructionSealedToModule, which v2.compiler.symbol_index_fill symbol_index_fill_module_confinements writes into the closure index at the declaring path -- and v2.compiler.construction_confinement, entered from v2.compiler.infer infer, refuses construction_confinement_reason_sole_constructor_outside_declaring_module, located, for a record construction AND for a cast into the type from any module other than its declaring one: the wall v1 sole_constructor_construction_diags enforces on its record-literal and cast arms. cc_real_route_refuses_exactly_the_outside_introductions_holds runs the whole native path over one program holding admitted and refused introductions together and counts exactly two such refusals (red with the infer gate removed, where the same program refuses only for unrelated grounding and coercion reasons), so the inside construction and the checked-constructor call beside them are admitted; the decision rows cc_outside_construction_refuses_holds, cc_outside_cast_refuses_holds, cc_inside_construction_is_admitted_holds and cc_inside_cast_is_admitted_holds hold it at the stage's interface. nominal_opaque still mints nothing, as in v1." as NonEmptyStr },
+  standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

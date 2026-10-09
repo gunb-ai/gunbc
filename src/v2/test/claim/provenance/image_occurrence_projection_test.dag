@@ -177,7 +177,7 @@ test fn image_allocation_is_deterministic_holds() -> Bool {
 }
 
 fn iop_admit(root: Node) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, type_declaration_kinds: Empty, type_declaration_modifiers: Empty, declared_admitted_callers: Empty, diagnostics: None)
+  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, type_declaration_kinds: Empty, type_declaration_modifiers: Empty, diagnostics: None)
 }
 
 fn iop_refused_for(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {

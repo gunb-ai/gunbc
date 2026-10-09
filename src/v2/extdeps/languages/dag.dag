@@ -2316,11 +2316,12 @@ fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
 // that slot and widen past v1. Order is the same two optional drops: reversed or unknown
 // spellings remain tokens-remain refusals.
 //
-// PARSE ADMISSION IS NOT THE SEALING PROPERTY. v1 mints only sole_constructor, via
-// parsed_sole_constructor_properties. On the native route the slot is read back off the parse by
-// v2.compiler.body_lowering_fold body_lower_type_decl_declared_modifiers, carried on NormalizedTree
-// type_declaration_modifiers, and ENFORCED by v2.compiler.construction_confinement (the retired
-// drop gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property).
+// PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
+// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
+// only sole_constructor via parsed_sole_constructor_properties. On the native route the
+// slot is read back off the parse by v2.compiler.body_lowering_fold
+// body_lower_type_decl_declared_modifiers and carried on NormalizedTree
+// type_declaration_modifiers; carrying it enforces nothing.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
@@ -2385,10 +2386,9 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // A trailing comma before `]` is admitted, as dag_grammar_comma_list_expr admits it and as v1 reads
 // the list; without it every multi-line caller list written with one refused its whole module.
 // `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
-// else. The fn's Arrow does not carry the clause: normalize reads it off the parse
-// (v2.compiler.body_lowering_fold body_lower_fn_decl_declared_admitted_callers) and
-// v2.compiler.construction_confinement enforces it (the retired drop gunbc.rung_drop
-// admit_callers_discarded_on_the_native_route).
+// else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
+// native route checks caller admission, and the stage that does adds its Arrow carrier together
+// with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
 // `uses net: Network, fs: Filesystem` after a fn's return clause declares the resources the fn
 // requires, as v1 02_parse parse_uses_clause reads it: one or more comma-separated entries, each a
 // name, a type and an optional parenthesised config. `uses` is matched as an exact-word terminal and

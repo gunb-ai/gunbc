@@ -3,10 +3,7 @@ module v2.compiler.normalized_tree
 import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
   DeclaredTypeKind,
-  DeclaredAdmittedCallers,
   DeclaredTypeModifiers,
-  NominalOpaqueModifier,
-  SoleConstructorModifier,
   declared_record_names,
   declared_resource_names,
   wrapper_retention_diagnostic
@@ -30,7 +27,6 @@ import v2.std.algebra { fold_list }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
-import v2.std.symbol_index { CallersAdmitted, ConstructionSealedToModule, DeclaredConfinement }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
@@ -63,7 +59,6 @@ type NormalizedTree sole_constructor {
   import_bindings: FreeMonoid<AliasBindingRow>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
-  declared_admitted_callers: FreeMonoid<DeclaredAdmittedCallers>,
 }
 
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
@@ -188,11 +183,6 @@ fn no_type_declaration_modifiers() -> FreeMonoid<DeclaredTypeModifiers> {
   Empty
 }
 
-// Nor any fn's admitted-caller list: the clause is read off the parse.
-fn no_declared_admitted_callers() -> FreeMonoid<DeclaredAdmittedCallers> {
-  Empty
-}
-
 // THE KIND OF EACH PLAIN-CONJ TYPE THIS MODULE DECLARES, read at normalize by
 // v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional: after lowering, a record,
 // a where-refinement and a payload-bearing single variant share one shape. One list of one coproduct,
@@ -205,7 +195,6 @@ fn admit_normalized_tree(
   import_bindings: FreeMonoid<AliasBindingRow>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
-  declared_admitted_callers: FreeMonoid<DeclaredAdmittedCallers>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
   match occurrence_wall_refusal(root: root) {
@@ -218,8 +207,7 @@ fn admit_normalized_tree(
           test_markers: test_markers,
           import_bindings: import_bindings,
           type_declaration_kinds: type_declaration_kinds,
-          type_declaration_modifiers: type_declaration_modifiers,
-          declared_admitted_callers: declared_admitted_callers
+          type_declaration_modifiers: type_declaration_modifiers
         },
         diagnostics: diagnostics
       }
@@ -232,40 +220,6 @@ fn normalized_tree_record_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> 
 
 fn normalized_tree_resource_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
   declared_resource_names(kinds: t.type_declaration_kinds)
-}
-
-// WHO MAY INTRODUCE EACH CONFINED DECLARATION, projected for the symbol-index fill from the two
-// captures that hold it: a `sole_constructor` type is sealed to this module, a fn's
-// `admit_callers` list is its admitted callers. A projection of the captures, never a second read of
-// the parse. nominal_opaque confines nothing (it matches v1, which mints no property for it).
-fn normalized_tree_confinements(t: NormalizedTree) -> FreeMonoid<DeclaredConfinement> {
-  fold_list(
-    xs: t.declared_admitted_callers,
-    empty: fold_list(
-      xs: t.type_declaration_modifiers,
-      empty: Empty,
-      cons: fn(acc, row) {
-        if fold_list(xs: row.modifiers, empty: false, cons: fn(found, m) {
-          match m {
-            SoleConstructorModifier => true
-            NominalOpaqueModifier => found
-          }
-        }) {
-          list_snoc_item(xs: acc, item: DeclaredConfinement { name: row.name, confinement: ConstructionSealedToModule })
-        } else {
-          acc
-        }
-      }
-    ),
-    cons: fn(acc, row) {
-      list_snoc_item(xs: acc, item: DeclaredConfinement { name: row.name, confinement: CallersAdmitted { callers: row.callers } })
-    }
-  )
-}
-
-// A module read with no parse of its declarations confines nothing this carrier can see.
-fn no_declared_confinements() -> FreeMonoid<DeclaredConfinement> {
-  Empty
 }
 
 // A hand-built root declares no resources this carrier can see, as it declares no records.
@@ -332,8 +286,7 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
     root: t.root,
     import_bindings: t.import_bindings,
     record_declarations: t.record_declarations,
-    resource_declarations: t.resource_declarations,
-    confinements: no_declared_confinements()
+    resource_declarations: t.resource_declarations
   }
 }
 
@@ -360,8 +313,7 @@ fn normalized_tree_roots_to_binding_sources(
           root: tree.root,
           import_bindings: tree.import_bindings,
           record_declarations: normalized_tree_record_declarations(t: tree),
-          resource_declarations: normalized_tree_resource_declarations(t: tree),
-          confinements: normalized_tree_confinements(t: tree)
+          resource_declarations: normalized_tree_resource_declarations(t: tree)
         }
       )
     }
@@ -404,7 +356,7 @@ fn admit_unmarked_normalized_roots(
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
             type_declaration_kinds: no_type_declaration_kinds(),
-            type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers()
+            type_declaration_modifiers: no_type_declaration_modifiers()
           }
         )
       }

@@ -99,9 +99,11 @@ type ReviewTabCandidate {
 // MINIMUM across its in-scope paths and citing the strongest one is inflation. The evidence here
 // is source -> v1 interpretation: the probe's refusals are raised by the seed's
 // parsed_sole_constructor_properties, which is the compiler claim_batch runs. On the NATIVE v2
-// path the property is minted and enforced by v2.compiler.construction_confinement since the
-// corpus-wide drop gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property retired;
-// no control of THIS module runs there, so the claim above is evidenced on the seed.
+// path the modifier is consumed by G0 and the construction property is not minted, so the wall is
+// not recorded there -- that is the standing corpus-wide drop
+// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property, which covers every
+// sole_constructor type rather than anything this module introduces, and it is named here so the
+// claim above is read at the strength it actually has.
 //
 // WHAT THE SEAL DOES NOT CLOSE, said here rather than left to be discovered. It does not make the
 // READ honest -- a locator handed a truthful response still depends on Sheets having answered about

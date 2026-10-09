@@ -2,7 +2,7 @@ module v2.test.claim.resolve.single_tree_module_body
 
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers, no_declared_admitted_callers }
+import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.compiler.resolve { build_program_namespace }
 import v2.extdeps.languages.dag { dag_language_model, dag_surface_edge }
 import v2.std.collection { map_lookup }
@@ -62,7 +62,7 @@ type StmbBinds
   | StmbBindings { leaked: Bool, t: Bool }
 
 fn stmb_binds(root: Node) -> StmbBinds {
-  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(), test_markers: test_marker_channel_empty(), root: root, diagnostics: None) {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: root, diagnostics: None) {
     Rejected { diagnostics: _ } => StmbNotAdmitted
     Accepted { value: tree, diagnostics: _ } => {
       let ns = build_program_namespace(tree: tree, lm: dag_language_model())

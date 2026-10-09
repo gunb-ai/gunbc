@@ -102,11 +102,11 @@ import gunbc.review_sheet_values_actuator {
 // RUNG HONESTY (DESIGN 4b). On the v1 seed's acceptance path the wall is structural: a literal
 // outside this module is refused as SoleConstructorViolation, measured by
 // test.claim.review_sheet_header_init_refusal_probe_witness against
-// test.probe.review_sheet_formula_observation_forged_probe. The native v2 path enforces
-// sole_constructor too (v2.compiler.construction_confinement; the retired drop gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property), but no probe of THIS carrier runs there;
-// the emitted-Rust mirror is a public struct. The wall is evidenced on the seed only, and this
-// module claims no more.
+// test.probe.review_sheet_formula_observation_forged_probe. The native v2 path parses
+// sole_constructor WITHOUT enforcing it (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), so on that path the same literal is
+// accepted and the carrier is advice; the emitted-Rust mirror is likewise a public struct. The
+// wall is real on the seed only, and this module claims no more.
 //
 // THE LIVE SEQUENCE THE PRIVATE CALLER (H2, strategy.buyer_review_live) PERFORMS: a FORMATTED
 // whole-tab read first, because that is the read the ordinary ensure pass needs anyway; if it
