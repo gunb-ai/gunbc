@@ -1012,7 +1012,7 @@ pub fn resolve_entry_graph(
     // wave 1) an entry's dependencies are name-derived, and the old
     // `load_sources_for_entry_with_index` walk only follows import edges — a
     // stripped fixed entry (e.g. the floor runner) failed to resolve at all.
-    let index = process_shared_index(source_roots);
+    let index = try_process_shared_index(source_roots)?;
     resolve_entry_with_index(&index, entry_file)
 }
 
