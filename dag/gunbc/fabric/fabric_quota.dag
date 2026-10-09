@@ -52,8 +52,6 @@ fn quota_term_to_window_end(limit: UpstreamRateLimit, at: EpochSecs) -> Second? 
   }
 }
 
-// THE INSTANT THE CURRENT WINDOW BEGAN, read off the same pool the term is: what a caller needs to tell
-// which of its outstanding sends were admitted in an earlier window.
 fn checked_second(n: Int) -> Second? {
   match checked_int_to_nat(n: n) {
     Absent => none
@@ -61,6 +59,8 @@ fn checked_second(n: Int) -> Second? {
   }
 }
 
+// THE INSTANT THE CURRENT WINDOW BEGAN, read off the same pool the term is: what a caller needs to tell
+// which of its outstanding sends were admitted in an earlier window.
 fn quota_window_start(limit: UpstreamRateLimit, at: EpochSecs) -> EpochSecs? {
   match pool_window_at(pool: quota_root_pool(limit: limit), at: at) {
     WindowResolved { window: w } => Present { value: w.start }
