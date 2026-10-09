@@ -108,7 +108,9 @@ fn provider_controlled_host(host: HostIdentity, route: ProviderRoute, acquisitio
     Present { value: rd } => match rd {
       AcquiredServerObserved { acquisition: _, server: s } =>
         HostControlled { controlled: ControlledHost { host: host, route: ProviderApiControlRoute { route: route, acquisition: acquisition, observed: s } } }
-      _ => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+      AcquiredServerIdUnparsed { acquisition: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+      AcquiredServerAnsweredForAnother { acquisition: _, observed: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+      AcquiredServerReadRefused { acquisition: _, refusal: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
     }
   }
 }

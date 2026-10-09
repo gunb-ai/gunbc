@@ -196,13 +196,13 @@ fn plan_branch_run_grant(f: DedicatedFederation, run: BranchRunFacts, expires_at
 
 fn plan_against_policy(f: DedicatedFederation, run: BranchRunFacts, cell: GcpIamBindingCell, p: GcpPolicy) -> BranchRunGrantPlan {
   let owned = filter(gcp_policy_cells(p: p), c => is_branch_run_cell(c: c))
-  let unjudgeable = filter(map(owned, c => branch_run_cell_standing(c: c, as_of: run.created_at)), st => match st { CellUnjudgeable { reason: _ } => true  _ => false })
+  let unjudgeable = filter(map(owned, c => branch_run_cell_standing(c: c, as_of: run.created_at)), st => match st { CellUnjudgeable { reason: _ } => true  CellLapsed => false  CellLive => false })
   if gcp_cell_in(c: cell, xs: owned) {
     BranchRunGrantHeld { run: run }
   } else if unjudgeable.length() > 0 {
-    BranchRunGrantRefused { reason: join(map(unjudgeable, st => match st { CellUnjudgeable { reason: r } => r  _ => "" }), "; ") as NonEmptyStr }
+    BranchRunGrantRefused { reason: join(map(unjudgeable, st => match st { CellUnjudgeable { reason: r } => r  CellLapsed => ""  CellLive => "" }), "; ") as NonEmptyStr }
   } else {
-    let live = filter(owned, c => match branch_run_cell_standing(c: c, as_of: run.created_at) { CellLive => true  _ => false })
+    let live = filter(owned, c => match branch_run_cell_standing(c: c, as_of: run.created_at) { CellLive => true  CellLapsed => false  CellUnjudgeable { reason: _ } => false })
     match reconcile_gcp_policy(observed: p, desired_owned: concat(live, [cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [cell]) }) {
       GcpPolicyRepresentationLossy { conditional_roles: _ } => BranchRunGrantRefused { reason: "the policy was read at a representation that mangles conditional bindings" as NonEmptyStr }
       GcpPolicyAlreadyConverged { policy: _ } => BranchRunGrantHeld { run: run }
@@ -222,10 +222,12 @@ fn approved_grant_policy(g: BranchRunGrant, reading: PolicyReading) -> GcpPolicy
         let kept = filter(owned, c => !gcp_cell_in(c: c, xs: g.pruned))
         match reconcile_gcp_policy(observed: p, desired_owned: concat(kept, [g.cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [g.cell]) }) {
           GcpPolicyDeltaRequired { policy: next, added: _, removed: _, preserved: _ } => Present { value: next }
-          _ => none
+          GcpPolicyAlreadyConverged { policy: _ } => none
+          GcpPolicyRepresentationLossy { conditional_roles: _ } => none
         }
       }
-    _ => none
+    PolicyResourceAbsent => none
+    PolicyUnreadable { cause: _ } => none
   }
 }
 
