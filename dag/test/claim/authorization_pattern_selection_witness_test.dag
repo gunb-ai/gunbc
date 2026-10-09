@@ -390,12 +390,13 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
     && any(privileged_effect_interlocks, i => declaration_ref_display_key(ref: i.site) == "gunbc.host_reset_return_run::host_reset_return_wet")
 }
 
-// THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT deregistration is a
+// THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT registration, the
+// qualification dispatch between them, and JIT deregistration are each a
 // recurring automated effect under the dispatching run's federated identity, so the selection must
 // answer the federated scoped grant and the row must conform; rowing it as an approval capability or
 // a per-registration ntfy approval turns this red.
-test fn the_jit_registration_and_deregistration_sites_select_the_federated_grant_and_conform() -> Bool {
-  ["dispatch_jit_mint", "ensure_jit_runner_deregistered"] |> all(name =>
+test fn the_jit_registration_dispatch_and_deregistration_sites_select_the_federated_grant_and_conform() -> Bool {
+  ["dispatch_jit_mint", "perform_qualification_dispatch", "ensure_jit_runner_deregistered"] |> all(name =>
     any(census_verdicts(), v =>
       (v.site.decl_name as String) == name
         && selected_federated(s: v.selection)
