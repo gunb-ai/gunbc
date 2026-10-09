@@ -62,8 +62,11 @@ data deployed_tree_excluded_prefixes: List<String> = [
 // recurring_failure_mode/roster.dag). Unlike sg2_scratch_probe, excluding it changes nothing the
 // host compiles: the host's own first invocation derives the identical file from the sibling rows
 // the revision DOES name. Exact path, segment-exact, so a sibling row file is never excluded.
+// The rung-drop roster has the same compiler-owned derivation. The srv1 workspace deployment
+// probe on 2026-10-09 refused itself on that second roster; its sibling authored rows still ship.
 data deployed_tree_excluded_derived_files: List<String> = [
   "dag/gunbc/recurring_failure_mode/roster.dag",
+  "dag/gunbc/rung_drop/roster.dag",
 ]
 
 // Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating

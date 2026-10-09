@@ -14,6 +14,7 @@ collected that refusal; its green workflow conclusion is not a boot receipt.
 
 | Boundary | Observed state | Required change |
 | --- | --- | --- |
+| Deployment candidate | Compiler startup creates ignored `rung_drop/roster.dag`, which candidate admission rejects | Exclude that exact compiler-derived file alongside the existing failure-mode roster; preserve sibling and secret-file refusals |
 | Workflow dispatch | Main declares 28 inputs; GitHub accepts at most 25 | Keep printer selection separate and carry its five operation fields in one `printer_request` JSON input |
 | Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
 | Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
