@@ -1,0 +1,99 @@
+module product.printed_chassis.exhaust_thermal
+import extdeps.fans.arctic {arctic_p8_operating_ambient_max}
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Watt, watt_count, Celsius, celsius, celsius_count, CelsiusDelta, celsius_delta, celsius_delta_count,
+  MillilitrePerSecond, millilitre_per_second, millilitre_per_second_count,
+  gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, Percent, percent_count,
+}
+import extdeps.physics.dry_air { dry_air_at_20c }
+import extdeps.fans.arctic { arctic_p8_published_airflow }
+import extdeps.printing.fdm { FilamentTechnicalDataSheetRow }
+import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_operating_ambient_max }
+
+// Bulk-air sensitivity only: dT = Q / (rho V cp), with the explicit 20 C air
+// properties. Catalog free-air flow is not installed flow; a percentage of that flow
+// is NOT PWM free_air_fraction. No result here qualifies a mount or establishes a BMC fan curve.
+// The 100 C die limit is not a local mount temperature. Radiation, conduction,
+// recirculation, fan/system impedance and transient failure require separate evidence.
+// HDT is a short-duration deflection test, not melting or continuous service rating.
+type UnmodelledThermalCoupling
+  = RadiationFromHeatsinkFins
+  | ConductionThroughStandoffs
+  | CoolerFanInteractionWithBank
+  | HdtStressDependence
+
+data unmodelled_couplings: List<UnmodelledThermalCoupling> = [RadiationFromHeatsinkFins, ConductionThroughStandoffs, CoolerFanInteractionWithBank, HdtStressDependence]
+
+// Exhaust rise rounded UP to whole kelvin: Q[W] / (rho[g/m3] * V[mL/s] * 1e-9 [kg/mL*m3/g... ] * cp)
+// Arithmetic: mass flow in mg/s = rho(g/m3) * V(mL/s) / 1000; dT = Q * 1e6 / (mdot_mg_s * cp).
+fn exhaust_rise(heat: Watt, flow: MillilitrePerSecond) -> CelsiusDelta? {
+  let mass_flow_mg_s = gram_per_cubic_metre_count(d: dry_air_at_20c.density) * millilitre_per_second_count(f: flow) / 1000
+  if mass_flow_mg_s == 0 { none } else {
+    Present { value: celsius_delta(count: (watt_count(w: heat) * 1000000 + mass_flow_mg_s * joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp) - 1) / (mass_flow_mg_s * joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp))) }
+  }
+}
+
+// Hypothetical fraction of aggregate free-air flow; no PWM-to-flow mapping is implied.
+fn bank_flow(fans: Nat, free_air_fraction: Percent) -> MillilitrePerSecond {
+  millilitre_per_second(count: fans * millilitre_per_second_count(f: arctic_p8_published_airflow) * percent_count(p: free_air_fraction) / 100)
+}
+
+type ThermalMargin
+  = AssumedAirBelowHdt { exhaust: Celsius, hdt: Celsius, margin: CelsiusDelta }
+  | AssumedAirMarginInsufficient { exhaust: Celsius, hdt: Celsius, excess: CelsiusDelta }
+  | NoAirflow
+
+type ExhaustCase {
+  node_heat: Watt
+  fans: Nat
+  free_air_fraction: Percent
+  inlet: Celsius
+  margin_required: CelsiusDelta
+}
+
+fn assumed_air_margin(case: ExhaustCase, sheet: FilamentTechnicalDataSheetRow) -> ThermalMargin {
+  match exhaust_rise(heat: case.node_heat, flow: bank_flow(fans: case.fans, free_air_fraction: case.free_air_fraction)) {
+    Absent => NoAirflow
+    Present { value: rise } => {
+      let exhaust = celsius(count: celsius_count(c: case.inlet) + celsius_delta_count(delta: rise))
+      let hdt = sheet.heat_deflection_at_0_45_mpa
+      let headroom = celsius_count(c: hdt) - celsius_count(c: exhaust)
+      if headroom >= celsius_delta_count(delta: case.margin_required) {
+        AssumedAirBelowHdt { exhaust: exhaust, hdt: hdt, margin: celsius_delta(count: headroom) }
+      } else {
+        AssumedAirMarginInsufficient { exhaust: exhaust, hdt: hdt, excess: celsius_delta(count: celsius_delta_count(delta: case.margin_required) - headroom) }
+      }
+    }
+  }
+}
+
+// Board-rated ambient ceiling for sensitivity cases; local fan inlet is a separate limit.
+fn worst_inlet() -> Celsius { asrock_altrad8ud_operating_ambient_max }
+
+// The junction limit is NOT an input to the air derivation; it is exposed so a reader can see
+// the two numbers side by side and stop asking whether the mount sees the die.
+fn processor_junction_limit() -> Celsius { ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature }
+
+
+// Installed airflow must be measured or solved at the fan/system pressure-curve
+// intersection. PWM percentage and catalog free-air flow cannot establish it.
+// HDT is a short-duration test, not an allowable service temperature (ISO 75-1).
+type InstalledThermalReading
+ = InstalledThermalUnresolved { required:NonEmptyStr }
+ | MeasuredMountExceedsScreen { mount:Celsius, screen:Celsius }
+ | MeasuredMountBelowScreenOnly { mount:Celsius, screen:Celsius, unresolved:NonEmptyStr }
+fn measured_mount_screen(mount:Celsius,lower_hdt:Celsius,margin:CelsiusDelta) -> InstalledThermalReading {
+ let limit=celsius(count:celsius_count(c:lower_hdt)-celsius_delta_count(delta:margin))
+ if celsius_count(c:mount)>=celsius_count(c:limit) {MeasuredMountExceedsScreen {mount:mount,screen:limit}}
+ else {MeasuredMountBelowScreenOnly {mount:mount,screen:limit,unresolved:"Not a service rating: verify creep under actual stress, print orientation, time, local hot spots, fan limits and fan-failure shutdown."}}
+}
+fn installed_thermal_without_measurement() -> InstalledThermalReading {InstalledThermalUnresolved {required:"Measure installed airflow or pressure curve, inlet and fan-inlet temperatures, hottest mount/pillar temperature and fan-failure transient. No catalog PWM percentage admits operation."}}
+
+type FanInletReading = FanInletWithinCatalogAmbient | FanInletExceedsCatalogAmbient
+fn fan_inlet_screen(measured:Celsius) -> FanInletReading {
+ if celsius_count(c:measured)>celsius_count(c:arctic_p8_operating_ambient_max) {FanInletExceedsCatalogAmbient} else {FanInletWithinCatalogAmbient}
+}

@@ -1,0 +1,25 @@
+module extdeps.portwell.aptsa_627211_b4
+import std.types {Int}
+import std.measure {Micrometer,micrometer}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef,CitedFigureStanding,CitedToAuthority}
+import extdeps.uri {Uri,Https}
+
+data extdeps_external_authority_anchor:ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"portwell.com/pdf/server/APTSA-627211-B4.pdf"}}
+// Portwell's March 2022 datasheet p1. The ordering of the two board dimensions is
+// not axis-labelled; the product must justify its across/depth assignment. Keep
+// the printed inch equivalents because they disagree with the metric figures.
+type CollinsDatasheetMechanicals {
+ first_board_dimension:Micrometer,second_board_dimension:Micrometer,
+ first_board_dimension_hundredth_inches:Int,second_board_dimension_tenth_inches:Int,
+ chassis_width:Micrometer,standing:CitedFigureStanding
+}
+data collins_datasheet_mechanicals:CollinsDatasheetMechanicals = CollinsDatasheetMechanicals {
+ first_board_dimension:micrometer(count:512000),second_board_dimension:micrometer(count:424200),
+ first_board_dimension_hundredth_inches:2013,second_board_dimension_tenth_inches:167,
+ chassis_width:micrometer(count:448000),standing:CitedToAuthority {authority:extdeps_external_authority_anchor}
+}
+data extdeps_model_scope:ExternalModelScope = ExternalModelScope {
+ subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.portwell.aptsa_627211_b4",decl_name:"collins_datasheet_mechanicals",field:WholeDeclaration}},
+ first_citation:extdeps_external_authority_anchor,further_citations:[]
+}

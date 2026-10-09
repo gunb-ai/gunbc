@@ -1197,22 +1197,10 @@ fn probe_cargo_command_bound(
     // answered NotDiscriminating ("no diagnostic names EMIT_COMPILE_MUTATION_PROBE") -- first
     // observed on gunbc#12091, the first run whose baseline got past main's E0573. The flag on the
     // argv outranks the ambient variable, and the argv is the receipt, so the receipt says it.
-    let argv: Vec<String> = vec![
-        cargo.clone(),
-        "build".to_string(),
-        "--release".to_string(),
-        // The fetch is its own spawn (`probe_cargo_fetch_command`); the build may not touch the
-        // network, so no transport outcome can reach the build's verdict.
-        "--offline".to_string(),
-        // The structured stream is what `read_cargo_json` joins on: warnings are counted per
-        // package from `compiler-message` records, never by scanning text.
-        "--message-format".to_string(),
-        "json".to_string(),
-        "--color".to_string(),
-        "never".to_string(),
-        "--manifest-path".to_string(),
-        manifest.display().to_string(),
-    ];
+    let mut argv: Vec<String> = vec![cargo.clone()];
+    argv.extend(probe_cargo_build_flags());
+    argv.push("--manifest-path".to_string());
+    argv.push(manifest.display().to_string());
     let mut command = std::process::Command::new(&cargo);
     command
         .args(&argv[1..])
@@ -1274,6 +1262,17 @@ fn probe_cargo_command(
     Ok(probe_cargo_command_bound(
         crate_dir, target_dir, &compiler, &identity,
     ))
+}
+
+/// THE CONSUMING HOST'S COMPILER, for a restored native product. A product's manifest records the
+/// compiler path of the host that BUILT it; that path is a fact about the producer, and spawning it
+/// on another host fails (`could not spawn /opt/actions-runner/<other-slot>/.../rustc`). The oracle
+/// that judges emitted text must be this host's compiler, resolved the same way a build resolves
+/// it, with its identity taken from `crate_dir` so a toolchain override there still binds.
+pub(crate) fn resolve_local_compiler(crate_dir: &Path) -> Result<(String, String), String> {
+    let compiler = resolve_probe_compiler()?;
+    let identity = probe_compiler_identity(&compiler, crate_dir)?;
+    Ok((compiler.display().to_string(), identity))
 }
 
 /// The receipt description of the spawn `run_cargo` would make for `crate_dir` — the same
@@ -2646,6 +2645,49 @@ pub fn run_required_emit_compile(
     Ok(outcomes)
 }
 
+/// THE BUILD'S FLAGS, ONCE: the argv after the cargo binary and before the crate-specific
+/// `--manifest-path`, spelled here and nowhere else so the build that runs them and the native
+/// product key that names them cannot disagree (`probe_build_configuration_for_key`).
+fn probe_cargo_build_flags() -> Vec<String> {
+    vec![
+        "build".to_string(),
+        "--release".to_string(),
+        // The fetch is its own spawn (`probe_cargo_fetch_command`); the build may not touch the
+        // network, so no transport outcome can reach the build's verdict.
+        "--offline".to_string(),
+        // The structured stream is what `read_cargo_json` joins on: warnings are counted per
+        // package from `compiler-message` records, never by scanning text.
+        "--message-format".to_string(),
+        "json".to_string(),
+        "--color".to_string(),
+        "never".to_string(),
+    ]
+}
+
+/// The build-configuration axis of a native product's key: the flags the build runs
+/// (`probe_cargo_build_flags`) and both rustflags channels it sets, read from the same values the
+/// command is built from.
+pub(crate) fn probe_build_configuration_for_key() -> String {
+    format!(
+        "{};RUSTFLAGS={};ENCODED_RUSTFLAGS={}",
+        probe_cargo_build_flags().join(" "),
+        WARNING_DENIAL_RUSTFLAGS,
+        WARNING_DENIAL_ENCODED_RUSTFLAGS
+    )
+}
+
+/// The toolchain axis of a native product's key, asked BEFORE any crate exists: the bound
+/// compiler's keyed `--version --verbose` identity, resolved by the same `resolve_probe_compiler`
+/// the build is bound to, so the key and the build cannot name different compilers. The crate
+/// directory the build probes from is not yet written at key time, so the probe runs from the
+/// current directory; a toolchain pinned per directory by the crate itself would not be seen here,
+/// and the emitted crate carries no such pin (`write_probe_crate` writes none).
+pub(crate) fn probe_toolchain_identity_for_key() -> Result<String, String> {
+    let compiler = resolve_probe_compiler()?;
+    let cwd = std::env::current_dir().map_err(|e| format!("RustcIdentityUnreadable: cwd: {e}"))?;
+    probe_compiler_identity(&compiler, &cwd)
+}
+
 /// THESE ARE LOCAL-ONLY EVIDENCE AND ARE LABELLED AS SUCH. The Rust suite was removed from CI on
 /// 2026-07-11 (DESIGN, Building & checks), so nothing here runs on the merge path or may be cited
 /// as coverage. THE EXECUTED EVIDENCE FOR THIS PHASE IS THE PHASE ITSELF:
@@ -2921,6 +2963,31 @@ mod tests {
         };
         assert!(!cargo_verdict_compiled(&fetch));
         assert!(cargo_verdict_summary(&fetch).starts_with("DependencyFetchFailed class=Infra"));
+    }
+
+    // The native product key's build-configuration axis reads the SAME flags and rustflags the build
+    // command is made from: every flag the spawn runs appears in the axis, so changing the argv
+    // changes the key and a hit cannot serve a build made under other flags.
+    #[test]
+    fn the_native_product_key_names_exactly_the_flags_the_build_runs() {
+        let (_, invocation) = probe_cargo_command_bound(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/t"),
+            Path::new("/toolchain/bin/rustc"),
+            "rustc",
+        );
+        let axis = probe_build_configuration_for_key();
+        let flags: Vec<String> = invocation
+            .argv
+            .iter()
+            .skip(1)
+            .take_while(|a| a.as_str() != "--manifest-path")
+            .cloned()
+            .collect();
+        assert_eq!(flags, probe_cargo_build_flags());
+        assert!(axis.starts_with(&flags.join(" ")));
+        assert!(axis.contains(&invocation.rustflags));
+        assert!(axis.contains(WARNING_DENIAL_ENCODED_RUSTFLAGS));
     }
 
     #[test]

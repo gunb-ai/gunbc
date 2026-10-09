@@ -77,3 +77,7 @@ data ocp_shared_library_requirements: List<SharedLibrarySoname> = [
 // a separate fact with a separate failure mode.
 data ocp_wheel_python_abi: NonEmptyStr = "cp311"
 data ocp_wheel_platform_linux_aarch64: NonEmptyStr = "manylinux_2_31_aarch64"
+
+// Ubuntu 24.04 providers of the two observed system SONAME requirements above.
+// This route uses the host package manager; it does not inject a private library path.
+data ocp_ubuntu2404_runtime_packages: List<NonEmptyStr> = ["libgl1", "libx11-6"]

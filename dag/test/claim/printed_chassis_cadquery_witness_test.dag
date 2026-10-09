@@ -35,7 +35,7 @@ fn row_of(op: CouponOperation) -> RawOperationRow {
     OpThroughHole { diameter: d, center_x: x, center_y: y } =>
       raw_operation_row(
         kind: "through_hole",
-        diameter_um: micrometer_count(m: d),
+        diameter_um: d,
         center_x_um: micrometer_count(m: x),
         center_y_um: micrometer_count(m: y),
       )
@@ -45,9 +45,9 @@ fn row_of(op: CouponOperation) -> RawOperationRow {
 fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
   raw_realization_envelope(
     schema_version: contract_schema_version,
-    plate_x_um: micrometer_count(m: s.geometry.plate.size_x),
-    plate_y_um: micrometer_count(m: s.geometry.plate.size_y),
-    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    plate_x_um: s.geometry.plate.size_x,
+    plate_y_um: s.geometry.plate.size_y,
+    plate_z_um: s.geometry.plate.size_z,
     orientation_datum: row_of(op: s.geometry.orientation_datum),
     ladder_holes: fold(s.geometry.ladder_holes, init: [], f: fn(acc, op) {
       concat(acc, [row_of(op: op)])
