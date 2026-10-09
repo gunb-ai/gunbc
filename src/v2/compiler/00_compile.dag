@@ -181,11 +181,7 @@ import v2.compiler.resolve {
   ResolvedTree
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
-import v2.std.staging { then_outcome, CacheProbe, Miss }
-import v2.compiler.materialization_carriers {
-  cached_stage_realization,
-  cached_stage_governed,
-}
+import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
@@ -200,7 +196,8 @@ import v2.extdeps.languages.dag {
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
-import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
+import v2.lens.mandatory_tag { mandatory_tag_compile_gate, mandatory_tag_compile_gate_with_provenance }
+import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -795,6 +792,20 @@ fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
+// The compile door's binding of the mandatory_tag gate: the same gate, handed the member-kind provenance
+// the resolved subject carries (ResolvedTree.member_kinds).
+fn mandatory_tag_root_lens_with_provenance(lens: CompileLens, channel: MemberKindChannel) -> CompileLens {
+  if lens.identity == mandatory_tag_lens.identity {
+    CompileLens {
+      identity: lens.identity,
+      grain: lens.grain,
+      gate: fn(tree) { mandatory_tag_compile_gate_with_provenance(node: tree.root, channel: channel) }
+    }
+  } else {
+    lens
+  }
+}
+
 fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   mandatory_tag_compile_gate(node: tree.root)
 }
@@ -1042,9 +1053,13 @@ fn validate_then_compile(
           bind_outcome(
             o: run_required_lens_gates(
               inferred: inferred,
-              lenses: list_append(
-                left: required_lenses_at_grain(grain: CompileLensRoot),
-                right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
+              lenses: fold(
+                list_append(
+                  left: required_lenses_at_grain(grain: CompileLensRoot),
+                  right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
+                ),
+                init: [],
+                f: fn(acc, l) { list_snoc_item(xs: acc, item: mandatory_tag_root_lens_with_provenance(lens: l, channel: source.member_kinds)) }
               )
             ),
             f: fn(root_witnesses) {
@@ -1239,10 +1254,6 @@ fn stage_resolve(lm: LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTre
   fn(normalized) { resolve(tree: normalized, lm: lm) }
 }
 
-fn resolve_cache_miss(normalized: NormalizedTree) -> CacheProbe<ResolvedTree> {
-  Miss
-}
-
 fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {
   fn(resolved) {
     bind_outcome(
@@ -1267,34 +1278,22 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
   }
 }
 
-// A REFUSED STAGE ADMISSION REFUSES THE COMPILE. cached_stage_realization answers
-// Outcome<CachedStageRealization> because an unmet materialization obligation is not a licence
-// to run the stage unmemoized -- it is a typed cause, and this spine already speaks Outcome, so
-// it is returned as the stage outcome rather than absorbed into the recompute arm.
 fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
-  match cached_stage_realization() {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: realization, diagnostics: _ } =>
-      let lm = dag_language_model()
-      let pipeline = then_outcome(
-          f: stage_tokenize(lm: lm),
+  let lm = dag_language_model()
+  let pipeline = then_outcome(
+      f: stage_tokenize(lm: lm),
+      g: then_outcome(
+        f: stage_parse(lm: lm),
+        g: then_outcome(
+          f: stage_normalize(),
           g: then_outcome(
-            f: stage_parse(lm: lm),
-            g: then_outcome(
-              f: stage_normalize(),
-              g: then_outcome(
-                f: cached_stage_governed(
-                  realization: realization,
-                  lookup: resolve_cache_miss,
-                  stage: stage_resolve(lm: lm)
-                ),
-                g: stage_translate(target: target)
-              )
-            )
+            f: stage_resolve(lm: lm),
+            g: stage_translate(target: target)
           )
         )
-      pipeline(source)
-  }
+      )
+    )
+  pipeline(source)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -3513,6 +3512,7 @@ fn native_module_resolve_verdict(
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
                     unavailable_providers: closure.refused,
+                    member_kinds: no_member_declaration_kinds(),
                     lexical: lexical
                   )
                 },

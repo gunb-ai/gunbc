@@ -32,9 +32,8 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
 }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-
-data login_transaction_store_dir_segment: String = "auth-login-transactions"
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 
 data login_transaction_file_suffix: String = ".json"
 
@@ -44,9 +43,17 @@ type LoginTransactionStoreLayout {
   root: FilePath
 }
 
+// THE DIRECTORY THIS STORE DEMANDS. It used to join its own segment onto the instance root while the
+// provision plan named the same directory a second time, and nothing on the production route created
+// it; now the store declares the target and reads its root off it, and both deployment routes ensure
+// that target (gunbc.roadmap.dashboard_instance_directories).
+fn login_transaction_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_private_directory(instance: instance, member: "auth-login-transactions" as NonEmptyStr, child: "auth-login-transactions")
+}
+
 fn login_transaction_store_layout_for_instance(instance: HostDashboardInstance) -> LoginTransactionStoreLayout {
   LoginTransactionStoreLayout {
-    root: join([instance.instance_root as String, "/", login_transaction_store_dir_segment], "") as FilePath,
+    root: owned_directory_path(t: login_transaction_store_directory(instance: instance)),
   }
 }
 

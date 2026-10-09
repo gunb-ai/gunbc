@@ -2481,9 +2481,11 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // A trailing comma before `]` is admitted, as dag_grammar_comma_list_expr admits it and as v1 reads
 // the list; without it every multi-line caller list written with one refused its whole module.
 // `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
-// else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
-// native route checks caller admission, and the stage that does adds its Arrow carrier together
-// with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+// else. The clause is consumed when the fn lowers to an Arrow: the lowering mints the authored
+// roster onto the Arrow under the AdmitCallersEdge core marker, and v2.compiler.infer
+// infer_caller_admission_diags judges every call against it (a caller outside the list refuses,
+// never admits). The former drop gunbc.rung_drop.admit_callers_discarded_on_the_native_route is
+// retired by that carrier-plus-consumer restoration.
 // `uses net: Network, fs: Filesystem` after a fn's return clause declares the resources the fn
 // requires, as v1 02_parse parse_uses_clause reads it: one or more comma-separated entries, each a
 // name, a type and an optional parenthesised config. `uses` is matched as an exact-word terminal and
@@ -3113,28 +3115,67 @@ fn dag_grammar_resource_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_top_level_item_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
-    right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl),
-              right: dag_grammar_choice(
-                left: dag_grammar_nonterminal(production: ^dag_production_service_decl),
-                right: dag_grammar_nonterminal(production: ^dag_production_resource_decl)
-              )
-            )
-          )
-        )
-      )
+// THE TOP-LEVEL DECLARATION ROWS: one list is the authority for which productions inhabit a
+// module as items, for the choice the module grammar repeats, and for which emitted identities
+// are declaration members rather than record binders.
+fn dag_grammar_top_level_item_productions() -> List<GrammarProduction> {
+  [
+    dag_grammar_production(
+      name: ^dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: ^dag_surface_import_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_alias_decl,
+      expression: dag_grammar_alias_decl_expr(),
+      emitted: ^dag_surface_alias_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_type_decl,
+      expression: dag_grammar_type_decl_expr(),
+      emitted: ^dag_surface_type_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: ^dag_surface_data_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_fn_decl,
+      expression: dag_grammar_fn_decl_expr(),
+      emitted: ^dag_surface_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_test_fn_decl,
+      expression: dag_grammar_test_fn_decl_expr(),
+      emitted: ^dag_surface_test_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_service_decl,
+      expression: dag_grammar_service_decl_expr(),
+      emitted: ^dag_surface_service_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_resource_decl,
+      expression: dag_grammar_resource_decl_expr(),
+      emitted: ^dag_surface_resource_decl
     )
+  ]
+}
+
+fn dag_grammar_choice_of_production_names(names: List<Symbol>) -> GrammarExpr {
+  match names {
+    Cons { head: first, tail: rest } =>
+      fold(rest, init: dag_grammar_nonterminal(production: first), f: fn(acc, name) {
+        dag_grammar_choice(left: acc, right: dag_grammar_nonterminal(production: name))
+      })
+    Empty => dag_grammar_nonterminal(production: ^dag_production_top_level_item)
+  }
+}
+
+fn dag_grammar_top_level_item_expr() -> GrammarExpr {
+  dag_grammar_choice_of_production_names(
+    names: list_map(xs: dag_grammar_top_level_item_productions(), f: fn(p) { p.name })
   )
 }
 
@@ -3367,46 +3408,6 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_top_level_item,
     expression: dag_grammar_top_level_item_expr(),
     emitted: ^dag_surface_top_level_item
-  )
-  let import_decl = dag_grammar_production(
-    name: ^dag_production_import_decl,
-    expression: dag_grammar_import_decl_expr(),
-    emitted: ^dag_surface_import_decl
-  )
-  let alias_decl = dag_grammar_production(
-    name: ^dag_production_alias_decl,
-    expression: dag_grammar_alias_decl_expr(),
-    emitted: ^dag_surface_alias_decl
-  )
-  let type_decl = dag_grammar_production(
-    name: ^dag_production_type_decl,
-    expression: dag_grammar_type_decl_expr(),
-    emitted: ^dag_surface_type_decl
-  )
-  let data_decl = dag_grammar_production(
-    name: ^dag_production_data_decl,
-    expression: dag_grammar_data_decl_expr(),
-    emitted: ^dag_surface_data_decl
-  )
-  let fn_decl = dag_grammar_production(
-    name: ^dag_production_fn_decl,
-    expression: dag_grammar_fn_decl_expr(),
-    emitted: ^dag_surface_fn_decl
-  )
-  let test_fn_decl = dag_grammar_production(
-    name: ^dag_production_test_fn_decl,
-    expression: dag_grammar_test_fn_decl_expr(),
-    emitted: ^dag_surface_test_fn_decl
-  )
-  let service_decl = dag_grammar_production(
-    name: ^dag_production_service_decl,
-    expression: dag_grammar_service_decl_expr(),
-    emitted: ^dag_surface_service_decl
-  )
-  let resource_decl = dag_grammar_production(
-    name: ^dag_production_resource_decl,
-    expression: dag_grammar_resource_decl_expr(),
-    emitted: ^dag_surface_resource_decl
   )
   let resource_body_entry = dag_grammar_production(
     name: ^dag_production_resource_body_entry,
@@ -3823,19 +3824,12 @@ fn dag_grammar_root() -> GrammarRoot {
   )
   GrammarRoot {
     start: ^dag_production_module,
-    productions: [
-      module_prod,
-      module_header,
-      top_level_item,
-      import_decl,
-      alias_decl,
-      type_decl,
-      data_decl,
-      fn_decl,
-      test_fn_decl,
-      service_decl,
+    productions: list_append(
+      left: [module_prod, module_header, top_level_item],
+      right: list_append(
+        left: dag_grammar_top_level_item_productions(),
+        right: [
       service_body_entry,
-      resource_decl,
       resource_body_entry,
       resource_kind,
       resource_mode,
@@ -3917,7 +3911,9 @@ fn dag_grammar_root() -> GrammarRoot {
       if_expr,
       fn_literal,
       arrow_lambda
-    ],
+        ]
+      )
+    ),
     sync_tokens: dag_sync_tokens()
   }
 }
@@ -6774,6 +6770,36 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
+  fold_list(
+    xs: dag_grammar_top_level_item_productions(),
+    empty: false,
+    cons: fn(acc, production) {
+      acc || match node_atom_identity_optional(node: production.emitted) {
+        Present { value: emitted } => emitted == id
+        Absent => false
+      }
+    }
+  )
+}
+
+// Parse identities that inhabit a module as Authored members and are not record binders:
+// the module surface and graft-body stamp as the only explicit extras, plus every emitted
+// identity of dag_grammar_top_level_item_productions. Identity only — a missing stamp is
+// false, never a Conj-shape guess (DESIGN §5: refuse the member, never widen to the container).
+fn dag_surface_identity_is_module_member(id: Symbol) -> Bool {
+  (id == ^dag_surface_module)
+    || (id == ^namespace_graft_module_body)
+    || dag_surface_identity_is_top_level_item(id: id)
+}
+
+fn dag_node_is_module_member_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_surface_identity_is_module_member(id: id)
+    Absent => false
+  }
+}
+
 fn dag_node_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } => id == ^dag_surface_fn_decl
@@ -7135,18 +7161,17 @@ fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) ->
   }
 }
 
-fn parse_qn_repeat_suffix_ident_with<T>(sequence_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
-  match find_named_child(
-    root: sequence_capture,
-    name: ^grammar_sequence_right_node_projection
-  ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: ident_node, diagnostics: _ } =>
-      parse_qn_segment_with(sym_node: ident_node, root: root, seg: seg)
-  }
-}
-
-fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+// ONE REPEAT-CAPTURE SPINE, by the rule above: one walker for the encoding, per-item readers on
+// top of it. THE ENCODING: a repeat capture is either an empty conj (no items) or a conj whose
+// left projection is the element sequence and whose right projection is the next capture, and each
+// element sequence's right projection is the item. The spine refuses when a projection the
+// encoding promises is missing -- a malformed spine is not an empty list -- and the item reader
+// owns every refusal about what an item is.
+fn parse_repeat_capture_items_with<T>(
+  repeat_capture: Node,
+  root: Node,
+  item: fn(Node, Node) -> Outcome<T>
+) -> Outcome<List<T>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -7156,30 +7181,45 @@ fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(No
     ) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match parse_qn_repeat_suffix_ident_with(sequence_capture: head_sequence, root: root, seg: seg) {
+        match find_named_child(
+          root: head_sequence,
+          name: ^grammar_sequence_right_node_projection
+        ) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: item, diagnostics: _ } =>
-            match find_named_child(
-              root: repeat_capture,
-              name: ^grammar_sequence_right_node_projection
-            ) {
+          Accepted { value: item_node, diagnostics: _ } =>
+            match item(item_node, root) {
               Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-              Accepted { value: tail, diagnostics: _ } =>
-                match parse_qn_repeat_suffixes_with(repeat_capture: tail, root: root, seg: seg) {
+              Accepted { value: item_value, diagnostics: _ } =>
+                match find_named_child(
+                  root: repeat_capture,
+                  name: ^grammar_sequence_right_node_projection
+                ) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-                  Accepted { value: suffixes, diagnostics: tail_diag } =>
-                    outcome_with_diagnostics(
-                      value: list_append(
-                        left: Cons { head: item, tail: Empty },
-                        right: suffixes
-                      ),
-                      diagnostics: tail_diag
-                    )
+                  Accepted { value: tail, diagnostics: _ } =>
+                    match parse_repeat_capture_items_with(repeat_capture: tail, root: root, item: item) {
+                      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                      Accepted { value: suffixes, diagnostics: tail_diag } =>
+                        outcome_with_diagnostics(
+                          value: list_append(
+                            left: Cons { head: item_value, tail: Empty },
+                            right: suffixes
+                          ),
+                          diagnostics: tail_diag
+                        )
+                    }
                 }
             }
         }
     }
   }
+}
+
+fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+  parse_repeat_capture_items_with(
+    repeat_capture: repeat_capture,
+    root: root,
+    item: fn(n, r) { parse_qn_segment_with(sym_node: n, root: r, seg: seg) }
+  )
 }
 
 fn parse_qualified_name_segments_from_capture_with<T>(qn_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
@@ -7609,6 +7649,60 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // deliberately NOT emitted: the members are the body, and a captured wrapper
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
+
+fn dag_identity_is_module_surface(id: Symbol) -> Bool {
+  (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+}
+
+// A MODULE SURFACE is identified by what the node IS: parse/emit production identity
+// dag_surface_module, the graft body's producer stamp, or a synthetic Atom whose
+// identity is dag_surface_module. A header child edge is not identity (review 77909).
+fn dag_node_is_module_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_identity_is_module_surface(id: id)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } => dag_identity_is_module_surface(id: id)
+        Absent => false
+      }
+  }
+}
+
+// THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
+// A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that
+// happens to be a module surface does not opt the whole Conj out (DESIGN §5: refuse the
+// member, never widen to the container). Other connectives are not record payloads; Disj
+// arm payloads are Conjs and are judged when those Conjs are visited.
+fn dag_node_is_record_field_carrier(node: Node) -> Bool {
+  namespace_graft_node_is_conj(node: node) && !dag_node_is_module_surface(node: node)
+}
+
+fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection) ||
+    (name == ^grammar_production_captured_node_projection)
+}
+
+// Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
+// and must still be judged (DESIGN §5: refuse, never widen).
+fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
+  dag_node_is_module_surface(node: carrier) &&
+    dag_authored_name_is_parse_production_projection(name: name)
+}
+
+// Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record
+// field that is an Atom or Disj must still be member_not_a_binder. fn-decl is the
+// production identity dag_surface_fn_decl (unchanged meaning for other callers).
+// test-fn identity lives only here, not in dag_node_is_fn_decl.
+fn dag_node_is_namespace_member_target(node: Node) -> Bool {
+  if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } => id == ^dag_surface_test_fn_decl
+      Absent => false
+    }
+  }
+}
 
 // The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
 // It is a surface identity atom, not a type denotation, so infer grounds it with the

@@ -62,7 +62,7 @@ import std.primitives {
 
 // THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;
 // method ruled by neat-boar-16 2026-09-30). v1 binds a bare `String` in these modules to the KERNEL
-// host text whatever the import says (`v1.compiler.infer` `overlay_skips_kernel_name`); v2 binds it
+// host text whatever the import says (`v1.compiler.infer_env` `overlay_skips_kernel_name`); v2 binds it
 // to the structural `FreeMonoid<Char>` the import names. The fork resolves at the importers:
 // HOST-USING and MIXED importers drop `String` from the import, STRUCTURAL-USING importers keep it
 // as `gunbc.recurring_failure_mode` `carrier_by_spelling`'s declared v1/v2 divergence. This lens

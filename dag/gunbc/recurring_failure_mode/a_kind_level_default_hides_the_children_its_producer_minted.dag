@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_kind_level_default_hides_the_children_its_producer_minted
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_kind_level_default_hides_the_children_its_producer_minted: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_kind_level_default_hides_the_children_its_producer_minted" as NonEmptyStr,
+
+  receipts: [
+    "A shared node reader carries a KIND-LEVEL default: for one node kind it answers `missing` unconditionally, without consulting the node's actual children, while the same query on a sibling kind folds them. Any node the pipeline mints in the defaulted kind therefore carries facts no reader can see.",
+
+    "**RECEIPT (eager-cat-664, 2026-10-06, PR #13108, this carrier).** `v2.std.node_query` `named_child_lookup` folded authored edges for `TypeNode { Conj }` and answered `NamedChildMissing` for every `ComputationNode`. Body-lowering mints a call as `comp:transform[ *=atom:callee[] @arg=atom:... ]` -- a ComputationNode whose authored edges ARE its named arguments -- so the admit-wall roster reader could hang a correct record and still read `module_path` as missing. Three probes were spent proving the carrier wrong before the accessor was instrumented; the miss was one arm in std.",
+
+    "The blindness is SILENT in both directions. The producer does not fail (it minted the edges); the reader does not fail (it answers a well-typed `missing`); the stage between them manufactures a refusal whose correction points at data that is present. A typed, located refusal -- the §5 shape -- is what turned the miss legible: the correction carried the looked-up key, and one probe printed the key next to the keys the accessor actually saw.",
+
+    "**RECOGNITION RULE: when a reader's `missing` is about to be trusted, ask what the node's PRODUCER writes at that position and whether the reader's kind-level arm ever looks.** The discriminator is one instrument run printing the node's actual children beside the answer the accessor gave.",
+
+    "THE REMEDY IS AT THE ACCESSOR, NOT THE CALL SITE: re-walking children at a call site (a parallel first-child walk) re-invents the concept and forks the shape -- the same §2/§3 violation the ctrl review policy's walker-dissolution rule names. The fix that closed this receipt changed the one arm in std and was witnessed red-then-green in the accessor's own claim file, with the missing-name control alongside, so the corpus decides whether any other reader's output moves.",
+  ],
+
+  evidence: [],
+}

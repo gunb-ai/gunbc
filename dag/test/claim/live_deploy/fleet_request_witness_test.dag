@@ -20,7 +20,7 @@ import gunbc.live_deploy.member_identity {
   ServiceProcess,
   TreePublicationIdentity, UnitFileIdentity, ManagerLoadedCurrent,
   ProcessRunningRelease,
-  DirectoryRootIdentity,
+  DirectoryRootIdentity, DirectoryRootStanding, RootConverged, RootModeRepairable,
   MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
   RootAt,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
@@ -429,12 +429,12 @@ fn fingerprints_differ(left: List<ObservedMember>, right: List<ObservedMember>) 
   }
 }
 
-fn root_obs(owner: NonEmptyStr) -> ObservedMember {
+fn root_obs(standing: DirectoryRootStanding) -> ObservedMember {
   MemberObserved {
     identity: RootAt {
       root: DirectoryRootIdentity {
         path: "/srv/gunbc" as NonEmptyStr,
-        owner: owner,
+        standing: standing,
       },
     },
   }
@@ -497,10 +497,10 @@ test fn live_deploy_fingerprint_moves_when_running_release_moves() -> Bool {
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_root_owner_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_root_standing_moves() -> Bool {
   fingerprints_differ(
-    left: concat(matching_obs_for(unit: unit_name()), [root_obs(owner: "gunbc" as NonEmptyStr)]),
-    right: concat(matching_obs_for(unit: unit_name()), [root_obs(owner: "root" as NonEmptyStr)]),
+    left: concat(matching_obs_for(unit: unit_name()), [root_obs(standing: RootConverged)]),
+    right: concat(matching_obs_for(unit: unit_name()), [root_obs(standing: RootModeRepairable { observed_mode: "755" as NonEmptyStr })]),
   )
 }
 

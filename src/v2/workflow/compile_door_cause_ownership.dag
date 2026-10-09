@@ -57,7 +57,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^member_not_a_binder,
     lane: MigrationOwned,
-    flip_trigger: "RETIRED WHEN v2.lens.lifecycle_carrier and v2.lens.unit_modeling narrow their carrier predicate so that a node whose Authored members are module surface nodes (a container of modules, not a record or payload type) is never judged as a record carrier; this row is then deleted and the door-ledger long test's member_not_a_binder count returns to zero. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag. Each refusal is located at the TARGET of the offending member edge, a synthetic dag_surface_module node: both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder, and a node carrying modules as Authored members reaches that fold. That is a lens defect (the carrier predicate admits a module container), not a correct refusal of these subjects. It was masked at head grain by parse_grammar_choice_overlap_residue. The fix is owned by its own work item, not this row"
+    flip_trigger: "KEEP until an executed door-ledger census of dag/std/error_primitives.dag and dag/std/bit.dag shows member_not_a_binder at zero on those subjects (fatals moved), then delete this row. The carrier predicate no longer judges a module-surface Authored member as a record field; that is not by itself the census. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on those two files at synthetic dag_surface_module targets. Do not retire on an unrelated histogram substitution."
   },
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
@@ -117,7 +117,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_unrecognised_lowered_shape,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a reader in v2.compiler.body_lowering_fold meets a node that is lowered output (no grammar projection edge) but that body_lower_is_core_substrate does not name, and refuses at it instead of re-reading it as raw parse and answering a part of it (body_lower_is_unrecognised_lowered_shape). The MQ-5 census found no producer that reaches this today. Flips when every producer declares the shape it emits (LoweredShape carried in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30), so a reader never classifies a node by shape and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
+    flip_trigger: "v2.compiler.body_lowering_fold body_term_of reads a node in the fold's tree that is neither under the sealed Lowered marker a producer writes (body_term_seal), nor a composite the parse stamped, nor a leaf, and refuses at it: lowered output no producer declared, never re-read as raw parse. Since MQ-5 every producer seals its result and the shape allowlist is deleted, so this fires only on an unsealed producer output. Flips when the fold's tree is a typed BodyTerm term tree that normalize consumes, so an unsealed composite has no representation and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_form_not_admitted,

@@ -1,6 +1,6 @@
 module extdeps.posix.signal
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -46,5 +46,124 @@ service posix.Signal {
     mock_response {
       0 => { success: true, stderr: "" } "hermetic posix.Signal.TerminateProcess"
     }
+  }
+}
+
+// THE LINUX SIGNAL NUMBERS FOR THE STANDARD SIGNALS, by the name systemd reports them under
+// ($EXIT_STATUS when $EXIT_CODE is killed or dumped: the name without its SIG prefix). signal(7),
+// "Standard signals": the numbering below is the one shared by x86, ARM and most other Linux
+// architectures (the table's middle column); alpha, sparc, mips and parisc number some of these
+// differently, and no host this repository runs on is one of them. A name not listed is refused
+// with Absent rather than guessed -- including the realtime signals, which have no fixed number.
+data linux_signal_numbers_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/signal.7.html"
+  }
+}
+
+// The closed set of names, so a misspelled or unlisted signal has no constructor; the one string
+// parse is linux_standard_signal_of_name, at the systemd $EXIT_STATUS boundary.
+type LinuxStandardSignal
+  = SignalHup
+  | SignalInt
+  | SignalQuit
+  | SignalIll
+  | SignalTrap
+  | SignalAbrt
+  | SignalBus
+  | SignalFpe
+  | SignalKill
+  | SignalUsr1
+  | SignalSegv
+  | SignalUsr2
+  | SignalPipe
+  | SignalAlrm
+  | SignalTerm
+  | SignalStkflt
+  | SignalChld
+  | SignalCont
+  | SignalStop
+  | SignalTstp
+  | SignalTtin
+  | SignalTtou
+  | SignalUrg
+  | SignalXcpu
+  | SignalXfsz
+  | SignalVtalrm
+  | SignalProf
+  | SignalWinch
+  | SignalIo
+  | SignalPwr
+  | SignalSys
+
+fn linux_standard_signal_of_name(name: String) -> LinuxStandardSignal? {
+  if name == "HUP" { Present { value: SignalHup } }
+  else if name == "INT" { Present { value: SignalInt } }
+  else if name == "QUIT" { Present { value: SignalQuit } }
+  else if name == "ILL" { Present { value: SignalIll } }
+  else if name == "TRAP" { Present { value: SignalTrap } }
+  else if name == "ABRT" { Present { value: SignalAbrt } }
+  else if name == "BUS" { Present { value: SignalBus } }
+  else if name == "FPE" { Present { value: SignalFpe } }
+  else if name == "KILL" { Present { value: SignalKill } }
+  else if name == "USR1" { Present { value: SignalUsr1 } }
+  else if name == "SEGV" { Present { value: SignalSegv } }
+  else if name == "USR2" { Present { value: SignalUsr2 } }
+  else if name == "PIPE" { Present { value: SignalPipe } }
+  else if name == "ALRM" { Present { value: SignalAlrm } }
+  else if name == "TERM" { Present { value: SignalTerm } }
+  else if name == "STKFLT" { Present { value: SignalStkflt } }
+  else if name == "CHLD" { Present { value: SignalChld } }
+  else if name == "CONT" { Present { value: SignalCont } }
+  else if name == "STOP" { Present { value: SignalStop } }
+  else if name == "TSTP" { Present { value: SignalTstp } }
+  else if name == "TTIN" { Present { value: SignalTtin } }
+  else if name == "TTOU" { Present { value: SignalTtou } }
+  else if name == "URG" { Present { value: SignalUrg } }
+  else if name == "XCPU" { Present { value: SignalXcpu } }
+  else if name == "XFSZ" { Present { value: SignalXfsz } }
+  else if name == "VTALRM" { Present { value: SignalVtalrm } }
+  else if name == "PROF" { Present { value: SignalProf } }
+  else if name == "WINCH" { Present { value: SignalWinch } }
+  else if name == "IO" { Present { value: SignalIo } }
+  else if name == "PWR" { Present { value: SignalPwr } }
+  else if name == "SYS" { Present { value: SignalSys } }
+  else { none }
+}
+
+fn linux_standard_signal_number(signal: LinuxStandardSignal) -> Int {
+  match signal {
+    SignalHup => 1
+    SignalInt => 2
+    SignalQuit => 3
+    SignalIll => 4
+    SignalTrap => 5
+    SignalAbrt => 6
+    SignalBus => 7
+    SignalFpe => 8
+    SignalKill => 9
+    SignalUsr1 => 10
+    SignalSegv => 11
+    SignalUsr2 => 12
+    SignalPipe => 13
+    SignalAlrm => 14
+    SignalTerm => 15
+    SignalStkflt => 16
+    SignalChld => 17
+    SignalCont => 18
+    SignalStop => 19
+    SignalTstp => 20
+    SignalTtin => 21
+    SignalTtou => 22
+    SignalUrg => 23
+    SignalXcpu => 24
+    SignalXfsz => 25
+    SignalVtalrm => 26
+    SignalProf => 27
+    SignalWinch => 28
+    SignalIo => 29
+    SignalPwr => 30
+    SignalSys => 31
   }
 }

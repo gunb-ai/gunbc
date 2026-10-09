@@ -78,6 +78,15 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
   argv_command(program: mkdir_program(), arguments: ["-p", "--", path])
 }
 
+// mkdir WITHOUT -p IS CREATE-ONLY: it creates exactly one directory and REFUSES with "File exists"
+// when the name is already taken, and it refuses when the parent is missing rather than creating it
+// (coreutils manual, "mkdir invocation"). The kernel's mkdir(2) is atomic, so two invocations
+// racing on one name leave one winner and one refusal and never a merged result -- which is what
+// lets the NAME of the directory be the record and a repeated invocation be harmless.
+fn mkdir_create_only_command(path: String) -> ArgvCommand {
+  argv_command(program: mkdir_program(), arguments: ["--", path])
+}
+
 // ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
 // "ln invocation"): the create-only publication step. A second name for the same inode, never a
 // replacement of the bytes behind an existing name.

@@ -45,6 +45,7 @@ import v2.std.compilers.sugar {
 }
 import v2.compiler.body_lowering_fold {
   BodyLowering,
+  body_term_of,
   BodyLoweredTree,
   WrapperRetention,
   body_lowering_after_pending,
@@ -75,15 +76,23 @@ import v2.compiler.normalized_tree {
   NormalizedTree,
   admit_census_tree,
   admit_normalized_tree,
-  admit_retention_free
+  admit_retention_free,
+  normalized_tree_with_member_declarations
 }
+import v2.std.member_declaration_kind { DeclaredDataMember, DeclaredFnMember, DeclaredMember }
 import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
-  namespace_graft_is_graft_candidate
+  namespace_graft_collect_unit_nodes_against,
+  namespace_graft_is_graft_candidate,
+  namespace_graft_top_level_item_alternative_emitted_ids
 }
 import v2.extdeps.languages.dag {
+  dag_grammar_root,
+  dag_surface_kw_then_ident_from_captured,
   import_binding_rows_from_decl_node,
+  namespace_graft_unwrap_module_working_root,
+  parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
 import std.types { List }
@@ -315,12 +324,42 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
   }
 }
 
+// A LEAF HAS NO INTERIOR (MQ-5). A literal token the parse minted with its payload already attached --
+// an Int literal's magnitude, a fold-list spine of digits (v2.std.integer) -- is one term
+// (body_term_of answers RawLeaf), and body_lower_fold already takes it whole. This
+// outer fold used to descend into its payload anyway, so the digit spine reached body_term_of as a
+// composite with no projection edge and no seal and refused as an unrecognised lowered shape; every
+// `data x: Int = <literal>` refused (the native door's accepting control, #12942). A leaf's edges are
+// kept as they stand; the leaf itself is still lowered below, as every node is. The question is asked
+// of the term authority, never of a second leaf predicate; a node it refuses is still descended, so
+// the refusal is raised, located, by the reader that lowers it rather than absorbed here.
+// ONE CLASSIFICATION PER PARENT (review 75069). Whether a child is kept whole depends only on the
+// parent n, so body_term_of is asked once here and the answer is carried into the fold, rather
+// than re-read once per child edge (DESIGN section 6, bare minimum cost: a quadratic fold is always
+// fixed). A RawLeaf parent keeps its payload whole; every other arm, Rejected included, descends.
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
+  normalize_node_fold_children_classified(
+    n: n,
+    under_fn_decl: under_fn_decl,
+    keep_children_whole: match body_term_of(node: n) {
+      Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => true
+      Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
+      Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
+  )
+}
+
+fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_children_whole: Bool) -> Outcome<BodyLoweredTree> {
   match fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
       edge: e,
-      child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+      child: if keep_children_whole {
+        Accepted { value: body_lowered_tree_over(node: e.target, retained: no_wrapper_retentions()), diagnostics: None }
+      } else {
+        normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+      }
     )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -399,6 +438,47 @@ fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKi
             match body_lower_resource_decl_declared_kind_optional(shell: n) {
               Absent => acc
               Present { value: kind } => list_snoc_item(xs: acc, item: kind)
+            }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+// THE AUTHORED KIND OF EACH TOP-LEVEL MEMBER, read from the parse for the reason type_declaration_kind_capture
+// is: lowering turns `data x: T = v` and `fn x() -> T { v }` into one shape (a named nullary Arrow), so
+// after normalize nothing in the Node says which was authored. The population is the graft's own unit
+// census (namespace_graft_collect_unit_nodes_against over the module's working root, the same units the
+// graft partitions into members), NOT every node of the parse: a declaration nested in another unit is
+// not a member of the module. A data or fn unit whose name cannot be read contributes no row, so a
+// consumer asking for it finds it not declared and refuses, never a fabricated kind.
+// v2.std.member_declaration_kind MemberKindChannel is what carries these to a later grain.
+fn member_declaration_capture(tree: ParseTree) -> FreeMonoid<DeclaredMember> {
+  let unit_ids = namespace_graft_top_level_item_alternative_emitted_ids(productions: dag_grammar_root().productions)
+  fold_list(
+    xs: namespace_graft_collect_unit_nodes_against(node: namespace_graft_unwrap_module_working_root(root: tree), unit_ids: unit_ids),
+    empty: Empty,
+    cons: fn(acc, unit) {
+      match parse_production_emitted_identity_optional(node: unit) {
+        Absent => acc
+        Present { value: id } =>
+          if (id == ^dag_surface_data_decl) || (id == ^dag_surface_fn_decl) {
+            match parse_production_captured_child_optional(node: unit) {
+              Absent => acc
+              Present { value: captured } =>
+                match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                  Absent => acc
+                  Present { value: name } =>
+                    list_snoc_item(
+                      xs: acc,
+                      item: DeclaredMember {
+                        name: name,
+                        kind: if id == ^dag_surface_data_decl { DeclaredDataMember } else { DeclaredFnMember }
+                      }
+                    )
+                }
             }
           } else {
             acc
@@ -507,7 +587,13 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                         ) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: tree, diagnostics: d2 } =>
-                            Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
+                            Accepted {
+                              value: ScopedNormalizedTree {
+                                tree: normalized_tree_with_member_declarations(tree: tree, members: member_declaration_capture(tree: parse_tree)),
+                                allocator: allocated.allocator
+                              },
+                              diagnostics: d2
+                            }
                         }
                     }
                 }

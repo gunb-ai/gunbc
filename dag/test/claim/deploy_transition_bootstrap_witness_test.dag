@@ -5,8 +5,11 @@ import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   DeploymentNames,
   srv1_live_deployment_names,
-  deployment_belt_timer_unit_name,
+  deployment_belt_exit_path_unit_name,
+  deployment_belt_answer_path_unit_name,
   deployment_belt_service_unit_name,
+  deployment_belt_exit_drain_service_unit_name,
+  deployment_belt_discovery_service_unit_name,
 }
 import gunbc.deploy_transition_bootstrap {
   ReleaseMarkerAwareness,
@@ -121,14 +124,16 @@ test fn an_unobserved_release_refuses_rather_than_widening_to_bootstrap() -> Boo
   )) == "undecidable"
 }
 
-// EVERY UNIT THAT CAN ACTUATE A RELEASE IS QUIESCED, not the timer alone. Disabling only the timer
-// leaves the one-shot belt service startable and leaves the HTTP dispatcher inside the serve unit
-// running -- which is the same defect one layer out, and the deploy-convergence design record
-// already records it as the reason the seam is the shared admission and not either ingress.
-test fn the_quiesced_set_covers_the_timer_the_service_and_the_serve_unit() -> Bool {
+// EVERY UNIT THAT CAN ACTUATE A RELEASE IS QUIESCED: the belt's two event path units (there is no belt
+// timer since dogfood intervention #4), the belt service that queues the launch, and the serve unit
+// with the HTTP dispatcher -- leaving any one of them armed is the same defect one layer out.
+test fn the_quiesced_set_covers_the_event_paths_the_service_and_the_serve_unit() -> Bool {
   let units = bootstrap_quiesced_units(names: names())
-  units.length() == 3
-    && any(units, u => u == deployment_belt_timer_unit_name(names: names()))
+  units.length() == 6
+    && any(units, u => u == deployment_belt_exit_drain_service_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_discovery_service_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_exit_path_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_answer_path_unit_name(names: names()))
     && any(units, u => u == deployment_belt_service_unit_name(names: names()))
     && any(units, u => u == names().unit_name)
 }
@@ -147,7 +152,7 @@ test fn the_quiesced_set_covers_the_timer_the_service_and_the_serve_unit() -> Bo
 // inversion of what it claims. Refusing "unmask" and "disable" is what makes this discriminating.
 test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
   let cmds = bootstrap_quiesce_commands(names: names(), privileged: true)
-  cmds.length() == 3
+  cmds.length() == bootstrap_quiesced_units(names: names()).length()
     && all(cmds, c => string_contains(s: c, pattern: "mask"))
     && all(cmds, c => string_contains(s: c, pattern: "--now"))
     && all(cmds, c => !string_contains(s: c, pattern: "unmask"))
@@ -162,7 +167,7 @@ test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
 // prior state exactly as found, so the correct restore is strictly smaller than the one it replaces.
 test fn restoration_unmasks_every_unit_and_asserts_nothing_about_prior_state() -> Bool {
   let cmds = bootstrap_restore_commands(names: names(), privileged: true)
-  cmds.length() == 3
+  cmds.length() == bootstrap_quiesced_units(names: names()).length()
     && all(cmds, c => string_contains(s: c, pattern: "unmask"))
     && all(cmds, c => !string_contains(s: c, pattern: "enable"))
     && all(cmds, c => !string_contains(s: c, pattern: "start"))

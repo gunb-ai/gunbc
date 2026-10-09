@@ -62,7 +62,7 @@ fn m5_fixture_store_consolidation_body() -> List<MarkdownBlock> {
       li(text: "`ArtifactIdentity<T> \{ subject_digest: ContentHash, artifact_kind \}` **is** the `(operation, input_hash)` key — `subject_digest = content_hash(inputs)`, one new `artifact_kind = \"hermetic_fixture\"`."),
       li(text: "`CacheLookupResult<T> = Hit\{receipt\} | Miss | RejectedHit\{reason\}` **is** the lookup outcome."),
       li(text: "`CacheRejectReason` already covers most of v1's fail-closed variants (mapping below)."),
-      li(text: "`CacheInterfaceFacts` (locality / key_derivation / lookup·write·miss semantics / eviction / `content_verified_on_read`) **is** the per-handler descriptor — exactly the shape `parse_table_memo.dag` and `resolved_graph.dag` already cite in `extdeps/realization/`."),
+      li(text: "`CacheInterfaceFacts` (locality / key_derivation / lookup·write·miss semantics / eviction / `content_verified_on_read`) **is** the per-handler descriptor — exactly the shape `parse_table_memo.dag` (since deleted with the parse memo carrier, operator ruling R2 2026-10-08) and `resolved_graph.dag` already cite in `extdeps/realization/`."),
     ]),
     p(text: "So the fixture store is a *missing pair of `CacheInterfaceFacts` rows + a shared lookup fold*, not new vocabulary. This spike lands the rows; §5 escalates the fold."),
     h3(text: "Fail-closed reason mapping (the §5 win)"),
@@ -110,7 +110,7 @@ fn m5_fixture_store_consolidation_body() -> List<MarkdownBlock> {
     p(text: "These three gaps are the model work the load-bearing follow-up adds to `std.cache_interface` **before** the folds are rewired (so the rewire never has to fall back to a stringly error)."),
     h2(text: "3. What this spike lands (NON-load-bearing — additive only)"),
     ol(items: [
-      li(text: "`dag/extdeps/realization/hermetic_fixture.dag` — the two cited `CacheInterfaceCatalogFacts` rows (`hermetic_fixture_file_facts`, `hermetic_fixture_in_process_facts`), parallel to `parse_table_memo.dag` / `resolved_graph.dag`. They describe each handler **as it is today** — the fork shows up as a key_derivation divergence (`ContentAddressedByValue` + `content_verified_on_read` vs `HandAuthoredString` + not)."),
+      li(text: "`dag/extdeps/realization/hermetic_fixture.dag` — the two cited `CacheInterfaceCatalogFacts` rows (`hermetic_fixture_file_facts`, `hermetic_fixture_in_process_facts`), parallel to `parse_table_memo.dag` (since deleted) / `resolved_graph.dag`. They describe each handler **as it is today** — the fork shows up as a key_derivation divergence (`ContentAddressedByValue` + `content_verified_on_read` vs `HandAuthoredString` + not)."),
       li(text: "`dag/std/cache_identity.dag` — one additive `hermetic_fixture_artifact_kind` data decl (the shared artifact-kind both handlers realize). No fold touched (the only `match` over `CacheInterfaceProduct` is untouched)."),
       li_blocks(blocks: [
         p(text: "`dag/test/claim/hermetic_fixture_realization_test.dag` — executing witness:"),

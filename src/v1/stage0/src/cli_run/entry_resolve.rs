@@ -364,12 +364,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if !seen.insert(rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     queue.push(file_content);
                 }
@@ -521,12 +523,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if seen.contains_key(&rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     seen.insert(
                         rel.clone(),
@@ -1008,7 +1012,7 @@ pub fn resolve_entry_graph(
     // wave 1) an entry's dependencies are name-derived, and the old
     // `load_sources_for_entry_with_index` walk only follows import edges — a
     // stripped fixed entry (e.g. the floor runner) failed to resolve at all.
-    let index = process_shared_index(source_roots);
+    let index = try_process_shared_index(source_roots)?;
     resolve_entry_with_index(&index, entry_file)
 }
 
@@ -2894,16 +2898,19 @@ pub(crate) fn import_resolution_facts_with_observation(
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut dag_files) {
+            read_refusals.push((workspace_relative_repo_path(root), cause));
+            continue;
+        }
         dag_files.sort();
         for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
             observed_paths.insert(workspace_relative_repo_path(&rel));
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(e) => {
                     read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
@@ -3136,12 +3143,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        // A ledger row directory whose roster cannot be derived is not a tolerable read miss:
+        // a short pool-name set would silently drop the roster module's names.
+        collect_dag_files_tolerant(root_path, &mut files).unwrap_or_else(|cause| panic!("{cause}"));
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let Ok(content) = std::fs::read_to_string(&file) else {
+            let rel = rel_path_for_layer_import(file.path());
+            let Ok(content) = file.read() else {
                 continue;
             };
             let Some(module_name) = extract_module_path(&content) else {
@@ -3681,15 +3690,21 @@ pub fn reference_resolution_facts(
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut files) {
+            unaccounted.push(ReferenceAccountingRefusal {
+                path: cause,
+                cause: "the pool root's ledger roster could not be derived",
+            });
+            continue;
+        }
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let content = std::fs::read_to_string(&file).ok();
+            let content = file.read().ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {

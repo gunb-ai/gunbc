@@ -53,13 +53,12 @@ fn route_parse_at(text: String, production: Symbol) -> Outcome<Node> {
       match dag_prepared_grammar() {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: PreparedVoidGrammar, diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: PreparedModeled { modeled: modeled, materialization: materialization }, diagnostics: _ } =>
+        Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
           match parse_production_prepared(
             tokens: token_stream_remaining(stream: ts),
             validated: modeled.validated,
             analysis: modeled.analysis,
-            production_name: production,
-            materialization: materialization
+            production_name: production
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }

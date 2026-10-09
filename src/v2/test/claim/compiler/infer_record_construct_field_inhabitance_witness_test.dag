@@ -299,7 +299,7 @@ fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symb
       match rcf_member_arrow(root: tree.root, name: member) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers, member_kinds: tree.member_kinds }) {
             Rejected { diagnostics: _ } => false
             Accepted { value: _, diagnostics: ds } =>
               !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)

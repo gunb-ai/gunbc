@@ -144,7 +144,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection {
   list_at_optional,
-  map_get
+  map_get_checked
 }
 import std.optional {
   Absent,
@@ -913,7 +913,7 @@ fn serialize_relation_row_nested_bounded(
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
-  match map_get(target.binding_spellings, unit) {
+  match map_get_checked(target.binding_spellings, unit) {
     Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
       bind_outcome(
         o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),

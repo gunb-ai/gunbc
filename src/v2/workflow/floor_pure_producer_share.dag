@@ -17,7 +17,7 @@ import std.materialization_ladder {
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
-import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import std.optional { Absent, Present, Optional }
 
@@ -401,7 +401,7 @@ fn share_map_lookup_causes<T>(o: Outcome<Optional<T>>) -> List<ConsumerReadCause
 }
 
 fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
-  let o = map_get(wholes, claim)
+  let o = map_get_checked(wholes, claim)
   if length(xs: share_map_lookup_causes(o: o)) > 0 {
     false
   } else {
@@ -414,7 +414,7 @@ fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
 }
 
 fn projection_count(counts: Map<String, Int>, field: String) -> Int {
-  let o = map_get(counts, field)
+  let o = map_get_checked(counts, field)
   if length(xs: share_map_lookup_causes(o: o)) > 0 {
     0
   } else {
@@ -432,14 +432,14 @@ type ShareCountState {
 }
 
 fn add_projection_count(state: ShareCountState, wholes: Map<String, Bool>, claim: String, field: String) -> ShareCountState {
-  let whole_o = map_get(wholes, claim)
+  let whole_o = map_get_checked(wholes, claim)
   let whole_unread = share_map_lookup_causes(o: whole_o)
   if length(xs: whole_unread) > 0 {
     ShareCountState { counts: state.counts, unread: concat(state.unread, whole_unread) }
   } else if reads_whole_value(wholes: wholes, claim: claim) {
     state
   } else {
-    let count_o = map_get(state.counts, field)
+    let count_o = map_get_checked(state.counts, field)
     let count_unread = share_map_lookup_causes(o: count_o)
     if length(xs: count_unread) > 0 {
       ShareCountState { counts: state.counts, unread: concat(state.unread, count_unread) }
@@ -475,7 +475,7 @@ fn sole_projections_from_state(reads: List<ClaimConsumerRead>, counts: Map<Strin
   list_flat_map(xs: reads, f: fn(r) {
     match r.read {
       ProjectedField { field: f } =>
-        let count_o = map_get(counts, f)
+        let count_o = map_get_checked(counts, f)
         let unread = share_map_lookup_causes(o: count_o)
         if length(xs: unread) > 0 {
           []
@@ -815,6 +815,13 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // is SHARED; what remains over the new-witness budget on floor run 37207183924 is each claim's OWN
 // stage (its route, infer or front end), which the bundle had been netting from the claim silently.
 // That transfer is named here per claim instead.
+// Two more, from gunbc#12942 (body lowering's sealed term), on the same ground as every member above:
+// each claim is the one demander of a nullary parse producer that change had added to the hand
+// roster before main deleted it (door_data_literal_normalized, ulsh_route_postfix), and each is that
+// module's ONE inhabitance claim on the real front-end path, so supplying its subject is not available
+// without removing the last real execution (DESIGN section 3, the pairing obligation). These two were
+// written in the change itself rather than read from a probe pair, because the change and the
+// roster's deletion met only at the merge; re-derive them with the probe like every other member.
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
@@ -822,6 +829,18 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering_data_literal_door",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_data_declaration_with_an_int_literal_normalizes_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering_unrecognised_lowered_shape",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_passed_through_atom_leaves_the_fold_sealed", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.body_lowering.fold_operand_structure",
     claims: [

@@ -11,7 +11,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   NoWitnessDischarge,
-  FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
+  FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   AuthorizationPatternSelection,
@@ -136,8 +136,8 @@ test fn an_irreversible_one_off_is_operator_approved_not_federated() -> Bool {
   selected_approved(s: s) && !selected_federated(s: s)
 }
 
-// (b) A one-off grant the workload may not perform is approved -- this is what replaces the
-// operator's pasted token for the accessor-cell converges.
+// (b) A one-off grant the workload may not perform is approved -- the accessor-cell converges
+// select this over the operator's own token.
 test fn an_unbindable_one_off_grant_is_operator_approved() -> Bool {
   selected_approved(s: select_authorization_pattern(e: one_off_grant_unbindable()))
 }
@@ -150,13 +150,12 @@ test fn a_dashboard_only_effect_names_its_manual_step() -> Bool {
   }
 }
 
-// THE PASTED TOKEN IS NEVER SELECTED, and neither is the operator's own session: across every
-// fixture the selected pattern is one of the three admissible ones.
+// THE OPERATOR'S OWN SESSION IS NEVER SELECTED: it is always dominated, so across every fixture
+// the selected pattern is one of the three others.
 fn selection_is_admissible(s: AuthorizationPatternSelection) -> Bool {
   match s {
     PatternSelected { pattern: p, receipt: _ } =>
       match p {
-        PastedOperatorToken => false
         OperatorOwnSession => false
         FederatedScopedGrant => true
         OperatorApprovedCapability => true
@@ -170,7 +169,7 @@ fn selection_is_admissible(s: AuthorizationPatternSelection) -> Bool {
   }
 }
 
-test fn no_fixture_selects_a_pasted_token_or_an_operator_session() -> Bool {
+test fn no_fixture_selects_an_operator_session() -> Bool {
   all([recurring_read(), one_off_irreversible_mint(), one_off_grant_unbindable(), dashboard_only(), recurring_but_witnessed()],
     e => selection_is_admissible(s: select_authorization_pattern(e: e)))
 }

@@ -86,7 +86,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  arrow_named_edge_is_contract,
+  arrow_named_edge_is_metadata,
   content_hash,
   fold_node,
   node_rebuild,
@@ -365,7 +365,7 @@ fn translate_derived_parent_underived_child_gate(
 // only there: the same label elsewhere is not a contract edge and is gated like any child.
 fn translate_edge_is_arrow_contract(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
-    TypeNode { connective: Arrow } => arrow_named_edge_is_contract(e: edge)
+    TypeNode { connective: Arrow } => arrow_named_edge_is_metadata(e: edge)
     _ => false
   }
 }

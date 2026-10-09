@@ -72,9 +72,18 @@ import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 // root-owned directory whose GROUP is another principal's -- root:gunbc-ntfy, which is exactly what
 // both ntfy directories are. Extending it to carry an owning group distinct from the owner's
 // primary group is the capability that retires these arms.
+//
+// THE THIRD ARM IS THE SHARED 0755 ITSELF, given this home rather than left as
+// gunbc.live_deploy.emit install_d_shared_mode beside it. The dashboard instance's owned directories
+// that are not attempt state, auth state or fabric storage were installed at that constant, and the
+// owned-directory provider (gunbc.owned_directory) must state their mode as a target rather than
+// inherit a literal; preserving it is deliberate -- tightening a live directory is a host-behaviour
+// change this arm refuses to hide inside a migration. It dissolves with the other two arms, directory
+// by directory, as each one's dependents are declared.
 type DeclaredDirectoryMode
   = DirectoryOwnerOnly
   | DirectoryOwnerAllGroupTraverse
+  | DirectoryOwnerAllEveryoneTraverse
 
 fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
   match m {
@@ -90,6 +99,14 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       owner: PermissionBits { read: true, write: true, execute: true },
       group: PermissionBits { read: true, write: false, execute: true },
       other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+    DirectoryOwnerAllEveryoneTraverse => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: true, write: false, execute: true },
       setuid: false,
       setgid: false,
       sticky: false,

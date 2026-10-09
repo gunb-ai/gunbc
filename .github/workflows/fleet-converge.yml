@@ -53,7 +53,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, oracle_oci_api_signing_key, claude_code_oauth_harness_token]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token]
         type: choice
       d0_consent:
         description: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent"

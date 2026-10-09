@@ -2781,6 +2781,8 @@ pub struct NativeServeProgramRun {
     pub seed_identity: String,
     pub warning_count: i64,
     pub announcement: String,
+    pub peer_announcement: String,
+    pub peer_port: i64,
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
@@ -2873,9 +2875,8 @@ pub fn run_native_serve_program(
     release_revision: &str,
     refused_revision: &str,
     request_deadline_ms: &str,
-    requests: &[String],
+    requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
-    use std::io::{BufRead, Read};
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-serve: {entry} built (closure {}) -- starting {}",
@@ -2884,7 +2885,132 @@ pub fn run_native_serve_program(
     );
     let (refused_status, refused_stderr) =
         native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
-    let mut child = Command::new(&prepared.binary_path)
+    // The PEER is a second instance of the same entry: the local server the entry's bound REST
+    // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
+    // one fact only it can publish, so the reader module is asked for the requests only after it.
+    let mut peer = native_serve_start(
+        &prepared.binary_path,
+        entry,
+        release_revision,
+        request_deadline_ms,
+    )?;
+    let peer_port = match peer
+        .address
+        .as_deref()
+        .and_then(|address| address.rsplit(':').next())
+        .and_then(|port| port.parse::<i64>().ok())
+    {
+        Some(port) => port,
+        None => {
+            let peer_stderr = peer.stop();
+            return Err(format!(
+                "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
+                peer.announcement,
+                if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
+            ));
+        }
+    };
+    let requests = match requests_for_peer_port(peer_port) {
+        Ok(requests) => requests,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let mut subject = match native_serve_start(
+        &prepared.binary_path,
+        entry,
+        release_revision,
+        request_deadline_ms,
+    ) {
+        Ok(subject) => subject,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let responses = match &subject.address {
+        Some(address) => requests
+            .iter()
+            .map(|request| native_serve_exchange(address, request))
+            .collect(),
+        None => Vec::new(),
+    };
+    // The last case drives the subject past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status. The peer serves no budget
+    // case and is stopped.
+    let (served_exit_status, stderr) = subject.await_exit();
+    let peer_stderr = peer.stop();
+    Ok(NativeServeProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        announcement: subject.announcement,
+        peer_announcement: peer.announcement,
+        peer_port,
+        responses,
+        refused_status,
+        refused_stderr,
+        served_exit_status,
+        stderr: format!("{stderr}{peer_stderr}"),
+    })
+}
+
+/// One started instance of a served entry: its announcement, the address read off it, and the
+/// process to stop. The host reads the address because the service binds port 0.
+struct NativeServeInstance {
+    child: std::process::Child,
+    reader: Option<std::thread::JoinHandle<String>>,
+    announcement: String,
+    address: Option<String>,
+}
+
+impl NativeServeInstance {
+    /// Wait up to the run deadline for the instance to exit by itself, killing it only past that;
+    /// the status is None when it had to be killed.
+    fn await_exit(&mut self) -> (Option<i32>, String) {
+        let started = std::time::Instant::now();
+        let status = loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => break status.code(),
+                Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break None;
+                }
+            }
+        };
+        let stderr = self
+            .reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default();
+        (status, stderr)
+    }
+
+    fn stop(&mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default()
+    }
+}
+
+fn native_serve_start(
+    binary: &Path,
+    entry: &str,
+    release_revision: &str,
+    request_deadline_ms: &str,
+) -> Result<NativeServeInstance, String> {
+    use std::io::{BufRead, Read};
+    let mut child = Command::new(binary)
         .args(native_serve_launch_args(
             release_revision,
             request_deadline_ms,
@@ -2895,10 +3021,14 @@ pub fn run_native_serve_program(
         .map_err(|cause| {
             format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
         })?;
-    let pipe = child
-        .stderr
-        .take()
-        .ok_or("NATIVE-SERVE REFUSAL cause=NoStderrPipe")?;
+    let pipe = match child.stderr.take() {
+        Some(pipe) => pipe,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("NATIVE-SERVE REFUSAL cause=NoStderrPipe".to_string());
+        }
+    };
     let (lines, announced) = std::sync::mpsc::channel::<String>();
     let reader = std::thread::spawn(move || {
         let mut pipe = std::io::BufReader::new(pipe);
@@ -2916,42 +3046,11 @@ pub fn run_native_serve_program(
         .strip_prefix("native-serve listening on ")
         .and_then(|rest| rest.split(' ').next())
         .map(str::to_string);
-    let responses = match &address {
-        Some(address) => requests
-            .iter()
-            .map(|request| native_serve_exchange(address, request))
-            .collect(),
-        None => Vec::new(),
-    };
-    // The last case drives the service past its stuck-worker ceiling, after which it exits by
-    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
-    // still running at the deadline is killed, and it reports no status.
-    let started = std::time::Instant::now();
-    let served_exit_status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status.code(),
-            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
-                std::thread::sleep(std::time::Duration::from_millis(20))
-            }
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-        }
-    };
-    let stderr = reader.join().unwrap_or_default();
-    Ok(NativeServeProgramRun {
-        closure_identity: prepared.closure_identity,
-        binary_identity: prepared.binary_identity,
-        seed_identity: prepared.seed_identity,
-        warning_count: prepared.build.warning_count,
+    Ok(NativeServeInstance {
+        child,
+        reader: Some(reader),
         announcement,
-        responses,
-        refused_status,
-        refused_stderr,
-        served_exit_status,
-        stderr,
+        address,
     })
 }
 
@@ -4157,6 +4256,7 @@ mod cli_emit_probe_tests {
         let main = crate::v1_compiler_emit_rust::emit_native_cli_driver_main_rs(
             "crate_x".to_string(),
             "pipeline_x".to_string(),
+            std::rc::Rc::new(im::Vector::new()),
         );
         let source = main.content.as_str();
         let write = "print!(\"{text}\");";

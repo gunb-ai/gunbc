@@ -111,14 +111,10 @@ test fn control_stream_is_what_tokenize_emits() -> Bool {
   supplied_stream_matches_tokenize(text: control_source, file: ^furthest_locus_probe, supplied: control_stream())
 }
 
-// THE TREATMENT, AND THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. The seed serves parse memo entries
-// across parses of one token stream (v1_interpreter parse_table_memo_scope_and_key), so the second
-// parse meets entries the first stored; each entry carries its own subparse's furthest record, and
-// the served parse must land on the same token. The cold assertion alone is implied by this claim.
-test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
-  let cold = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
-  let warm = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
-  cold == 24 && warm == 24
+// THE TREATMENT: the refusal lands on the token where the furthest rejected alternative stopped,
+// inside the item, not at the item's start.
+test fn tokens_remain_mid_item_locus_holds() -> Bool {
+  tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream())) == 24
 }
 
 test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {

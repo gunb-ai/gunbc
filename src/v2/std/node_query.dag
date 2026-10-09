@@ -978,7 +978,14 @@ fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
     TypeNode { connective: Arrow } => NamedChildMissing
     TypeNode { connective: Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
-    ComputationNode { behavior: _ } => NamedChildMissing
+    ComputationNode { behavior: _ } =>
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        match e.label {
+          Positional => acc
+          StructuralLabel { label: _ } => acc
+          Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
+        }
+      })
   }
 }
 

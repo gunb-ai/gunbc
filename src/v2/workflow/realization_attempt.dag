@@ -1,5 +1,6 @@
 module v2.workflow.realization_attempt
 
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_source }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.resolve { ResolvedTree }
@@ -287,7 +288,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers, member_kinds: no_member_declaration_kinds() }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

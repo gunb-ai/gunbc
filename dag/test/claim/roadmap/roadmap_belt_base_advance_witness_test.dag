@@ -87,7 +87,7 @@ fn advanced_population(changes: List<WorktreeChange>, texts: Map<String, String>
                 Present { value: tip } =>
                   match find_corpus_manifest_record(store: repository.store, identity: tip.root.locator) {
                     CorpusManifestFound(record) => {
-                      let folded = belt_scm_advance_fold(path: "/nonexistent/envelope.json", store: repository.store, tip_record: record, changes: changes, texts: texts)
+                      let folded = belt_scm_advance_fold(store: repository.store, tip_record: record, changes: changes, texts: texts)
                       match folded.refused {
                         Present { value: _ } => none
                         Absent => Present { value: population(entries: path_unique_entry_list(unique: folded.unique)) }
