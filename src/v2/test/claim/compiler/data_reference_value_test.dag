@@ -1,9 +1,11 @@
 module v2.test.claim.compiler.data_reference_value
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree, fmi_reason }
-import v2.compiler.infer { infer_reference_value_type }
-import v2.test.claim.callexec.declaration_reference_eval { cref_assemble, cref_executes_to, cref_reading }
+import v2.compiler.infer { infer, infer_reference_value_type }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.test.claim.callexec.declaration_reference_eval { CrefReading, cref_assemble, cref_call_carries_declaration, cref_executes_to, cref_reading_of_outcome, cref_the_call_to }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.node { Arrow, Atom, Symbol, Authored, ConstantMemberEdge, Conj, Edge, Node, Positional, TypeNode, core_edge, edge_is_core, node_subtree_nodes }
 import v2.std.node_query { arrow_constant_member_codomain }
@@ -39,17 +41,45 @@ fn drv_assembled() -> Outcome<ResolvedTree> {
   cref_assemble(src: drv_source)
 }
 
-fn drv_infer_reason(o: Outcome<ResolvedTree>) -> Symbol {
+// ONE INFERENCE of that assembly, by a nullary producer the infer row and the eval row both read whole, so
+// the floor fills it once rather than each row paying a full inference (each did, at ~130k eval steps
+// apiece, on an earlier head).
+fn drv_inferred() -> Outcome<InferredTree> {
+  match drv_assembled() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+  }
+}
+
+fn drv_reason(o: Outcome<InferredTree>) -> Symbol {
   match o {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
-    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+    Accepted { value: _, diagnostics: _ } => ^accepted
+  }
+}
+
+// The call to `callee`, evaluated over the shared inference: the call-execution route's own locator and
+// reader (cref_the_call_to, cref_reading_of_outcome), so this row reads the same vocabulary those rows do.
+fn drv_eval_reading(o: Outcome<InferredTree>) -> CrefReading {
+  let unfound = CrefReading { call_found: false, declaration_carried: false, executed: false, int_result: Absent, result_bytes: Absent }
+  match o {
+    Rejected { diagnostics: _ } => unfound
+    Accepted { value: inferred, diagnostics: _ } =>
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
+        Absent => unfound
+        Present { value: call } =>
+          cref_reading_of_outcome(
+            declaration_carried: cref_call_carries_declaration(inferred: inferred, call: call),
+            outcome: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call))
+          )
+      }
   }
 }
 
 // (1) EVERY DATA REFERENCE AT A DECLARED POSITION IS ACCEPTED: Int at Int, String at String, and a constant
 // as a fn body at the fn's declared return.
 test fn drv_data_references_at_their_declared_types_are_accepted() -> Bool {
-  drv_infer_reason(o: drv_assembled()) == ^accepted
+  drv_reason(o: drv_inferred()) == ^accepted
 }
 
 // (2) THE MARKER IS PRODUCED, NOT ONLY SUPPLIED: lowering the real source yields exactly the data Arrows
@@ -95,7 +125,7 @@ test fn drv_lowering_marks_the_four_data_arrows_and_not_the_two_fn_arrows() -> B
 // VALUE 7 -- not a closure, and not the binding-miss refusal a value-position declaration reference took
 // before. Same source, same assembly route the call-execution rows use (cref_assemble admits `p`).
 test fn drv_a_data_reference_evaluates_to_its_value() -> Bool {
-  cref_executes_to(r: cref_reading(o: drv_assembled(), name: ^callee), n: 7)
+  cref_executes_to(r: drv_eval_reading(o: drv_inferred()), n: 7)
 }
 
 // (4) TYPING THE REFERENCE AT T IS NOT ADMITTING IT ANYWHERE: a reference to a marked Arrow is typed at
