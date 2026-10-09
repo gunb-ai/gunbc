@@ -1,5 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
+import gunbc.fleet.printer_federation {printer_service_account}
+import gunbc.auth.github_gcp_federation {federated_service_account_member}
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
@@ -7,7 +9,7 @@ import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
-import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly }
+import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
@@ -575,7 +577,30 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // committed standing grant covers is admitted by that grant, never filed to the broker. The selection
 // decides the pattern from the effect's parameters with the ruling as the witness discharge, conditional on
 // its interlock (D0's durable claim, rostered in privileged_effect_interlocks); the census does not assert it.
+// Printing spends material and moves hardware. A federated secret read alone is not
+// the selected authority for that irreversible effect; the common start gate also
+// verifies approval, observes IDLE and atomically claims the approved escalation.
+fn printer_start_effect() -> PrivilegedEffect {
+ PrivilegedEffect {subject:"start one digest-bound physical printer job",frequency:EveryOperatorRequest,
+  reversibility:IrreversibleEffect {what_is_lost:"filament and the prior physical bed state"},surface:ApiSurface,
+  workload_identity:WorkloadIdentityBindable {member:federated_service_account_member(email:printer_service_account) as NonEmptyStr},
+  minted_reach:MintsNoCredential,billing:NoBillingConsequence,witness_discharge:NoWitnessDischarge}
+}
+data printer_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceReason {
+ statement:"The dedicated WIF reader authenticates the printer workflow, while reviewed code enforces the signed ntfy approval, fresh IDLE observation and fixed durable claim before start. The provider credential itself does not require redemption of that print capability.",
+ dissolution:unbound_dissolution(description:"A printer credential/effect broker that cryptographically requires the device-approved intent and consumes its durable claim before issuing the exact start, independent of caller code; owner: printer workflow lane.")
+}
+data printer_operator_token_transition: DivergenceReason = DivergenceReason {
+ statement:"The explicit operator compatibility entries bind an operator token file while the printer federation and guarded dispatch are unlanded. A local file is not evidence that the credential was never relayed. The physical start still requires the shared approval/IDLE/durable-claim gate; observation grants no start. This route is classified as operator session, not disguised as federation.",
+ dissolution:unbound_dissolution(description:"Retire the operator-token printer entries after the main-pinned printer workflow and LAN host state are deployed and an approved print is observed under its dedicated WIF identity; owner: printer workflow lane.")
+}
 data privileged_effect_census: List<PrivilegedEffectSite> = [
+  PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
+  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
     effect: PrivilegedEffect {

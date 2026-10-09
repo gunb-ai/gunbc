@@ -355,6 +355,137 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: private probe root {} for emit+build+fault+restore+spawn",
         probe_root.display()
     );
+    // PRODUCT REUSE (`native_product_cache`): the key is derived from the effective inputs before
+    // anything is emitted. A verified hit stands in for reconcile + emit + build + the red that
+    // admitted the entry; the caller's door and refusal controls then run against the reused
+    // executable exactly as they would against a fresh one.
+    let store = super::native_product_cache::store_root();
+    let product_key = match &store {
+        Some(_) => Some(
+            super::native_product_cache::derive_key(source_roots, entry, &workspace)
+                .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?,
+        ),
+        None => None,
+    };
+    if let (Some(root), Some(key)) = (&store, &product_key) {
+        let mut looked = super::native_product_cache::lookup(root, key);
+        let mut restore_miss: Option<&'static str> = None;
+        if matches!(looked, super::native_product_cache::Lookup::Miss) {
+            match super::native_product_cache::restore_from_shared_store(
+                source_roots,
+                root,
+                key,
+                &workspace,
+            ) {
+                super::native_product_cache::RestoreOutcome::Restored => eprintln!(
+                    "v2-native-route: native product SHARED-RESTORED key={}",
+                    key.digest
+                ),
+                super::native_product_cache::RestoreOutcome::Unavailable { cause, detail } => {
+                    eprintln!(
+                        "v2-native-route: native product NativeProductRestoreUnavailable cause={cause} key={} — {detail}; counted as a MISS, building cold",
+                        key.digest
+                    );
+                    restore_miss = Some(cause);
+                }
+            }
+            looked = super::native_product_cache::lookup(root, key);
+        }
+        // ONE structured record per preparation: the final outcome and, for a miss, the restore cause.
+        match &looked {
+            super::native_product_cache::Lookup::Hit { .. } => {
+                super::native_product_cache::record_outcome(root, entry, key, "hit", None)
+            }
+            super::native_product_cache::Lookup::Miss => {
+                super::native_product_cache::record_outcome(root, entry, key, "miss", restore_miss)
+            }
+            super::native_product_cache::Lookup::Refused { cause } => {
+                super::native_product_cache::record_outcome(
+                    root,
+                    entry,
+                    key,
+                    "refused",
+                    Some(cause),
+                )
+            }
+        }
+        match looked {
+            super::native_product_cache::Lookup::Hit {
+                executable,
+                manifest,
+            } => {
+                let binary_path = probe_root.target_dir().join("release").join(
+                    super::emitted_closure_compile_host::probe_package_name(entry),
+                );
+                std::fs::create_dir_all(binary_path.parent().unwrap_or(Path::new(".")))
+                    .and_then(|_| std::fs::copy(&executable, &binary_path).map(|_| ()))
+                    .map_err(|e| {
+                        format!("V2-NATIVE REFUSAL cause=NativeProductNotRestored — {e}")
+                    })?;
+                let binary_identity = sha256_file(&binary_path)?;
+                if binary_identity != manifest.binary_sha256 {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeProductRestoredDifferently — restored \
+                         {binary_identity}, manifest records {}",
+                        manifest.binary_sha256
+                    ));
+                }
+                // THE ORACLE COMPILER IS THIS HOST'S, NOT THE PRODUCER'S. `manifest.compiler_path`
+                // names the executable on the host that built the product; a shared-store restore
+                // carries it to a host where it does not exist. Resolve this host's compiler and
+                // require it to be the toolchain the manifest records -- a different identity is a
+                // refusal, never a silent substitution of another compiler as the oracle.
+                let (local_compiler, local_identity) =
+                    super::emitted_closure_compile_host::resolve_local_compiler(
+                        &super::process_workspace_root(),
+                    )
+                    .map_err(|cause| {
+                        format!("V2-NATIVE REFUSAL cause=NativeProductCompilerUnresolved — {cause}")
+                    })?;
+                if local_identity != manifest.rustc_identity {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeProductToolchainDiffers — this host's \
+                         compiler {local_compiler} is `{local_identity}`, the product was built \
+                         by `{}`",
+                        manifest.rustc_identity
+                    ));
+                }
+                let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
+                    format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
+                })?)?;
+                eprintln!(
+                    "v2-native-route: native product HIT entry={entry} key={} axes={:?} \
+                     binary_sha256={binary_identity} — reconcile, emit, build and red skipped",
+                    key.digest, key.axes
+                );
+                return Ok(EmittedPreparation {
+                    binary_path,
+                    binary_identity,
+                    closure_identity: manifest.closure_identity,
+                    seed_identity,
+                    build: EmittedBuildObserved {
+                        cargo_argv: manifest.cargo_argv,
+                        rustflags: manifest.rustflags,
+                        compiler_path: local_compiler,
+                        rustc_identity: manifest.rustc_identity,
+                        exit_status: manifest.exit_status,
+                        warning_count: manifest.warning_count,
+                        warning_headers: manifest.warning_headers,
+                    },
+                    _probe_root: probe_root,
+                });
+            }
+            super::native_product_cache::Lookup::Refused { cause } => eprintln!(
+                "v2-native-route: native product REFUSED entry={entry} key={} cause={cause} — \
+                 entry left in place, rebuilding",
+                key.digest
+            ),
+            super::native_product_cache::Lookup::Miss => eprintln!(
+                "v2-native-route: native product MISS entry={entry} key={} axes={:?}",
+                key.digest, key.axes
+            ),
+        }
+    }
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
@@ -528,6 +659,7 @@ fn prepare_emitted_compiler_for_entry(
     // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
     // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
     // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
+    let mut red_completed = false;
     if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
         eprintln!(
             "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
@@ -552,6 +684,7 @@ fn prepare_emitted_compiler_for_entry(
             "v2-native-route: discriminating red established — {}",
             super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
         );
+        red_completed = true;
         let identity_after_mutation = sha256_file(&binary_path)?;
         if identity_after_mutation != binary_identity {
             return Err(format!(
@@ -560,6 +693,39 @@ fn prepare_emitted_compiler_for_entry(
                  injected and removed; the executable handed on is not the one the green build produced",
                 binary_path.display()
             ));
+        }
+    }
+
+    // Publication needs a protected writer AND a completed red+restore: a skipped experiment or a
+    // pull-request miss builds and runs its controls but never publishes evidence it did not earn.
+    let publish = super::native_product_cache::publication_admitted(
+        red_completed,
+        std::env::var("GITHUB_EVENT_NAME").ok().as_deref(),
+    );
+    if let (true, Some(root), Some(key)) = (publish, &store, &product_key) {
+        let manifest = super::native_product_cache::Manifest {
+            key: key.digest.clone(),
+            binary_sha256: binary_identity.clone(),
+            closure_identity: closure_identity.clone(),
+            cargo_argv: build.cargo_argv.clone(),
+            rustflags: build.rustflags.clone(),
+            compiler_path: build.compiler_path.clone(),
+            rustc_identity: build.rustc_identity.clone(),
+            exit_status: build.exit_status,
+            warning_count: build.warning_count,
+            warning_headers: build.warning_headers.clone(),
+            discriminating_red_held: red_completed,
+        };
+        match super::native_product_cache::commit(root, key, &binary_path, &manifest) {
+            Ok(()) => eprintln!(
+                "v2-native-route: native product committed entry={entry} key={}",
+                key.digest
+            ),
+            // A store that cannot be written costs the next run its hit, never this run its result.
+            Err(cause) => eprintln!(
+                "v2-native-route: native product NOT committed entry={entry} key={} — {cause}",
+                key.digest
+            ),
         }
     }
 

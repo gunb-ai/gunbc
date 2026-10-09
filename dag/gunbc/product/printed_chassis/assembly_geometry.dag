@@ -1,0 +1,49 @@
+module product.printed_chassis.assembly_geometry
+
+import std.types { Int, String, List, Bool }
+import std.measure { Micrometer, micrometer }
+import std.affine_space { Point3, point3 }
+import std.coordinate_frame { coordinate_frame_identity }
+import std.euclidean_geometry { Axis3 }
+import product.printed_chassis.coupon { PlateDimensions, plate_dimensions }
+
+// Review geometry for the first assembled cassette. It is NOT AdmittedRealizationV0 and
+// cannot enter the coupon's fabrication admission through a cast. The generic CAD adapter
+// must validate positive primitives, solid connectivity, output extents and A1-mini fit.
+// This explicit review rung replaces the former Three.js-only geometric authority.
+// Coordinates use existing affine points; quantum is one micrometre, X across rear I/O,
+// Y up, Z from rear toward the handle. Part-local frame 5100; assembly frame 5101.
+type Primitive = Block { size: PlateDimensions, center: Point3 }
+  | RoundPrism { diameter: Micrometer, length: Micrometer, axis: Axis3, center: Point3 }
+type PartKind = Printed | Purchased | Metal | Clearance
+// Orientation of the part's assembly-local coordinates when laid on a print bed.
+type PrintPlane = LayOnXZ | LayOnXY | LayOnYZ
+// Scope prevents rack power equipment being cloned into each moving cassette.
+type PartScope = Cassette | FixedFrame
+
+type AssemblyPart {
+  id: String, name: String, kind: PartKind, scope: PartScope,
+  adds: List<Primitive>, cuts: List<Primitive>, at: Point3, explode: Point3,
+  print_plane: PrintPlane, notes: String,
+}
+type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
+type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending
+
+type MechanicalInterface {
+  id: String, members: List<String>, fastener: FastenerKind, quantity: Int,
+  status: InterfaceStatus, requirement: String,
+}
+fn local(x: Int, y: Int, z: Int) -> Point3 { point3(frame: coordinate_frame_identity(occurrence: 5100), x: x, y: y, z: z) }
+fn placed(x: Int, y: Int, z: Int) -> Point3 { point3(frame: coordinate_frame_identity(occurrence: 5101), x: x, y: y, z: z) }
+fn block(w: Int, h: Int, d: Int, x: Int, y: Int, z: Int) -> Primitive {
+  Block { size: plate_dimensions(size_x: micrometer(count: w), size_y: micrometer(count: h), size_z: micrometer(count: d)), center: local(x: x,y: y,z: z) }
+}
+fn round(diameter: Int, length: Int, axis: Axis3, x: Int, y: Int, z: Int) -> Primitive {
+  RoundPrism { diameter: micrometer(count: diameter), length: micrometer(count: length), axis: axis, center: local(x: x,y: y,z: z) }
+}
+fn part(id: String, name: String, kind: PartKind, scope: PartScope, adds: List<Primitive>, cuts: List<Primitive>, x: Int,y: Int,z: Int, ex: Int,ey: Int,ez: Int, plane: PrintPlane, notes: String) -> AssemblyPart {
+  AssemblyPart { id: id,name: name,kind: kind,scope: scope,adds: adds,cuts: cuts,at: placed(x: x,y: y,z: z),explode: placed(x: ex,y: ey,z: ez),print_plane: plane,notes: notes }
+}
+fn mechanical_interface(id: String,members: List<String>,fastener: FastenerKind,quantity: Int,status: InterfaceStatus,requirement: String) -> MechanicalInterface {
+  MechanicalInterface { id: id,members: members,fastener: fastener,quantity: quantity,status: status,requirement: requirement }
+}

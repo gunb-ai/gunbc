@@ -1,6 +1,272 @@
+**Current execution queue:** [CAS-1–CAS-7](cassette-completion-tasks.md) tracks shared profiles, height-related rear cooling, integrated stacking, power/harness placement, qualification and print release.
+
+**Unified multi-platform design, 4 October 2026:** [cassette profiles and consolidation](cassette-platforms.md) defines one shared design for ALTRAD8UD, GH200 P4261, Mt. Collins and Mt. Jade. New platforms retain their native power/management assemblies where appropriate; no copied board-specific tray generators.
+
 # Printed node chassis — program plan
 
-**Pinned plan. Updated 2026-09-02.** Printers land **2026-09-03**.
+**Current review: 4 October 2026.** The operator requested fewer screws and faster assembly.
+Revision 06 uses 17 printed pieces, four tray clamps, six fan/guard bolts and five broad-grip
+retaining pins. See [cassette joinery review](cassette-joinery-review.md). Earlier counts below
+are dated history. No further gauge sequence or cassette print is scheduled by this review.
+
+**Pinned plan. Progress reconciled 2026-10-03.** Printers are in use; the operator has the
+printed standoff gauge in hand. The operator reports that the existing gauge aligns with numbered holes 1 and 3.
+
+## Current progress — 2026-10-03
+
+Evidence: merged PRINT-N commit `b242faf7655` (#10680), current printed-chassis modules,
+and the operator's 2026-10-03 report. Historical execution results are not tests rerun today.
+This dated status supersedes the pre-arrival implementation narrative below.
+
+- **CAD bootstrap and measured export profile landed.** PRINT-N records CadQuery 2.8.0 running
+  through user-owned micromamba/conda-forge and measured tessellation observations in
+  `product.printed_chassis.export_profile`. The old kernel blocker is resolved. Full STEP/3MF
+  solid-readback acceptance is not established by that fact and remains to be audited.
+- **Physical printing reached.** PRINT-N records printer-02 reporting `RUNNING` on the gauge
+  project after FTPS delivery and MQTT start through the modeled path. The operator now confirms
+  the gauge is in hand. No authenticated printer operation has been performed in this session.
+- **Coupon feedback recorded.** `hole_fit_measurement.operator_ladder_reading_2026_09_04`
+  records M3 interference / tight / free at 3.00 / 3.10 / 3.20 mm nominal rungs. Printer attribution
+  remains absent; this is not universal hole compensation or qualification of both machines.
+- **Initial pair fit observed, 2026-10-03.** The operator reports that both gauge holes align
+  perfectly with numbered holes **1 and 3**, with the gauge underneath the motherboard and no
+  screws installed. The supplied annotated image identifies these as **F and C**. This is an
+  operator-reported alignment pass on that pair; it does not establish loaded support, exact
+  tolerances, the other holes or the full FIT milestone. One board is sufficient for this check.
+
+### Numbered reference and observed pair
+
+The repo already cited the operator's Drive image in
+`extdeps.boards.asrock_rack.asrock_altrad8ud_standoff_figure_authority`. A byte-for-byte local copy
+is now [ALTRAD8UD_standoff_grid.png](../extdeps/asrock_rack/ALTRAD8UD_standoff_grid.png), retrieved
+2026-10-03 from [the original Drive file](https://drive.google.com/file/d/1z36tmUWAwOwXWy6ASmaPWJNzKoZggBs8/view).
+Use the image's numbers in operator instructions. Its annotated decimal coordinates are a visual
+reference; they do not replace the standard's exact coordinate authority.
+
+| Image hole | Model location |
+|---|---|
+| 1 | F |
+| 2 | M |
+| 3 | C |
+| 4 | H |
+| 5 | L |
+| 6 | B |
+| 7 | R |
+
+**Observed:** 1–3 (F–C) aligns simultaneously underneath the board, without fasteners, per operator.
+**Next candidate:** 3–4 (C–H). Other prepared checks are 4–5, 5–2, 3–6 and 4–7.
+No new photo is required to identify the pair already reported against this reference.
+
+### Prepared follow-on experiments — 2026-10-03
+
+`product.printed_chassis.fit_gauges` selects five additional gauges using the existing standard
+location authority, gauge admission and CadQuery emitter. They are spacing experiments, not confirmed
+mounting locations or qualified structural parts. Start with C–H after the existing F–C check passes;
+the others extend coverage to the remaining inferred holes. Each is a separate part so it can be
+identified by its file and labeled before leaving the bed.
+
+| Pair | Question answered |
+|---|---|
+| C–H | Does the rear-to-middle spacing agree on the C/H/L column? |
+| H–L | Does the middle-to-front spacing agree on that column? |
+| L–M | Does the front-row spacing agree? |
+| C–B | Does the additional rear hole agree? |
+| H–R | Does the outboard middle hole agree? |
+
+J remains excluded and S remains unobserved. A connected set of pair distances does not fix every
+relative angle; the assembled adjustable fixture still must confirm the full map. Do not install
+extra standoffs merely because the standard has a named location.
+
+**Measurements to gather before a mounting fixture:**
+
+- Identify the seven candidate holes (F, C, B, H, R, L, M) on one physical board; record any absent
+  or unexpected hole and pair mismatch. No need to disassemble several boards for this step.
+- Actual standoff thread, height from support to board underside, and contact-pad/shoulder diameter;
+  identify the screws being used and their usable engagement. Do not infer these from the M3 coupon.
+- Highest underside protrusion and clearance around each support; note solder joints/components
+  near the front overhang where a possible support would touch.
+- Board edge dimensions and access around rear I/O, memory latches and power/storage connectors.
+
+**Measurements that can follow, before cassette geometry:** cooler model and total installed height;
+PSU model, actual envelope and mounting points; fan model and intended fasteners; intended drives and
+expansion cards; loaded node mass; cable connector bodies and the space needed to plug/unplug them;
+available deployment width/depth/height. Missing values stay open instead of becoming defaults. The current fleet inventory identifies Dynatron W1 coolers on srv3
+and srv4; that does not identify the cooler on the board being checked, and its catalog row supplies
+no measured installed envelope.
+
+**Recovered operator setup reports:** Creality PLA, white on printer-01 and black on printer-02,
+reported September 4–5; on October 3 the operator says both setups are identical. These reports are
+retained in `gunbc.fleet.printer_setup_reports`, with source timestamps and a read-only `main`
+projection. The historical AMS report did not name a printer. The operator explicitly confirmed AMS physical
+slot 1 on both machines on October 3; that now governs the print command.
+Nozzle/plate settings still need reconciliation against retained execution evidence. Recovered files disagree: `print-n/work/gauge_petg.3mf` specifies PETG with
+textured PEI; `printn-slice/gauge_container.3mf` specifies PLA with a cool plate. Preset metadata does not supersede the operator’s filament reports. Do not reuse their machine G-code blindly. Final slicing must also check
+placement including brim/skirt: the longest narrow gauge nearly spans the 180 mm bed. Keep model
+scale at 100%; resolve any placement conflict through explicit orientation/adhesion settings, not
+by shrinking a measuring instrument. The existing fan-mount experiment
+is optional after the actual fan and fasteners are identified; it does not gate motherboard FIT.
+
+### Preparation results — 2026-10-03
+
+Generated **C–B, C–H, H–L, L–M and H–R** as individual STL and STEP files under
+`/home/briansrls/print-prep-2026-10-03`. Generation ran through `fit_gauges.batch` with the
+compiler built from this worktree; the generated Python contains the modeled geometry and export
+settings. `geometry-readback.json` records hashes and executed results for all five parts:
+valid single solids, expected dimensions and cylindrical hole locations/radii, STEP round-trip
+agreement, closed manifold meshes, mesh bounds and volume agreement. These checks establish file
+conformance for these gauges only, not physical fit or printer/material qualification.
+
+The three `test.claim.fit_gauges_witness_test` checks executed and passed: every candidate fits
+the actual modeled printer envelope; none requests J/S; an unknown pair cannot emit a substitute.
+`witnesses.log` retains the run. No physical observation has been inferred from those software tests; the 1–3 fit is separately
+recorded from the operator above.
+
+**Ready for final slicing, not yet machine-ready G-code:** use C–H as the next candidate after the
+existing F–C result. Use the recovered PLA reports; reconcile nozzle, plate and adhesion settings before
+slicing. No upload or printer start was performed. Authenticated delivery/start was not revalidated;
+the old `printer_credential_migration_run` includes destructive secret migration and is not an
+appropriate routine readiness probe. A subsequent print must use an admitted credential path rather
+than rerun that migration merely because it previously started a job.
+
+### Requested two-printer batch — 2026-10-03
+
+The operator requests concurrent printing on both printers. Prepare **printer-01: holes 3–4
+(C–H)** and **printer-02: holes 4–5 (H–L)**. This checks two additional board spans; because the
+parts differ, it is not a printer-to-printer calibration comparison. Source-identical STL copies and
+hashes are staged under `/home/briansrls/print-prep-2026-10-03/two-printer-batch/`, one directory per
+printer. Material/colour reports are now modeled: Creality PLA, white on printer-01 and black on
+printer-02. Physical spool identity and current bed-clear state are not established by those reports.
+The selected slicing profile is the A1 mini 0.4 mm nozzle, Generic PLA and Textured PEI plate;
+this is a recorded process choice, not a claim of current printer telemetry.
+The routine workload-identity entry point is implemented in the migration below; its deployment
+remains pending. The operator-token batch route and live progress are recorded separately below.
+No printer start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
+
+### Printer authentication migration to the ntfy workflow
+
+The operator requested migration on 2026-10-03. `gunbc.fleet.printer_federation_provision`
+adds a dedicated `printer-lan` reader to the existing ntfy-approved GCP IAM estate. It requests
+access only to the two rostered printer secrets; the print worker cannot create, rotate or delete
+credentials or change IAM policy. The provider pins the repository, main workflow/ref, dispatch
+and `printer-lan` environment through the shared OIDC claim authority.
+
+`fleet-converge` mode `printer` has two operations:
+
+1. `observe` resolves a printer's existing credential once and writes its exact version identity
+   to a receipt. The receipt contains no access code. It performs no printer action.
+2. `print` requires the selected printer, staged project path on srv1, expected SHA-256, numeric
+   credential version and an explicit clear-bed report. It hashes a private copy before upload,
+   uses the same version for FTPS and MQTT, and refuses a workflow rerun. A successful receipt
+   means **start published**, not a claim that the machine reported RUNNING. Unknown outcomes
+   require observation, never automatic replay.
+
+The dedicated job runs on srv1, checks out the dispatch event SHA even if `expected_revision` is
+supplied, and serializes starts per printer without cancelling an in-flight operation. It uses
+`WorkloadIdentityToken`; no operator-token fallback and no destructive credential migration.
+`gunbc.fleet.printer_host_tools.converge` is administrator preparation for the MQTT tool, using
+the existing apt ensure and the tool's declared package. The worker checks the actual client
+version before any upload. Mosquitto identifies its version through the documented `--help`
+interface ([upstream manual](https://mosquitto.org/man/mosquitto_pub-1.html)).
+
+**Deployment standing:** source changes are not evidence of installed IAM grants or a dispatched
+print. The main-pinned workflow must land before it can federate. The existing IAM bootstrap must
+cover the new target resources so its observer can plan and its approved executor can apply those
+resource-local bindings. Then run the shared `gcp_iam_converge` workflow and approve its concrete
+diff through ntfy, prepare the srv1 MQTT tool, and run credential observation. Final sliced projects
+and live printer-state verification remain required before dispatching these gauges. The operator
+reported both beds clear during this session; do not carry that report to an unrelated later print.
+
+Validation: all seven printer workflow binding, admission, tool-version, OIDC, IAM approval and
+start-replay regression tests passed. The canonical artifact gate regenerated the workflow; YAML
+structure assertions and shell syntax checks passed. These are source checks, not live deployment
+or printer observations.
+
+### Operator-token batch execution — 2026-10-03
+
+The operator supplied a one-hour GCP token and asked to print before the migration lands. For this
+batch, `printer_operator_approval.run` uses the existing `OperatorSuppliedToken` capability and the
+shared signed ntfy approval gate. It does not relabel that token as WIF, invent an Actions run, or
+change IAM/secret versions. The permanent main-pinned GitHub route remains separate.
+
+The approval binds printer, project SHA-256, exact credential version and batch attempt. After the
+live approval it subscribes to a fresh report and requires IDLE/FINISH with zero print error, then
+creates a persistent per-printer start marker before upload/start. A refused or ambiguous start is
+never automatically replayed. `printer_report` reads telemetry through the same fleet identity,
+exact credential and pinned CA; its report is current-state evidence, not causal acknowledgement.
+
+Printer-01 credential version 1 was read successfully through the modeled client. Holes 3–4
+were sliced successfully by Orca 2.4.2, with ZIP and embedded G-code checksum checks, one plate,
+identity scaling, 15 layers/3 mm height, and bounds including the brim within 180 mm. Selected
+settings: PLA, 220 °C nozzle, 65 °C textured bed, 0.20 mm layers, 2 mm outer brim. Estimated
+19m22s and 6.99 g. Project SHA-256:
+`28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636af701580e`.
+
+The isolated srv1 execution directory is `/home/briansrls/print-run-2026-10-03`; credentials live
+only in owner-only private staging files and are not repository artifacts. Holes 4–5 also sliced
+and passed the same checks: 15 layers, 13m48s, 3.67 g, SHA-256
+`a8f434e80014b6a316d30665b372bd0df3e858a68a2ff04a5fe4f50031d68535`.
+
+The shared approval client now follows the declared writer cutover to the approval broker on
+8085; the old roadmap endpoint refused writes as designed. Both requests were filed and reached
+approval polling. Four operator-route witnesses passed, including all three writer postures.
+Fresh read-only reports showed printer-01 IDLE/error 0 and printer-02 IDLE/error 83902511.
+Both reported PLA in AMS tray 0 (physical slot 1), while the existing start command selects the
+external spool. The initial executions were stopped before upload to resolve that mismatch.
+No start marker, physical start, or RUNNING observation was claimed at that point.
+
+### Local preparation environment
+
+The isolated worktree is `/home/briansrls/.worktrees/gunbc/3d-printing-2026-10-03`.
+Local preparation artifacts are in `/home/briansrls/print-prep-2026-10-03`:
+
+- `venv/`: CadQuery 2.8.0; resolved dependency versions in `requirements.lock`.
+- `target/debug/gunbc`: compiler built from this worktree. Invocation requires an enforced cgroup
+  memory budget; the preparation run uses a systemd scope with `MemoryMax=24G` and no swap.
+- `mounting-check-map.svg`: schematic from the checked-out standard-location rows; all physical
+  correspondences remain subject to the bench check.
+- `verify-generated-gauges.py`: reads the emitted literal geometry instructions, runs them in
+  CadQuery, checks the resulting solid and STEP round-trip dimensions/hole axes/volume, and checks
+  STL bounds, closed manifold edges and volume. Its result only concerns generated-file conformance.
+- `slicer-probe/DO_NOT_PRINT_old_settings.3mf`: tool-recovery probe using the old project settings;
+  deliberately excluded from the next-print candidates.
+
+The preserved OrcaSlicer 2.4.2 AppImage at `/tmp/orca.AppImage` matches the digest recorded in
+`extdeps.printing.orca_slicer`. Its extracted CLI at `/tmp/orcax/squashfs-root/AppRun` now launches
+after installing its missing OpenGL/WebKitGTK runtime dependencies. `--help` and model inspection
+work. The modeled probe now uses the supported `--help` interface. `with_verified_orca` copies
+and hashes the pinned AppImage in a private realization, runs probe and slice inside its callback,
+and removes the realization before returning. `slice_run.run` uses it to produce the gauge project;
+its success establishes slicing, not an observed physical print.
+
+### Gauge observations to collect today
+
+Record each board separately: stable label, model/revision, selected holes and gauge orientation.
+The gauge checks **LocF–LocC**, modeled as offsets of **157.48 mm along the rear edge and
+22.86 mm in depth**. These are model values, not measured dimensions of the printed part.
+Establish the physical hole correspondence before interpreting a result; say whether checking board
+holes directly or installed standoffs, since the latter also tests standoff placement.
+
+Report whether both locations align simultaneously with the gauge resting naturally; if not,
+which end aligns and the direction of the miss. Note obstructions or warp. Do not count alignment
+obtained by bending the gauge or drawing it into place with screws as a pass. Record measured
+values only when actually measured, with the instrument used. A photo can supplement the result.
+An F–C pass supports that pair on that board, not the full mounting map or underside clearance.
+
+### Next steps and dependencies
+
+| Order | Work | Dependency / completion evidence |
+|---|---|---|
+| 1 | Record each board's F–C result | Operator observations; retain disagreements and distinguish board-hole alignment from standoff fit |
+| 2 | Resolve misses; extend successful checks to remaining mounting locations | For a miss, distinguish orientation, printed-gauge dimensions and board/standoff placement before changing geometry. A pass permits additional pair gauges or an adjustable fixture, not freezing the entire map |
+| 3 | Audit CAD, slicing and print evidence | Can proceed during board checks: locate generated artifacts, profile/toolchain identity, printer/material/nozzle binding and outstanding solid-readback controls; close PRINT-7/8 only against their full criteria |
+| 4 | Complete process observations | Attribute the existing coupon only from retained evidence; otherwise print labeled replacements. Observe both printer/spool combinations independently and repeat attempts before claiming repeatability |
+| 5 | Build an unpowered adjustable fit fixture | Confirm remaining mounting positions, standoff thread/height, underside keep-outs and connector access. PLA can serve this experiment without qualifying structural or powered use |
+| 6 | Measure cassette inputs and choose joints/material | Can start now: actual cooler and PSU envelopes, node mass, drive requirement, fasteners, connector access and cable service space. Joint family and structural material precede their qualification prints |
+| 7 | Prototype one removable cassette and one fixed bay | Requires fit and structural-process evidence; then PSU/cables, airflow and powered thermal validation under standing requirements, followed by 2x2 service demonstration |
+
+The immediate milestone is a verified mounting map and an unpowered fit fixture. Full cassette
+geometry depends on measured hardware envelopes and structural-process qualification.
+
 
 Governing statement:
 
@@ -30,9 +296,10 @@ whether more printers are worth buying.
 | Build volume | 180 x 180 x 180 mm | A1 mini spec table, operator relay |
 | Fan form factor | 80 mm; **count derived**, not assumed | operator + derivation |
 | Rack unit | 2x2 block, composable | side-chat ruling |
-| Service law | fixed frame, removable cassette | operator requirement R9 |
-| PSU placement | cassette-resident | side-chat ruling |
-| External bundle | 2 x Ethernet + 1 x AC per node | operator |
+| Operator effort | Research component masses online; use explicit model/BOM ranges where needed. Do not request weighing or hardware disassembly for mass inputs. | operator direction, 4 October 2026; [mass assumptions](milk-crate-stack-design.md#mass-is-a-fold-over-components) |
+| Service law | Integrated corner-column stack; proposed temporary supports permit target-only removal, otherwise LIFO (4 October 2026, superseding R9) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
+| PSU placement | independent power cassettes assigned to node groups by usable wattage, port count and interface compatibility; mains stays in power cassettes (4 October 2026; supersedes one-per-column allocation) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
+| External bundle | 2 x Ethernet + 1 x protected, isolatable DC feed per node; AC at shared supply | operator acceptance, 4 October 2026 |
 
 ## Standing laws
 
@@ -58,13 +325,13 @@ because a step without one cannot be said to be done.
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
 | **PRINT-4** | TOOLCHAIN | Realization contract v0: contract derives its own rungs; a wrong-step handler is caught and located | **done** |
 | **PRINT-5** | TOOLCHAIN | Raw transport schema admission: unknown version, missing field and unknown operation all refuse before any geometry call | **done** |
-| **PRINT-6** | TOOLCHAIN | CadQuery handler + authority wall; sealed instruction plan; walls 1-3 execute, wall 4 (solid readback) is a declared boundary | handler done; materializer + export profile open |
-| **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | |
-| **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | |
-| **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
-| **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
+| **PRINT-6** | TOOLCHAIN | CadQuery handler + authority wall; sealed instruction plan; walls 1-3 execute, wall 4 (solid readback) is a declared boundary | handler/export profile landed; full readback closure unverified |
+| **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | kernel blocker resolved; full acceptance to verify |
+| **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | live printing exercised; qualification closure to verify |
+| **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | coupon feedback recorded; independent qualification and repeatability pending |
+| **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | gauge in hand; 1–3 (F–C) alignment pass reported; full fixture/map open |
 | **PRINT-11** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
-| **PRINT-12** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
+| **PRINT-12** | CASSETTE | Shared fixed-frame PSU/distribution and node harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
 | **PRINT-13** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
 | **PRINT-14** | RACK | One fixed bay; cassette retained in service, removable after disconnect; empty bay structurally complete | |
 | **PRINT-15** | RACK | Management-node mount (Raspberry-Pi class) on the rack, carried as a bay peer rather than an accessory | |
@@ -92,23 +359,18 @@ nominal. The check was run because the module's own annotation asserted "changin
 moves that witness", and an annotation asserting a property the code does not have is exactly what
 #10119 had to repair four times.
 
-PRINT-5 and PRINT-6 landed with #10119, so the pre-arrival critical path is now **PRINT-7 alone**,
-and it is BLOCKED rather than merely pending: re-inspecting an emitted STEP/3MF needs a CAD kernel,
-and the trigger for that is a base image with glibc >= 2.38 or an x86_64 runner. PRINT-8 is the first
-step that needs the hardware itself, and it is not blocked by PRINT-7 — the coupon can be printed and
-measured before any kernel readback exists, it just cannot issue an absolute process-qualification
-receipt until PRINT-7 closes.
+PRINT-5 and PRINT-6 landed with #10119. PRINT-N (#10680) subsequently resolved CAD bootstrap,
+added measured export-profile work, and exercised physical printing. PRINT-7/8 still require an
+evidence audit against their full criteria; job-start evidence alone does not close them.
 
 ### What blocks what
 
-- **PRINT-5..6 are landed.** PRINT-7 is BLOCKED on a CAD kernel — measured, not assumed: CadQuery
-  installs on this arm64 container and clears `libGL.so.1`, then `casadi` requires `GLIBCXX_3.4.32`
-  which requires `GLIBC_2.38`, and this box is glibc 2.36. The trigger is a base image or an x86_64
-  runner, NOT a pip install.
+- **CAD bootstrap is resolved.** Full output-conformance and process-qualification evidence
+  remain to be reconciled.
 - **Joint family** (dovetail / tongue-and-groove / keyed slide / pin) gates the
   ProductionInterfaceCoupon only — a later half of PRINT-8, not the MachineProcessCoupon.
-- **PETG** gates PRINT-10 onward. PLA carries PRINT-8 and PRINT-9 and stops there: no PLA-to-PETG
-  receipt carry.
+- **Structural material qualification** gates durable/powered cassette work. PLA can carry CAL
+  and unpowered FIT; no PLA-to-PETG receipt carry.
 - **Deployment envelope** gates PRINT-13..14 layout admission, nothing earlier.
 - **Drive count** gates PRINT-11 completion only.
 
@@ -117,9 +379,9 @@ receipt until PRINT-7 closes.
 | Project | Scope | Terminal evidence | State |
 |---|---|---|---|
 | **CONTRACT** | Goals, non-goals, authority graph, refusal law, MVP boundary | No assumption represented as a default | deferred — no consumer yet |
-| **MEASURE** | Board, cooler, PSU, fan, DIMM, cable, **deployment envelope**, uncertainty | Pack sufficient to generate CAL+FIT | **partial — carrier landed, roster empty** |
-| **TOOLCHAIN** | Realization contract, CadQuery handler, authority wall, STEP/3MF, slicer env, printer nodes | Deterministic generation + executed no-parallel-authority controls | not started |
-| **CAL+FIT** | Coupons, qualified tolerances, adjustable standoff fixture, real-board fit, hole-map feedback | One unpowered board fits; hole authority admitted | not started |
+| **MEASURE** | Board, cooler, PSU, fan, DIMM, cable, **deployment envelope**, uncertainty | Pack sufficient to generate CAL+FIT | **partial — coupon readings recorded; board-fit observations pending** |
+| **TOOLCHAIN** | Realization contract, CadQuery handler, authority wall, STEP/3MF, slicer env, printer nodes | Deterministic generation + executed no-parallel-authority controls | partial — CAD/export and live printing exercised; full conformance open |
+| **CAL+FIT** | Coupons, qualified tolerances, adjustable standoff fixture, real-board fit, hole-map feedback | One unpowered board fits; hole authority admitted | in progress — coupon feedback and gauge in hand |
 | **CASSETTE** | Structure -> PSU/cables -> airflow -> powered thermal | Removable node operates and is serviceable | not started |
 | **RACK+VERDICT** | One bay -> 2x2 block -> scale/economics | Middle-node service proven; buy-more-printers verdict | not started |
 
@@ -356,7 +618,7 @@ unwalled**: a `CommitRequired` artifact whose path matches a developer ignore pa
 uncommittable. Its trigger is the first such artifact; walling it before one exists would be a check
 whose RED is unauthorable.
 
-**Export is removed from the emitted program rather than profiled.** The
+**Historical pre-PRINT-N state; the measured export profile subsequently landed.** Export was removed from the emitted program rather than profiled. The
 `cq.exporters.export(result, "…stl")` line chose five things the model never stated — STL over STEP
 or 3MF, a filename, a working-directory-relative destination, format-by-extension, and CadQuery's
 default tessellation policy. The last is not neutral: STL is a mesh format, so every modeled circle
@@ -382,7 +644,7 @@ on the grounds that it preserves a typed place for the next obligation, but noth
 gate required emptiness — so the forcing did not exist, and the discharged property is carried where
 it executes, in the type of the accepting arm.
 
-**Toolchain boundary, now measured rather than assumed.** Wall 4 — re-reading the produced *solid*
+**Historical bootstrap probe, superseded by PRINT-N conda-forge bootstrap.** Wall 4 — re-reading the produced *solid*
 for plate dimensions, datum location and the eleven ladder holes — is a §4b boundary obligation, not
 a rung. Its trigger was written as "a runner with cadquery importable", which was too vague to act
 on, so it was probed to termination:
@@ -396,7 +658,7 @@ on, so it was probed to termination:
 - Past that, `casadi` requires **`GLIBCXX_3.4.32`**, and a libstdc++ carrying it requires
   **`GLIBC_2.38`**. This container is **glibc 2.36**.
 
-So the real trigger is **a base image with glibc ≥ 2.38 (or an x86_64 runner), not a pip install** —
+The probe then incorrectly concluded the trigger was **a base image with glibc ≥ 2.38 (or an x86_64 runner), not a pip install** —
 and assembling one by hand-extracting `.deb`s onto `LD_LIBRARY_PATH` is where a probe turns into the
 workaround §5 names, so it was stopped there rather than pushed through. The environment wall 4 needs
 is a *pinned, identified* toolchain — Python version, CadQuery version, OCP closure, image digest,
@@ -492,20 +754,18 @@ So the PETG decision blocks the **durable/powered CASSETTE path**, not the first
 unpowered FIT fixture. Qualify each printer-spool combination independently; never infer that an
 observed difference is the printer alone.
 
-## Open decisions (operator) — none block the first print
+## Open decisions (operator) — structural and rack work
 
-- **Drive count** — a CASSETTE completion obligation. Blocks nothing before Thursday.
+- **Drive count** — a CASSETTE completion obligation. Does not block gauge checks or the unpowered fixture.
 - **PETG** — blocks structural/powered parts, not CAL or unpowered FIT.
 - **Deployment envelope** — **not on the pre-arrival critical path.** Its absence must refuse
   rack-layout admission later, not block calibration now.
 
 ## Next
 
-1. ~~`CalibrationCouponAuthority`~~ — landed as `product.printed_chassis.coupon`.
-2. `RealizationContract v0` — the transport-only, schema-bound feature graph the handler consumes.
-3. CadQuery handler + four-part wall executed over v0, with all four negative controls.
-4. STEP/3MF generation and conformance; bound slicer profile or refusal.
-5. Per-printer manifests for node 1 and node 2; measurement/admission form ready for results.
+Follow the dated next-step table above. Board-specific gauge observations and remaining mounting
+checks lead to the unpowered fixture; toolchain-evidence reconciliation and cassette measurements
+can proceed independently. The former list predated the landed PRINT-N implementation.
 
 **Deferred as definition-only residue until each has a consumer:** `CONTRACT` (needs the generator),
 `DeploymentEnvelope` (needs the layout-comparison consumer). The design of both is pinned above.
@@ -801,3 +1061,303 @@ node pitch (which decides upright versus flat-on-riser, and the riser makes it a
 aux power connector type and sustained draw against the node supply and stack distribution · whether
 a mixed stack is allowed at all, since a uniform GPU stack and a mixed stack have different sidewall
 answers.
+
+### Batch follow-up: AMS and printer-02 storage
+
+On 2026-10-03 the operator confirmed AMS physical slot 1 on both printers and identified
+printer-02 error 83902511 (0x0500402f) as a microSD error. The operator was unsure whether
+that card was in use. This LAN route uploads to SD storage and starts a `file:///sdcard/`
+project, so the error remains a start blocker; it is not suppressed. No formatting or deletion
+of printer storage is authorized or performed. The start payload now selects AMS and maps
+the single project filament to tray 0; the signed operator request includes this feed choice.
+
+The operator subsequently reported formatting printer-02’s card locally. A fresh no-error
+report is still required before its start. Remote formatting was requested as a future capability;
+the current modeled workflow has no format operation, and support on these printers is unverified.
+
+At 22:01 UTC printer-02's AMS request was approved. Its fresh report admitted IDLE/error 0,
+but FTPS upload returned curl exit 25 / server 550 before MQTT start. Its durable batch marker
+is retained; there is no automatic replay. Printer-01's approved attempt received a partial
+temperature-only report and correctly refused before upload. The observer now allows up to
+eight fresh messages to obtain state and error together, without inventing missing fields.
+
+The operator confirmed that printer-02 recovered and appeared functional after formatting.
+A separate after-format attempt retains the original failed upload marker and requests new
+approval. No MQTT start had been sent in the failed attempt. Status observation now subscribes
+before publishing a read-only `pushing.pushall` snapshot request with Mosquitto request/response;
+it still requires an explicit complete state/error report and cleans the private credential files.
+
+Correction at 22:12 UTC: the operator reports printer-02 still shows SD card “error” in
+settings despite clearing print_error. Stop its after-format attempt before actuation and
+prioritize printer-01. A zero print_error is not proof of usable storage.
+
+### Printer-01 start observed by operator
+
+At approximately 22:15 UTC the full-snapshot gate admitted printer-01 and its holes 3–4
+project uploaded successfully. MQTT publication did not return PUBACK. The operator then
+confirmed the machine was heating or calibrating. The publisher had already exited with
+connection-lost code 7 and cleaned its credential/CA directories before termination was attempted.
+The transport outcome is UNKNOWN; the batch marker is retained and no start replay is permitted.
+This is operator-observed preparation, not yet a telemetry-confirmed extrusion or completed print.
+The selected feed is AMS physical slot 1; slice estimate 19m22s. Printer-02 remains held for
+SD-card settings error, despite its zero print_error report.
+
+At 22:19 UTC a fresh authenticated snapshot confirmed printer-01 `RUNNING`, `print_error=0`,
+and subtask name `gunbc-28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636af701580e.3mf`.
+It reported 4%, 18 minutes remaining, layer 0/15 (preparation), nozzle 176 °C and bed 62 °C.
+This reconciles the unknown MQTT transport result with observed execution of the intended gauge;
+it does not establish completed extrusion or a finished part. No duplicate start was sent.
+
+### Printer-02 recovery retry
+
+The operator subsequently reported printer-02's card working and requested another attempt,
+supplying a fresh one-hour token. The previously stopped after-format attempt had no start claim
+and had sent no printer command. At approximately 22:31 UTC its new signed approval was observed,
+the fresh full-state check admitted the printer, and the holes 4–5 file uploaded successfully.
+AMS physical slot 1 remains selected. MQTT publication is awaiting reconciliation; it is not
+replayed. The earlier FTP-550 attempt and its claim remain separate and retained.
+
+At approximately 22:36 UTC, fresh telemetry confirmed printer-02 RUNNING/error 0 with the
+expected `gunbc-a8f434e80014b6a316d30665b372bd0df3e858a68a2ff04a5fe4f50031d68535.3mf`
+subtask, 38%, layer 0/15, and 8 minutes remaining. The upload/start route now has physical
+execution evidence after the card recovery; this is not a long-term card-health qualification.
+
+The operator reported printer-01 finished the holes 3–4 gauge, both holes line up well,
+and the part was removed / bed cleared. Record C–H as an operator-reported alignment pass,
+without inferring load-bearing qualification. Prepare holes 3–6 (C–B) as printer-01's next gauge.
+
+The operator authorized the next printer-01 print after confirming C–H fit and a clear bed.
+Holes 3–6 (C–B) sliced through the verified Orca entry with the same selected profiles.
+Readback: SHA-256 `fb6d4bd1fcb23c07087b5575e6f5b20619f7ab8da03217828148d84cfcefc09f`,
+15 layers / 3 mm, identity scaling, one plate, valid embedded G-code MD5 and ZIP integrity,
+brim bounds [57.211684, 80.071684, 122.788316, 99.928316] mm, 12m10s / 2.59 g PLA.
+The slicer metadata carries `bed_temperature_too_high_than_filament` at the upstream Generic PLA
+textured-plate setting of 65 °C; this setting matches the successfully printed/aligned prior gauge.
+It is retained as an observed warning, not described as warning-free. The new request binds this
+project digest and a separate holes-3-6 attempt; printer-02's running job is not touched.
+
+The other remaining candidates are also sliced and validated under
+`/home/briansrls/print-prep-2026-10-03/next-batch/` (no start requested for either yet):
+
+| Gauge | SHA-256 | Estimate | PLA |
+|---|---|---|---|
+| 5–2 (L–M) | `607601f18602ae273472654c01b9d34ca1674b7f6f5356c7136a382af41f545b` | 19m34s | 7.10 g |
+| 4–7 (H–R) | `972ec6278c3334e070d4bd31884ce781211454c1c32296652e5f9a6ae4269252` | 13m26s | 3.42 g |
+
+Both passed ZIP/G-code checksum, one-plate, 15-layer/3-mm, identity-transform, A1 mini/PLA/0.4-mm
+profile, and 180-mm bed-bound checks. L–M including brim spans X=1.331684–178.668316 mm; no
+scaling was applied. Both retain the same 65 °C bed-temperature warning described above.
+
+### Operator direction: stop the pair-gauge sequence
+
+The operator requested stopping further gauge printing and moving toward chassis/rack parts.
+Do not enqueue the prepared 5–2 or 4–7 gauges. A fresh snapshot already confirmed the newly
+started printer-01 3–6 job RUNNING/error 0 with its exact digest filename and 12 minutes remaining;
+the operator explicitly chose to let that active print finish. No cancellation is requested.
+The operator expects the remaining positions to be accurate; retain that as an expectation, not
+a measured fit result. 1–3 and 3–4 have reported alignment passes.
+
+Repository inspection found no printable full chassis/cassette/rack-bay geometry. Existing concrete
+geometry covers coupons, standoff gauges and a fan-mount plate; rack_mount models occupancy of
+catalog hardware, not printable rack construction. The proposed next geometry is a segmented,
+adjustable motherboard carrier for unpowered assembly/fit, forming the first chassis prototype.
+Remaining mounting positions can stay adjustable rather than requiring more pair gauges. Actual
+standoff thread/height and underside clearance still determine the board-support interface;
+PSU/cooler envelopes, structural material and load/joint checks remain for the powered cassette.
+
+### Hosted concept workbench
+
+The operator accepted the requirements and requested a hosted site for iterating on the chassis,
+including independent 3D rotation of each piece. Published privately:
+[Altra Chassis Workbench](https://altra-chassis-workbench.briansrls448156.chatgpt.site).
+It contains an explicitly provisional four-panel carrier, segmented rails, handle and retaining
+tabs, with a 2×2 fixed-frame study. Individual isolation/orbit, explosion, withdrawal and design
+controls are available. There are no print controls or manufacturing exports.
+The missing hardware dimensions remain unknown; the geometry is a visual proposal, not an
+admitted fabrication result. Source project details are recorded in `sites/README.md`.
+Desktop/mobile rendering and the principal interactions were exercised successfully.
+All temporary copies of the operator's GCP token were removed after printing work ended.
+
+### Cassette hardware and airflow study — 4 October 2026
+
+Operator clarification: the target cooler is Dynatron (W1 in the preceding question), and PSUs
+must be interchangeable rather than tied to one model. Roughly 400–600 W was an example range,
+not a finalized electrical qualification. PSU compatibility must include accepted physical envelope,
+mounting adapters, connector requirements, intake/exhaust clearance and service access; wattage
+alone is insufficient. The inventory's unread PSU identities remain unread.
+
+Concept 02 adds a rear cassette-resident adjustable metal PSU cradle, a variable PSU envelope,
+Dynatron W1 geometry, DIMM clearance zones, one to three front 80 mm fans with individual carrier
+feet, side airflow guides, a schematic internal harness corridor and front-to-rear direction arrows.
+The operator proposed cassette-mounted fans. All these components travel with the cassette in the
+2×2 frame view. Three fans is a layout default, not an established cooling requirement.
+
+The [Dynatron manufacturer page](https://www.dynatron.co/product-page/w1), checked 4 October,
+publishes active dimensions 141.1 × 84 × 72 mm and passive dimensions 116 × 84 × 72 mm.
+The study depicts the active envelope with simplified fins/fan; active versus passive operation,
+actual socket position/orientation and installed offset are not established by that depiction.
+The P8 PWM PST uses its catalog 80 × 80 × 25 mm envelope; the existing 71.5 mm hole pitch and
+4.4 mm clearance remain convention-unverified. Fan count, ducting and header/PST-chain electrical
+admission still require evidence. Airflow arrows are not simulation results.
+
+PSU slider defaults (150 × 85 × 150 mm), DIMM zones, the 50 mm rear service gap, adjustable cradle
+interfaces and harness route are design proposals. They are not measured hardware or a claim that
+all 400–600 W PSUs fit. No drive or expansion-card configuration has been invented. A height check
+flags simple study-pitch conflicts; it does not prove full assembly clearance or powered suitability.
+
+Source commit: `8c944389c0dbcb25639d4c6069587863ae0d0fd5` in the separate Sites repository.
+Browser checks passed for selectable parts, PSU isolation, fan-count changes, height-conflict
+feedback, airflow visibility, orbit, rack withdrawal, requirements and mobile overflow.
+No additional gauge or chassis print was started.
+
+### Shared power accepted — supersedes cassette-resident PSU
+
+On 4 October 2026 the operator accepted shared power per four-node block. This replaces the earlier
+cassette-resident PSU requirement and its per-node AC bundle. Eight nodes comprise two independently
+powered four-node blocks. Each block has a fixed-frame 12 V supply system and four separately
+protected, isolatable and disconnectable node feeds. Cassettes retain their board, cooler and fans.
+The earlier roughly 400–600 W example concerned individual supplies and is not a shared-block rating.
+
+[ASRock manual §2.8](https://download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf) documents direct +12 V
+DC input and distinguishes it from the ATX signal-adapter connection. This establishes a supported
+input mode, not a qualified multi-node distribution system. Required power connections, independent
+startup/shutdown behaviour, aggregate load/startup demand, branch fault protection, wire/connector
+ratings, voltage drop, protective-earth continuity and service isolation still require engineering.
+No connector pinout, fuse size, PSU wattage, redundancy or live hot-swap capability is selected here.
+A nonredundant shared supply is a four-node failure domain; redundancy remains an open decision.
+
+Concept 03 depicts one fixed top power shelf, one adjustable shared PSU space reservation, one
+four-branch distribution placeholder and stationary branch harnesses. A DC disconnect placeholder
+travels with each cassette. Withdrawal illustrates the node shut down and its branch isolated and
+disconnected first. Top-shelf placement and all distribution dimensions are visual proposals. Shared
+supply height is additional to the two node rows; cassette pitch is governed by cassette hardware.
+Older Concept 02 notes above are retained as history and are superseded for power topology.
+
+Concept 03 source: `7f77b6884f23af034fd1632e5918c3a21e988e5a` in the Sites repository.
+Browser checks passed: shared PSU isolation, no PSU on the cassette-only view, fan-count controls,
+height feedback, airflow visibility, rack withdrawal, requirements and mobile layout.
+
+### Rear exhaust and first fan-mount print — 4 October 2026
+
+The operator requested moving fans to the rear to keep hands at the front handle away from them,
+and authorized modeling/printing a first part. Rear cassette-mounted exhaust is the new layout;
+front-to-rear airflow remains. Rear I/O/cable access and a finger guard remain unresolved. Both
+beds were reported clear; printer-01 is selected with the previously confirmed PLA in AMS slot 1.
+
+The first real part reuses `fan_mount.arctic_p8_fan_mount`: 92 × 92 × 4 mm plate, 76 mm aperture,
+71.5 mm hole pitch and 4.4 mm mounting holes. This is a useful fan mounting plate for unpowered
+assembly fit, not another motherboard spacing gauge and not a complete cassette. Cassette
+attachment and guarding have not been fabricated. Hole-pattern evidence remains convention-unverified.
+`fan_mount_print.main` carries the existing admitted geometry through the existing CadQuery emitter
+and exercised STL export settings; there are no independently authored CAD coordinates.
+
+Generation and verification artifacts are in `/home/briansrls/print-prep-2026-10-04/rear-fan-mount`.
+CadQuery 2.8.0 checks passed for one valid solid, dimensions, all five hole axes/radii, analytic volume,
+STEP round-trip and a closed manifold STL. STL SHA-256:
+`2b0c7df7e8cf79dc772a33ee6f62a6ccf9e5568ef07e0309545313480e35b4f8`.
+Orca 2.4.2 sliced through `slice_run.run` at 0.20 mm, 20 layers, PLA/0.4 mm nozzle, 220 °C nozzle,
+65 °C textured bed and 2 mm outer brim. Estimate 28m41s, 11.40 g. ZIP/G-code checksum, one plate,
+identity scaling and 180 mm bed bounds passed; bounds including brim are 42.071684–137.928316 mm
+on both axes. The retained bed-temperature warning matches the previously exercised 65 °C setting.
+The slice_info first-layer-time metadata is malformed; G-code estimates 6m4s and that metadata is
+not an admission input. Project SHA-256:
+`71da943ff2ed73a6b47c54759ba288e82af7d084c269bf9a413d4d901cf5199c`.
+
+Concept 04 is published with rear fans and downloadable generated STL/STEP, source
+`c2a49273da70f20a23e2e044fe552dceb74b773f`. Browser interaction checks passed.
+The operator-token/ntfy route is being used because PR #13149 remains unmerged. The request binds
+printer-01, credential version 1, exact project digest and attempt `rear-fan-mount-20261004-01`.
+A start result must be observed separately; preparation is not evidence of printing.
+
+The first launch refused before submission because its submission-key environment variable was
+missing; it filed no approval and created no start marker. Corrected operator launches on srv1
+require these existing key paths (never their contents) plus the private token-file path:
+
+- `GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-submission-mac-key`
+- `GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-mac-key`
+- `GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-store-receipt-mac-key`
+- `RUNNER_TEMP` pointing to an owner-only staging directory.
+
+The refusal log is retained as `print-01-preflight-refusal.log` under the srv1 run directory.
+Retrying the same attempt before any request/start marker exists does not replay a printer start.
+
+The corrected run passed the signed approval gate, observed the printer ready, claimed its durable
+start marker, uploaded the exact project and sent one AMS-slot-1 start. MQTT publication lost its
+connection without acknowledgement after two minutes, so the effect was classified UNKNOWN and
+was not replayed. A separate modeled `printer_report.run` observation then returned RUNNING,
+print_error 0, exact digest filename `gunbc-71da943ff2ed73a6b47c54759ba288e82af7d084c269bf9a413d4d901cf5199c.3mf`,
+19% and 23 minutes remaining. This confirms the requested job active; layer_num was 0, so it is
+not yet evidence of deposited layers or completed fit. The snapshot is retained locally and on srv1.
+The operator independently reported probably heating. Printer-02 was not started. Temporary copies
+of the operator token were deleted from both hosts.
+
+### Complete logical cassette review — 4 October 2026
+
+The operator reports that the printed rear fan plate fits. Record this as a physical fit
+observation, not a caliper measurement or a promotion of the upstream conventional hole pattern.
+The operator requests the whole cassette model now, review of all pieces together, then the first
+cassette print. Stop the individual gauge sequence. No printer start is authorized by this review
+artifact generation alone; the next print follows assembly review and the existing print workflow.
+
+Review 05 replaces browser-authored mechanical geometry with `product.printed_chassis.cassette`
+and `rack_assembly`. `assembly_geometry` carries typed box/cylinder CSG, micrometre coordinates,
+part kind, fixed/moving scope, print orientation and mating-interface records. `cassette_review`
+emits the full manifest. `review_realization` emits the generic CadQuery host adapter; it chooses
+no mechanical dimensions and grants no fabrication admission. The old Site `concept.js` is removed.
+Vendor board outline, fan plate/pattern, W1 envelope and P8 depth resolve from their existing owners.
+
+One cassette has 49 printed instances / 29 distinct authored geometries: four vented tray panels,
+four panel splices, four rails, two rail splices, a handle, two retaining stops, two rear extension
+arms, two fan crossmember halves and a splice, three fitted-pattern fan plates, three feet, three
+guards, two side airflow guides, four guide spacers and twelve guard spacers. The tray is
+271.840 × 294.700 mm. Each piece fits the 180 mm A1 mini envelope in its declared orientation.
+The two-level block retains a 140 mm bay pitch; this is a custom frame, not a claim of standard
+2U/4U rack compliance. The fixed metal frame includes runner proposals. Shared 12 V supply,
+four protected/isolatable feeds and distribution space remain fixed when a cassette is extracted.
+Supply dimensions are explicitly space reservations; no supply wattage or circuit is selected.
+
+The guides initially intersected the rail flanges and outer fan feet. The corrected model raises
+the guide foot to 13 mm, adds front 8 mm / rear 4 mm spacers, and drills the outer foot for the shared
+rear bolt stack. The front rests on the panel; the rear rests on the outer fan foot. This clears
+the rail flange by 1 mm. Guard pads enclose the four fan fastener holes; upper 7 mm / lower 2 mm
+spacers account for the 5 mm fan foot. Guard protection, fan bolt length and engagement still need
+assembly review. All 56 distinct modeled fastener axes have a coaxial mate in another printed part.
+This is geometric alignment evidence, not a fastener strength or engagement test.
+
+Reproduction (from this worktree; use a memory-limited scope for the compiler):
+
+```sh
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/product/printed_chassis/cassette_review.dag --function main > model.json
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/product/printed_chassis/review_realization.dag --function main > realize-review.py
+python realize-review.py model.json fresh-output-directory
+```
+
+Use the exercised CadQuery 2.8.0 environment. Output includes bed-oriented STL for each printed
+instance, local-coordinate STEP, cassette assembly STEP, viewer meshes, a manifest with digests,
+parts/print-quantity/interface CSVs and one review ZIP. Generated artifacts and run logs are retained
+under `/home/briansrls/print-prep-2026-10-04/cassette-r05`; the Site carries the review package.
+The adapter refuses invalid/disconnected printed solids, cuts missing material, out-of-bed parts,
+nonmanifold STL, STEP/STL bounds or volume divergence, unmatched fastener bores, orphan interface
+members and intersections between printed parts. Kernel bounding boxes explicitly ignore cached
+triangulation, while STL bounds allow the modeled tessellation deflection.
+
+Remaining interfaces are deliberately represented as unresolved: board support thread/height and
+underside keep-outs, loaded rail/joint/material behavior, real cooler pose and rear cable access,
+fastener engagement, selected power/distribution hardware, thermal performance and unspecified
+storage/expansion. No invented standoffs are provided. The first cassette is an unpowered assembly
+fit, not a populated operational chassis. Review the complete parts and these interfaces together;
+do not restart a gauge-by-gauge process.
+
+Final exercised generation passed for all 49 printed pieces, 29 unique geometries, 56 matched
+fastener axes and zero printed-part intersections. Negative controls separately refused an oversized
+part, a disconnected solid, an unknown primitive, a displaced mating bore and an orphan interface.
+The emitted adapter was the code actually executed. Local browser checks passed with the final
+package; the Site shows the same generated mesh geometry as the downloadable CAD. No slicing,
+approval request or printer start was performed in this review step. Reuse the already fitted fan
+plate when scheduling quantities after review.
+
+Review 05 published successfully at the existing private workbench, Site source `a9658fd05d27e83220c611b5fb00ac4397b74739`.

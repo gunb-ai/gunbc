@@ -29,7 +29,7 @@ import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_state_path_for_instance }
-import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator, launch_host_unobserved_static_render }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, attempt_request_binding_path_for_instance, RequestClaimBound }
@@ -182,6 +182,7 @@ test fn the_issue_query_surface_renders_over_the_carrier_standings_read() -> Boo
     instance: instance,
     plan: fx_authority_subtree_projection(ids: ["shell-typed-invocation"]),
     observed: WorkflowAttemptsObserved { attempts: [] },
+    launch: launch_host_unobserved_static_render(),
   )
   (match surface.kind { IssueQueryRows => true  _ => false }) && surface.status == 200 && string_contains(s: surface.body, pattern: "shell-typed-invocation")
 }
