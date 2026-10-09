@@ -1,0 +1,61 @@
+module tplscan.probe
+import v2.test.claim.compiler.string_template_hole_type { sth_assembly, sth_k_references }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
+import v2.test.claim.body_let_annotation { bla_source }
+import v2.test.claim.type_param_binder_frame { tpb_artifact }
+import v2.compiler.program_assembly { assemble_program_from_ingest_located }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, node_subtree_nodes, symbol_lexeme }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.process { ProcessExit, ExitFailure }
+
+fn paths_of(tree: Node) -> String {
+  fold(node_subtree_nodes(root: tree), init: "", f: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } => concat(acc, concat(qualified_name_to_dotted_string(qn: p), ";"))
+      Absent => acc
+    }
+  })
+}
+
+fn probe() -> ProcessExit {
+  match sth_assembly().program {
+    Rejected { diagnostics: d } => ExitFailure { code: 1, reason: concat("PROBE REJECTED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))) }
+    Accepted { value: tree, diagnostics: _ } => ExitFailure { code: 1, reason: concat("PROBE ACCEPTED ", paths_of(tree: tree.root)) }
+  }
+}
+
+data srcA: String = "module p\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
+data srcB: String = "module p\n\ndata k: String = \"k\"\n\ndata s: String = \"a\{k\}b\"\n"
+data srcC: String = "module p\n\nfn f(a: String) -> String {\n  concat(a, a)\n}\n"
+
+fn probe_of(src: String) -> ProcessExit {
+  match assemble_program_from_ingest_located(
+    ingest: Cons { head: bla_source(src: src, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu), tail: fmi_list_peers() },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ).program {
+    Rejected { diagnostics: d } => ExitFailure { code: 1, reason: concat("PROBE REJECTED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))) }
+    Accepted { value: tree, diagnostics: _ } => ExitFailure { code: 1, reason: concat("PROBE ACCEPTED ", paths_of(tree: tree.root)) }
+  }
+}
+fn probeA() -> ProcessExit { probe_of(src: srcA) }
+fn probeB() -> ProcessExit { probe_of(src: srcB) }
+fn probeC() -> ProcessExit { probe_of(src: srcC) }
+
+fn probeI() -> ProcessExit {
+  match sth_assembly().program {
+    Rejected { diagnostics: d } => ExitFailure { code: 1, reason: "ASM REJECTED" }
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ExitFailure { code: 1, reason: "INFER ACCEPTED (int hole coerced)" }
+        Rejected { diagnostics: d } => ExitFailure { code: 1, reason: concat("INFER REJECTED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))) }
+      }
+  }
+}
