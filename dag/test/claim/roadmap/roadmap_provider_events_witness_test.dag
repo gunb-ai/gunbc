@@ -1,6 +1,6 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool, String, Int, List }
+import std.types { Bool, String, Int, List, FilePath }
 import extdeps.languages.json.emit { json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
@@ -8,6 +8,8 @@ import gunbc.harness.harness_tool_kind {
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
+import extdeps.llm.claude_code_stream_json { claude_code_stream_line }
+import std.optional { Present, Absent }
 import gunbc.roadmap_provider_events {
   CodexItemActivity, CodexRunningCommand, CodexEditingFiles, CodexUsingConnectedTool, CodexSearching,
   CodexUpdatingPlan, CodexReasoningItem, CodexReporting, HarnessReadingFile, HarnessWritingFile,
@@ -23,6 +25,14 @@ import gunbc.roadmap_provider_events {
   ProviderEventsRefused,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
+  claude_code_line_codex_kind,
+  claude_provider_event_projection_args,
+  codex_provider_event_projection_args,
+  CodexThreadStarted,
+  CodexTurnCompleted,
+  CodexTurnFailed,
+  CodexItemStarted,
+  CodexRunningCommand,
   codex_provider_event_line_observation_budget,
   codex_provider_projection_type_budget,
   codex_provider_projection_detail_budget,
@@ -434,6 +444,55 @@ test fn a_harness_file_edit_round_is_read_back_as_editing_apart_from_writing() -
 // use; the stream says it was an undeclared tool rather than guessing a kind for it.
 test fn an_undeclared_tool_round_is_read_back_as_undeclared_not_as_a_command() -> Bool {
   tool_use_round_tags(name: "delete_everything") == "started:undeclared,completed:undeclared"
+}
+
+test fn claude_stream_json_projects_into_the_codex_event_kinds_the_belt_reads() -> Bool {
+  let system_ok = match claude_code_line_codex_kind(line: claude_code_stream_line(line: "{\"type\":\"system\",\"subtype\":\"init\"}")) {
+    Present { value: kind } =>
+      match kind {
+        CodexThreadStarted => true
+        _ => false
+      }
+    Absent => false
+  }
+  let tool_ok = match claude_code_line_codex_kind(line: claude_code_stream_line(line: "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\"}]}}")) {
+    Present { value: kind } =>
+      match kind {
+        CodexItemStarted { activity } =>
+          match activity {
+            CodexRunningCommand => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+  let result_ok = match claude_code_line_codex_kind(line: claude_code_stream_line(line: "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}")) {
+    Present { value: kind } =>
+      match kind {
+        CodexTurnCompleted => true
+        _ => false
+      }
+    Absent => false
+  }
+  let fail_ok = match claude_code_line_codex_kind(line: claude_code_stream_line(line: "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":401}")) {
+    Present { value: kind } =>
+      match kind {
+        CodexTurnFailed => true
+        _ => false
+      }
+    Absent => false
+  }
+  let rate_skip = match claude_code_line_codex_kind(line: claude_code_stream_line(line: "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"unifiedWindows\":{}}}")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let filter = codex_provider_event_projection_filter as String
+  system_ok && tool_ok && result_ok && fail_ok && rate_skip
+    && string_contains(s: filter, pattern: "$type == \"result\"")
+    && string_contains(s: filter, pattern: "$type == \"system\"")
+    && string_contains(s: filter, pattern: "rate_limit_event")
+    && claude_provider_event_projection_args(path: "/tmp/e.jsonl" as FilePath) == codex_provider_event_projection_args(path: "/tmp/e.jsonl" as FilePath)
 }
 
 test fn a_harness_tool_round_reaches_the_operator_as_its_own_activity() -> Bool {
