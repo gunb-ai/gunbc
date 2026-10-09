@@ -96,6 +96,13 @@ fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_t
 // for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
 // them), one content-type line differs, and the body still rides --data @{file} so a client
 // secret in the form body is never an argv word (gunbc.credential_argv_exposure).
+// PostJsonFromFileWithHeaderFile IS PostJsonFromFile FOR AN ENDPOINT THAT AUTHENTICATES, with the
+// credential carried exactly as GetFollowRedirectsBoundedWithHeaderFile carries it: one header line in
+// a caller-owned file read by curl -H @file, so the bearer is never an argv word
+// (gunbc.credential_argv_exposure) and the body still rides --data @{file}. --fail-with-body keeps an
+// error status's body, which is where a hosted API's typed refusal lives. The response headers are dumped
+// to a caller-owned file (curl -D) because a refusal's retry hints (Retry-After, X-RateLimit-*) are headers
+// and --fail-with-body returns only the body.
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
@@ -306,6 +313,33 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "curl POST JSON from file failed"
+    }
+  }
+
+  operation PostJsonFromFileWithHeaderFile {
+    requires Network
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, header_file: NonEmptyStr, response_headers_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "-D", "{response_headers_file}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/json",
+        "-H", "@{header_file}",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST JSON from file with header file failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
     }
   }
 

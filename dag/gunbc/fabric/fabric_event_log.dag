@@ -25,7 +25,7 @@ import product.capacity.event_chain {
 import product.capacity.pool_events {
   PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
-  PoolReleased,
+  PoolReleased, pool_apply_payload,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
 import product.capacity.redemption {
@@ -412,6 +412,96 @@ fn pool_event_append_wire(a: PoolEventAppend) -> String {
     PoolEventAppended { id: h } => join(["appended ", h as String], "")
     PoolEventContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
     PoolEventAppendRefused { detail: d } => join(["refused ", d], "")
+  }
+}
+
+// A POOL TRANSITION THAT IS CHECKED BEFORE IT IS WRITTEN. fabric_pool_event_append appends the event it
+// is handed, and a caller that reports success on that append can report success over a transition no
+// fold will ever apply: a settlement appended after its lease lapsed, or a hold whose reference
+// duplicates an earlier one. The fold refuses such an event on replay, and pool_fold refuses the WHOLE
+// partition at the first refused event -- so one unchecked append makes every later read of the pool
+// fail while the caller believed it had succeeded.
+//
+// SO THIS IS SETTLEMENT AND OBSERVATION WITH THE ACQUISITION'S DISCIPLINE: read the partition, fold it,
+// apply the transition with the same function replay uses (product.capacity.pool_events
+// pool_apply_payload), and only if that advances, compare-and-set append against the head it was
+// decided on; a moved head is re-read and re-decided, never written blind. A refused transition is its
+// own arm and nothing is appended. The payload is built from the head because a transition that mints
+// its own hold needs an identity no other reading shares.
+type PoolTransition
+  = PoolTransitionAppended { id: EventId }
+  | PoolTransitionRefused { wire: String }
+  | PoolTransitionContended { attempts: Nat }
+  | PoolTransitionStoreRefused { step: String, reason: String }
+
+type PoolTransitionState {
+  done: PoolTransition?
+}
+
+fn pool_transition_head_word(head: HeadExpectation) -> NonEmptyStr {
+  match head {
+    HeadAbsent => "genesis" as NonEmptyStr
+    HeadAt { id: h } => h as String as NonEmptyStr
+  }
+}
+
+fn pool_transition_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, budget: Nat) -> PoolTransition? {
+  match event_log_read_partition(store: store, partition: partition, budget: budget) {
+    PartitionReadRefused { cause: c } => Present { value: PoolTransitionStoreRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: PoolTransitionStoreRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } => Present { value: PoolTransitionStoreRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } => Present { value: PoolTransitionStoreRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: _ } => {
+              let identity = join(["pending:", pool_transition_head_word(head: head) as String], "") as NonEmptyStr
+              let event_payload = payload(identity)
+              match pool_apply_payload(pool: p, payload: event_payload, at: at, identity: identity) {
+                PoolRefused { refusal: r } => Present { value: PoolTransitionRefused { wire: pool_refusal_wire(r: r) } }
+                PoolAdvanced { pool: _ } =>
+                  match event_log_append(
+                    store: store,
+                    partition: partition,
+                    event: ChainEvent {
+                      partition: partition,
+                      parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                      recorded_at: at,
+                      actor: actor,
+                      payload: event_payload,
+                    },
+                    expected: head,
+                  ) {
+                    EventAppended { id: h } => Present { value: PoolTransitionAppended { id: h } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppendRefused { cause: c } => Present { value: PoolTransitionStoreRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn fabric_pool_transition<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, at: EpochSecs, payload: fn(NonEmptyStr) -> PoolEvent, attempts: Nat, budget: Nat) -> PoolTransition {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: PoolTransitionState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => PoolTransitionState { done: pool_transition_attempt(store: store, partition: partition, root: root, actor: actor, at: at, payload: payload, budget: budget) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => PoolTransitionContended { attempts: attempts }
+  }
+}
+
+fn pool_transition_wire(t: PoolTransition) -> String {
+  match t {
+    PoolTransitionAppended { id: h } => join(["appended ", h as String], "")
+    PoolTransitionRefused { wire: w } => join(["the pool refuses the transition: ", w], "")
+    PoolTransitionContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    PoolTransitionStoreRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
   }
 }
 

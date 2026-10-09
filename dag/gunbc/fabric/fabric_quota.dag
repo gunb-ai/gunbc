@@ -2,17 +2,19 @@ module gunbc.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Measure }
 import extdeps.api_rate_limit { UpstreamRateLimit, upstream_rate_limit_key }
 import product.capacity.quota { quota_partition, quota_root_pool }
 import product.capacity.event_chain { PartitionId }
-import product.capacity.pool_events { PoolSettled, SeatRequest }
+import product.capacity.pool_events { PoolSettled, PoolUpstreamObserved, SeatRequest }
+import product.capacity.pool { pool_window_at, WindowResolved, WholeLifetime, InstantBeforeAnchor }
 import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
 import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
-  PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
+  PoolTransition, PoolTransitionAppended, fabric_pool_transition, pool_transition_wire,
 }
 
 // A CALLER LEASES UPSTREAM QUOTA BEFORE IT SPENDS IT. The lease holds the calls it is about to
@@ -25,7 +27,7 @@ import gunbc.fabric_event_log {
 // expiry frees is the unspent remainder.
 
 type QuotaLease
-  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricStorageBinding }
+  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricStorageBinding, limit: UpstreamRateLimit }
   | QuotaFull { wire: String }
   | QuotaLeaseRefused { detail: String }
 
@@ -33,24 +35,108 @@ fn quota_policy(term_seconds: Nat) -> LeasePolicy {
   LeasePolicy { maximum_duration_seconds: term_seconds, release_law: FencedResource }
 }
 
+// A TERM IS EITHER THE CALLER'S DURATION OR "TO THE END OF THIS WINDOW". A lapsing pool refuses a lease
+// that would outlive its window (product.capacity.pool LeaseCrossesLapse), so a caller whose spend is
+// an instant -- a request counted the moment it is sent -- cannot know a fixed term that always fits:
+// at second 59 of a minute window only one second is left. The window end is read from the SAME
+// clock reading the lease is stamped with, so the term fits by construction rather than by luck.
+type QuotaTerm
+  = QuotaTermSeconds { seconds: Nat }
+  | QuotaTermToWindowEnd
+
+fn quota_term_to_window_end(limit: UpstreamRateLimit, at: EpochSecs) -> Nat? {
+  match pool_window_at(pool: quota_root_pool(limit: limit), at: at) {
+    WindowResolved { window: w } => if w.end > at { checked_int_to_nat(n: w.end - at) } else { none }
+    WholeLifetime => none
+    InstantBeforeAnchor { anchor: _, at: _ } => none
+  }
+}
+
+// THE INSTANT THE CURRENT WINDOW BEGAN, read off the same pool the term is: what a caller needs to tell
+// which of its outstanding sends were admitted in an earlier window.
+fn quota_window_start(limit: UpstreamRateLimit, at: EpochSecs) -> EpochSecs? {
+  match pool_window_at(pool: quota_root_pool(limit: limit), at: at) {
+    WindowResolved { window: w } => Present { value: w.start }
+    WholeLifetime => none
+    InstantBeforeAnchor { anchor: _, at: _ } => none
+  }
+}
+
+fn quota_term_seconds(limit: UpstreamRateLimit, term: QuotaTerm, at: EpochSecs) -> Nat? {
+  match term {
+    QuotaTermSeconds { seconds: n } => Present { value: n }
+    QuotaTermToWindowEnd => quota_term_to_window_end(limit: limit, at: at)
+  }
+}
+
 fn fabric_quota_lease(short_hostname: String, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term_seconds: Nat) -> QuotaLease {
+  fabric_quota_lease_for(short_hostname: short_hostname, limit: limit, amount: amount, actor: actor, term: QuotaTermSeconds { seconds: term_seconds })
+}
+
+fn fabric_quota_lease_for(short_hostname: String, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term: QuotaTerm) -> QuotaLease {
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => QuotaLeaseRefused { detail: d }
     HostStoreResolved { store: store, executor: _ } =>
       match now_epoch_seconds() {
         Absent => QuotaLeaseRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } => {
-          let partition = quota_partition(limit: limit)
-          match fabric_seat_acquire(
-            store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
-            request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
-            policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
-          ) {
-            SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store }
-            SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
-            other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
+        Present { value: now } => fabric_quota_lease_at(store: store, now: now, limit: limit, amount: amount, actor: actor, term: term)
+      }
+  }
+}
+
+// THE LEASE AT A GIVEN STORE AND INSTANT. fabric_quota_lease_for resolves both from the executing host;
+// everything after that -- the term derivation, the seat acquisition, the fold -- is this function, so a
+// witness that supplies a store in a temporary directory and an instant runs the PRODUCTION lease rather
+// than a constructed QuotaLeased.
+fn fabric_quota_lease_at(store: FabricStorageBinding, now: EpochSecs, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term: QuotaTerm) -> QuotaLease {
+  match quota_term_seconds(limit: limit, term: term, at: now) {
+    Absent => QuotaLeaseRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
+    Present { value: term_seconds } => {
+      let partition = quota_partition(limit: limit)
+      match fabric_seat_acquire(
+        store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
+        request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
+        policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
+      ) {
+        SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store, limit: limit }
+        SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
+        other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
+      }
+    }
+  }
+}
+
+// WHAT THE UPSTREAM SAYS REMAINS IS RECORDED ON THE PARTITION, NOT KEPT BESIDE IT. A fresh local ledger
+// knows nothing of requests spent before it existed, or by another client of the same credential; an
+// upstream that reports how many remain is the authority on that. The reading is appended as the
+// existing PoolUpstreamObserved event, which the fold turns into a hold of the shortfall for the rest
+// of the window (product.capacity.pool observe_upstream_remaining) -- so a reading of zero leaves no
+// headroom, a partial one leaves exactly that much, and a later, larger reading never gives back what
+// an earlier one held. There is no second balance model: the pool is the balance.
+type QuotaObservation
+  = QuotaUpstreamRecorded { partition: PartitionId, remaining: Nat }
+  | QuotaObservationRefused { detail: String }
+
+fn fabric_quota_observe_upstream(short_hostname: String, limit: UpstreamRateLimit, remaining: Nat, actor: NonEmptyStr) -> QuotaObservation {
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => QuotaObservationRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => QuotaObservationRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match quota_term_to_window_end(limit: limit, at: now) {
+            Absent => QuotaObservationRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
+            Present { value: term } => {
+              let partition = quota_partition(limit: limit)
+              match fabric_pool_transition(
+                store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor, at: now,
+                payload: fn(identity) { PoolUpstreamObserved { remaining: remaining, term_seconds: term } }, attempts: 3, budget: 4096,
+              ) {
+                PoolTransitionAppended { id: _ } => QuotaUpstreamRecorded { partition: partition, remaining: remaining }
+                other => QuotaObservationRefused { detail: pool_transition_wire(t: other) }
+              }
+            }
           }
-        }
       }
   }
 }
@@ -59,32 +145,39 @@ type QuotaSettle
   = QuotaSettled { partition: PartitionId, actual: Nat }
   | QuotaSettleRefused { detail: String }
 
-// SETTLEMENT IS ONE PARTITION APPEND, and the observe/append/retry loop it needs is the carrier's
-// (gunbc.fabric_event_log fabric_pool_event_append), not a second copy here. It used to be a copy:
-// this module held the only one until a compute reservation needed to release, at which point the
-// loop would have existed twice and been free to disagree with itself about a contended head.
+// SETTLEMENT IS ONE CHECKED PARTITION TRANSITION (gunbc.fabric_event_log fabric_pool_transition): the
+// partition is folded and the settlement applied to it before anything is written, under the same
+// compare-and-set the acquisition used. It was an unchecked append, which reported success for a
+// settlement whose lease had already lapsed -- an event the fold refuses on replay, leaving the whole
+// partition unfoldable while the caller believed it had settled. The lease carries its own limit so the
+// settlement folds against the pool the lease was granted from.
 fn fabric_quota_settle(lease: QuotaLease, actual: Nat) -> QuotaSettle {
+  match now_epoch_seconds() {
+    Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => fabric_quota_settle_at(lease: lease, actual: actual, now: now)
+  }
+}
+
+// THE SETTLEMENT AT A GIVEN INSTANT, for the same reason the lease has one: the checked transition and
+// everything after the clock read is this function.
+fn fabric_quota_settle_at(lease: QuotaLease, actual: Nat, now: EpochSecs) -> QuotaSettle {
   match lease {
     QuotaFull { wire: w } => QuotaSettleRefused { detail: join(["nothing to settle: ", w], "") }
     QuotaLeaseRefused { detail: d } => QuotaSettleRefused { detail: join(["nothing to settle: ", d], "") }
-    QuotaLeased { grant: g, partition: p, store: store } =>
-      match now_epoch_seconds() {
-        Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } =>
-          match fabric_pool_event_append(
-            store: store, partition: p, actor: g.reference, at: now,
-            payload: PoolSettled { reference: g.reference, actual: actual }, attempts: 3,
-          ) {
-            PoolEventAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
-            other => QuotaSettleRefused { detail: pool_event_append_wire(a: other) }
-          }
+    QuotaLeased { grant: g, partition: p, store: store, limit: limit } =>
+      match fabric_pool_transition(
+        store: store, partition: p, root: quota_root_pool(limit: limit), actor: g.reference, at: now,
+        payload: fn(identity) { PoolSettled { reference: g.reference, actual: actual } }, attempts: 3, budget: 4096,
+      ) {
+        PoolTransitionAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
+        other => QuotaSettleRefused { detail: pool_transition_wire(t: other) }
       }
   }
 }
 
 fn quota_lease_wire(l: QuotaLease) -> String {
   match l {
-    QuotaLeased { grant: g, partition: p, store: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
+    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
     QuotaFull { wire: w } => join(["full ", w], "")
     QuotaLeaseRefused { detail: d } => join(["refused ", d], "")
   }
