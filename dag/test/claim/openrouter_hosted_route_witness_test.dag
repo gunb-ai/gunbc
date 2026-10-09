@@ -264,7 +264,7 @@ fn w_charge_admitted(limit: UpstreamRateLimit, at: Int) -> Bool {
   match quota_term_to_window_end(limit: limit, at: at) {
     Absent => false
     Present { value: term } =>
-      match pool_acquire(pool: quota_root_pool(limit: limit), reference: "charge" as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: term) {
+      match pool_acquire(pool: quota_root_pool(limit: limit), reference: "charge" as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: second_count(s: term)) {
         PoolAdvanced { pool: _ } => true
         PoolRefused { refusal: _ } => false
       }
@@ -315,7 +315,7 @@ fn w_observed(pool: Pool<Count, One>, remaining: Nat, at: Int) -> Pool<Count, On
   match quota_term_to_window_end(limit: day, at: at) {
     Absent => none
     Present { value: term } =>
-      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: term, reading: join(["witness@", to_string(at)], "") as NonEmptyStr) {
+      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: second_count(s: term), reading: join(["witness@", to_string(at)], "") as NonEmptyStr) {
         PoolAdvanced { pool: p } => Present { value: p }
         PoolRefused { refusal: _ } => none
       }
@@ -383,7 +383,7 @@ test fn a_settlement_after_rollover_is_refused_before_it_could_poison_the_partit
   match quota_term_to_window_end(limit: minute, at: at) {
     Absent => false
     Present { value: term } => {
-      let acquired = w_env(id: "e1", at: at, payload: PoolAcquired { reference: "charge" as NonEmptyStr, amount: 1, term_seconds: term })
+      let acquired = w_env(id: "e1", at: at, payload: PoolAcquired { reference: "charge" as NonEmptyStr, amount: 1, term_seconds: second_count(s: term) })
       match pool_fold(root: quota_root_pool(limit: minute), oldest_first: [acquired]) {
         PoolFoldRefused { at_event: _, wire: _ } => false
         PoolFolded { pool: p, generation: _ } =>
@@ -414,8 +414,8 @@ test fn two_decreasing_upstream_readings_in_one_second_fold_to_the_lower() -> Bo
     Absent => false
     Present { value: term } =>
       match pool_fold(root: quota_root_pool(limit: day), oldest_first: [
-        w_env(id: "o1", at: at, payload: PoolUpstreamObserved { remaining: 3, term_seconds: term }),
-        w_env(id: "o2", at: at, payload: PoolUpstreamObserved { remaining: 1, term_seconds: term }),
+        w_env(id: "o1", at: at, payload: PoolUpstreamObserved { remaining: 3, term_seconds: second_count(s: term) }),
+        w_env(id: "o2", at: at, payload: PoolUpstreamObserved { remaining: 1, term_seconds: second_count(s: term) }),
       ]) {
         PoolFoldRefused { at_event: _, wire: _ } => false
         PoolFolded { pool: p, generation: g } => g == 2 && w_day_headroom(pool: p, at: at) == 1
@@ -463,7 +463,7 @@ fn w_round_admitted(minute: Pool<Count, One>, carried: Nat, at: Int) -> Bool {
   match quota_term_to_window_end(limit: openrouter_free_models_per_minute, at: at) {
     Absent => false
     Present { value: term } =>
-      match pool_acquire(pool: minute, reference: "this-round" as NonEmptyStr, amount: Measure { count: carried + 1 }, at: at, term_seconds: term) {
+      match pool_acquire(pool: minute, reference: "this-round" as NonEmptyStr, amount: Measure { count: carried + 1 }, at: at, term_seconds: second_count(s: term)) {
         PoolAdvanced { pool: _ } => true
         PoolRefused { refusal: _ } => false
       }
@@ -534,7 +534,7 @@ test fn a_429_decodes_to_the_typed_refusal_with_the_upstreams_retry_hints() -> B
   match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
     Absent => false
     Present { value: r } =>
-      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
         && (match r.hints.reset { Present { value: v } => v == "1791265800000"  Absent => false })
         && (match r.hints.remaining { Present { value: v } => v == "0"  Absent => false })
         && (match r.provider_code { Absent => true  Present { value: _ } => false })
@@ -552,7 +552,7 @@ test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_gues
     Absent => false
   })
     && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nX-RateLimit-Reset: 5\r\n\r\n" }) {
-      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
         && (match r.hints.reset { Present { value: v } => v == "5"  Absent => false })
       Absent => false
     })
@@ -561,7 +561,7 @@ test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_gues
       Absent => false
     })
     && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n" }) {
-      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
       Absent => false
     })
 }
@@ -605,7 +605,7 @@ test fn a_signed_fractional_or_suffixed_retry_after_is_not_read_as_seconds() -> 
     && w_is_unparsed(r: w_retry_after_of(value: "-30"))
     && w_is_unparsed(r: w_retry_after_of(value: "3.5"))
     && w_is_unparsed(r: w_retry_after_of(value: "30s"))
-    && (match w_retry_after_of(value: "30") { Present { value: RetryAfterSeconds { seconds: n } } => n == 30  Present { value: _ } => false  Absent => false })
+    && (match w_retry_after_of(value: "30") { Present { value: RetryAfterSeconds { seconds: n } } => second_count(s: n) == 30  Present { value: _ } => false  Absent => false })
 }
 
 // RED: a 402, or any body that is not a 429, is NOT a rate-limit refusal -- it keeps its own typed error
