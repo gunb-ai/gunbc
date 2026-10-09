@@ -6,7 +6,10 @@ import gunbc.runner_microvm_slot_unit { microvm_controller_root }
 import gunbc.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
-import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
+import gunbc.host_kernel_dependency { host_kernel_maintenance_capability }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
+
+import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
@@ -180,6 +183,7 @@ import gunbc.fleet_converge_plan {
   FabricAllocationStoreConverge,
   WorkspaceAllocationConverge,
   WorkspaceSlotCommissioningConverge,
+  WorkspaceCommissioningDependencyConverge,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   fleet_converge_plan_artifact_of_request,
@@ -880,7 +884,8 @@ fn fleet_converge_plan_scoped_bound_wet(
   let observed = if (scope == WorkspaceSlotCommissioningOnly) {
     match workspace_dispatch_observe(host: subject_host, revision: run.run_revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
-      WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning privileged observation refused" }
+      WorkspaceCommissioningFleetDependencyObserved { plan } => FleetConvergeRequestObserved { request: WorkspaceCommissioningDependencyConverge { plan: plan } }
+      WorkspaceCommissioningFleetRefused { reason } => FleetConvergeRequestUnobserved { reason: concat("commissioning privileged observation refused: ", reason) }
     }
   } else if (scope == WorkspaceAllocationOnly) {
     observe_workspace_allocation_plan_request_wet(host: subject_host,
@@ -1135,7 +1140,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
                 ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
                   exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
                 ApplyAwaitingCapability { capability: c } =>
-                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — nonempty live-deploy plan; wet apply is C8"], ""))
+                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — this plan requires an unavailable apply capability"], ""))
                 ApplyAdmitted =>
               if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),
@@ -1576,6 +1581,7 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
       Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
         WorkspaceCommissioningDirectiveReady { provenance } => match workspace_dispatch_observe(host: host, revision: provenance.source_revision as CommitSha) {
           WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
+          WorkspaceCommissioningFleetDependencyObserved { plan: _ } => FleetConvergeRequestUnobserved { reason: "commissioning dependency remains unresolved" }
           WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning no-op readback refused" }
         }
         WorkspaceCommissioningDirectiveRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning provenance unreadable" }
@@ -1625,7 +1631,9 @@ fn fleet_converge_apply_bound_wet(run: ActionsRunBinding, plan_run_id: String,
   plan_receipt: FleetConvergePlanReceipt, expected_revision_admitted: String) -> ProcessExit {
   let body = Filesystem.Read(path: fleet_converge_plan_body_path)
   let noop = body.success && count(filter(split(s: body.content, delimiter: "\n"), row => row == "commissioning-already-committed:true")) == 1
-  if plan_receipt.scope_wire != workspace_executor_scope_wire || noop {
+  if plan_receipt.scope_wire == workspace_executor_scope_wire && body.success && host_kernel_dependency_in_plan_body(body: body.content) {
+    exit_failure(reason: concat("fleet_converge_apply: AwaitingCapability — ", host_kernel_maintenance_capability))
+  } else if plan_receipt.scope_wire != workspace_executor_scope_wire || noop {
     fleet_converge_apply_ordinary_bound_wet(run: run, plan_run_id: plan_run_id,
       plan_receipt: plan_receipt, expected_revision_admitted: expected_revision_admitted)
   } else { fleet_converge_apply_commissioning_bound_wet(run: run, plan_run_id: plan_run_id,

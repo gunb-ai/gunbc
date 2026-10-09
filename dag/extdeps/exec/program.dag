@@ -166,7 +166,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_program"),
     decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_program"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program"),
-    decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "python_program"),
+    decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
     decl_ref(module_path: "extdeps.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_program"),

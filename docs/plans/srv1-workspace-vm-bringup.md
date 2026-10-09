@@ -5,10 +5,12 @@ allocation, controller and cleanup protocols. No customer create API, additional
 hosts, CI-runner migration, or automatic expiry scheduling is part of this change.
 
 Current status: the pinned image/controller, network receipt and slot resource
-boundary have passed live readback. Commissioning refuses because srv1's running
-kernel cannot report attached TUN queues. A concrete kernel maintenance proposal
-is recorded below and has not been applied. No VM boot or authenticated guest SSH
-is yet proven. Guest access uses the dedicated key already on srv1.
+boundary have passed live readback. srv1's running kernel cannot report attached
+TUN queues. Commissioning now models that capability dependency and derives a
+kernel installation/activation proposal in its existing convergence scope. Host
+maintenance actuation remains an explicit `AwaitingCapability` frontier; no kernel
+installation or reboot has been applied. No VM boot or authenticated guest SSH is
+yet proven. Guest access uses the dedicated key already on srv1.
 
 ## Observed gaps
 
@@ -419,6 +421,39 @@ has been commissioned or booted.
 
 ### Proposed host maintenance (not applied)
 
+The commissioning planner derives this proposal from the selected sanitation
+reader's `TunAttachedQueueRequirement`. Its observation now invokes Linux's
+`SIOCETHTOOL / ETHTOOL_GCHANNELS` ABI directly through the declared Python runtime
+boundary. Only numeric `EOPNOTSUPP` demands a provider. Permission failures,
+missing devices, malformed replies, a failed reader or multi-queue TAPs refuse;
+they cannot become a reason to upgrade. A successful count on a backported kernel
+needs no package lookup. A successful nonzero count establishes capability but
+still fails the unchanged sanitation census.
+
+The host policy in `gunbc.host_kernel_dependency` selects the Ubuntu provider;
+VM code does not select a version. Readback binds the proposal to host, source
+revision, interface, running release and boot identity. It checks the distribution,
+architecture, installed package identities, exact available candidate and a
+non-removing apt simulation. If the selected image/modules are already installed
+and their boot artifacts are readable, the proposal contains activation only.
+If the selected kernel already runs but the operation remains unsupported, it
+refuses instead of entering a reboot loop.
+
+The existing `workspace-slot-commissioning` plan carries the dependency, package
+simulation and continuation. It cannot mint a commissioning credential or initial
+readiness. Its apply admission is `AwaitingCapability`: plan-bound interruption
+authority, runner drain, verified console recovery and an external boot observer
+are not established for srv1. `gunbc.host_reset_boot_selection` currently admits
+only the separately enrolled reset subject, not srv1. This change implements
+capability-driven dependency planning; it does **not** implement an unattended
+srv1 kernel installer/reboot actuator. After an admitted maintenance path establishes
+the running capability, rerunning the same commissioning goal continues through
+the full sanitation, protected-state and runtime checks.
+
+This is ordinary domain composition using the existing `ensure` decision and
+fleet plan, not a claim that the generic completion/elaboration engine proposed
+in `docs/plans/ensure-closure-design.md` has been implemented.
+
 The read-only package simulation on srv1 selects Ubuntu's arm64 HWE meta-package
 `linux-generic-hwe-24.04=7.0.0-38.38~24.04.4`. It adds eight packages, upgrades
 none and removes none: the image, modules, ZFS module package, header packages
@@ -465,3 +500,37 @@ This validates refusal reporting against the installed release; it is not a new
 controller installation, commissioning apply or ongoing CI claim. Independent
 post-readback checks find no allocation, commissioning or readiness files, and
 the historical controller remains stopped with `MainPID=0` and no queued job.
+
+### Dependency observation evidence
+
+The production `workspace_dispatch_plan_cli`, run read-only against release
+`4fa60f71342` from source snapshot SHA-256
+`9aeb7a306baf7e08d7a6d81801a7b4ed02f3e04ef6869c105ef8754b30593b45`,
+returns exit 0 and a canonical `commissioning-kernel-dependency` response for
+`srv1 / gunbc-tap13`. The response binds running release `6.8.0-138-generic`,
+the observed boot ID and selected `7.0.0-38-generic` provider. Its live apt
+simulation reports eight new packages, zero upgrades and zero removals. This is
+a successful **plan observation**, not completed commissioning or an installation
+of the new source. The log and decoded response are
+`target/srv1-bringup-evidence/kernel-dependency-live-r2.{log,json}`.
+
+The Python ABI program rendered by `linux_ethtool_channels_program` was also run
+read-only on srv1. `gunbc-tap13` returned numeric errno 95; `gunbcnotap0` returned
+19; the physical `enP3p3s0f1` returned a combined count of 63, independently
+matching `ethtool --show-channels`. The receipt is
+`target/srv1-bringup-evidence/ethtool-ioctl-live.txt`. The declared wet witness
+executes the same native reader and distinguishes unsupported from missing.
+
+The initial success-reply decoder witness exposed the seed's already-recorded
+`optional_equality_answers_by_representation` defect. The consumer now eliminates
+the optional by a match, following that ledger's existing discipline; it does not
+claim to repair the interpreter. The dependency, wire binding, fleet admission,
+network producer and dispatch controls pass. The workflow test responsible for
+CI run `37915381374`'s failure previously constructed every unrelated step merely
+to inspect the job condition. The production envelope now accepts its step list;
+the witness supplies an empty list at that boundary and still checks the actual
+condition assignment. It passes at 3,142 evaluation steps, versus the failed
+run's 446,125, below the new-witness budget. Workflow behavior is unchanged.
+
+Post-observation readback still finds `6.8.0-138-generic` running, no allocation,
+commissioning or readiness files, and controller `MainPID=0` with no queued job.

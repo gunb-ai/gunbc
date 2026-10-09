@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.unsupported_operation_stops_at_diagnostics_instead_of_demanding_its_provider
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unsupported_operation_stops_at_diagnostics_instead_of_demanding_its_provider: RecurringFailureMode = RecurringFailureMode {
+  identity: "unsupported_operation_stops_at_diagnostics_instead_of_demanding_its_provider" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: safe workspace reuse selected a TUN descriptor census requiring the kernel attached-queue query, but commissioning carried only its failure text. The earliest missing edge was from the selected operation to its environmental requirement, before a kernel package or reboot could be chosen. The CLI reader also collapsed unsupported and unreadable into one refusal, so it could not safely select a remedy.",
+    "The census now owns TunAttachedQueueRequirement. The read-only Linux ioctl reader preserves numeric EOPNOTSUPP; all other failures stay unreadable. Commissioning consumes that requirement and the existing ensure decision: a supported query needs no provider, including a positive queue count that still fails sanitation; unsupported reaches host-selected Ubuntu package/activation planning. Host/revision/interface/boot and package observations bind the fleet plan. No version comparison establishes capability and the same already-running unsupported target refuses a reboot loop.",
+    "The production commissioning scope carries the derived dependency and the existing AwaitingCapability terminal. srv1 has no admitted reset selection, verified runner drain or console recovery, and this session has no shared-host reboot approval. Those are an explicit maintenance-actuation frontier, not a successful apply. Generic compiler completion described in ensure-closure-design remains unimplemented. Attainable ceiling: the operation demand is shared by construction; external running-kernel support requires live readback. The package/read-error controls and fleet artifact/admission witness exercise production folds; the wet reader witness executes the Python/native ioctl boundary.",
+  ],
+  evidence: [],
+}

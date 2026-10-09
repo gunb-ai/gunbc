@@ -4449,12 +4449,7 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
 }
 
 fn fleet_converge_job() -> Job {
-  Job {
-    id: fleet_converge_shared_job_id as String,
-    name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
-    environment: none,
-    steps: concat(
+  fleet_converge_job_with_steps(steps: concat(
       concat(
         fleet_converge_consumer_prelude_steps(),
         fleet_converge_credential_prelude_steps()
@@ -4575,7 +4570,17 @@ fn fleet_converge_job() -> Job {
         fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
-    ),
+    ))
+}
+
+// The shared job envelope owns selection and credentials independently of its step producers.
+fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
+  Job {
+    id: fleet_converge_shared_job_id as String,
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
+    steps: steps,
     needs: fleet_converge_job_needs(id: fleet_converge_shared_job_id),
     env: none,
     outputs: none,

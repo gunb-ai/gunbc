@@ -1,0 +1,157 @@
+module gunbc.host_kernel_dependency
+
+import std.types { String, NonEmptyStr, Bool, List, CommitSha }
+import std.algebra { trim }
+import std.upsert_decision { Noop, Apply, Refuse, UpsertDecision }
+import gunbc.ensure { ensure_decide, EnsureMayApply, EnsureObserved, EnsureInaccessible, EnsurePlanAvailable, EnsurePlanUnavailable }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement, TunQueueReading, TunQueuesAttached, TunQueuesRefused, TunCensusQueueCountUnsupported, tun_census_refusal_text }
+import extdeps.dpkg { dpkg_record_field, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.shell.exec { ProcessObservation }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+
+// A provider selection is host policy, never a requirement authored by VM code. The selected
+// TUN census asks for TunAttachedQueueRequirement. This Ubuntu realization can establish it
+// by installing and booting a kernel, but only the actual queue query establishes satisfaction.
+// No minimum-version comparison: a backport that answers the query needs no mutation.
+type UbuntuTunKernelProvider {
+  package: NonEmptyStr
+  version: NonEmptyStr
+  architecture: NonEmptyStr
+  kernel_release: LinuxKernelRelease
+}
+
+// Measured package candidate and downloaded System.map (tun_get_channels), 2026-10-09.
+// Selection is permission to propose this realization, not authorization to interrupt a host.
+fn tun_kernel_provider_for_host(host: HostIdentity) -> UbuntuTunKernelProvider? {
+  if host == operator_host_srv1 { Present { value: UbuntuTunKernelProvider {
+    package: "linux-generic-hwe-24.04", version: "7.0.0-38.38~24.04.4",
+    architecture: "arm64", kernel_release: "7.0.0-38-generic" as LinuxKernelRelease,
+  } } } else { none }
+}
+
+fn kernel_provider_package_names(provider: UbuntuTunKernelProvider) -> List<NonEmptyStr> {
+  [provider.package, concat("linux-image-", provider.kernel_release as String) as NonEmptyStr,
+    concat("linux-modules-", provider.kernel_release as String) as NonEmptyStr]
+}
+
+fn kernel_provider_selection(provider: UbuntuTunKernelProvider) -> NonEmptyStr {
+  concat(provider.package as String, concat("=", provider.version as String)) as NonEmptyStr
+}
+
+type KernelPackageReading
+  = KernelPackageExact
+  | KernelPackageNeedsInstall
+  | KernelPackageReadRefused { reason: String }
+
+fn kernel_package_reading(package: NonEmptyStr, provider: UbuntuTunKernelProvider, reading: ProcessObservation) -> KernelPackageReading {
+  match dpkg_query_status_verdict_of(exit_code: reading.exit_code, stdout: reading.stdout, stderr: reading.stderr) {
+    DpkgQueryUndecidable { reason } => KernelPackageReadRefused { reason: reason }
+    DpkgPackageUnknown => KernelPackageNeedsInstall
+    DpkgPackageNotInstalled { status } => if starts_with(s: status, prefix: "Status: hold ") {
+      KernelPackageReadRefused { reason: "selected kernel package is held and not installed" }
+    } else { KernelPackageNeedsInstall }
+    DpkgPackageInstalled => {
+      let name = dpkg_record_field(record: reading.stdout, field: "Package")
+      let version = dpkg_record_field(record: reading.stdout, field: "Version")
+      let arch = dpkg_record_field(record: reading.stdout, field: "Architecture")
+      if name != Present { value: package as String } || arch != Present { value: provider.architecture as String }
+        || version == none {
+        KernelPackageReadRefused { reason: "kernel package identity or architecture is unreadable or different" }
+      } else if version == Present { value: provider.version as String } { KernelPackageExact }
+      else { KernelPackageReadRefused { reason: "an installed kernel package differs from the selected version; refuse implicit downgrade or held-package replacement" } }
+    }
+  }
+}
+
+fn kernel_package_readings_join(provider: UbuntuTunKernelProvider, readings: List<KernelPackageReading>) -> KernelPackageReading {
+  if readings.count() != kernel_provider_package_names(provider: provider).count() { KernelPackageReadRefused { reason: "kernel provider package census is incomplete" } }
+  else { fold(readings, init: KernelPackageExact, f: (acc, item) => match acc {
+    KernelPackageReadRefused { reason: _ } => acc
+    other => match item {
+      KernelPackageReadRefused { reason: _ } => item
+      KernelPackageNeedsInstall => KernelPackageNeedsInstall
+      KernelPackageExact => acc
+    }
+  }) }
+}
+
+type HostKernelRemedy
+  = InstallKernelAndActivate
+  | ActivateInstalledKernel
+
+// Intention only. Neither this plan nor its package simulation may mint cell readiness.
+// The apply effect is held at the existing AwaitingCapability boundary until host maintenance
+// authority, drained work and an external reset observer have been established for THIS plan.
+type HostKernelDependencyPlan {
+  host: HostIdentity
+  source_revision: CommitSha
+  requirement: TunAttachedQueueRequirement
+  running_release: LinuxKernelRelease
+  boot_id: NonEmptyStr
+  provider: UbuntuTunKernelProvider
+  remedy: HostKernelRemedy
+  package_simulation: String
+}
+
+type HostKernelDependencyResolution
+  = HostKernelCapabilitySatisfied
+  | HostKernelDependencyPlanned { plan: HostKernelDependencyPlan }
+  | HostKernelDependencyRefused { reason: String }
+
+// An operation's observed support decides whether any provider is demanded. A positive count
+// means the query is supported, NOT that sanitation is clean. The unchanged census still
+// rejects held devices. Only EOPNOTSUPP, established by the ioctl, reaches provider selection.
+fn tun_kernel_capability_decision(requirement: TunAttachedQueueRequirement, reading: TunQueueReading) -> UpsertDecision<TunAttachedQueueRequirement> {
+  match reading {
+    TunQueuesAttached { count: _ } => ensure_decide(policy: EnsureMayApply,
+      observation: EnsureObserved { evidence: reading }, observation_satisfies: true,
+      mismatch_reason: "", plan: EnsurePlanUnavailable { reason: "no remedy is demanded" })
+    TunQueuesRefused { cause: TunCensusQueueCountUnsupported } => ensure_decide(policy: EnsureMayApply,
+      observation: EnsureObserved { evidence: reading }, observation_satisfies: false,
+      mismatch_reason: "running kernel does not support the selected TUN queue query",
+      plan: EnsurePlanAvailable { plan: requirement })
+    TunQueuesRefused { cause } => ensure_decide(policy: EnsureMayApply,
+      observation: EnsureInaccessible { reason: tun_census_refusal_text(cause: cause) }, observation_satisfies: false,
+      mismatch_reason: "", plan: EnsurePlanUnavailable { reason: "unreadable is not absent" })
+  }
+}
+
+fn host_kernel_dependency_plan(host: HostIdentity, revision: CommitSha, requirement: TunAttachedQueueRequirement,
+  running_release: LinuxKernelRelease, boot_id: NonEmptyStr, provider: UbuntuTunKernelProvider,
+  packages: KernelPackageReading, simulation: String) -> HostKernelDependencyResolution {
+  if running_release == provider.kernel_release {
+    HostKernelDependencyRefused { reason: "the selected kernel is already running but the required query is unsupported; refuse a reboot loop" }
+  } else if (packages == KernelPackageNeedsInstall && trim(s: simulation) == "")
+    || (packages == KernelPackageExact && simulation != "") {
+    HostKernelDependencyRefused { reason: "kernel dependency plan lacks the simulation appropriate to its package state" }
+  } else { match packages {
+    KernelPackageReadRefused { reason } => HostKernelDependencyRefused { reason: reason }
+    other => HostKernelDependencyPlanned { plan: HostKernelDependencyPlan {
+      host: host, source_revision: revision, requirement: requirement, running_release: running_release,
+      boot_id: boot_id, provider: provider,
+      remedy: match packages { KernelPackageExact => ActivateInstalledKernel other => InstallKernelAndActivate },
+      package_simulation: simulation,
+    } }
+  } }
+}
+
+fn host_kernel_dependency_action_lines(plan: HostKernelDependencyPlan) -> List<String> {
+  let install = match plan.remedy {
+    InstallKernelAndActivate => [concat("install-package:", kernel_provider_selection(provider: plan.provider) as String)]
+    ActivateInstalledKernel => []
+  }
+  ["requirement:safe-slot-reuse -> TUN descriptor census -> ETHTOOL_GCHANNELS combined_count",
+    concat("required-interface:", plan.requirement.interface as String),
+    concat("observed-running-kernel:", plan.running_release as String),
+    "observed-capability:unsupported (errno EOPNOTSUPP)"] + install + [
+    concat("activate-kernel:", plan.provider.kernel_release as String),
+    "activation-prerequisites: plan-bound host interruption authority; drained runners; verified console recovery; external reset observer",
+    "readback: running kernel and new boot identity; KVM; network and services; successful TUN queue query",
+    "continuation: rerun the same commissioning goal; sanitation must still prove zero holders",
+    "standing: dependency remedy planned; VM remains uncommissioned",
+  ]
+}
+
+data host_kernel_maintenance_capability: String = "plan-bound host kernel maintenance: interruption authority, runner drain, console recovery and external boot observation"

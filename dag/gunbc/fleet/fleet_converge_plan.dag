@@ -3,6 +3,9 @@ module gunbc.fleet_converge_plan
 import gunbc.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
+import gunbc.host_kernel_dependency { HostKernelDependencyPlan, host_kernel_dependency_action_lines, host_kernel_maintenance_capability }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_row }
+
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetBasis, workspace_commissioning_basis_rows }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_apply_script }
@@ -407,6 +410,7 @@ type FleetConvergeRequest
     }
   | WorkspaceAllocationConverge { basis: WorkspaceConvergenceBasis, release_dir: NonEmptyStr }
   | WorkspaceSlotCommissioningConverge { basis: WorkspaceCommissioningFleetBasis }
+  | WorkspaceCommissioningDependencyConverge { plan: HostKernelDependencyPlan }
   | LiveDeployConverge {
       desired: DesiredDeployment
       basis: LiveDeployMemberBasis
@@ -423,6 +427,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
     WorkspaceSlotCommissioningConverge { basis: _ } => WorkspaceSlotCommissioningOnly
+    WorkspaceCommissioningDependencyConverge { plan: _ } => WorkspaceSlotCommissioningOnly
     WorkspaceAllocationConverge { basis: _, release_dir: _ } => WorkspaceAllocationOnly
     LiveDeployConverge { desired: _, basis: _ } => LiveDeploy
   }
@@ -435,6 +440,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
     WorkspaceSlotCommissioningConverge { basis } => basis.provenance.slot.host as NonEmptyStr
+    WorkspaceCommissioningDependencyConverge { plan } => plan.host as NonEmptyStr
     WorkspaceAllocationConverge { basis: selected, release_dir: _ } => selected.host
     LiveDeployConverge { desired: d, basis: _ } => d.target.host.identity as NonEmptyStr
   }
@@ -609,6 +615,7 @@ fn fleet_converge_apply_artifact_admits(
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
             WorkspaceSlotCommissioningConverge { basis: _ } => ApplyMemberSetMismatch
+            WorkspaceCommissioningDependencyConverge { plan: _ } => ApplyMemberSetMismatch
             WorkspaceAllocationConverge { basis: _, release_dir: _ } => ApplyMemberSetMismatch
             LiveDeployConverge { desired: _, basis: _ } => ApplyMemberSetMismatch
           }
@@ -624,6 +631,7 @@ fn fleet_converge_apply_artifact_admits(
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyAdmitted
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyAdmitted
             WorkspaceSlotCommissioningConverge { basis: _ } => ApplyAdmitted
+            WorkspaceCommissioningDependencyConverge { plan: _ } => ApplyAwaitingCapability { capability: host_kernel_maintenance_capability }
             WorkspaceAllocationConverge { basis: _, release_dir: _ } => ApplyAdmitted
             FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => ApplyAdmitted
           }
@@ -1411,6 +1419,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       }
     }
     WorkspaceSlotCommissioningConverge { basis: _ } => FullyApplied
+    WorkspaceCommissioningDependencyConverge { plan: _ } => AwaitingCapability { capability: host_kernel_maintenance_capability }
     WorkspaceAllocationConverge { basis: _, release_dir: _ } => FullyApplied
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
     LiveDeployConverge { desired: _, basis } =>
@@ -1458,6 +1467,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
     WorkspaceSlotCommissioningConverge { basis } => [workspace_commissioning_basis_rows(basis: basis)]
+    WorkspaceCommissioningDependencyConverge { plan } => [host_kernel_dependency_row(plan: plan)] + host_kernel_dependency_action_lines(plan: plan)
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => [
       "# workspace allocation: dispatch existing slot controller; readiness is observed separately",
       concat("workspace-launch-directive:", workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
@@ -1518,6 +1528,7 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
         "# allocation-store-refusals=0",
       ]
     WorkspaceSlotCommissioningConverge { basis: _ } => [concat("# scope=", workspace_executor_scope_wire)]
+    WorkspaceCommissioningDependencyConverge { plan: _ } => [concat("# scope=", workspace_executor_scope_wire)]
     WorkspaceAllocationConverge { basis: _, release_dir: _ } => [concat("# scope=", fleet_converge_scope_wire(scope: WorkspaceAllocationOnly))]
     LiveDeployConverge { desired: desired, basis: _ } =>
       [
@@ -1976,6 +1987,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
         "\n",
       )
     WorkspaceSlotCommissioningConverge { basis } => join([workspace_executor_scope_wire, workspace_commissioning_basis_rows(basis: basis)], "\n")
+    WorkspaceCommissioningDependencyConverge { plan } => join([workspace_executor_scope_wire, host_kernel_dependency_row(plan: plan)], "\n")
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => join(
       [fleet_converge_scope_wire(scope: WorkspaceAllocationOnly), concat("installed-release:", installed as String)] + workspace_convergence_baseline_rows(basis: selected), "\n",
     )
@@ -2535,6 +2547,7 @@ fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
       "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
     WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
     WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
     LiveDeployConverge { desired: _, basis: _ } =>
       "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
@@ -2584,6 +2597,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
       fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
     WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
       else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
           " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]

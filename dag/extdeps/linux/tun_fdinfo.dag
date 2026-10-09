@@ -12,7 +12,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.linux.procfs { procfs_path_literal, ProcSelfStatus, procfs_status_effective_uid }
 import extdeps.numeric.base16 { base16_word_value }
-import extdeps.ethtool { ethtool_observe_combined_channels, EthtoolCombinedChannels, EthtoolCombinedChannelsCurrent, EthtoolCombinedChannelsUnreadable }
+import extdeps.linux.ethtool_ioctl { linux_ethtool_channels_observe, LinuxEthtoolChannels, LinuxEthtoolChannelsRead, LinuxEthtoolChannelsUnsupported, LinuxEthtoolChannelsUnreadable }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/master/drivers/net/tun.c" }
@@ -24,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // references held by io_uring/SCM_RIGHTS rather than installed process FDs. Denied reads refuse.
 //
 // WHERE THE QUEUE COUNT COMES FROM: the current combined channel count, read through
-// extdeps.ethtool. Linux v6.9 drivers/net/tun.c tun_get_channels publishes tun->numqueues;
+// extdeps.linux.ethtool_ioctl, preserving EOPNOTSUPP as a capability absence. Linux v6.9 drivers/net/tun.c tun_get_channels publishes tun->numqueues;
 // v6.8 has no get_channels callback. srv1's 6.8.0-138-generic returned Operation not supported
 // during PR #13607 commissioning on 2026-10-09. An unsupported query remains Unreadable, never
 // zero: descriptor sweeps alone miss SCM_RIGHTS/io_uring references. Upgrading a host requires
@@ -42,6 +42,7 @@ type TunCensusRefusal
   | TunCensusReaderNotRoot { euid: Int }
   | TunCensusFlagsUnreadable
   | TunCensusMultiQueue
+  | TunCensusQueueCountUnsupported
   | TunCensusQueueCountUnreadable { cause: NonEmptyStr }
   | TunCensusProcUnreadable { path: String }
 
@@ -52,6 +53,7 @@ fn tun_census_refusal_text(cause: TunCensusRefusal) -> String {
     TunCensusReaderNotRoot { euid } => concat("TUN census requires root; effective UID is ", to_string(euid))
     TunCensusFlagsUnreadable => "TUN interface flags are unreadable or malformed"
     TunCensusMultiQueue => "TUN census does not admit multi-queue interfaces"
+    TunCensusQueueCountUnsupported => "TUN attached-queue count requires ETHTOOL_GCHANNELS support in the running kernel (EOPNOTSUPP)"
     TunCensusQueueCountUnreadable { cause: detail } => concat("TUN attached-queue count is unavailable: ", detail as String)
     TunCensusProcUnreadable { path } => concat("TUN descriptor census could not read ", path)
   }
@@ -69,7 +71,7 @@ type TunDescriptorCensus
 
 fn tun_interface_name_admissible(name: String) -> Bool {
   let cps = name |> chars
-  length(cps) > 0 && all(cps, cp => (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57) || cp == 95 || cp == 45)
+  length(cps) > 0 && length(cps) < 16 && all(cps, cp => (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57) || cp == 95 || cp == 45)
 }
 
 fn tun_decimal_name(name: String) -> Bool {
@@ -100,13 +102,14 @@ type TunQueueReading
   = TunQueuesAttached { count: Int }
   | TunQueuesRefused { cause: TunCensusRefusal }
 
-fn tun_queue_reading(mode: TunQueueMode, channels: EthtoolCombinedChannels) -> TunQueueReading {
+fn tun_queue_reading(mode: TunQueueMode, channels: LinuxEthtoolChannels) -> TunQueueReading {
   match mode {
     TunFlagsMalformed => TunQueuesRefused { cause: TunCensusFlagsUnreadable }
     TunMultiQueue => TunQueuesRefused { cause: TunCensusMultiQueue }
     TunSingleQueue => match channels {
-      EthtoolCombinedChannelsCurrent { count: n } => TunQueuesAttached { count: n }
-      EthtoolCombinedChannelsUnreadable { cause: c } => TunQueuesRefused { cause: TunCensusQueueCountUnreadable { cause: c } }
+      LinuxEthtoolChannelsRead { combined: n } => TunQueuesAttached { count: n }
+      LinuxEthtoolChannelsUnsupported => TunQueuesRefused { cause: TunCensusQueueCountUnsupported }
+      LinuxEthtoolChannelsUnreadable { cause: c } => TunQueuesRefused { cause: TunCensusQueueCountUnreadable { cause: c } }
     }
   }
 }
@@ -233,7 +236,7 @@ fn tun_observe_queues(name: String) -> TunQueueReading {
   let r = Filesystem.Read(path: path)
   match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
     FilesystemExactPathRead { path: _, content: c } =>
-      tun_queue_reading(mode: tun_queue_mode(flags: c), channels: ethtool_observe_combined_channels(device: name as NonEmptyStr))
+      tun_queue_reading(mode: tun_queue_mode(flags: c), channels: linux_ethtool_channels_observe(device: name as NonEmptyStr))
     other => TunQueuesRefused { cause: TunCensusFlagsUnreadable }
   }
 }
@@ -250,6 +253,23 @@ fn tun_reader_refusal() -> TunCensusRefusal? {
   }
 }
 
+// The chosen census needs this operation on this interface. Convergence consumes the same
+// requirement; it does not maintain a parallel list of host kernel versions or tools.
+type TunAttachedQueueRequirement { interface: NonEmptyStr }
+
+fn tun_attached_queue_requirement(name: NonEmptyStr) -> TunAttachedQueueRequirement {
+  TunAttachedQueueRequirement { interface: name }
+}
+
+fn tun_attached_queue_requirement_observe(requirement: TunAttachedQueueRequirement) -> TunQueueReading {
+  if !tun_interface_name_admissible(name: requirement.interface as String) {
+    TunQueuesRefused { cause: TunCensusSubjectInadmissible }
+  } else { match tun_reader_refusal() {
+    Present { value: cause } => TunQueuesRefused { cause: cause }
+    Absent => tun_observe_queues(name: requirement.interface as String)
+  } }
+}
+
 // The census, in the order the refusals are owed: subject, reader identity, interface presence,
 // then the joined observation. Only a not_found on tun_flags is Missing; any other failure to read
 // it is Unreadable.
@@ -263,7 +283,8 @@ fn tun_descriptor_census_observe(name: String) -> TunDescriptorCensus {
       match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
         FilesystemExactPathAbsent { path: _ } => TunInterfaceMissing
         FilesystemExactPathRead { path: _, content: _ } => {
-          let before = tun_observe_queues(name: name)
+          let requirement = tun_attached_queue_requirement(name: name as NonEmptyStr)
+          let before = tun_attached_queue_requirement_observe(requirement: requirement)
           match before {
             TunQueuesRefused { cause: c } => TunDescriptorUnreadable { cause: c }
             TunQueuesAttached { count: _ } => {
@@ -272,7 +293,7 @@ fn tun_descriptor_census_observe(name: String) -> TunDescriptorCensus {
                 TunSweepRefused { cause: c } => TunDescriptorUnreadable { cause: c }
                 TunSweepComplete { holders: _, exited: _ } => {
                   let second = tun_sweep(name: name)
-                  tun_census_join(before: before, first: first, second: second, after: tun_observe_queues(name: name))
+                  tun_census_join(before: before, first: first, second: second, after: tun_attached_queue_requirement_observe(requirement: requirement))
                 }
               }
             }

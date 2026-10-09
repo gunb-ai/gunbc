@@ -3,7 +3,7 @@ module test.claim.workspace_workflow_dispatch_witness_test
 import std.types { Bool, String }
 import gunbc.fleet_converge_workflow {
   WorkspaceAllocationPlan, WorkspaceImageBuild,
-  fleet_converge_job, fleet_converge_shared_job_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
+  fleet_converge_job_with_steps, fleet_converge_shared_job_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
   fleet_converge_mode_release_product, CompilerPairOnly,
   fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyNotConsumed,
 }
@@ -41,10 +41,11 @@ test fn fleet_dispatch_stays_within_github_input_limit() -> Bool {
   count(fleet_converge_dispatch_inputs) <= 25
 }
 
-// Exercise the actual emitted job. Shared modes must select it positively; dedicated modes
-// cannot consume another runner or attempt the shared cloud login as a side effect.
+// SUPPLIED AT THE BOUNDARY: an empty step list avoids constructing unrelated deployment
+// programs. The production job envelope still owns the actual if-condition assignment. Shared
+// modes must select it positively; dedicated modes cannot select the credentialed shared job.
 test fn dedicated_installs_do_not_also_run_the_shared_credentialed_job() -> Bool {
-  match fleet_converge_job().if_condition {
+  match fleet_converge_job_with_steps(steps: []).if_condition {
     Absent => false
     Present { value: condition } => condition == fleet_converge_shared_job_if
       && string_contains(s: condition, pattern: "github.event.inputs.mode == 'workspace_image_build'")

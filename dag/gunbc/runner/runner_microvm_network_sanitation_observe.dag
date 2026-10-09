@@ -4,7 +4,8 @@ import std.types { String, NonEmptyStr, Bool }
 import std.algebra { trim }
 import std.resources { Filesystem }
 import std.content_hash { sha256_hex_digest }
-import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, tun_census_refusal_text, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable }
+import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, tun_census_refusal_text, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable, TunAttachedQueueRequirement, tun_attached_queue_requirement }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest }
@@ -19,6 +20,12 @@ import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_ipv6_disabled_proc_path,
   runner_slot_guest_originated_conntrack_list_command, runner_slot_guest_destined_conntrack_list_command,
   runner_slot_guest_neighbour_show_command, runner_host_expectation_list_command, runner_microvm_nft_list_command,
+}
+
+// The selected sanitation reader owns its environmental demand. Commissioning consumes this
+// same requirement; host policy chooses a provider only if this operation is unsupported.
+fn slot_network_tun_queue_requirement(slot: RunnerSlotIdentity) -> TunAttachedQueueRequirement {
+  tun_attached_queue_requirement(name: runner_slot_network(slot: slot).tap_device)
 }
 
 fn observe_tap_holders(tap: NonEmptyStr) -> TapHolderObservation {
@@ -65,7 +72,7 @@ fn observe_slot_network_readings(subject: SlotNetworkSanitationSubject) -> SlotN
     else if trim(s: ipv6.content) == "0" { TapIpv6Enabled }
     else { TapIpv6Unread { reason: "tap IPv6 policy malformed" as NonEmptyStr } }
   SlotNetworkReadings {
-    tap: TapReading { subject: subject.subject, observation: observe_tap_holders(tap: net.tap_device) },
+    tap: TapReading { subject: subject.subject, observation: observe_tap_holders(tap: slot_network_tun_queue_requirement(slot: subject.subject.slot).interface) },
     tap_ipv6: TapIpv6Reading { subject: subject.subject, observation: ipv6_standing },
     guest_originated_conntrack: SlotResidueReading { subject: subject.subject, observation: observe_network_residue(command: runner_slot_guest_originated_conntrack_list_command(net: net)) },
     guest_destined_conntrack: SlotResidueReading { subject: subject.subject, observation: observe_network_residue(command: runner_slot_guest_destined_conntrack_list_command(net: net)) },

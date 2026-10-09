@@ -1,5 +1,7 @@
 module extdeps.python
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { FilePath, List, Unit, NonEmptyStr }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import extdeps.external_authority { ExternalAuthority }
@@ -46,6 +48,8 @@ type PythonProgramText = NonEmptyStr
 
 data python_program_flag: String = "-c"
 data python_interpreter_command: String = "python3"
+
+fn python_program() -> ProgramIdentity = uncataloged_program(invocation: python_interpreter_command as NonEmptyStr)
 
 fn python_run_program_argv(program: PythonProgramText) -> List<String> {
   [python_interpreter_command, python_program_flag, program as String]

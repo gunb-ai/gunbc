@@ -64,6 +64,22 @@ data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.e
 // Install row's argv authored a second time, and its last consumer now binds `package` against
 // this declaration instead.
 service apt.PackageManager {
+  operation ShowExact {
+    input { selection: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    readonly
+    transport shell { argv: ["apt-cache", "show", "--no-all-versions", "{selection}"] }
+    exit { 0 => Unit nonzero => String "apt-cache could not read the selected version" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no package metadata supplied" } "no fabricated package candidate" }
+  }
+  operation SimulateInstall {
+    input { selection: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    readonly
+    transport shell { argv: ["env", "LC_ALL=C", "apt-get", "--simulate", "--no-install-recommends", "--no-remove", "install", "{selection}"] }
+    exit { 0 => Unit nonzero => String "apt-get simulation refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no package plan supplied" } "no fabricated install simulation" }
+  }
   operation Install {
     requires Network
     input { package: NonEmptyStr }
