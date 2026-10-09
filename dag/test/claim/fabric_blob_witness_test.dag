@@ -12,14 +12,19 @@ import std.fabric_blob {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
 import gunbc.fabric.fabric_blob_r2 {
-  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
+  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target, resolve_fabric_blob_target_under,
 }
-import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, r2_default_multipart_abort_rule, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
+import gunbc.cloudflare.r2_origin {
+  R2OriginAllocated, R2OriginBucket, R2JurisdictionDefault, OriginCredentialUnminted,
+  fabric_cache_blobs_read_access_key_id, fabric_cache_blobs_write_access_key_id,
+  fabric_cache_blobs_read_secret_id, fabric_cache_blobs_write_secret_id,
+  FabricCacheBlobs, bucket_purpose_lifecycle_rules, r2_default_multipart_abort_rule, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
 import extdeps.cloudflare.r2_lifecycle {
   R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
   r2_lifecycle_read_body, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire,
 }
 import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
+import std.decl_ref { decl_ref }
 import std.upsert_decision { Noop, Apply, Refuse }
 
 // READS THE LIVE TREE: a FabricBlobReading is sole_constructor, so the reading arms are taken through
@@ -78,18 +83,47 @@ test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
   }
 }
 
-// ── THE CACHE'S CREDENTIALS ARE UNMINTED, SO EVERY TRANSFER REFUSES BEFORE THE NETWORK ─────────
+// ── THE CACHE'S CREDENTIALS ARE PINNED, SO A TRANSFER REACHES THE CREDENTIAL STEP ───────────────
 
-test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
+test fn cache_blob_targets_resolve_with_the_pinned_access_key_ids() -> Bool {
   let read = match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
-    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
-    FabricBlobTargetReady { target: _ } => false
+    FabricBlobTargetReady { target: t } =>
+      (t.access_key_id as String) == (fabric_cache_blobs_read_access_key_id as String)
+        && (t.token_value.secret as String) == (fabric_cache_blobs_read_secret_id as String)
+    FabricBlobTargetRefused { cause: _ } => false
   }
   let write = match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
-    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token") && string_contains(s: c as String, pattern: "run_cache_object_write")
+    FabricBlobTargetReady { target: t } =>
+      (t.access_key_id as String) == (fabric_cache_blobs_write_access_key_id as String)
+        && (t.token_value.secret as String) == (fabric_cache_blobs_write_secret_id as String)
+    FabricBlobTargetRefused { cause: _ } => false
+  }
+  read && write && (fabric_cache_blobs_read_access_key_id as String) != (fabric_cache_blobs_write_access_key_id as String)
+}
+
+// THE UNMINTED REFUSAL STAYS ENROLLED ON A SUPPLIED STANDING (DESIGN section 4b(4)): the declarations
+// no longer inhabit the arm, so the standing is constructed.
+test fn an_unminted_cache_credential_still_refuses_naming_its_mint_entry() -> Bool {
+  let standing = R2OriginAllocated {
+    bucket: R2OriginBucket {
+      bucket_name: "a-bucket",
+      jurisdiction: R2JurisdictionDefault,
+      location_hint: none,
+      purpose: FabricCacheBlobs {},
+      read_credential: OriginCredentialUnminted {
+        mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_read"),
+        secret_id: "witness-read",
+      },
+      write_credential: OriginCredentialUnminted {
+        mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_write"),
+        secret_id: "witness-write",
+      },
+    },
+  }
+  match resolve_fabric_blob_target_under(direction: FabricBlobReadDirection, key: "blobs/x" as NonEmptyStr, standing: standing) {
+    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "witness-read") && string_contains(s: c as String, pattern: "run_cache_object_read")
     FabricBlobTargetReady { target: _ } => false
   }
-  read && write
 }
 
 // ── LIFECYCLE: ONLY THE CACHE EXPIRES, AND A READ IT CANNOT DESCRIBE REFUSES ───────────────────

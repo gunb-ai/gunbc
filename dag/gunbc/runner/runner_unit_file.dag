@@ -3,7 +3,7 @@ module gunbc.runner_unit_file
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
@@ -424,6 +424,7 @@ fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) ->
   match figure.evidence {
     TranscribedUncited { read_obligation: _ } => none
     CitedToAuthority { authority: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
+    ObservedByReceipt { observed: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
   }
 }
 
