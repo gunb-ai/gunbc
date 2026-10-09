@@ -24,7 +24,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import std.optional {
@@ -683,7 +683,7 @@ fn emitted_target_reach(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> Ma
     match edge.to {
       EmittedCrateRootTarget => acc
       EmittedModuleTarget { module: target } =>
-        match map_get(acc, target) {
+        match map_get_checked(acc, target) {
           Accepted { value: Present { value: _ }, diagnostics: _ } => acc
           Accepted { value: _, diagnostics: _ } =>
             map_insert(acc, target,
@@ -699,7 +699,7 @@ fn emitted_target_reach(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> Ma
 }
 
 fn string_member(set: Map<String, Bool>, key: String) -> Bool {
-  match map_get(set, key) {
+  match map_get_checked(set, key) {
     Accepted { value: Present { value: _ }, diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
@@ -727,7 +727,7 @@ fn emitted_edge_merge_step(
               refusal: optional_present(value: EmittedEdgeEndpointOutsideDag { from: edge.from, to: target })
             }
           } else {
-            let target_reaches_source = match map_get(reach, target) {
+            let target_reaches_source = match map_get_checked(reach, target) {
               Accepted { value: Present { value: reached }, diagnostics: _ } => string_member(set: reached, key: edge.from)
               Accepted { value: _, diagnostics: _ } => false
               Rejected { diagnostics: _ } => false
@@ -879,7 +879,7 @@ fn assignment_owner(
   assignment: Map<ModuleId, CompilationUnitId>,
   module_id: ModuleId
 ) -> Optional<CompilationUnitId> {
-  match map_get(assignment, module_id) {
+  match map_get_checked(assignment, module_id) {
     Accepted { value: owner, diagnostics: _ } => owner
     Rejected { diagnostics: _ } => Absent
   }
@@ -912,7 +912,7 @@ fn assignment_first_stranger(
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match map_get(known, module_id) {
+        match map_get_checked(known, module_id) {
           Accepted { value: Present { value: _ }, diagnostics: _ } => Absent
           Accepted { value: Absent, diagnostics: _ } => Present { value: module_id }
           Rejected { diagnostics: _ } => Present { value: module_id }

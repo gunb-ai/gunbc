@@ -17,7 +17,7 @@ import std.materialization_ladder {
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
-import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import std.optional { Absent, Present, Optional }
 
@@ -401,7 +401,7 @@ fn share_map_lookup_causes<T>(o: Outcome<Optional<T>>) -> List<ConsumerReadCause
 }
 
 fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
-  let o = map_get(wholes, claim)
+  let o = map_get_checked(wholes, claim)
   if length(xs: share_map_lookup_causes(o: o)) > 0 {
     false
   } else {
@@ -414,7 +414,7 @@ fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
 }
 
 fn projection_count(counts: Map<String, Int>, field: String) -> Int {
-  let o = map_get(counts, field)
+  let o = map_get_checked(counts, field)
   if length(xs: share_map_lookup_causes(o: o)) > 0 {
     0
   } else {
@@ -432,14 +432,14 @@ type ShareCountState {
 }
 
 fn add_projection_count(state: ShareCountState, wholes: Map<String, Bool>, claim: String, field: String) -> ShareCountState {
-  let whole_o = map_get(wholes, claim)
+  let whole_o = map_get_checked(wholes, claim)
   let whole_unread = share_map_lookup_causes(o: whole_o)
   if length(xs: whole_unread) > 0 {
     ShareCountState { counts: state.counts, unread: concat(state.unread, whole_unread) }
   } else if reads_whole_value(wholes: wholes, claim: claim) {
     state
   } else {
-    let count_o = map_get(state.counts, field)
+    let count_o = map_get_checked(state.counts, field)
     let count_unread = share_map_lookup_causes(o: count_o)
     if length(xs: count_unread) > 0 {
       ShareCountState { counts: state.counts, unread: concat(state.unread, count_unread) }
@@ -475,7 +475,7 @@ fn sole_projections_from_state(reads: List<ClaimConsumerRead>, counts: Map<Strin
   list_flat_map(xs: reads, f: fn(r) {
     match r.read {
       ProjectedField { field: f } =>
-        let count_o = map_get(counts, f)
+        let count_o = map_get_checked(counts, f)
         let unread = share_map_lookup_causes(o: count_o)
         if length(xs: unread) > 0 {
           []

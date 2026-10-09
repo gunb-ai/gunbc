@@ -12,7 +12,7 @@ import v2.std.algebra { any, contains, fold_list, is_empty, list_reverse }
 import v2.std.collection {
   Map,
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import std.optional {
@@ -642,7 +642,7 @@ type ImportClosureBfsState {
 }
 
 fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
-  match v2.std.collection.map_get(m: m, key: key) {
+  match v2.std.collection.map_get_checked(m: m, key: key) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => Absent
   }

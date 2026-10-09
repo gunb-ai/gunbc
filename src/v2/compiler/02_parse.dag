@@ -84,7 +84,7 @@ import v2.std.collection {
   Map,
   empty_map,
   list_at_optional,
-  map_get,
+  map_get_checked,
   map_insert,
   map_lookup
 }
@@ -637,7 +637,7 @@ fn parse_table_memo_insert_refused(
   value: ParseMemoEntry
 ) -> Bool {
   let after = parse_table_insert(table: table, key: key, value: value)
-  match v2.std.collection.map_get(m: after.entries, key: key) {
+  match v2.std.collection.map_get_checked(m: after.entries, key: key) {
     Accepted { value: Absent } => true
     Accepted { value: Present { value: _ } } => false
     Rejected { diagnostics: _ } => false
@@ -1651,7 +1651,7 @@ fn first_list_intersect(left: List<FirstKey>, right: List<FirstKey>) -> List<Fir
 }
 
 fn production_first_row_lookup(rows: Map<Symbol, List<FirstKey>>, name: Symbol) -> List<FirstKey> {
-  match v2.std.collection.map_get(m: rows, key: name) {
+  match v2.std.collection.map_get_checked(m: rows, key: name) {
     Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
     Rejected { diagnostics: _ } => grammar_empty_terminal_list()
@@ -3565,7 +3565,7 @@ fn parse_table_token_dispatch(table: ParseTable, production: Symbol) -> Bool {
 // When the key is absent the Choice plan is ordered backtrack, the pre-cutover
 // interpreter. Analyzed tables always resolve Present here.
 fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
-  match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
+  match v2.std.collection.map_get_checked(m: table.prepared_exprs, key: production.name) {
     Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
     Accepted { value: Absent, diagnostics: _ } =>
       prepare_grammar_expr(
@@ -3892,7 +3892,7 @@ fn left_corner_direct_rows(root: GrammarRoot, nullable_set: List<Symbol>) -> Map
 }
 
 fn left_corner_row(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
-  match v2.std.collection.map_get(m: rows, key: name) {
+  match v2.std.collection.map_get_checked(m: rows, key: name) {
     Accepted { value: Present { value: reached }, diagnostics: _ } => reached
     Accepted { value: Absent, diagnostics: _ } => std.algebra.Empty
     Rejected { diagnostics: _ } => std.algebra.Empty

@@ -134,7 +134,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_lookup, module_path: "v2.std.collection", decl_name: "map_lookup", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_get, module_path: "v2.std.collection", decl_name: "list_at_optional", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "v2.std.collection", decl_name: "empty_map", fidelity: ModeledProjection),
-    primitive_projection_row(primitive: primitive_map_get, module_path: "v2.std.collection", decl_name: "map_get", fidelity: DivergentProjection { divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as NonEmptyStr }),
+    primitive_projection_row(primitive: primitive_map_get, module_path: "v2.std.collection", decl_name: "map_get_checked", fidelity: DivergentProjection { divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as NonEmptyStr }),
   ]
 }
 

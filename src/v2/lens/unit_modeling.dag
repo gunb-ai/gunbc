@@ -65,7 +65,7 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
 }
 
 fn field_name_has_known_carrier(name: Symbol) -> Bool {
-  match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
+  match v2.std.collection.map_get_checked(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
@@ -86,7 +86,7 @@ fn exemption_marker_set() -> Map<Symbol, Symbol> {
 }
 
 fn name_is_exempt(name: Symbol) -> Bool {
-  match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
+  match v2.std.collection.map_get_checked(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false

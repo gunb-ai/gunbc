@@ -351,7 +351,7 @@ fn symbol_index_fill_containment_node(
 }
 
 fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
-  match v2.std.collection.map_get(counts, sym) {
+  match v2.std.collection.map_get_checked(counts, sym) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: n } => n
       Absent => 0
