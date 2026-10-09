@@ -53,10 +53,16 @@ data dusk_gpu_concurrency_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "measure GPU occupancy on the dusk-1 ninfer replica independently of request concurrency" as NonEmptyStr,
 }
 
-data dusk_occupancy_seats: Nat = 4
+type DuskRequestConcurrency {
+  seats: Nat
+  standing: CitedFigureStanding
+}
 
-data dusk_occupancy_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "confirm 4 concurrent requests from the ninfer config on dusk-1 or a load probe; operator-declared 2026-10-09, not measured" as NonEmptyStr,
+data dusk_request_concurrency: DuskRequestConcurrency = DuskRequestConcurrency {
+  seats: 3,
+  standing: TranscribedUncited {
+    read_obligation: "confirm this row from the ninfer config on dusk-1 or a load probe; operator-declared, not measured" as NonEmptyStr,
+  },
 }
 
 data dusk_occupancy_basis: NonEmptyStr = "operator-declared concurrent request capacity; not a measured GPU occupancy" as NonEmptyStr
@@ -92,7 +98,7 @@ fn dusk_replica_receipt_wire() -> String {
     " at ", dusk_openai_compat_base_url as String,
     "; ", dusk_auth_boundary_wire() as String,
     "; max_model_len=", to_string(token_count_value(t: dusk_max_model_len)),
-    "; occupancy seats=", to_string(dusk_occupancy_seats),
+    "; occupancy seats=", to_string(dusk_request_concurrency.seats),
     " (", dusk_occupancy_basis as String, ")",
   ], "")
 }

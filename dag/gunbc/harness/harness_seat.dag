@@ -46,7 +46,7 @@ import gunbc.harness.harness_reasoning_wire {
   LeasedFromHostedQuota, harness_serving_unit_wire,
 }
 import gunbc.serving.qwen_dusk_replica {
-  dusk_chat_completions_url, dusk_served_model_id, dusk_occupancy_seats, dusk_seat_partition,
+  dusk_chat_completions_url, dusk_served_model_id, dusk_request_concurrency, dusk_seat_partition,
 }
 import gunbc.harness.harness_hosted_route {
   HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
@@ -1489,7 +1489,7 @@ fn harness_bind_dusk_replica(short_hostname: String, actor: NonEmptyStr, attempt
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let partition = dusk_seat_partition
-          let ceiling = dusk_occupancy_seats
+          let ceiling = dusk_request_concurrency.seats
           let root = harness_seat_pool_root(partition: partition, ceiling: ceiling)
           match fabric_seat_acquire(
             store: store, partition: partition, root: root, actor: actor,

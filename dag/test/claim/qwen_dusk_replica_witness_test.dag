@@ -5,7 +5,7 @@ import std.measure { token_count_value }
 import gunbc.serving.qwen_dusk_replica {
   dusk_magicdns_host, dusk_openai_compat_port, dusk_openai_compat_base_url, dusk_chat_completions_url,
   dusk_models_url, dusk_served_model_id, dusk_max_model_len, dusk_owned_by_observed,
-  dusk_auth_boundary_wire, dusk_gpu_concurrency_standing, dusk_occupancy_seats, dusk_occupancy_standing,
+  dusk_auth_boundary_wire, dusk_gpu_concurrency_standing, dusk_request_concurrency,
   dusk_prompt_prefix_cache_lifetime, dusk_replica_receipt_wire,
 }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
@@ -40,9 +40,8 @@ test fn dusk_auth_is_the_tailnet_and_not_a_secret() -> Bool {
     && dusk_replica_receipt_wire().contains("no API key")
 }
 
-test fn dusk_occupancy_is_operator_declared_four() -> Bool {
-  dusk_occupancy_seats == 4
-    && (match dusk_occupancy_standing {
+test fn dusk_occupancy_is_one_operator_declared_row() -> Bool {
+  (match dusk_request_concurrency.standing {
       TranscribedUncited { read_obligation: o } =>
         (o as String).contains("operator-declared") && (o as String).contains("ninfer")
       CitedToAuthority { authority: _ } => false

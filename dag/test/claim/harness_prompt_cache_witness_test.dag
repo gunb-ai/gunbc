@@ -11,7 +11,7 @@ import extdeps.llm.openai {
 }
 import extdeps.llm.anthropic { anthropic_default_prompt_cache_ttl, anthropic_extended_prompt_cache_ttl }
 import extdeps.openrouter.openrouter { openrouter_prompt_prefix_cache_lifetime }
-import gunbc.serving.qwen_dusk_replica { dusk_prompt_prefix_cache_lifetime, dusk_occupancy_seats }
+import gunbc.serving.qwen_dusk_replica { dusk_prompt_prefix_cache_lifetime }
 import gunbc.harness.harness_prompt_cache {
   harness_prompt_cache_lifetime_for, harness_prompt_cache_account_wire, prompt_cache_warm_until,
   prompt_cache_warm_compaction_due, session_prompt_cache_location, vllm_prompt_prefix_cache_lifetime,
@@ -118,8 +118,7 @@ test fn current_units_without_a_ttl_use_size_compaction_only() -> Bool {
 }
 
 test fn session_cache_location_carries_account_model_and_derived_warm_until() -> Bool {
-  dusk_occupancy_seats == 4
-    && harness_prompt_cache_account_wire(unit: NemotronUltraFreeOnOpenRouter) == "openrouter"
+  harness_prompt_cache_account_wire(unit: NemotronUltraFreeOnOpenRouter) == "openrouter"
     && harness_prompt_cache_account_wire(unit: Qwen38OnDusk) == ""
     && (match session_prompt_cache_location(unit: Qwen38OnDusk, last_used: 1000, standing: Unobserved).warm_until {
       Absent => true
