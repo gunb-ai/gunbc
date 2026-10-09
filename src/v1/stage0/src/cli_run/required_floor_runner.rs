@@ -13875,6 +13875,15 @@ pub fn run_required_floor(
         "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
          clean_wall_ms={control_clean_ms}"
     );
+    // Printed BEFORE the compile so a run cancelled inside the phase still names the union's size
+    // and its identity join against the prepared subject (a censored run otherwise has no members).
+    eprintln!(
+        "[floor-phase] phase=fixture-closure-union-emit state=begin members={} \
+         outside_prepared={outside_prepared} prepared_paths={} fixture_compiles={}",
+        union.members.len(),
+        prepared_source_paths.len(),
+        union.fixture_compiles
+    );
     let union_started = std::time::Instant::now();
     let union_cpu_started = v1_interpreter::thread_cpu_nanos();
     let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
