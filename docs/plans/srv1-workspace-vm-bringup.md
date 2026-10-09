@@ -210,3 +210,21 @@ The workflow-selection repair passes five focused witnesses. Regeneration succee
 and an independent check of the emitted YAML finds exactly one consumer job for
 each of all 78 dispatch modes. The shared job selector is the only generated
 workflow field that changed. All 8,269 source files parse.
+
+The local `a85cc481af5` installation completed its mutations but returned
+`executor scripts or loaded unit failed exact readback`. The final read attempted
+to open root:root `0440` `/etc/sudoers.d/gunbc-workspace-commissioning` as
+`ghrunner`; that account has no read permission or read grant. `visudo` accepts the
+installed policy. Independent readback matches the compiler artifact's SHA-256
+`16f75c38f7b5a3eb7c3580dbe9f6bae59b5997630d808bd3cc3b39ad49dd9930`, both image pins,
+and the root-owned release/readiness/commissioning directories. The loaded slot
+unit selects `a85cc481af5` and has no running process. Installation convergence is
+not yet claimed: the readback needs an exact privileged read of its own policy.
+
+The repair derives that read's argv and permission from the same privileged
+operation, retaining root:root `0440` custody and exact content comparison. Seven
+focused dispatch/allocation witnesses pass, including the exact policy-file grant
+and the existing prohibition on workflow-created operator intent. The verified
+`a85cc481af5` compiler binary can interpret this DAG-only repair; its build identity
+remains `a85cc481af5`, separately from the new installed source revision. It is not
+represented as a rebuilt compiler pack for the new tree.

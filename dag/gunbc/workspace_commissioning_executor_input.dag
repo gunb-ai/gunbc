@@ -2,7 +2,12 @@ module gunbc.workspace_commissioning_executor_input
 
 import gunbc.workspace_commissioning_input_store { workspace_commissioning_input_read, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputRefused }
 
-import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content, workspace_dispatch_grant_read_operation }
+
+import gunbc.executor_privileged_operation { executor_privileged_operation_elevated_command }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
 import std.types { String, NonEmptyStr, CommitSha, Bool }
 import std.algebra { trim }
@@ -89,6 +94,21 @@ fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool 
   }
 }
 
+// Installer readback runs as the job user. Sudoers custody is checked before using the exact
+// read-only grant; changing permissions or substituting a successful install is not a readback.
+fn workspace_executor_grant_matches(expected: String) -> Bool {
+  match read_store_ownership(path: workspace_dispatch_grant_path) {
+    OwnershipRead { ownership: StoreRootOwned } => match run_shell_command_capture(
+      command: executor_privileged_operation_elevated_command(op: workspace_dispatch_grant_read_operation()), transport: LocalExec) {
+      ProcessOutputPresent { text } => text == expected
+      ProcessOutputAbsent => false
+      ProcessRefused { exit_code: _, stderr: _ } => false
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
+  }
+}
+
 fn workspace_executor_installed_adapter_matches(release_dir: String, slot: NonEmptyStr) -> Bool {
   let unit = workspace_executor_unit_instance_name(slot: slot)
   let fragment = systemd.Systemctl.ShowProperty(unit: unit, property: "FragmentPath")
@@ -97,7 +117,7 @@ fn workspace_executor_installed_adapter_matches(release_dir: String, slot: NonEm
   fragment.success && trim(s: fragment.value) == (workspace_executor_unit_path() as String)
     && dropins.success && trim(s: dropins.value) == ""
     && reload.success && trim(s: reload.value) == "no"
-    && workspace_executor_owned_text_equals(path: workspace_dispatch_grant_path, expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n"))
+    && workspace_executor_grant_matches(expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n"))
     && workspace_executor_owned_text_equals(path: workspace_executor_unit_path() as String,
       expected: workspace_executor_unit_text(release_dir: release_dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))
     && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_script_name], ""), expected: workspace_commissioning_executor_script())

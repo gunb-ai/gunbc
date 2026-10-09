@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.installation_observer_cannot_read_its_installed_policy
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data installation_observer_cannot_read_its_installed_policy: RecurringFailureMode = RecurringFailureMode {
+  identity: "installation_observer_cannot_read_its_installed_policy" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: microvm_controller_install_srv1_wet installed release a85cc481af5 on srv1, then refused exact adapter readback. The installed sudoers policy was correctly root:root 0440, but workspace_executor_installed_adapter_matches attempted an ordinary Filesystem.Read as ghrunner. The observer had neither filesystem read permission nor an exact privileged read grant. No VM was commissioned by this installation.",
+    "Earliest unjustified boundary: installation establishes restricted policy custody, while the adapter observer assumes its caller can read every installed artifact directly. Correct installation makes that assumption false. This differs from demanding an output grant before installation: the read runs after installation, but the installed capability set never provided it.",
+    "Repair: workspace_dispatch_grant_read_operation names the single policy path. Both its sudoers row and the actual elevated read derive from that operation. Root custody and exact content equality still gate acceptance; unreadable, absent or mismatched policy refuses. Neither file permissions nor access to the protected-state credential is widened.",
+    "Guarantee: the operation and permission cannot disagree about argv because they share one value; installation_readback_grants_only_the_exact_policy_file executes the grant producer and discriminates this exact path from a wildcard or credential read. Actual account privileges and filesystem custody remain external facts, verified by the installed adapter readback as the job account. Live acceptance is required; the pure witness alone cannot prove sudo admitted that account.",
+  ],
+  evidence: [],
+}

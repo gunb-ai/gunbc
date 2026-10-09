@@ -3555,7 +3555,8 @@ fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<Pi
 }
 
 // The installer has already installed the exact controller release under root custody. These
-// argument-free grants name that binary, tree and three fixed entries; no job code is elevated.
+// argument-free grants name that binary, tree and the fixed entry roster; no job code is elevated.
+// The same policy also grants its exact readback operation to the installation observer.
 fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let stage = "workspace-commissioning-sudoers"
   let pending = concat(workspace_dispatch_grant_path, ".pending")
