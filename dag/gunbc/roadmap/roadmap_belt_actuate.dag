@@ -572,6 +572,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.roadmap_dispatch_actuator {
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of,
@@ -10979,7 +10981,9 @@ fn belt_launch_start_standing(instance: HostDashboardInstance, node_id: String, 
   let roster = metering_roster_for_attempt(instance: instance, node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key)
   match roster {
     RosterRefused { cause } => AttemptUnitStartUnread { reason: join(["the launch roster could not be read: ", cause], "") }
-    _ =>
+    RosterOpen { launches: _ } =>
+      if any(metering_roster_launches(roster: roster), r => metered_role_eq(a: r, b: metered)) { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted }
+    RosterSealed { launches: _, digest: _ } =>
       if any(metering_roster_launches(roster: roster), r => metered_role_eq(a: r, b: metered)) { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted }
   }
 }
@@ -13844,7 +13848,6 @@ fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: B
 // CollectMode=inactive-or-failed lets the next trigger reuse the name after a failure; the failure
 // itself is kept in the attempt's obligation receipt and the user journal.
 data belt_obligation_entry: String = "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag"
-data belt_obligation_run_bound: String = "45min"
 
 fn belt_obligation_unit_command(
   instance: HostDashboardInstance,
@@ -13857,7 +13860,7 @@ fn belt_obligation_unit_command(
     unit: unit,
     properties: [
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
-      SystemdRunProperty { property: RuntimeMaxSecProperty, value: belt_obligation_run_bound as NonEmptyStr },
+      SystemdRunProperty { property: RuntimeMaxSecProperty, value: belt_tick_run_bound as NonEmptyStr },
       SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     ],
@@ -14057,9 +14060,9 @@ fn belt_attempt_obligation_receipt_decode(raw: String) -> BeltAttemptObligationR
 }
 
 fn belt_attempt_obligation_verify_of_steps(steps: List<JsonValue>) -> BeltAttemptObligationReceiptRead {
-  let verify_steps = steps |> filter(step => match json_object_unique_member(v: step, key: "kind") {
-    JsonMemberFound { value: JsonString { value: k } } => k == belt_attempt_obligation_kind_key(kind: VerifyObligation)
-    _ => false
+  let verify_steps = steps |> filter(step => match json_required_string_member(doc: step, key: "kind") {
+    JsonStringMemberFound { value: k } => k == belt_attempt_obligation_kind_key(kind: VerifyObligation)
+    JsonStringMemberRefused { reason: _ } => false
   })
   match verify_steps.first() {
     Absent => BeltAttemptObligationReceiptPresent { verify: none }
@@ -14207,7 +14210,9 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
         }),
         match launch {
           Present { value: BeltObligationEnqueueRefused { unit, reason } } => [join(["launch ", unit as String, ": ", reason], "")]
-          _ => [] as List<String>
+          Present { value: BeltObligationStarted { unit: _ } } => [] as List<String>
+          Present { value: BeltObligationHeld { unit: _ } } => [] as List<String>
+          Absent => [] as List<String>
         },
       )
   }

@@ -18,8 +18,9 @@ import extdeps.languages.json.parse {
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.roadmap_belt_actuate {
-  belt_obligation_run_bound, BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
+  BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_tick_receipt_decode,
 }
 
@@ -334,14 +335,14 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
 //
 // THE BOUNDS ARE DERIVED FROM THE THINGS THEY BOUND, AS DURATIONS. The drain is one `gunbc run` that
 // moves entries, so its bound is the corpus load plus slack (a policy row, in Second). The queued bound
-// IS the obligation unit's own RuntimeMaxSec (gunbc.roadmap_belt_actuate belt_obligation_run_bound,
+// IS the obligation unit's own RuntimeMaxSec (gunbc.live_deploy.belt_cadence belt_tick_run_bound,
 // read through the systemd time-span parser) plus the drain bound: past that the unit has been stopped
 // by its manager, and an entry still queued is one no run settled. Changing the run bound moves this
 // bound; there is no second copy of it. A run bound the parser cannot read refuses as unobserved.
 data event_backlog_drain_bound: Second = second(count: 900)
 
 fn event_backlog_queued_bound() -> Second? {
-  match systemd_duration_usec(text: belt_obligation_run_bound) {
+  match systemd_duration_usec(text: belt_tick_run_bound) {
     Absent => none
     Present { value: run } => Present { value: second(count: microsecond_count(m: run) / 1000000 + second_count(s: event_backlog_drain_bound)) }
   }
@@ -351,7 +352,8 @@ fn event_backlog_bound(stage: AttemptExitSpoolStage) -> Second? {
   match stage {
     AttemptExitInbox => Present { value: event_backlog_drain_bound }
     AttemptExitQueued => event_backlog_queued_bound()
-    _ => none
+    AttemptExitDone => none
+    AttemptExitRefused => none
   }
 }
 

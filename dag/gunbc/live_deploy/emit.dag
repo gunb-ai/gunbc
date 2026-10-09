@@ -14,7 +14,7 @@ import gunbc.fleet_generation_execution { fleet_generation_lock }
 
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
-import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
+import gunbc.live_deploy.belt_cadence { belt_tick_cadence, belt_tick_run_bound }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -743,24 +743,6 @@ fn emit_approval_broker_unit_doc_on(spec: DeploymentSpec, revision: ReleaseRevis
 
 
 
-// THE PER-TICK WATCHDOG, and the 2026-09-21 measurement that put it here. A Type=oneshot unit with
-// no start bound runs as long as the tick runs, and OnUnitInactiveSec only schedules the next tick
-// from INACTIVITY -- so one tick that wedged in the SCM seed (measured that night: 2.25 hours at
-// 100% CPU inside one capture, the timer showing no next elapse and no receipt distinguishing
-// "nothing to do" from "stuck") halted the whole pipeline invisibly; the operator could not tell
-// the frozen cadence from an idle belt. TimeoutStartSec is the bounded-reconciliation backstop in
-// the workflow-execution ruling's sense: past the bound systemd kills the tick, the unit goes
-// inactive(failed) LOUDLY, and the timer resumes on the next cadence -- one lost pass, never a
-// lost night. The bound must clear the worst HONEST tick, which is first-capture-heavy: a fresh
-// project envelope seeds the whole ~7,050-path intake base through the git bridge once (measured
-// 2026-09-21 at roughly seven minutes of bridge time per project), and verification then runs the
-// node's validations; it must stay far below the hours a wedge needs to be noticed by a human.
-// The bound names the instrument that re-derives it, never a transcribed number (DESIGN section 6):
-// a green tick's receipt at receipts/belt-last-tick.json carries its observed_at, and the belt's
-// own stage timings re-derive the worst honest pass. 45min is the policy row: roughly six times
-// the 2026-09-21 measured seed-bridge cost, far below the hours a wedge needs to be noticed by a
-// human, and any honest growth beyond it must move this row with a reason, not the wedge.
-data belt_tick_run_bound: String = "45min"
 
 fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
