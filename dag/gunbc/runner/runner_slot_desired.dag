@@ -140,8 +140,9 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // with no swap across 281 jobs (operator's receipt, side-chat review of gunbc#13658). The operator
 // ruled the envelope: a FIXED hard maximum of 22 GiB, swap refused outright ("no thrashing allowed
 // ever"), and a lower trip for the compiler itself -- gunbc.emitted_subject_build_gate
-// native_step_memory_trip_bytes, 20 GiB, bound per subject step by gunbc test -- so the kernel
-// trips the step two GiB before it could reach this maximum. MemoryHigh stays the authored
+// native_step_memory_trip, DERIVED from this row's MemoryHigh less that gate's declared headroom
+// (20 GiB today), bound per subject step by gunbc test -- so the kernel trips the step under the
+// throttle line and two GiB before it could reach this maximum. MemoryHigh stays the authored
 // max-minus-one line. The 26/25 derivation below this note is superseded and kept as the record of
 // why the number was what it was.
 data gunbc_runner_slot_memory_max_bytes: Int = 23622320128

@@ -2535,8 +2535,9 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take). The required `witnesses` job passes
-    // gunbc.emitted_subject_build_gate native_step_memory_trip_bytes, below the fleet slot's hard
-    // maximum, so a product build that outgrows the envelope is tripped by the kernel inside this
+    // gunbc.emitted_subject_build_gate native_step_memory_trip (the slot's MemoryHigh less a
+    // declared headroom), under the fleet slot's throttle line and its hard maximum, so a product
+    // build that outgrows the envelope is tripped by the kernel inside this
     // step rather than at the slot (operator ruling 2026-10-09: a fixed hard maximum, a lower
     // compiler trip threshold, swap refused, no larger-runner retry). A refused bind stops the
     // line: the run asked to be bounded and is not.

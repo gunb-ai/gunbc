@@ -120,6 +120,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_BIND_MEMORY_CGROUP_BYTES: "21474836480"
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
         run: |+
@@ -147,10 +148,14 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_BIND_MEMORY_CGROUP_BYTES: "21474836480"
       - name: Why this lane is red, and what would be a real finding
         run: |-
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
           printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
+          printf '%s\n' 'This step ran inside a cgroup bound at 21474836480 bytes (memory.max) with no swap, below the fleet slot'\''s hard maximum.'
+          printf '%s\n' 'An exit of 137 here is the kernel tripping that bound: the compiler outgrew its envelope. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).'
+          printf '%s\n' 'A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.'
         if: failure()
     env:
       MALLOC_ARENA_MAX: "2"

@@ -23,8 +23,10 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_step_name,
   native_fault_experiment_env_name, native_fault_experiment_skip_value,
   native_product_reuse_env_name, native_product_reuse_fresh_value,
-  native_step_memory_bind_env_name, native_step_memory_trip_text
+  native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip
 }
+import std.measure { byte_size_count }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
 import extdeps.filesystem.filesystem_io
@@ -158,12 +160,25 @@ test fn every_subject_step_requires_a_fresh_product() -> Bool {
 }
 
 // EVERY SUBJECT STEP CARRIES THE MEMORY ENVELOPE, BY VALUE: the bind input whose bytes gunbc test
-// hands the kernel (gunbc.emitted_subject_build_gate native_step_memory_trip_bytes). A step without
-// it runs unbounded inside the slot, and a trip would then be the slot's OOM rather than the
-// step's -- the runner process among the kernel's candidates.
+// hands the kernel (gunbc.emitted_subject_build_gate native_step_memory_trip). A step without it
+// runs unbounded inside the slot, and a trip would then be the slot's OOM rather than the step's
+// -- the runner process among the kernel's candidates.
 test fn every_subject_step_carries_the_memory_envelope() -> Bool {
   all(emitted_subject_build_rows(), row =>
     step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
+}
+
+// AND THE TRIP SITS INSIDE THE SLOT THAT HOLDS THE STEP, BY DERIVATION: it is the slot's MemoryHigh
+// less the gate's declared headroom, so it is strictly under the throttle line, which is strictly
+// under the hard maximum, and it is not zero -- the saturating subtraction would otherwise bind the
+// step at nothing. RED when the headroom is zero, or reaches the throttle line, or the slot's high
+// is not under its max.
+test fn the_trip_sits_inside_the_slot_envelope() -> Bool {
+  let slot = gunbc_runner_slot_desired()
+  let trip = byte_size_count(b: native_step_memory_trip())
+  let high = byte_size_count(b: slot.memory_high)
+  let max = byte_size_count(b: slot.memory_max)
+  trip > 0 && trip < high && high < max
 }
 
 // AND THE FAILURE NOTICE EXPLAINS THE TRIP: the bytes, the exit code the kernel leaves, and that

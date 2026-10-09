@@ -78,6 +78,10 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-15
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-16
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-17
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-18
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-19
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-20
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-21
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-02.service
@@ -108,21 +112,29 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-16.s
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-16.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-17.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-17.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-18.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-18.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-19.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-19.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-20.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-20.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-21.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-21.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells/srv3-06
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/fabric-cells/srv3-06/attempts
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemoryMax\=27917287424
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemoryHigh\=26843545600
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemorySwapMax\=34359738368
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemoryMax\=23622320128
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemoryHigh\=22548578304
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemorySwapMax\=0
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice TasksMax\=16384
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUWeight\=100
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUQuota\=
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv3-06.slice
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells/srv3-07
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/fabric-cells/srv3-07/attempts
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryMax\=27917287424
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryHigh\=26843545600
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemorySwapMax\=34359738368
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryMax\=23622320128
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryHigh\=22548578304
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemorySwapMax\=0
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice TasksMax\=16384
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice CPUWeight\=100
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice CPUQuota\=
