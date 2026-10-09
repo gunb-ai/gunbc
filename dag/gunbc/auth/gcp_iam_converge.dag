@@ -502,6 +502,9 @@ fn delta_refusals(ds: List<PolicyDelta>) -> List<String> {
 // THE PLAN IS PURE: readings in, plan out, so a witness drives every arm with supplied readings.
 // The readings must cover exactly the declared grants, by secret identity: a missing or extra reading
 // refuses, because a plan over a partial population would show the operator a partial diff as whole.
+// A RUN-SCOPED ACCOUNT OWNS NO STANDING CELL, so its policy is not a subject of this plan at all: an
+// add of no cells would be an effect with nothing in it, and the run cells on that policy belong to
+// gunbc.auth.branch_run_grant.
 fn plan_dedicated_federation(
   f: DedicatedFederation,
   classification: FederationClassification,
@@ -523,9 +526,6 @@ fn plan_dedicated_federation(
             if ca { [CreateServiceAccount { account_id: f.service_account_id, display_name: f.service_account_display_name }] } else { [] },
           ),
         )
-        // A RUN-SCOPED ACCOUNT OWNS NO STANDING CELL, so its policy is not a subject of this plan at
-        // all: an add of no cells would be an effect with nothing in it, and the run cells on that
-        // policy belong to gunbc.auth.branch_run_grant.
         let owned = impersonation_cells(f: f)
         let account_deltas = if owned.length() == 0 { [] } else { [policy_delta(
           subject: ServiceAccountPolicy { email: f.service_account },

@@ -1,12 +1,11 @@
 module gunbc.auth.branch_run_grant_await
 
-import std.types { Int, Map, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.optional { Present, Absent }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import extdeps.github.actions_environment { github_run_id_variable_name }
-import extdeps.github.workflows
+import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name }
 import extdeps.github.workflow_runs
 import extdeps.github.workflow_runs { WorkflowRun, Completed, Success }
 import extdeps.transports.rest { RestAnswered, RestRefused }
@@ -14,22 +13,18 @@ import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_name, FleetConvergeYamlArtifact }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
-import gunbc.auth.branch_dispatch_federation { branch_run_account_variable }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import gunbc.auth.branch_dispatch_federation { branch_run_key }
+import gunbc.auth.branch_run_grant_broker { branch_run_grant_dispatch_ref }
 
-// ── THE BRANCH SIDE OF A RUN-SCOPED GRANT ───────────────────────────────────────────────────────
-// A fleet-converge run whose mode needs a run-scoped account (gunbc.auth.branch_dispatch_federation)
-// asks for it here, BEFORE its auth step: it dispatches the branch_run_grant mode at main naming
-// itself and the account, and waits for that run. The grant run is main's code and does all the
-// judging (gunbc.auth.branch_run_grant); this side only asks and waits, so nothing in it can widen
-// what the grant writes. A refused, denied or expired grant fails this step and the auth step never
-// runs.
-//
-// GITHUB_TOKEN MAY CREATE A workflow_dispatch RUN (GitHub: "events triggered by the GITHUB_TOKEN ...
-// will not create a new workflow run", with workflow_dispatch and repository_dispatch excepted), so
-// no further credential is involved; the job grants its token actions: write for this alone.
-data branch_run_grant_dispatch_ref: String = "main"
-
-data branch_run_grant_executor_host: String = "srv1"
+// ── THE REQUESTING RUN'S SIDE OF A RUN-SCOPED GRANT ─────────────────────────────────────────────
+// A fleet-converge run whose mode needs a run-scoped account waits here, BEFORE its auth step, for
+// the grant run main's broker dispatched for it (gunbc.auth.branch_run_grant_broker). It asks for
+// nothing and holds no credential that could: its token reads runs and nothing else. It finds the
+// grant run by the run key in that run's title and waits for it to finish. A refused, denied or
+// expired grant fails this step and the auth step never runs; a forged "grant" -- any run whose title
+// merely matches -- grants nothing either, because the auth step is refused by IAM unless the cell
+// exists. This step only decides when to try.
 
 data branch_run_grant_wait: Second = second(count: 2400)
 
@@ -41,74 +36,73 @@ data branch_run_grant_poll: Second = second(count: 15)
 // loud failure if propagation outruns this wait; it is never retried silently.
 data branch_run_grant_propagation: Second = second(count: 120)
 
-// THE GRANT RUN'S DISPATCH INPUTS: the mode, the executor that hosts the approval broker, and the
-// two names the grant reads (gunbc.auth.branch_dispatch_federation branch_run_id_variable).
-fn branch_run_grant_inputs(run_id: String, account: String) -> Map<String, String> {
-  let inputs: Map<String, String> = {
-    "mode": "branch_run_grant",
-    "host": branch_run_grant_executor_host,
-    "branch_run_id": run_id,
-    "branch_run_account": account
-  }
-  inputs
-}
-
 type GrantRunWait
   = GrantRunSucceeded
   | GrantRunFailed { detail: String }
   | GrantRunTimedOut
 
+// THE GRANT RUN FOR THIS KEY: a dispatch of fleet-converge on main whose title ends with the key.
+fn is_grant_run_for(run: WorkflowRun, key: String) -> Bool {
+  let title = match run.display_title { Present { value: t } => t  Absent => "" }
+  run.event == workflow_dispatch_event_name
+    && match run.head_branch { Present { value: b } => b == branch_run_grant_dispatch_ref  Absent => false }
+    && title.ends_with(concat(" nonce=", key))
+    && title.contains(" branch_run_grant ")
+}
+
 fn grant_run_conclusion(run: WorkflowRun) -> GrantRunWait {
   match run.conclusion {
-    Present { value: c } => if c == Success { GrantRunSucceeded } else { GrantRunFailed { detail: concat("the grant run did not succeed: ", run.html_url as String) } }
+    Present { value: c } => if (c == Success) { GrantRunSucceeded } else { GrantRunFailed { detail: concat("the grant run did not succeed: ", run.html_url as String) } }
     Absent => GrantRunFailed { detail: concat("the grant run completed with no conclusion: ", run.html_url as String) }
   }
 }
 
-fn wait_for_grant_run(run_id: Int, remaining: Int) -> GrantRunWait {
-  if remaining <= 0 {
-    GrantRunTimedOut
-  } else {
-    match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: to_string(run_id)) {
-      RestRefused { refusal } => GrantRunFailed { detail: concat("the grant run could not be read: ", rest_refusal_text(o: refusal)) }
-      RestAnswered { answer: got } => wait_on_status(run_id: run_id, remaining: remaining, run: got.run)
-    }
+fn wait_on_runs(key: String, since: Timestamp, remaining: Int, runs: List<WorkflowRun>) -> GrantRunWait {
+  match filter(runs, r => is_grant_run_for(run: r, key: key)).first() {
+    Present { value: r } =>
+      if (r.status == Completed) { grant_run_conclusion(run: r) }
+      else { pace_and_retry(key: key, since: since, remaining: remaining) }
+    Absent => pace_and_retry(key: key, since: since, remaining: remaining)
   }
 }
 
-fn wait_on_status(run_id: Int, remaining: Int, run: WorkflowRun) -> GrantRunWait {
-  if (run.status == Completed) {
-    grant_run_conclusion(run: run)
+fn pace_and_retry(key: String, since: Timestamp, remaining: Int) -> GrantRunWait {
+  let paced = sleep_delay_seconds_second_carrier_projection(duration: branch_run_grant_poll)
+  wait_for_grant_run(key: key, since: since, remaining: remaining - 1)
+}
+
+fn wait_for_grant_run(key: String, since: Timestamp, remaining: Int) -> GrantRunWait {
+  if remaining <= 0 {
+    GrantRunTimedOut
   } else {
-    let paced = sleep_delay_seconds_second_carrier_projection(duration: branch_run_grant_poll)
-    wait_for_grant_run(run_id: run_id, remaining: remaining - 1)
+    match github.WorkflowRuns.ListWorkflowRuns(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, workflow_name: artifact_name(a: FleetConvergeYamlArtifact), event: workflow_dispatch_event_name, created_range: concat(">=", since as String)) {
+      RestRefused { refusal } => GrantRunFailed { detail: concat("the grant runs could not be listed: ", rest_refusal_text(o: refusal)) }
+      RestAnswered { answer: got } => wait_on_runs(key: key, since: since, remaining: remaining, runs: got.result.workflow_runs)
+    }
   }
 }
 
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/auth/branch_run_grant_await.dag --function await_grant`
 fn await_grant() -> ProcessExit {
   let me = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
-  let account = actions_variable_trimmed(name: branch_run_account_variable)
-  if me == "" || account == "" {
-    exit_failure(reason: "branch run grant: GITHUB_RUN_ID or BRANCH_RUN_ACCOUNT is unset; this entry runs only in a fleet-converge job")
-  } else {
-    match github.Workflows.CreateDispatch(
-      owner: gunbc_repository.owner,
-      repo: gunbc_repository.name,
-      workflow_id: artifact_name(a: FleetConvergeYamlArtifact),
-      ref: branch_run_grant_dispatch_ref,
-      inputs: branch_run_grant_inputs(run_id: me, account: account),
-    ) {
-      RestRefused { refusal } => exit_failure(reason: concat("branch run grant: the grant run could not be dispatched: ", rest_refusal_text(o: refusal)))
-      RestAnswered { answer: receipt } =>
-        match wait_for_grant_run(run_id: receipt.workflow_run_id, remaining: second_count(s: branch_run_grant_wait) / second_count(s: branch_run_grant_poll)) {
-          GrantRunTimedOut => exit_failure(reason: concat("branch run grant: no decision within the wait: ", receipt.html_url as String))
-          GrantRunFailed { detail: d } => exit_failure(reason: concat("branch run grant: refused or denied, nothing granted: ", d))
-          GrantRunSucceeded => {
-            let propagated = sleep_delay_seconds_second_carrier_projection(duration: branch_run_grant_propagation)
-            ExitSuccess
+  match parse_int(s: me) {
+    Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ID is unset; this entry runs only in a fleet-converge job")
+    Present { value: run_id } => match parse_int(s: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr)) {
+      Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ATTEMPT is unset")
+      Present { value: attempt } => match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: me) {
+        RestRefused { refusal } => exit_failure(reason: concat("branch run grant: this run could not be read: ", rest_refusal_text(o: refusal)))
+        RestAnswered { answer: got } => {
+          let key = branch_run_key(run_id: run_id, run_attempt: attempt)
+          match wait_for_grant_run(key: key, since: got.run.created_at, remaining: second_count(s: branch_run_grant_wait) / second_count(s: branch_run_grant_poll)) {
+            GrantRunTimedOut => exit_failure(reason: concat("branch run grant: no grant run finished within the wait for ", key))
+            GrantRunFailed { detail: d } => exit_failure(reason: concat("branch run grant: refused or denied, nothing granted: ", d))
+            GrantRunSucceeded => {
+              let propagated = sleep_delay_seconds_second_carrier_projection(duration: branch_run_grant_propagation)
+              ExitSuccess
+            }
           }
         }
+      }
     }
   }
 }

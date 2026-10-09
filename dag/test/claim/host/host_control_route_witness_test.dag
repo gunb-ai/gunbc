@@ -1,6 +1,10 @@
 module test.claim.host_control_route_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerObserved }
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.hetzner_cloud_server_reading { AcquiredServerRead, judge_acquired_server_read }
 import product.host_identity { HostIdentity }
 import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
@@ -11,14 +15,34 @@ import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
 import gunbc.host_control_route {
   HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
-  BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, enrolled_host_control,
+  BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
+}
+
+// THE PROVIDER'S ANSWER IS SUPPLIED AT THE API BOUNDARY and judged by the production judge
+// (gunbc.hetzner_cloud_server_reading judge_acquired_server_read), so the route below is the real one
+// from the GET's decoded body onward.
+fn read_of(acquisition: ProviderResourceAcquisition, answered_id: Int) -> AcquiredServerRead {
+  judge_acquired_server_read(
+    acquisition: acquisition,
+    id: match parse_int(s: acquisition.resource_id as String) { Present { value: i } => i  Absent => 0 },
+    read: HetznerServerObserved { server: HetznerServerResponse { id: answered_id, name: "ubuntu-32gb", status: "running" } },
+  )
+}
+
+data both_read: List<AcquiredServerRead> = [
+  read_of(acquisition: hetzner_cax41_nbg1_1_acquisition, answered_id: 169308819),
+  read_of(acquisition: hetzner_cax41_hel1_1_acquisition, answered_id: 169308796),
+]
+
+fn control_of_with(host: HostIdentity, reads: List<AcquiredServerRead>) -> HostControlStanding? {
+  match enrollment_for_host(host: host) {
+    Absent => none
+    Present { value: e } => Present { value: enrolled_host_control(intent: e, provider_reads: reads) }
+  }
 }
 
 fn control_of(host: HostIdentity) -> HostControlStanding? {
-  match enrollment_for_host(host: host) {
-    Absent => none
-    Present { value: e } => Present { value: enrolled_host_control(intent: e) }
-  }
+  control_of_with(host: host, reads: both_read)
 }
 
 // INHABITANCE, ASSERTING THE ROUTE: each enrolled CAX guest, read off the production roster, is
@@ -29,8 +53,9 @@ fn guest_controlled_as(host: HostIdentity, resource_id: String) -> Bool {
   match control_of(host: host) {
     Present { value: HostControlled { controlled: c } } =>
       (c.host as String) == (host as String) && match c.route {
-        ProviderApiControlRoute { route: _, acquisition: a } =>
+        ProviderApiControlRoute { route: _, acquisition: a, observed: s } =>
           (a.resource_id as String) == resource_id
+            && to_string(s.id) == resource_id
             && (a.account.account as String) == "default"
             && (a.account.api_credential.secret as String) == "hetzner-cloud-default-api-key"
             && (a.account.api_credential.project as String) == "gunbai-secrets"
@@ -74,9 +99,26 @@ test fn a_guest_without_a_recorded_acquisition_is_not_controlled() -> Bool {
       resource: ProviderResourceAwaited { read_obligation: "record the acquisition of ubuntu-32gb-hel1-1" },
     },
   }
-  match enrolled_host_control(intent: intent) {
+  match enrolled_host_control(intent: intent, provider_reads: both_read) {
     HostControlRefused { refusal: ProviderResourceNotAcquired { host: _, read_obligation: o } } =>
       (o as String) == "record the acquisition of ubuntu-32gb-hel1-1"
+    _ => false
+  }
+}
+
+// RED: AN ACQUISITION RECORD WITH NO PROVIDER READ IS NOT CONTROL. The acquisition says the server was
+// bought; only a read through the account's token says the route still reaches it.
+test fn a_guest_with_no_provider_read_is_not_controlled() -> Bool {
+  match control_of_with(host: operator_host_183527, reads: []) {
+    Present { value: HostControlRefused { refusal: ProviderControlUnobserved { host: _, resource_id: r, cause: _ } } } => (r as String) == "169308819"
+    _ => false
+  }
+}
+
+// RED: A READ THAT ANSWERED ABOUT ANOTHER SERVER CONTROLS NOTHING.
+test fn a_read_answering_about_another_server_is_not_control() -> Bool {
+  match control_of_with(host: operator_host_183527, reads: [read_of(acquisition: hetzner_cax41_nbg1_1_acquisition, answered_id: 169308796)]) {
+    Present { value: HostControlRefused { refusal: ProviderControlUnobserved { host: _, resource_id: _, cause: c } } } => c.contains("answered about server 169308796")
     _ => false
   }
 }

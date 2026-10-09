@@ -108,9 +108,9 @@ data both_participation_enrollment_participation: List<FleetParticipation> = [
 // THE TWO HETZNER CLOUD CAX41 GUESTS (ordered by the operator 2026-10-07 and recreated 2026-10-08: one in Nuremberg, one in Helsinki). Their
 // participation is the CI runner role the operator intends for them; whether that role can RUN is
 // not decided here -- the entitlement says nested virtualization is unavailable on Hetzner Cloud, so
-// the Firecracker execution path downstream refuses on it with that cause. The provider's resource
-// identifier has not been read yet: the console display names the operator relayed are recorded only
-// as what to look up, because a display name is not the resource an operation may target.
+// the Firecracker execution path downstream refuses on it with that cause. Each is bound to its
+// provider resource id (gunbc.hetzner_cloud_acquisition), never to a console display name, because a
+// display name is not the resource an operation may target.
 fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostBacking {
   ProviderGuest {
     route: route,

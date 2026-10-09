@@ -2,7 +2,7 @@ module test.claim.provider_guest_adoption_witness
 
 import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.measure { kibibyte }
 import extdeps.toolchain.types { Aarch64, X86_64 }
@@ -32,6 +32,7 @@ import gunbc.provider_guest_adoption {
   GuestArchitectureDiverges,
   GuestCpusExceedEntitlement,
   GuestMemoryExceedsEntitlement,
+  GuestIsAnotherResource,
   MicroVmExecutionAdmissible,
   MicroVmExecutionRefused,
   ProviderForbidsNestedVirtualization,
@@ -69,9 +70,10 @@ fn bound_guest(entitlement: GuestEntitlement) -> HostEnrollmentIntent {
 
 // A CAX41 guest as a real one reads: 16 vCPUs, MemTotal a little under the 32 GiB offer because the
 // kernel reserves memory, no /dev/kvm.
-fn cax41_observed(arch_is_arm: Bool, cpus: Int, mem_kib: Int, kvm: Bool) -> GuestObservationRead {
+fn cax41_observed(resource: String, arch_is_arm: Bool, cpus: Int, mem_kib: Int, kvm: Bool) -> GuestObservationRead {
   GuestObserved {
     observation: GuestObservation {
+      provider_resource_id: resource,
       kernel_hostname: "ubuntu-32gb-nbg1-1",
       architecture: if arch_is_arm { Aarch64 } else { X86_64 },
       online_cpus: cpus,
@@ -92,7 +94,7 @@ test fn guest_refuses_until_its_resource_is_read() -> Bool {
       resource: ProviderResourceAwaited { read_obligation: "read the server id of 'ubuntu-32gb-hel1-1'" },
     },
   }
-  match adopt_provider_guest(intent: unread, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
+  match adopt_provider_guest(intent: unread, read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: ProviderResourceUnread { read_obligation: o } } =>
       string_contains(s: o as String, pattern: "ubuntu-32gb-hel1-1")
     GuestAdoptionRefused { host: _, cause: _ } => false
@@ -103,7 +105,7 @@ test fn guest_refuses_until_its_resource_is_read() -> Bool {
 // ADOPTED, AND REFUSED FOR MICROVM EXECUTION ON THE PROVIDER'S CITED FACT. The two answers are
 // separate: the guest is the machine we pay for, and the Firecracker path cannot run on it.
 test fn bound_cax_guest_is_adopted_with_microvm_execution_refused_by_the_provider() -> Bool {
-  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
+  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
     GuestAdopted { host: h, resource_id: id, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: o } } } =>
       (h as String) == "host-183527" && (id as String) == "60000001" && (o.decl_name as String) == "cax41_catalog"
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -114,7 +116,7 @@ test fn bound_cax_guest_is_adopted_with_microvm_execution_refused_by_the_provide
 // THE PROVIDER DECIDES BEFORE THE OBSERVATION: a device node appearing on a guest whose offer forbids
 // nested virtualization does not admit the path.
 test fn provider_refusal_holds_even_if_a_kvm_node_is_observed() -> Bool {
-  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: true)) {
+  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: true)) {
     GuestAdopted { host: _, resource_id: _, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: _ } } } => true
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
     GuestAdoptionRefused { host: _, cause: _ } => false
@@ -129,18 +131,19 @@ fn nested_capable(e: GuestEntitlement) -> GuestEntitlement {
     memory: e.memory,
     disk: e.disk,
     nested_virtualization: true,
+    self_identity_url: e.self_identity_url,
   }
 }
 
 // WHERE THE PROVIDER PERMITS IT, THE OBSERVATION DECIDES -- both routes, so the KVM arm is exercised
 // rather than shadowed by the provider arm above.
 test fn kvm_observation_decides_when_the_provider_permits_nesting() -> Bool {
-  let present = match adopt_provider_guest(intent: bound_guest(entitlement: nested_capable(e: cax41_entitlement())), read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: true)) {
+  let present = match adopt_provider_guest(intent: bound_guest(entitlement: nested_capable(e: cax41_entitlement())), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: true)) {
     GuestAdopted { host: _, resource_id: _, observation: _, execution: MicroVmExecutionAdmissible } => true
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
     GuestAdoptionRefused { host: _, cause: _ } => false
   }
-  let absent = match adopt_provider_guest(intent: bound_guest(entitlement: nested_capable(e: cax41_entitlement())), read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
+  let absent = match adopt_provider_guest(intent: bound_guest(entitlement: nested_capable(e: cax41_entitlement())), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
     GuestAdopted { host: _, resource_id: _, observation: _, execution: MicroVmExecutionRefused { cause: KvmDeviceAbsentOnGuest { device: d } } } => d == "/dev/kvm"
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
     GuestAdoptionRefused { host: _, cause: _ } => false
@@ -149,7 +152,7 @@ test fn kvm_observation_decides_when_the_provider_permits_nesting() -> Bool {
 }
 
 test fn more_vcpus_than_the_offer_refuses_as_a_different_resource() -> Bool {
-  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(arch_is_arm: true, cpus: 32, mem_kib: 32500000, kvm: false)) {
+  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 32, mem_kib: 32500000, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: GuestCpusExceedEntitlement { entitled: e, observed: o } } => e == 16 && o == 32
     GuestAdoptionRefused { host: _, cause: _ } => false
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -157,7 +160,7 @@ test fn more_vcpus_than_the_offer_refuses_as_a_different_resource() -> Bool {
 }
 
 test fn more_memory_than_the_offer_refuses() -> Bool {
-  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 67108864, kvm: false)) {
+  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 67108864, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: GuestMemoryExceedsEntitlement { entitled_bytes: _, observed_bytes: _ } } => true
     GuestAdoptionRefused { host: _, cause: _ } => false
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -165,7 +168,7 @@ test fn more_memory_than_the_offer_refuses() -> Bool {
 }
 
 test fn wrong_architecture_refuses() -> Bool {
-  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(arch_is_arm: false, cpus: 16, mem_kib: 32500000, kvm: false)) {
+  match adopt_provider_guest(intent: bound_guest(entitlement: cax41_entitlement()), read: cax41_observed(resource: "60000001", arch_is_arm: false, cpus: 16, mem_kib: 32500000, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: GuestArchitectureDiverges { entitled: _, observed: _ } } => true
     GuestAdoptionRefused { host: _, cause: _ } => false
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -186,7 +189,7 @@ test fn owned_machine_is_not_adopted_as_a_guest() -> Bool {
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
   }
-  match adopt_provider_guest(intent: owned, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
+  match adopt_provider_guest(intent: owned, read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: HostIsNotAProviderGuest } => true
     GuestAdoptionRefused { host: _, cause: _ } => false
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -199,7 +202,7 @@ test fn owned_machine_is_not_adopted_as_a_guest() -> Bool {
 test fn production_nuremberg_guest_adopts_with_its_bound_server_id() -> Bool {
   match enrollment_for_host(host: operator_host_183527) {
     Absent => false
-    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011264, kvm: false)) {
+    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(resource: "169308819", arch_is_arm: true, cpus: 16, mem_kib: 32011264, kvm: false)) {
       GuestAdopted { host: _, resource_id: id, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: _ } } } =>
         (id as String) == "169308819"
       GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
@@ -211,11 +214,29 @@ test fn production_nuremberg_guest_adopts_with_its_bound_server_id() -> Bool {
 test fn production_helsinki_guest_adopts_with_its_bound_server_id() -> Bool {
   match enrollment_for_host(host: operator_host_3dde7f) {
     Absent => false
-    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
+    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(resource: "169308796", arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
       GuestAdopted { host: _, resource_id: id, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: _ } } } =>
         (id as String) == "169308796"
       GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
       GuestAdoptionRefused { host: _, cause: _ } => false
     }
   }
+}
+
+// RED: A GUEST OF THE SAME SHAPE THAT IS ANOTHER RESOURCE IS NOT ADOPTED. Two CAX41s present the same
+// architecture, vCPUs and memory, so only the provider's own answer to "which resource am I" tells
+// them apart: the Helsinki guest's metadata id offered for the Nuremberg enrollment refuses, naming both.
+test fn a_same_shaped_guest_reporting_another_resource_is_refused() -> Bool {
+  match enrollment_for_host(host: operator_host_183527) {
+    Absent => false
+    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(resource: "169308796", arch_is_arm: true, cpus: 16, mem_kib: 32011264, kvm: false)) {
+      GuestAdoptionRefused { host: _, cause: GuestIsAnotherResource { enrolled: en, observed: ob } } => (en as String) == "169308819" && ob == "169308796"
+      _ => false
+    }
+  }
+}
+
+// THE IDENTITY READ IS THE PROVIDER'S METADATA SERVICE, from the entitlement the production roster binds.
+test fn the_cax_entitlement_reads_identity_from_hetzner_metadata() -> Bool {
+  cax41_entitlement().self_identity_url == "http://169.254.169.254/hetzner/v1/metadata/instance-id"
 }

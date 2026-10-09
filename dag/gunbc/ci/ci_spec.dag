@@ -841,6 +841,11 @@ data gunbc_ci_branch_run_grant_await_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "await_grant",
 }
 
+data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/branch_run_grant_broker.dag",
+  function: "broker",
+}
+
 data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
   function: "read",
@@ -1416,6 +1421,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_branch_run_grant_request_target,
     gunbc_ci_branch_run_grant_apply_target,
     gunbc_ci_branch_run_grant_await_target,
+    gunbc_ci_branch_run_grant_broker_target,
     gunbc_ci_r2_cache_object_write_mint_target,
     gunbc_ci_r2_conditional_put_race_probe_target,
     gunbc_ci_workspace_source_pack_target,
@@ -2753,6 +2759,16 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_branch_run_grant_await_target.entry,
     function: gunbc_ci_branch_run_grant_await_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_branch_run_grant_broker_target.entry,
+    function: gunbc_ci_branch_run_grant_broker_target.function,
     claim_run: false,
     receipt_rel: none
   )

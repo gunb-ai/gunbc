@@ -48,6 +48,12 @@ data hetzner_cloud_servers_faq_page: ExternalAuthority = ExternalAuthority {
 // the guest (extdeps.virtualization.firecracker firecracker_requires_kvm_device) cannot run there.
 data hetzner_cloud_nested_virtualization_available: Bool = false
 
+// THE SERVER METADATA SERVICE: every cloud server reaches it at the link-local address and reads its
+// own facts there, among them `instance-id`, the server's numeric id -- the same id the Cloud API
+// names it by (docs.hetzner.cloud/reference/cloud, "Server Metadata"). It answers only the server
+// asking, so what a guest reads there is which resource it is.
+data hetzner_cloud_metadata_instance_id_url: String = "http://169.254.169.254/hetzner/v1/metadata/instance-id"
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<FrontierRow> = [

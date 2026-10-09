@@ -1,6 +1,6 @@
 module gunbc.auth.branch_run_grant
 
-import std.types { Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -10,7 +10,11 @@ import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, gcp_policy_cells }
+import extdeps.cloud.gcp.iam {
+  GcpIamBindingCell, GcpPolicy, GcpIamOwnedCellUniverse, gcp_cell_in, gcp_policy_cells, reconcile_gcp_policy,
+  GcpPolicyRepresentationLossy, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
+}
+import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions_environment { github_output_variable_name }
 import extdeps.github.workflow_runs { WorkflowRun, Completed }
@@ -22,10 +26,14 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text }
-import gunbc.auth.branch_dispatch_federation { branch_run_impersonation_cell, hetzner_cloud_control_federation, branch_run_id_variable, branch_run_account_variable }
+import gunbc.auth.branch_dispatch_federation {
+  branch_run_impersonation_cell, hetzner_cloud_control_federation, branch_run_key_variable, parse_branch_run_key,
+  branch_run_grant_condition_title_prefix, branch_run_expiry_expression_prefix, branch_run_expiry_expression_suffix,
+  branch_run_key, mode_of_run_title, run_scoped_mode_named,
+}
 import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, ServiceAccountPolicy, PolicyDelta, PolicyDeltaRefused,
-  PolicyConverged, AddPolicyCells, policy_delta, read_account_policy, execute_policy_add, cell_preimage,
+  read_account_policy, policy_subject_reading, policy_subject_write, PolicyWritten, PolicyWriteRefused, cell_preimage,
 }
 import gunbc.auth.gcp_iam_converge_run { observe_token, iam_converge_token_env }
 import gunbc.auth.approval_run_identity { run_attempt }
@@ -42,9 +50,11 @@ import gunbc.auth.approval_request_client { stored_request_from_authorization }
 // branch dispatches this mode at main naming its own run id and the account it needs; this job --
 // reviewed code, in the gcp-iam-converge job, which alone may become iam-converge -- reads that run
 // from GitHub, files ONE request saying exactly who is asking for what, and on the operator's tap
-// writes one IAM cell: that run's principal set may impersonate that account until the run's own
-// start time plus the grant window. Nothing the branch supplies is trusted but the two names; its
-// branch, commit, dispatcher and start time are GitHub's.
+// writes one IAM cell: that run attempt's principal set may impersonate that account until the run's
+// own start time plus the grant window. The run and its attempt arrive from the main-only broker
+// (gunbc.auth.branch_run_grant_broker), which read them from GitHub's workflow_run event; the branch's
+// code supplies neither. Its mode, branch, commit, dispatcher and start time are read here from
+// GitHub, and the account is main's mapping of that mode (run_scoped_modes).
 //
 // THE EXPIRY IS DERIVED FROM THE RUN, NOT FROM THE CLOCK, so the request step and the apply step
 // derive the same cell and the same digest (the apply re-derives and re-admits, as
@@ -66,6 +76,8 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 
 type BranchRunFacts {
   run_id: Int
+  run_attempt: Int
+  mode: String
   branch: String
   head_sha: CommitSha
   dispatched_by: String
@@ -76,12 +88,15 @@ type BranchRunReading
   = BranchRunAdmitted { facts: BranchRunFacts }
   | BranchRunRefused { reason: NonEmptyStr }
 
-// THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW: another workflow, another event or
-// a finished run is refused, so an approval can only ever reach a run of the file this grant is for.
-fn judge_branch_run(run_id: Int, run: WorkflowRun) -> BranchRunReading {
+// THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW, AT THE ATTEMPT ASKED ABOUT: another
+// workflow, another event, a finished run, or a run GitHub has since re-run is refused, so an approval
+// can only ever reach the one attempt of the file this grant is for.
+fn judge_branch_run(run_id: Int, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
   let path = match run.path { Present { value: p } => p  Absent => "" }
   if run.id != run_id {
     BranchRunRefused { reason: concat("GitHub answered about another run: ", to_string(run.id)) as NonEmptyStr }
+  } else if run.run_attempt != run_attempt {
+    BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
   } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
     BranchRunRefused { reason: concat("the run is not a fleet-converge run: ", path) as NonEmptyStr }
   } else if run.event != workflow_dispatch_event_name {
@@ -91,6 +106,8 @@ fn judge_branch_run(run_id: Int, run: WorkflowRun) -> BranchRunReading {
   } else {
     BranchRunAdmitted { facts: BranchRunFacts {
       run_id: run_id,
+      run_attempt: run_attempt,
+      mode: mode_of_run_title(title: match run.display_title { Present { value: t } => t  Absent => "" }),
       branch: match run.head_branch { Present { value: b } => b  Absent => "(no branch)" },
       head_sha: run.head_sha,
       dispatched_by: match run.triggering_actor { Present { value: u } => u.login as String  Absent => "(unknown)" },
@@ -99,10 +116,10 @@ fn judge_branch_run(run_id: Int, run: WorkflowRun) -> BranchRunReading {
   }
 }
 
-fn read_branch_run(run_id: Int) -> BranchRunReading {
+fn read_branch_run(run_id: Int, run_attempt: Int) -> BranchRunReading {
   match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: to_string(run_id)) {
     RestRefused { refusal } => BranchRunRefused { reason: concat("the run could not be read: ", rest_refusal_text(o: refusal)) as NonEmptyStr }
-    RestAnswered { answer: got } => judge_branch_run(run_id: run_id, run: got.run)
+    RestAnswered { answer: got } => judge_branch_run(run_id: run_id, run_attempt: run_attempt, run: got.run)
   }
 }
 
@@ -112,6 +129,7 @@ type BranchRunGrant {
   run: BranchRunFacts
   account: ServiceAccountEmail
   cell: GcpIamBindingCell
+  pruned: List<GcpIamBindingCell>
   observed_etag: String
 }
 
@@ -124,26 +142,99 @@ fn branch_run_expires_at(run: BranchRunFacts) -> Timestamp {
   approval_expires_at(issued: run.created_at, window: branch_run_grant_window)
 }
 
-// THE CELL AGAINST THE ACCOUNT'S POLICY AS READ: absent adds at the observed etag, present is held
-// (a re-dispatch of the grant for a run already granted asks nothing), and any other reading refuses.
-fn plan_branch_run_grant(f: DedicatedFederation, run: BranchRunFacts, expires_at: Timestamp, reading: PolicyReading) -> BranchRunGrantPlan {
-  let cell = branch_run_impersonation_cell(run_id: run.run_id, expires_at: expires_at)
-  match policy_delta(subject: ServiceAccountPolicy { email: f.service_account }, desired: [cell], reading: reading, absent_admitted: false) {
-    PolicyDeltaRefused { reason: r } => BranchRunGrantRefused { reason: r as NonEmptyStr }
-    PolicyConverged => BranchRunGrantHeld { run: run }
-    PolicyDelta { effect: e } => match e {
-      AddPolicyCells { subject: _, observed_etag: t, cells: _ } =>
-        BranchRunGrantPlanned { grant: BranchRunGrant { run: run, account: f.service_account, cell: cell, observed_etag: t } }
-      _ => BranchRunGrantRefused { reason: "the planned delta was not a single policy add" as NonEmptyStr }
+// ── the cells a grant owns ──────────────────────────────────────────────────────────────────
+
+fn is_branch_run_cell(c: GcpIamBindingCell) -> Bool {
+  match c.condition { Present { value: k } => k.title.starts_with(branch_run_grant_condition_title_prefix)  Absent => false }
+}
+
+// THE INSTANT AN OWNED CELL LAPSES, read back out of the expression this module wrote. A cell under the
+// prefix whose expression is not that shape is not one this module can judge, so it refuses the plan
+// rather than keep or delete a cell it does not understand.
+fn branch_run_cell_expiry(c: GcpIamBindingCell) -> Rfc3339Timestamp? {
+  match c.condition {
+    Absent => none
+    Present { value: k } =>
+      if k.expression.starts_with(branch_run_expiry_expression_prefix) && k.expression.ends_with(branch_run_expiry_expression_suffix) {
+        let inner = k.expression.substring(start: branch_run_expiry_expression_prefix.length(), end: k.expression.length() - branch_run_expiry_expression_suffix.length())
+        if inner == "" { none } else { Present { value: inner as Rfc3339Timestamp } }
+      } else { none }
+  }
+}
+
+type CellStanding
+  = CellLapsed
+  | CellLive
+  | CellUnjudgeable { reason: String }
+
+// LAPSED AS OF THE NEW RUN'S START, not as of the clock: both steps derive the same set, so the
+// approved request is reproducible at apply, and a cell lapsing between the two only waits a grant.
+fn branch_run_cell_standing(c: GcpIamBindingCell, as_of: Timestamp) -> CellStanding {
+  match branch_run_cell_expiry(c: c) {
+    Absent => CellUnjudgeable { reason: concat("an owned cell's condition does not carry an expiry this module wrote: ", c.member) }
+    Present { value: x } => match rfc3339_compare(left: x, right: as_of as Rfc3339Timestamp) {
+      Rfc3339Precedes => CellLapsed
+      Rfc3339Simultaneous => CellLapsed
+      Rfc3339Follows => CellLive
+      Rfc3339OrderUndecidable { cause: why } => CellUnjudgeable { reason: concat("an owned cell's expiry is not comparable: ", why as String) }
     }
+  }
+}
+
+// THE CELL AGAINST THE ACCOUNT'S POLICY AS READ. The universe this plan owns is the cells under the
+// branch-run prefix: lapsed ones are removed, live ones (another attempt still inside its window) are
+// kept, and every binding outside the prefix is preserved untouched. The run's cell already present
+// holds (a re-dispatch for an attempt already granted asks nothing); any other reading refuses.
+fn plan_branch_run_grant(f: DedicatedFederation, run: BranchRunFacts, expires_at: Timestamp, reading: PolicyReading) -> BranchRunGrantPlan {
+  let cell = branch_run_impersonation_cell(run_id: run.run_id, run_attempt: run.run_attempt, expires_at: expires_at)
+  match reading {
+    PolicyUnreadable { cause: c } => BranchRunGrantRefused { reason: concat("the account's policy is unreadable: ", c) as NonEmptyStr }
+    PolicyResourceAbsent => BranchRunGrantRefused { reason: "the run-scoped account does not exist; run the gcp_iam_converge mode first" as NonEmptyStr }
+    PolicyObserved { policy: p } => plan_against_policy(f: f, run: run, cell: cell, p: p)
+  }
+}
+
+fn plan_against_policy(f: DedicatedFederation, run: BranchRunFacts, cell: GcpIamBindingCell, p: GcpPolicy) -> BranchRunGrantPlan {
+  let owned = filter(gcp_policy_cells(p: p), c => is_branch_run_cell(c: c))
+  let unjudgeable = filter(map(owned, c => branch_run_cell_standing(c: c, as_of: run.created_at)), st => match st { CellUnjudgeable { reason: _ } => true  _ => false })
+  if gcp_cell_in(c: cell, xs: owned) {
+    BranchRunGrantHeld { run: run }
+  } else if unjudgeable.length() > 0 {
+    BranchRunGrantRefused { reason: join(map(unjudgeable, st => match st { CellUnjudgeable { reason: r } => r  _ => "" }), "; ") as NonEmptyStr }
+  } else {
+    let live = filter(owned, c => match branch_run_cell_standing(c: c, as_of: run.created_at) { CellLive => true  _ => false })
+    match reconcile_gcp_policy(observed: p, desired_owned: concat(live, [cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [cell]) }) {
+      GcpPolicyRepresentationLossy { conditional_roles: _ } => BranchRunGrantRefused { reason: "the policy was read at a representation that mangles conditional bindings" as NonEmptyStr }
+      GcpPolicyAlreadyConverged { policy: _ } => BranchRunGrantHeld { run: run }
+      GcpPolicyDeltaRequired { policy: _, added: _, removed: r, preserved: _ } =>
+        BranchRunGrantPlanned { grant: BranchRunGrant { run: run, account: f.service_account, cell: cell, pruned: r, observed_etag: p.etag } }
+    }
+  }
+}
+
+// THE WRITE THE APPROVAL ADMITS, re-derived from a fresh read at the approved etag: add the cell,
+// remove exactly the approved lapsed cells, preserve everything else.
+fn approved_grant_policy(g: BranchRunGrant, reading: PolicyReading) -> GcpPolicy? {
+  match reading {
+    PolicyObserved { policy: p } =>
+      if p.etag != g.observed_etag { none } else {
+        let owned = filter(gcp_policy_cells(p: p), c => is_branch_run_cell(c: c))
+        let kept = filter(owned, c => !gcp_cell_in(c: c, xs: g.pruned))
+        match reconcile_gcp_policy(observed: p, desired_owned: concat(kept, [g.cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [g.cell]) }) {
+          GcpPolicyDeltaRequired { policy: next, added: _, removed: _, preserved: _ } => Present { value: next }
+          _ => none
+        }
+      }
+    _ => none
   }
 }
 
 fn branch_run_grant_preimage(g: BranchRunGrant) -> String {
   join([
-    "run=", to_string(g.run.run_id), "\nbranch=", g.run.branch, "\nsha=", g.run.head_sha as String,
-    "\nby=", g.run.dispatched_by, "\naccount=", g.account as String, "\netag=", g.observed_etag,
+    "run=", branch_run_key(run_id: g.run.run_id, run_attempt: g.run.run_attempt), "\nbranch=", g.run.branch, "\nsha=", g.run.head_sha as String,
+    "\nmode=", g.run.mode, "\nby=", g.run.dispatched_by, "\naccount=", g.account as String, "\netag=", g.observed_etag,
     "\ncell=", cell_preimage(c: g.cell),
+    "\npruned=", join(map(g.pruned, c => cell_preimage(c: c)), "\n"),
   ], "")
 }
 
@@ -155,15 +246,15 @@ data branch_run_grant_scope: AuthorizationScope = AuthorizationScope {
   action: "gunbc.branch-run-grant.apply" as AuthorizedAction,
 }
 
-// THE PURPOSE IS WHAT THE OPERATOR READS: who dispatched which commit of which branch, and what the
-// run may do if approved. The mode the branch says it will run is deliberately absent -- the
-// branch's own workflow file names it, so it is the branch's claim, and the account is the bound.
+// THE PURPOSE IS WHAT THE OPERATOR READS: who dispatched which commit of which branch in which mode,
+// and what the attempt may do if approved. The mode is the branch's claim (its workflow file renders
+// the title); what bounds the approval is the account main maps it to and what that account holds.
 fn branch_run_grant_purpose(g: BranchRunGrant) -> NonEmptyStr {
   join([
-    "Branch run ", to_string(g.run.run_id), " of fleet-converge on ", g.run.branch,
+    "Branch run ", to_string(g.run.run_id), " attempt ", to_string(g.run.run_attempt), " of fleet-converge (mode ", g.run.mode, ") on ", g.run.branch,
     " at ", g.run.head_sha as String, " (dispatched by ", g.run.dispatched_by, ") asks to act as ",
     g.account as String, " for ", to_string(second_count(s: branch_run_grant_window)), "s from its start.",
-    " Approving lets that run, and only that run, read what that account holds; it runs the branch's code.",
+    " Approving lets that attempt, and only that attempt, read what that account holds; it runs the branch's code.",
   ], "") as NonEmptyStr
 }
 
@@ -198,13 +289,13 @@ type BranchRunGrantStanding
 // THE SAME DERIVATION FOR BOTH STEPS: the inputs, the run as GitHub reads it, the account's policy as
 // iam-observe reads it, and the request over them for this run attempt.
 fn derive_branch_run_grant(observe: Secret, attempt: AttemptIdentity) -> BranchRunGrantStanding {
-  match parse_int(s: actions_variable_trimmed(name: branch_run_id_variable)) {
-    Absent => BranchRunGrantUnplannable { reason: "BRANCH_RUN_ID is not a run id" as NonEmptyStr }
-    Present { value: run_id } => match run_scoped_federation_named(account_id: actions_variable_trimmed(name: branch_run_account_variable)) {
-      Absent => BranchRunGrantUnplannable { reason: "BRANCH_RUN_ACCOUNT names no run-scoped account" as NonEmptyStr }
-      Present { value: f } => match read_branch_run(run_id: run_id) {
-        BranchRunRefused { reason: r } => BranchRunGrantUnplannable { reason: r }
-        BranchRunAdmitted { facts: run } => match plan_branch_run_grant(f: f, run: run, expires_at: branch_run_expires_at(run: run), reading: read_account_policy(f: f, token: observe)) {
+  match parse_branch_run_key(key: actions_variable_trimmed(name: branch_run_key_variable)) {
+    Absent => BranchRunGrantUnplannable { reason: "BRANCH_RUN_KEY is not <run id>-<run attempt>" as NonEmptyStr }
+    Present { value: k } => match read_branch_run(run_id: k.run_id, run_attempt: k.run_attempt) {
+      BranchRunRefused { reason: r } => BranchRunGrantUnplannable { reason: r }
+      BranchRunAdmitted { facts: run } => match account_for_mode(mode: run.mode) {
+        Absent => BranchRunGrantUnplannable { reason: concat("the run's mode needs no run-scoped account: ", run.mode) as NonEmptyStr }
+        Present { value: f } => match plan_branch_run_grant(f: f, run: run, expires_at: branch_run_expires_at(run: run), reading: read_account_policy(f: f, token: observe)) {
           BranchRunGrantRefused { reason: r } => BranchRunGrantUnplannable { reason: r }
           BranchRunGrantHeld { run: _ } => BranchRunGrantAlreadyHeld
           BranchRunGrantPlanned { grant: g } => match branch_run_grant_request(g: g, attempt: attempt) {
@@ -214,6 +305,13 @@ fn derive_branch_run_grant(observe: Secret, attempt: AttemptIdentity) -> BranchR
         }
       }
     }
+  }
+}
+
+fn account_for_mode(mode: String) -> DedicatedFederation? {
+  match run_scoped_mode_named(mode: mode) {
+    Absent => none
+    Present { value: m } => run_scoped_federation_named(account_id: m.account_id as String)
   }
 }
 
@@ -256,8 +354,8 @@ fn branch_run_grant_request_wet() -> ProcessExit {
   }
 }
 
-// RE-DERIVES THE REQUEST, RE-ADMITS THE APPROVAL, WRITES EXACTLY THE APPROVED CELL AT THE APPROVED
-// ETAG as iam-converge, then reads the policy back as iam-observe and requires the cell present.
+// RE-DERIVES THE REQUEST, RE-ADMITS THE APPROVAL, WRITES EXACTLY THE APPROVED POLICY AT THE APPROVED
+// ETAG as iam-converge, then reads the policy back as iam-observe: the cell present, the pruned absent.
 fn branch_run_grant_apply_wet() -> ProcessExit {
   match run_attempt() {
     Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ID is unset")
@@ -270,18 +368,20 @@ fn branch_run_grant_apply_wet() -> ProcessExit {
           ApprovedGcpAccessRefused { reason } => exit_failure(reason: concat("branch run grant: ", reason))
           ApprovedGcpAccessReady { authorization: _, token } => {
             let g = q.subject
-            let refused = execute_policy_add(s: ServiceAccountPolicy { email: g.account }, approved_etag: g.observed_etag, cells: [g.cell], token: token)
-            if refused != "" { exit_failure(reason: concat("branch run grant: the approved add refused: ", refused)) }
-            else { match run_scoped_federation_named(account_id: actions_variable_trimmed(name: branch_run_account_variable)) {
-              Absent => exit_failure(reason: "branch run grant: the account vanished from the roster after the add")
-              Present { value: f } => match read_account_policy(f: f, token: observe) {
-                PolicyObserved { policy: p } =>
-                  if gcp_cell_in(c: g.cell, xs: gcp_policy_cells(p: p)) { ExitSuccess }
-                  else { exit_failure(reason: "branch run grant: the add returned, but the readback does not hold the cell") }
-                PolicyResourceAbsent => exit_failure(reason: "branch run grant: the account is absent on readback")
-                PolicyUnreadable { cause: c } => exit_failure(reason: concat("branch run grant: readback unreadable: ", c))
+            let subject = ServiceAccountPolicy { email: g.account }
+            match approved_grant_policy(g: g, reading: policy_subject_reading(s: subject, token: token)) {
+              Absent => exit_failure(reason: "branch run grant: the policy moved since the approval or no longer admits the approved write; nothing granted")
+              Present { value: next } => match policy_subject_write(s: subject, policy: next, token: token) {
+                PolicyWriteRefused { cause: c } => exit_failure(reason: concat("branch run grant: the fenced write was refused: ", c))
+                PolicyWritten { returned: _ } => match policy_subject_reading(s: subject, token: observe) {
+                  PolicyObserved { policy: p } =>
+                    if gcp_cell_in(c: g.cell, xs: gcp_policy_cells(p: p)) && !any(g.pruned, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: p))) { ExitSuccess }
+                    else { exit_failure(reason: "branch run grant: the write returned, but the readback does not hold the cell, or still holds a lapsed one") }
+                  PolicyResourceAbsent => exit_failure(reason: "branch run grant: the account is absent on readback")
+                  PolicyUnreadable { cause: c } => exit_failure(reason: concat("branch run grant: readback unreadable: ", c))
+                }
               }
-            } }
+            }
           }
         }
       }

@@ -1,7 +1,7 @@
 module gunbc.auth.branch_dispatch_federation
 
 import std.types { Int, List, Map, NonEmptyStr, String, Timestamp }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
@@ -40,7 +40,7 @@ data branch_dispatch_wif_provider_id: NonEmptyStr = "github-fleet-converge-dispa
 data branch_dispatch_attribute_mapping: Map<String, String> = {
   "google.subject": "assertion.sub",
   "attribute.repository_id": "assertion.repository_id",
-  "attribute.run_id": "assertion.run_id"
+  "attribute.run": "assertion.run_id + '-' + assertion.run_attempt"
 }
 
 // THE REPOSITORY AND THE EVENT, AND NOT THE REF: the ref is the point of this pool. The repository
@@ -70,37 +70,91 @@ fn branch_dispatch_provider_resource() -> String {
   wif_provider_resource(project_number: fleet_secrets_project_number, provider: branch_dispatch_provider())
 }
 
-// THE ONE RUN A GRANT NAMES: the pool's principals whose mapped run id is this run's.
-fn branch_run_principal_set(run_id: Int) -> String {
+// THE ONE RUN ATTEMPT A GRANT NAMES. GitHub keeps run_id across a re-run and increments run_attempt
+// (both are claims of its OIDC token), so the provider maps their join and a grant names the join: a
+// re-run of an approved run is a new subject and needs its own approval.
+fn branch_run_key(run_id: Int, run_attempt: Int) -> String {
+  join([to_string(run_id), "-", to_string(run_attempt)], "")
+}
+
+fn branch_run_principal_set(run_id: Int, run_attempt: Int) -> String {
   join([
     "principalSet://iam.googleapis.com/",
     wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: branch_dispatch_wif_pool_id as String),
-    "/attribute.run_id/", to_string(run_id),
+    "/attribute.run/", branch_run_key(run_id: run_id, run_attempt: run_attempt),
   ], "")
 }
 
-// THE CELL A GRANT WRITES on a run-scoped account: that run may act as the account until the instant
-// the approval named. The condition is IAM's own, so expiry needs no cleanup to take effect; a
-// lapsed cell is inert and is pruned by the next grant (gunbc.auth.branch_run_grant).
+// THE CELL A GRANT WRITES on a run-scoped account: that run attempt may act as the account until the
+// instant the approval named. The condition is IAM's own, so expiry takes effect with no cleanup;
+// the title prefix marks the cells gunbc.auth.branch_run_grant owns, which is what lets each grant
+// remove the lapsed ones and leave every other binding alone.
 data branch_run_grant_condition_title_prefix: String = "gunbc-branch-run-"
 
-fn branch_run_impersonation_cell(run_id: Int, expires_at: Timestamp) -> GcpIamBindingCell {
+data branch_run_expiry_expression_prefix: String = "request.time < timestamp('"
+
+data branch_run_expiry_expression_suffix: String = "')"
+
+fn branch_run_impersonation_cell(run_id: Int, run_attempt: Int, expires_at: Timestamp) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
-    member: branch_run_principal_set(run_id: run_id),
+    member: branch_run_principal_set(run_id: run_id, run_attempt: run_attempt),
     condition: Present { value: IamCondition {
-      title: concat(branch_run_grant_condition_title_prefix, to_string(run_id)),
-      description: Present { value: "One approved fleet-converge branch run; granted by gunbc.auth.branch_run_grant after operator approval." },
-      expression: concat("request.time < timestamp('", concat(expires_at as String, "')")),
+      title: concat(branch_run_grant_condition_title_prefix, branch_run_key(run_id: run_id, run_attempt: run_attempt)),
+      description: Present { value: "One approved fleet-converge branch run attempt; granted by gunbc.auth.branch_run_grant after operator approval." },
+      expression: join([branch_run_expiry_expression_prefix, expires_at as String, branch_run_expiry_expression_suffix], ""),
     } },
   }
 }
 
-// THE TWO NAMES A BRANCH RUN HANDS ITS GRANT, as the grant job's environment carries them: its own
-// run id and the account it asks for. Everything else about the run the grant reads from GitHub.
-data branch_run_id_variable: NonEmptyStr = "BRANCH_RUN_ID"
+// THE ONE NAME THE GRANT RUN IS DISPATCHED WITH: the run and its attempt, joined as branch_run_key
+// joins them, carried in the existing transaction_nonce input (GitHub admits at most 25 dispatch
+// inputs, so the grant adds none). The broker reads both halves from GitHub's workflow_run event
+// (gunbc.auth.branch_run_grant_broker), never from the branch's own run; the grant then reads the
+// run's mode from GitHub and the account from run_scoped_modes below.
+data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 
-data branch_run_account_variable: NonEmptyStr = "BRANCH_RUN_ACCOUNT"
+// WHICH FLEET-CONVERGE MODE NEEDS WHICH RUN-SCOPED ACCOUNT. The mode is read from the run's title,
+// which the branch's own workflow file renders, so it is the branch's claim; this table is main's, so
+// a branch can only ever reach an account a mode here maps to, and the operator reads both in the
+// request.
+type RunScopedMode {
+  mode: NonEmptyStr
+  account_id: NonEmptyStr
+}
+
+fn run_scoped_modes() -> List<RunScopedMode> {
+  [RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id }]
+}
+
+fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
+  filter(run_scoped_modes(), m => (m.mode as String) == mode).first()
+}
+
+// THE KEY BACK INTO ITS RUN AND ATTEMPT: exactly two decimal halves, or nothing.
+type BranchRunKey {
+  run_id: Int
+  run_attempt: Int
+}
+
+fn parse_branch_run_key(key: String) -> BranchRunKey? {
+  let parts = key.split(delimiter: "-")
+  if parts.length() != 2 { none } else {
+    match parse_int(s: match parts.first() { Present { value: h } => h  Absent => "" }) {
+      Absent => none
+      Present { value: id } => match parse_int(s: match parts.last() { Present { value: t } => t  Absent => "" }) {
+        Absent => none
+        Present { value: attempt } => if id > 0 && attempt > 0 { Present { value: BranchRunKey { run_id: id, run_attempt: attempt } } } else { none }
+      }
+    }
+  }
+}
+
+// THE RUN'S MODE AS ITS TITLE CARRIES IT: fleet-converge's run-name renders
+// "fleet-converge <mode> <host> nonce=<nonce>", so the mode is the second word.
+fn mode_of_run_title(title: String) -> String {
+  match title.split(delimiter: " ").skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+}
 
 // ── the run-scoped accounts ──────────────────────────────────────────────────────────────────
 

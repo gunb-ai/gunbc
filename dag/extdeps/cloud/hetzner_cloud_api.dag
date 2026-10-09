@@ -54,6 +54,13 @@ type HetznerActionResponse {
   progress: Int
 }
 
+// A PROJECT TOKEN CARRIES ONE OF TWO PERMISSIONS, chosen when it is created in the console and never
+// changed after: Read admits only GET requests; Read & Write admits every request the API offers. A
+// holder of a Read & Write token can therefore rebuild or delete any server of the project.
+type HetznerTokenPermission
+  = HetznerTokenRead
+  | HetznerTokenReadWrite
+
 // A PROJECT TOKEN IS THE BEARER CREDENTIAL: Hetzner scopes every API token to exactly one project, so
 // a token reads and acts only on that project's servers.
 //

@@ -53,7 +53,7 @@ fn main_push(after: String) -> PushRefUpdate {
 }
 
 fn run(id: Int, event: String, head_sha: String, status: WorkflowRunStatus, conclusion: WorkflowRunConclusion?) -> WorkflowRun {
-  WorkflowRun {
+  WorkflowRun { display_title: none,
     id: id,
     name: Present { value: "witnesses" },
     path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
@@ -177,7 +177,7 @@ test fn a_qualifying_success_beside_a_push_run_refuses_as_an_unscoped_read() -> 
 
 fn mg_attempt(id: Int, attempt: Int, conclusion: WorkflowRunConclusion) -> WorkflowRun {
   let r = mg(id: id, conclusion: conclusion)
-  WorkflowRun {
+  WorkflowRun { display_title: none,
     id: r.id, name: r.name, path: r.path, head_sha: r.head_sha, head_branch: r.head_branch,
     event: r.event, status: r.status, conclusion: r.conclusion, workflow_id: r.workflow_id,
     run_number: r.run_number, run_attempt: attempt, actor: r.actor, triggering_actor: r.triggering_actor,
@@ -212,7 +212,7 @@ test fn a_merge_group_success_on_another_revision_does_not_admit_this_push() -> 
 }
 
 test fn a_run_of_another_workflow_is_not_the_floor() -> Bool {
-  let other = WorkflowRun {
+  let other = WorkflowRun { display_title: none,
     id: 15, name: Present { value: "fleet-converge" }, path: Present { value: ".github/workflows/fleet-converge.yml" },
     head_sha: sha_r as CommitSha, head_branch: none, event: "merge_group", status: Completed,
     conclusion: Present { value: Success }, workflow_id: 1, run_number: 1, run_attempt: 1, actor: none,

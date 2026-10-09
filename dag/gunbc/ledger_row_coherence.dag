@@ -4,7 +4,7 @@ import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact,
-  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
+  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
@@ -120,6 +120,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     InstrumentDispatchYamlArtifact => []
     HealWorkflowYamlArtifact => []
     HealPublisherWorkflowYamlArtifact => []
+    BranchRunGrantBrokerWorkflowYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
     CargoConfigArtifact => []

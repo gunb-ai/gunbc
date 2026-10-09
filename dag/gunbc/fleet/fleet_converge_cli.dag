@@ -949,7 +949,8 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   }
 }
 
-// THE PROVIDER-GUEST ROUTE. The adoption runs on the guest itself, and the receipt keeps its two
+// THE PROVIDER-GUEST ROUTE. The adoption runs where this process runs and refuses unless the provider
+// says that machine is the named guest (gunbc.provider_guest_adoption adopt_local_provider_guest); the receipt keeps its two
 // answers apart: a refused adoption is NotAdopted with its cause; an adopted guest whose microVM
 // execution is refused is reported as exactly that -- adopted, and unable to run the runner role --
 // so a green adoption is never presented as runnable capacity. An adopted guest whose execution is

@@ -9,7 +9,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowTrigger, WorkflowRunCompleted,
+  WorkflowTrigger, WorkflowRunTriggered, WorkflowRunCompletedActivity,
   WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueMax, CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse,
   RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm
@@ -411,9 +411,10 @@ data heal_publisher_workflow: Workflow = Workflow {
   name: heal_publisher_workflow_name,
   run_name: none,
   on: [
-    WorkflowRunCompleted {
+    WorkflowRunTriggered {
       workflows: [witness_floor_workflow_name],
-      branches: heal_publisher_triggering_branches
+      branches: heal_publisher_triggering_branches,
+      activity: WorkflowRunCompletedActivity
     }
   ],
   concurrency: Present { value: heal_publisher_concurrency },

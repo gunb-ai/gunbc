@@ -3,7 +3,7 @@ module gunbc.fleet_converge_workflow
 import gunbc.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  branch_run_id_variable, branch_run_account_variable,
+  branch_run_key_variable,
 }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import gunbc.fleet_printer_access {printer_access_code_loci}
@@ -4612,7 +4612,7 @@ fn fleet_converge_job() -> Job {
         contents: Present { value: PermRead },
         pull_requests: none,
         issues: none,
-        actions: Present { value: PermWrite },
+        actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
       }
     }
@@ -4903,13 +4903,12 @@ fn fleet_converge_jobs() -> List<Job> {
 // account the grant named. Without the grant the auth step's exchange is refused by IAM itself.
 fn fleet_converge_branch_run_grant_await_step() -> Step {
   RunStep {
-    name: Present { value: "Run-scoped grant: dispatch branch_run_grant at main for this run and wait for the operator's approval" },
+    name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
     id: Present { value: "branch_run_grant_await" },
     run: gunbc_ci_branch_run_grant_await_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-      kv(key: branch_run_account_variable as String, value: yaml_string(s: hetzner_cloud_control_service_account_id as String)),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_run_scoped_step_if },
@@ -4998,8 +4997,7 @@ fn fleet_converge_branch_run_grant_env(with_converge_token: Bool) -> List<YamlKe
     [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-      kv(key: branch_run_id_variable as String, value: yaml_string(s: "${{ github.event.inputs.branch_run_id }}")),
-      kv(key: branch_run_account_variable as String, value: yaml_string(s: "${{ github.event.inputs.branch_run_account }}")),
+      kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
     ],
     if with_converge_token { [kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}"))] } else { [] },
   )
@@ -5285,22 +5283,8 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
     type: InputString,
   },
   DispatchInput {
-    name: "branch_run_id",
-    description: Present { value: "branch_run_grant only: the id of the fleet-converge run asking for a run-scoped account (gunbc.auth.branch_run_grant); everything else about that run is read from GitHub. Dispatched by that run itself" },
-    required: false,
-    default: none,
-    type: InputString,
-  },
-  DispatchInput {
-    name: "branch_run_account",
-    description: Present { value: "branch_run_grant only: the run-scoped account id that run asks to act as (gunbc.auth.branch_dispatch_federation)" },
-    required: false,
-    default: none,
-    type: InputString,
-  },
-  DispatchInput {
     name: "transaction_nonce",
-    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
+    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). branch_run_grant: the requesting run's <run id>-<run attempt>, set by the branch-run-grant-broker workflow from GitHub's workflow_run event (gunbc.auth.branch_run_grant_broker). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
     required: false,
     default: none,
     type: InputString,

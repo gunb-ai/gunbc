@@ -1,25 +1,54 @@
 module gunbc.hetzner_cloud_acquisition
 
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import std.types { List }
+import std.types { List, NonEmptyStr }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.hetzner_cloud_api { HetznerTokenPermission, HetznerTokenRead, HetznerTokenReadWrite }
 import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 
 // THE HETZNER CLOUD PROJECT THE FLEET'S GUESTS ARE HELD UNDER. A Hetzner Cloud API token is scoped to
-// exactly one project, so the project is the account and its token is the one credential that may
-// drive these servers. The operator created the token as a Read & Write project token and stored it
-// in Secret Manager on 2026-10-08; gunbc reads it by reference and never holds its value. Version 1
-// is pinned: its metadata was read on 2026-10-08 as ENABLED, and it is the only version.
+// exactly one project, so the project is the account. The operator created its Read & Write token
+// and stored it in Secret Manager on 2026-10-08; gunbc reads it by reference and never holds its
+// value. Version 1 is pinned: its metadata was read on 2026-10-08 as ENABLED, and it is the only
+// version. NO ACCOUNT HOLDS IT YET: it can rebuild or delete any server of the project, so it waits
+// for the reset loop's main-only controller rather than reaching any run of branch code.
 data hetzner_cloud_default_project: ProviderApiAccount = ProviderApiAccount {
   account: "default",
   api_credential: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "hetzner-cloud-default-api-key"), version: "1"),
 }
 
-// THE ONE CELL THE CONTROLLER NEEDS ON THE TOKEN: read its pinned version's payload. Held by the
-// run-scoped hetzner-cloud-control account (gunbc.auth.branch_dispatch_federation), never by an operator session; the
-// controller never adds a version, so no viewer or versionAdder cell is owed.
+// A PROJECT TOKEN AS ITS HOLDER RECEIVES IT: the project, what the token was created to permit, and
+// where it is stored. The permission is the console's record at creation; the read below is what
+// would show a mislabelled one, because a Read token is refused on any write.
+type HetznerProjectToken {
+  project: NonEmptyStr
+  permission: HetznerTokenPermission
+  credential: SecretRef
+}
+
+data hetzner_cloud_default_read_write_token: HetznerProjectToken = HetznerProjectToken {
+  project: hetzner_cloud_default_project.account,
+  permission: HetznerTokenReadWrite,
+  credential: hetzner_cloud_default_project.api_credential,
+}
+
+// THE READ-ONLY TOKEN OF THE SAME PROJECT, which is all an approved branch run may receive: whatever
+// that run's code does with it, Hetzner refuses every request but a GET. The operator creates it in
+// the console with permission Read and stores it as the secret's first version.
+data hetzner_cloud_default_read_token: HetznerProjectToken = HetznerProjectToken {
+  project: hetzner_cloud_default_project.account,
+  permission: HetznerTokenRead,
+  credential: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "hetzner-cloud-default-read-api-key"), version: "1"),
+}
+
+// THE ONE CELL AN APPROVED BRANCH RUN NEEDS: read the Read token's pinned version. Held by the
+// run-scoped hetzner-cloud-control account (gunbc.auth.branch_dispatch_federation); it reads, it
+// never adds a version, so no viewer or versionAdder cell is owed. Only a Read token is admitted
+// here: a run-scoped account reaches branch code, so a write-capable token here would let one
+// approved read become any write the project allows.
 fn hetzner_cloud_api_grants() -> List<SecretAccessGrant> {
-  [secret_accessor_grant(target: hetzner_cloud_default_project.api_credential)]
+  [secret_accessor_grant(target: hetzner_cloud_default_read_token.credential)]
 }
 
 // THE TWO CAX41 GUESTS, AS THE OPERATOR ACQUIRED THEM. Every step was performed in the Hetzner Cloud

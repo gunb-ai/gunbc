@@ -1,7 +1,7 @@
 module gunbc.hetzner_cloud_guest
 
 import std.decl_ref { DeclarationRef }
-import extdeps.cloud.hetzner { HetznerCloudServerCatalogRow, hetzner_cloud_nested_virtualization_available }
+import extdeps.cloud.hetzner { HetznerCloudServerCatalogRow, hetzner_cloud_nested_virtualization_available, hetzner_cloud_metadata_instance_id_url }
 import gunbc.fleet_host_backing { GuestEntitlement }
 
 // Hetzner Cloud's adapter onto the generic guest entitlement. Every figure is read off the cited
@@ -16,5 +16,6 @@ fn hetzner_cloud_guest_entitlement(row: HetznerCloudServerCatalogRow, offer: Dec
     memory: row.memory_bytes,
     disk: row.disk_bytes,
     nested_virtualization: hetzner_cloud_nested_virtualization_available,
+    self_identity_url: hetzner_cloud_metadata_instance_id_url,
   }
 }

@@ -28,6 +28,7 @@ type GuestEntitlement {
   memory: ByteSize
   disk: ByteSize
   nested_virtualization: Bool
+  self_identity_url: String
 }
 
 // THE EXACT PROVIDER RESOURCE. An operation is bound to a provider's resource identifier, never to

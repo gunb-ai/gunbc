@@ -29,17 +29,21 @@ import gunbc.runner.runner_isolation_admission {
 // distinguishes the two for the same reason).
 
 // THE PROVIDER'S OWN RECORD THAT THE GUEST WAS REBUILT FROM ITS IMAGE: the provider's action id for a
-// rebuild of exactly this acquired resource, read back as finished successfully. PRODUCER FRONTIER:
-// the Hetzner Cloud rebuild exchange (POST /v1/servers/{id}/actions/rebuild, then GET
-// /v1/actions/{id} until status success) lands with the controller-driven reset loop; until then no
-// incarnation can be built, so every guest offer below stays unbuilt rather than assumed.
+// rebuild of exactly this acquired resource, to exactly the requested image, read back as finished
+// successfully, for one named attempt. sole_constructor, AND NOTHING MINTS ONE YET: its sole producer
+// is the Hetzner Cloud rebuild exchange (POST /v1/servers/{id}/actions/rebuild, then GET
+// /v1/actions/{id} until status success, joined to the resource and image asked for), which lands
+// with the controller-driven reset loop. Until it does, provider_guest_incarnation below has no
+// receipt to be handed, so NO INCARNATION IS ESTABLISHED and no provider guest offers a sandbox --
+// test.probe.provider_rebuild_receipt_forged_probe is the executed red that a receipt cannot be
+// written instead.
 //
 // THE REBUILD IS FOR ONE ATTEMPT, NAMED BEFORE IT IS ISSUED. The controller rebuilds a guest because
 // an attempt is about to run on it, and the receipt carries that attempt; the slot and registration
 // derive their names from it (gunbc.runner.runner_host_unit_slot provider_guest_slot_for), so one
 // rebuild yields one registration name. Running a second attempt on the same incarnation would need
 // a second rebuild receipt, which only the provider can produce.
-type ProviderRebuildReceipt {
+type ProviderRebuildReceipt sole_constructor {
   acquisition: ProviderResourceAcquisition
   attempt: NonEmptyStr
   image: NonEmptyStr
@@ -74,7 +78,7 @@ fn provider_guest_incarnation(
 ) -> IncarnationStanding {
   match controlled.route {
     BmcControlRoute { binding: _ } => IncarnationRefused { refusal: IncarnationHostNotProviderControlled { host: controlled.host } }
-    ProviderApiControlRoute { route: _, acquisition: held } =>
+    ProviderApiControlRoute { route: _, acquisition: held, observed: _ } =>
       if (held.resource_id as String) != (rebuild.acquisition.resource_id as String) {
         IncarnationRefused { refusal: IncarnationRebuildForAnotherResource { controlled: held.resource_id, rebuilt: rebuild.acquisition.resource_id } }
       } else { match adoption {
@@ -99,8 +103,10 @@ fn provider_guest_incarnation(
 //                        them. (The microVM path withholds PrivateNetworkNamespace because its VMM
 //                        runs in the HOST's namespace; a provider guest has no such host of ours.)
 // WITHHELD, with reasons in the offer's standing:
-//   AttemptScopedSecrets   -- earned at launch, when only this attempt's JIT registration is placed
-//                             (gunbc.runner.provider_guest_launch attempt_placed_offer).
+//   AttemptScopedSecrets   -- a persistent guest can keep what an earlier job left (a token, a cache, a
+//                             customer's bytes) until something proves it gone; placing one attempt's
+//                             registration says nothing about that. It is earned by the reset loop's
+//                             revocation and rebuild after each job, not by any fact this PR holds.
 //   DefaultDenyEgress      -- the guest has open internet (gunbc.rung_drop provider_guest_ci_egress_unfiltered).
 fn incarnation_offer(incarnation: ProviderGuestIncarnation) -> SandboxOffer {
   SandboxOffer {
@@ -111,7 +117,7 @@ fn incarnation_offer(incarnation: ProviderGuestIncarnation) -> SandboxOffer {
       "provider guest ", incarnation.controlled.host as String,
       " rebuilt from ", incarnation.rebuild.image as String,
       " by provider action ", incarnation.rebuild.action_id as String,
-      "; AttemptScopedSecrets is earned at launch, DefaultDenyEgress is not provided",
+      "; AttemptScopedSecrets awaits the reset loop's revocation, DefaultDenyEgress is not provided",
     ], "") as NonEmptyStr,
   }
 }

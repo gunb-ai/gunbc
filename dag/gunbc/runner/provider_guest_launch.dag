@@ -29,15 +29,13 @@ import gunbc.runner.provider_guest_incarnation {
 // the Hetzner Cloud rebuild exchange that produces gunbc.runner.provider_guest_incarnation
 // ProviderRebuildReceipt; until then the plan below is exercised by its witness only.
 
-// WHY PLACING ONE REGISTRATION EARNS AttemptScopedSecrets HERE. The guarantee is that no secret on
-// the job's side of the boundary outlives the attempt or belongs to another. On a microVM it is a
+// PLACING ONE REGISTRATION DOES NOT EARN AttemptScopedSecrets HERE. On a microVM the guarantee is a
 // property of the credential's carrier, a drive that exists for one VM (gunbc.runner_microvm
-// JitConfigOnReadOnlyDrive). On a provider guest the carrier is the guest itself: it was rebuilt from
-// the provider's image for this attempt, it holds no fleet credential -- the controller drives it
-// over SSH from outside, and the project's login key is public -- and it is rebuilt again before the
-// next attempt. So the one credential this launch places is the only secret on the guest, and its
-// lifetime is bounded by the rebuilds on either side. The admitted credential is the evidence; the
-// rebuild after the job is the loop's obligation, carried there.
+// JitConfigOnReadOnlyDrive). A provider guest persists between jobs, so whatever an earlier job left
+// on it stays until something removes it, and the registration placed for this attempt is evidence
+// only about that registration. The guarantee is the reset loop's to establish -- revocation of the
+// previous attempt's credentials and a rebuild proven by its receipt -- so the offer below withholds
+// it, and general CI, which requires it, is refused here until that loop lands.
 type ProviderGuestLaunch sole_constructor {
   incarnation: ProviderGuestIncarnation
   slot: HostUnitSlot
@@ -55,21 +53,25 @@ type ProviderGuestLaunchPlan
   = ProviderGuestLaunchAdmitted { launch: ProviderGuestLaunch }
   | ProviderGuestLaunchRefused { refusal: ProviderGuestLaunchRefusal }
 
-// THE OFFER ONCE ONE ATTEMPT'S REGISTRATION IS PLACED: the incarnation's five, plus
-// AttemptScopedSecrets on the admitted credential. Egress stays withheld; only its declared drop can
-// excuse it, and admission says so by carrying the excused set.
+// THE OFFER ONCE ONE ATTEMPT'S REGISTRATION IS PLACED: the incarnation's five, and nothing more.
+// AttemptScopedSecrets and egress stay withheld; only egress has a declared drop that can excuse it,
+// and admission says so by carrying the excused set.
+data provider_guest_launch_evidenced: List<IsolationGuarantee> = [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace]
+
+data provider_guest_launch_withheld: List<IsolationGuarantee> = [AttemptScopedSecrets, DefaultDenyEgress]
+
 fn attempt_placed_offer(incarnation: ProviderGuestIncarnation, credential: AdmittedJitCredential) -> SandboxOffer {
   SandboxOffer {
     provider_class: DedicatedKernelSandboxProvider,
-    evidenced: [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace, AttemptScopedSecrets],
-    withheld: [DefaultDenyEgress],
+    evidenced: provider_guest_launch_evidenced,
+    withheld: provider_guest_launch_withheld,
     standing: join([
       "provider guest ", incarnation.controlled.host as String,
       " rebuilt from ", incarnation.rebuild.image as String,
       " by provider action ", incarnation.rebuild.action_id as String,
       " for attempt ", incarnation.rebuild.attempt as String,
-      "; the only secret placed is runner registration ", credential.runner_name.value as String,
-      "; DefaultDenyEgress is not provided",
+      "; placed runner registration ", credential.runner_name.value as String,
+      "; AttemptScopedSecrets awaits the reset loop's revocation, DefaultDenyEgress is not provided",
     ], "") as NonEmptyStr,
   }
 }

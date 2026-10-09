@@ -675,7 +675,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.hetzner_cloud_server_control", decl_name: "read"),
-    effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's API token and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
+    effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run attempt (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's Read-only API token (Hetzner refuses it any write) and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
