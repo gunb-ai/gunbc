@@ -1264,6 +1264,17 @@ fn probe_cargo_command(
     ))
 }
 
+/// THE CONSUMING HOST'S COMPILER, for a restored native product. A product's manifest records the
+/// compiler path of the host that BUILT it; that path is a fact about the producer, and spawning it
+/// on another host fails (`could not spawn /opt/actions-runner/<other-slot>/.../rustc`). The oracle
+/// that judges emitted text must be this host's compiler, resolved the same way a build resolves
+/// it, with its identity taken from `crate_dir` so a toolchain override there still binds.
+pub(crate) fn resolve_local_compiler(crate_dir: &Path) -> Result<(String, String), String> {
+    let compiler = resolve_probe_compiler()?;
+    let identity = probe_compiler_identity(&compiler, crate_dir)?;
+    Ok((compiler.display().to_string(), identity))
+}
+
 /// The receipt description of the spawn `run_cargo` would make for `crate_dir` — the same
 /// construction, without spawning cargo (the compiler identity probe does run).
 pub(crate) fn probe_cargo_invocation(
