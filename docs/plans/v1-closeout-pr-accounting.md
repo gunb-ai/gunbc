@@ -1,41 +1,53 @@
 # v1 closeout: open PR accounting
 
-As of 2026-10-09. There are 165 open PRs on gunb-ai/gunbc. Apart from #13203 (blackjack, kept up by request), every one of them ends either in the mega branch #13641 (`integration/v1-closeout`) or closed with a stated reason. The owners come from the dashboard's PR-to-session records. The dispositions come from each manager's closeout report. Merge state is GitHub's `mergeStateStatus` at the time of writing.
+As of 2026-10-09; it includes the operator's side-chat dispositions. There are 165 open PRs on gunb-ai/gunbc. Apart from #13203 (blackjack, kept up by request), every one of them ends either in the mega branch #13641 (`integration/v1-closeout`) or closed with a stated reason. The owners come from the dashboard's PR-to-session records and the side chats. The dispositions come from each manager's closeout report. Merge state is GitHub's `mergeStateStatus` at the time of writing.
 
 | Disposition | PRs | What happens |
 | --- | --- | --- |
-| In the mega branch | 11 | Lands when #13641 lands |
-| Pending fold | 59 | On a manager's integration branch; folded into #13641 once that branch reports green |
+| In the mega branch | 21 | Lands when #13641 lands |
+| Pending fold | 66 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out by its manager | 35 | Closed in the second pass unless revived |
+| Left out | 39 | Closed in the second pass unless revived |
 | Unreported, owned by a live lane | 19 | Waiting on that lane's report |
-| Orphans: no live owner | 36 | Triaged by the closeout: fold if done and clean, otherwise close |
+| Orphans: no live owner | 15 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
 ## In the mega branch
 
-These are merged into `integration/v1-closeout`. Wave 1 is pushed. The swift-ibex-601 and warm-badger-442 branches are in this branch's commit.
+These are merged into `integration/v1-closeout`.
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13641](https://github.com/gunb-ai/gunbc/pull/13641) | v1 closeout mega branch (wave 1) | ready / BLOCKED |  |
+| [#13641](https://github.com/gunb-ai/gunbc/pull/13641) | v1 closeout mega branch (wave 1) | ready / BLOCKED | neat-wolf-604 |
 | [#13626](https://github.com/gunb-ai/gunbc/pull/13626) | host_reach_identity_probe: the identity probe's argv is spelled by its | ready / CLEAN | stern-boar-596 |
+| [#13602](https://github.com/gunb-ai/gunbc/pull/13602) | Runner obligation and census read committed identities; Spark training | ready / CLEAN | side chat |
+| [#13601](https://github.com/gunb-ai/gunbc/pull/13601) | Fabric cell witnesses: least-cause refusal join; carry #11625/#11716 i | ready / CLEAN | side chat |
+| [#13600](https://github.com/gunb-ai/gunbc/pull/13600) | witnesses: match optional results instead of comparing T? == T (3 file | ready / CLEAN | side chat |
+| [#13599](https://github.com/gunb-ai/gunbc/pull/13599) | srv1 lab follows main instead of a July session branch | ready / CLEAN | side chat |
+| [#13577](https://github.com/gunb-ai/gunbc/pull/13577) | Price the parse memo below the cost floor: the production door admits  | ready / CLEAN | side chat |
+| [#13570](https://github.com/gunb-ai/gunbc/pull/13570) | BMC onboarding: Redfish PasswordChangeRequired is the factory phase; s | ready / CLEAN | side chat |
 | [#13569](https://github.com/gunb-ai/gunbc/pull/13569) | store: held-session op + O(1) named hold-slot reads | ready / CLEAN | royal-moth-86 |
-| [#13442](https://github.com/gunb-ai/gunbc/pull/13442) | Workspace transcript append rate: size-and-mtime instrument on srv1 (s | ready / CLEAN |  |
+| [#13568](https://github.com/gunb-ai/gunbc/pull/13568) | Delete the pasted-operator-token refusal (operator ruling 2026-10-08) | ready / CLEAN | side chat |
+| [#13563](https://github.com/gunb-ai/gunbc/pull/13563) | Altra firmware library: beta BIOS 4.01 + SCP archives, flashable membe | ready / CLEAN | side chat |
+| [#13554](https://github.com/gunb-ai/gunbc/pull/13554) | srv13 first contact: factory BIOS defaults (PXE disabled by default) | ready / CLEAN | side chat |
+| [#13550](https://github.com/gunb-ai/gunbc/pull/13550) | Bankrupt docs/plans: delete hand-written plans, keep DESIGN-linked and | ready / DIRTY | side chat |
+| [#13442](https://github.com/gunb-ai/gunbc/pull/13442) | Workspace transcript append rate: size-and-mtime instrument on srv1 (s | ready / CLEAN | neat-wolf-604 |
 | [#13412](https://github.com/gunb-ai/gunbc/pull/13412) | semver: route the version scheme's identity compare through the cited  | ready / CLEAN | lively-ram-153 |
-| [#13359](https://github.com/gunb-ai/gunbc/pull/13359) | Codex + Cursor worker turns on one gunbai-secrets credential each (cus | ready / CLEAN |  |
-| [#13357](https://github.com/gunb-ai/gunbc/pull/13357) | Onboard OpenRouter Nemotron 3 Ultra (free) as a quota-leased harness b | ready / CLEAN |  |
+| [#13359](https://github.com/gunb-ai/gunbc/pull/13359) | Codex + Cursor worker turns on one gunbai-secrets credential each (cus | ready / CLEAN | neat-wolf-604 |
+| [#13357](https://github.com/gunb-ai/gunbc/pull/13357) | Onboard OpenRouter Nemotron 3 Ultra (free) as a quota-leased harness b | ready / CLEAN | neat-wolf-604 |
 | [#13351](https://github.com/gunb-ai/gunbc/pull/13351) | Oracle OCI Always Free: network + instance converge (stacked on #13335 | ready / CLEAN | nimble-heron-805 |
-| [#13346](https://github.com/gunb-ai/gunbc/pull/13346) | Remove quadratic remainder copying from code-point/octet slicing in bo | ready / CLEAN |  |
+| [#13346](https://github.com/gunb-ai/gunbc/pull/13346) | Remove quadratic remainder copying from code-point/octet slicing in bo | ready / CLEAN | neat-wolf-604 |
 | [#13210](https://github.com/gunb-ai/gunbc/pull/13210) | v2 native infer accepts variant-scrutinee matches (payload binder typi | ready / CLEAN |  |
 | [#12942](https://github.com/gunb-ai/gunbc/pull/12942) | MQ-5 cut: producers seal what they lower (BodyTerm via sealed #12799 m | ready / CLEAN | neat-boar-16 |
 
 ## Pending fold
 
-These are merged into a manager's integration branch, which hasn't reported a green gate yet.
-
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
+| [#13609](https://github.com/gunb-ai/gunbc/pull/13609) | Derive ledger roster modules without mutating source roots | ready / CLEAN | conflict worker |
+| [#13583](https://github.com/gunb-ai/gunbc/pull/13583) | One directory authority for dashboard instances (D14 OwnedDirectory sl | ready / CLEAN | conflict worker (keep 13583 spec.dag) |
+| [#13582](https://github.com/gunb-ai/gunbc/pull/13582) | Delete the v2 packrat parse memo carrier (R2, stacked on #13577) | draft / CLEAN | conflict worker (stack on 13577) |
+| [#13615](https://github.com/gunb-ai/gunbc/pull/13615) | Delete unused memo and preparation carriers (native-memory-inert-carri | draft / CLEAN | conflict worker (stack; keep floor_preparation_witness_test.dag deleted) |
 | [#13608](https://github.com/gunb-ai/gunbc/pull/13608) | RFM: fixture-closure-union-emit suspected superlinear cost | ready / CLEAN | via eager-gull-22 |
 | [#13596](https://github.com/gunb-ai/gunbc/pull/13596) | target_invocation witness: repair two false claims; file the unplanned | ready / CLEAN | via eager-gull-22 |
 | [#13595](https://github.com/gunb-ai/gunbc/pull/13595) | Reclassify the match-arm proven-disjoint InternalError as a located Ty | draft / CLEAN | via eager-gull-22 |
@@ -92,6 +104,9 @@ These are merged into a manager's integration branch, which hasn't reported a gr
 | [#13307](https://github.com/gunb-ai/gunbc/pull/13307) | v2: bare count over lists binds the std.algebra collection size row, a | ready / CLEAN | via sharp-raven-357 |
 | [#13126](https://github.com/gunb-ai/gunbc/pull/13126) | Grammar overlap: validation refuses every overlap row; required zero-c | ready / CLEAN | via sharp-raven-357 |
 | [#13123](https://github.com/gunb-ai/gunbc/pull/13123) | C4: native route enforces constructor confinement (sole_constructor +  | ready / CLEAN | via sharp-raven-357 |
+| [#13625](https://github.com/gunb-ai/gunbc/pull/13625) | CAX41 guest onboarding; fleet-converge from a branch after a per-run n | draft / BLOCKED | side chat, draft; folds when CI green (touches fleet-converge.yml) |
+| [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / BLOCKED | side chat, folds when CI green |
+| [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / BLOCKED | side chat, folds when CI green |
 | [#13610](https://github.com/gunb-ai/gunbc/pull/13610) | walk_cgroup, entry_presence: tail-position self-recursion so both modu | ready / CLEAN | via silent-lark-156 |
 | [#13472](https://github.com/gunb-ai/gunbc/pull/13472) | Realize rust shell stderr-capture channels (unblocks #13217 floor) | ready / DIRTY | via silent-lark-156 |
 | [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | via stern-boar-596 |
@@ -105,9 +120,9 @@ These are merged into a manager's integration branch, which hasn't reported a gr
 | [#13383](https://github.com/gunb-ai/gunbc/pull/13383) | Accepting wildcards cut 2: name the vocabulary walls, the grounding ga | ready / CLEAN | stacked 13382 |
 | [#13382](https://github.com/gunb-ai/gunbc/pull/13382) | Accepting wildcards cut 1: name the verdict classifier and the two rou | ready / BLOCKED | browser toolchain |
 
-## Left out by its manager
+## Left out
 
-These are drafts, red, superseded or WIP, per the manager's report. The default is to close them, unless you want one revived.
+These are drafts, red, superseded or WIP, per the manager's report or a side chat. The default is to close them, unless you want one revived.
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
@@ -142,6 +157,10 @@ These are drafts, red, superseded or WIP, per the manager's report. The default 
 | [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: left out |
 | [#13377](https://github.com/gunb-ai/gunbc/pull/13377) | node_query: qualify the Cardinality/Optional references (import-level  | ready / BLOCKED | sharp-raven: left out |
 | [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: left out |
+| [#13552](https://github.com/gunb-ai/gunbc/pull/13552) | BMC-hosted shell boot as a boot-delivery candidate; name srv13-srv16 | ready / BLOCKED | side chat: dropped BMC-hosted boot route; close |
+| [#13557](https://github.com/gunb-ai/gunbc/pull/13557) | plans: tie native memory rulings to resumable roadmap milestones | draft / CLEAN | side chat: plans/roadmap rows only; optional |
+| [#13613](https://github.com/gunb-ai/gunbc/pull/13613) | Tailscale ACL: admit tag:dashboard to the dusk-1 serving API (tcp:8080 | ready / BLOCKED | side chat: red (AmbiguousBareNameRead in tailscale_acl_witness); unrelated to cutover |
+| [#13555](https://github.com/gunb-ai/gunbc/pull/13555) | BMC-hosted netboot: plans derive from a per-host roster; srv4 unchange | ready / CLEAN | side chat: stacked on 13552; close |
 | [#13339](https://github.com/gunb-ai/gunbc/pull/13339) | D2 follow-up: role-singleton observation by host self-report (ssh prob | draft / CLEAN | silent-lark: left out |
 | [#13217](https://github.com/gunb-ai/gunbc/pull/13217) | Deployment risk D2: role-following singletons resolve the prod-role ho | ready / DIRTY | silent-lark: left out |
 | [#13429](https://github.com/gunb-ai/gunbc/pull/13429) | Workspace pack: same-size synthetic transcript placeholders; withhold  | ready / DIRTY | superseded by 13442 |
@@ -177,32 +196,11 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13625](https://github.com/gunb-ai/gunbc/pull/13625) | CAX41 guest onboarding; fleet-converge from a branch after a per-run n | draft / BLOCKED | opened 2026-10-09; proposed: close |
-| [#13615](https://github.com/gunb-ai/gunbc/pull/13615) | Delete unused memo and preparation carriers (native-memory-inert-carri | draft / CLEAN | opened 2026-10-09; proposed: close |
-| [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / BLOCKED | opened 2026-10-09; proposed: close |
-| [#13613](https://github.com/gunb-ai/gunbc/pull/13613) | Tailscale ACL: admit tag:dashboard to the dusk-1 serving API (tcp:8080 | ready / BLOCKED | opened 2026-10-09; proposed: close |
-| [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / BLOCKED | opened 2026-10-09; proposed: close |
-| [#13609](https://github.com/gunb-ai/gunbc/pull/13609) | Derive ledger roster modules without mutating source roots | ready / CLEAN | opened 2026-10-09; proposed: review for fold |
 | [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | opened 2026-10-09; proposed: close |
 | [#13603](https://github.com/gunb-ai/gunbc/pull/13603) | Fix fleet convergence pool display name length | draft / CLEAN | opened 2026-10-09; proposed: close |
-| [#13602](https://github.com/gunb-ai/gunbc/pull/13602) | Runner obligation and census read committed identities; Spark training | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13601](https://github.com/gunb-ai/gunbc/pull/13601) | Fabric cell witnesses: least-cause refusal join; carry #11625/#11716 i | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13600](https://github.com/gunb-ai/gunbc/pull/13600) | witnesses: match optional results instead of comparing T? == T (3 file | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13599](https://github.com/gunb-ai/gunbc/pull/13599) | srv1 lab follows main instead of a July session branch | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13597](https://github.com/gunb-ai/gunbc/pull/13597) | Make the crate partitioner the only emitted-Rust layout; delete single | draft / DIRTY | opened 2026-10-08; proposed: close |
-| [#13583](https://github.com/gunb-ai/gunbc/pull/13583) | One directory authority for dashboard instances (D14 OwnedDirectory sl | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13582](https://github.com/gunb-ai/gunbc/pull/13582) | Delete the v2 packrat parse memo carrier (R2, stacked on #13577) | draft / CLEAN | opened 2026-10-08; proposed: close |
-| [#13577](https://github.com/gunb-ai/gunbc/pull/13577) | Price the parse memo below the cost floor: the production door admits  | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13570](https://github.com/gunb-ai/gunbc/pull/13570) | BMC onboarding: Redfish PasswordChangeRequired is the factory phase; s | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13568](https://github.com/gunb-ai/gunbc/pull/13568) | Delete the pasted-operator-token refusal (operator ruling 2026-10-08) | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13565](https://github.com/gunb-ai/gunbc/pull/13565) | ROADMAP #117: Realize node HTTP serve smoke as typed ops, not heredoc | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
 | [#13564](https://github.com/gunb-ai/gunbc/pull/13564) | argv dissolution: replace hand-typed id/hostname argv with typed build | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13563](https://github.com/gunb-ai/gunbc/pull/13563) | Altra firmware library: beta BIOS 4.01 + SCP archives, flashable membe | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13557](https://github.com/gunb-ai/gunbc/pull/13557) | plans: tie native memory rulings to resumable roadmap milestones | draft / CLEAN | opened 2026-10-08; proposed: close |
-| [#13555](https://github.com/gunb-ai/gunbc/pull/13555) | BMC-hosted netboot: plans derive from a per-host roster; srv4 unchange | ready / CLEAN | opened 2026-10-08; proposed: review for fold |
-| [#13554](https://github.com/gunb-ai/gunbc/pull/13554) | srv13 first contact: factory BIOS defaults (PXE disabled by default) | ready / CLEAN | opened 2026-10-07; proposed: review for fold |
-| [#13552](https://github.com/gunb-ai/gunbc/pull/13552) | BMC-hosted shell boot as a boot-delivery candidate; name srv13-srv16 | ready / BLOCKED | opened 2026-10-07; proposed: close |
-| [#13550](https://github.com/gunb-ai/gunbc/pull/13550) | Bankrupt docs/plans: delete hand-written plans, keep DESIGN-linked and | ready / DIRTY | opened 2026-10-07; proposed: close |
 | [#13328](https://github.com/gunb-ai/gunbc/pull/13328) | recurring_failure_mode: re-scope the native-route row to the package-p | ready / CLEAN | opened 2026-10-05; proposed: review for fold |
 | [#13295](https://github.com/gunb-ai/gunbc/pull/13295) | Consolidate cassette joinery, power and shared platform profiles | ready / DIRTY | opened 2026-10-04; proposed: close |
 | [#13223](https://github.com/gunb-ai/gunbc/pull/13223) | Separate pinned Orca fit-prototype preparation from printer execution | draft / DIRTY | opened 2026-10-04; proposed: close |
@@ -213,6 +211,11 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 | [#12737](https://github.com/gunb-ai/gunbc/pull/12737) | kimi k3 low | ready / DIRTY | opened 2026-09-30; proposed: close |
 | [#12707](https://github.com/gunb-ai/gunbc/pull/12707) | luna pro low qual | ready / DIRTY | opened 2026-09-29; proposed: close |
 | [#12691](https://github.com/gunb-ai/gunbc/pull/12691) | Journal initial commissioning and gate workspace supply on committed r | draft / CLEAN | opened 2026-09-29; proposed: close |
+
+## Notes
+
+- The plans bankruptcy (#13550) deleted `buganizer-visual-contract.md` and `printed-chassis-program.md`, and that deletion won over edits on our side. Some comments and `sites/README.md` still mention them.
+- #13602's green checks are on its current head `f867e9d670`, which is later than the srv1 authorization push.
 
 ## Kept up by request
 
