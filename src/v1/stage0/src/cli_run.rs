@@ -9907,6 +9907,128 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Inhabitance: `load_sources_for_entry_with_pool` already binds by the ancestor chain.
+    /// The sibling plant is nearer by prefix and must not enter the compile closure.
+    #[test]
+    fn load_sources_binds_the_on_chain_ancestor_not_the_sibling_plant() {
+        let fixture = Fixture::new(&[
+            (
+                "parent.dag",
+                "module frontier\nfn duplicated() -> Int { 1 }\n",
+            ),
+            (
+                "plant.dag",
+                "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+            ),
+            (
+                "consumer.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("consumer.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<String> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert!(modules.contains("frontier"), "{modules:?}");
+        assert!(!modules.contains("frontier.child.plant"), "{modules:?}");
+        assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
+    }
+
+    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
+    /// (dropping it is an undercount) and the real resolve path must succeed.
+    #[test]
+    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+        let fixture = Fixture::new(&[
+            (
+                "decl.dag",
+                "module test.decl\nfn shared_fn() -> Int { 1 }\n",
+            ),
+            (
+                "user.dag",
+                "module test.user\nfn use_it() -> Int { shared_fn() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("UniqueBinding pulls the census-unique off-chain provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        assert!(
+            !compiled
+                .diagnostics
+                .iter()
+                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
+            "resolver-accepted UniqueBinding must compile: {:?}",
+            compiled.diagnostics
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        assert!(
+            facts
+                .iter()
+                .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
+            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+        );
+    }
+
+    /// Two off-chain homonyms, none on the consumer's chain: proximity UniqueBare is gone,
+    /// and the real resolve path refuses rather than silently picking a neighbor.
+    #[test]
+    fn off_chain_homonym_with_no_lexical_binder_is_refused_on_the_resolve_path() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module aa.one\nfn shared() -> Int { 1 }\n"),
+            ("b.dag", "module bb.two\nfn shared() -> Int { 2 }\n"),
+            (
+                "user.dag",
+                "module cc.user\nfn use_it() -> Int { shared() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("admission does not fabricate a proximity provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let msgs: Vec<String> = compiled
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        let joined = msgs.join("\n");
+        assert!(
+            !msgs.is_empty()
+                && joined.contains("shared")
+                && (joined.contains("undefined")
+                    || joined.contains("not found in scope")
+                    || joined.contains("AMBIGUOUS")
+                    || joined.contains("unresolved")),
+            "refusal must name the bare identifier: {joined:?}"
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        let user_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("user.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            user_targets.is_empty(),
+            "no UniqueBare to a proximity winner: {user_targets:?}"
+        );
+    }
+
     /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
     /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
     /// per-entry module-path scan (`extend_with_reference_closure`, timed as
@@ -31332,12 +31454,45 @@ fn collect_node_refs_inner(
     bound.truncate(restore_to);
 }
 
-/// Count of shared leading dot-separated segments between two module paths (containment proximity).
-fn module_prefix_shared_len(a: &str, b: &str) -> usize {
-    a.split('.')
-        .zip(b.split('.'))
-        .take_while(|(x, y)| x == y)
-        .count()
+/// Declarers on the referencing module's ancestor chain, sorted for a stable AmbiguousBare dump.
+/// Containment is `type_ref_module_path_is_containment_prefix` (segment LCP), the same
+/// predicate `global_bare_chain_candidates` applies to each candidate — not a second rule.
+fn on_chain_declarers<'a>(
+    referencing_module: &str,
+    declarers: impl IntoIterator<Item = &'a String>,
+) -> Vec<&'a String> {
+    let mut out: Vec<&'a String> = declarers
+        .into_iter()
+        .filter(|m| {
+            crate::v1_compiler_infer_env::type_ref_module_path_is_containment_prefix(
+                (*m).clone(),
+                referencing_module.to_string(),
+            )
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
+/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+enum ImportlessBarePick<'a> {
+    Unique(&'a String),
+    Ambiguous(Vec<&'a String>),
+    None,
+}
+
+fn pick_importless_bare<'a>(
+    referencing_module: &str,
+    mods: &'a std::collections::BTreeSet<String>,
+) -> ImportlessBarePick<'a> {
+    let on_chain = on_chain_declarers(referencing_module, mods.iter());
+    match on_chain.len() {
+        1 => ImportlessBarePick::Unique(on_chain[0]),
+        n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
+        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
+        _ => ImportlessBarePick::None,
+    }
 }
 
 /// Longest module-path prefix of a qualified chain that names a declared module.
@@ -31413,7 +31568,7 @@ pub struct BareRefReachability {
 
 #[cfg(test)]
 mod reference_edge_producer_tests {
-    use super::reference_resolution_facts;
+    use super::*;
 
     fn fixture_root(tag: &str) -> std::path::PathBuf {
         // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
@@ -31472,8 +31627,8 @@ mod reference_edge_producer_tests {
         let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
 
         assert!(
-            has_edge("refless.dag", "test.decl"),
-            "import-less file referencing shared_fn must yield an edge to its declaring module"
+            !has_edge("refless.dag", "test.decl"),
+            "test.decl and test.reflocal both declare shared_fn; neither is on test.refless's chain, so UniqueBare/AmbiguousBare must not pick a neighbor"
         );
         assert!(
             !emits_any("reflocal.dag"),
@@ -31483,6 +31638,82 @@ mod reference_edge_producer_tests {
             !emits_any("imported.dag"),
             "an import-bearing file is import-covered — the reference producer skips it"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// THE IMPORT-LESS WRONG-EDGE RED on the real `dependency_resolution_facts` union
+    /// (`reference_edges_for_file` inside it — not a mutant of the producer).
+    ///
+    /// `frontier.child.consumer` calls `duplicated`. The lexical binder is the ancestor
+    /// `frontier`. A sibling `frontier.child.plant` also declares the spelling and shares a
+    /// longer module-path prefix, so proximity UniqueBare-binds the plant. After the climb the
+    /// edge is the ancestor, never the sibling.
+    #[test]
+    fn proximity_must_not_bind_an_importless_bare_name_to_a_sibling_homonym() {
+        let root = fixture_root("proximity-wrong-edge");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "plant.dag",
+            "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            !consumer_targets.contains(&"frontier.child.plant"),
+            "proximity UniqueBare bound the sibling plant: {consumer_targets:?}"
+        );
+        assert!(
+            consumer_targets.contains(&"frontier"),
+            "the on-chain ancestor must remain the UniqueBare target: {consumer_targets:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Positive control: an import-less bare name whose only declarer is an ancestor still
+    /// produces a UniqueBare edge (lexical binding, not pool uniqueness).
+    #[test]
+    fn an_importless_bare_name_on_the_ancestor_chain_still_resolves() {
+        let root = fixture_root("lexical-on-chain");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        write(
+            &root,
+            "unrelated.dag",
+            "module other.real\nfn unused() -> Int { 0 }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert_eq!(consumer_targets, vec!["frontier"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -37723,13 +37954,14 @@ mod import_bearing_reference_edges {
         assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
     }
 
-    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
-    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    /// After the proximity climb: neither homonym is on `test.claim.a`'s ancestor chain, so
+    /// the import-less file must not UniqueBare-bind the nearer planted fixture.
     #[test]
-    fn the_same_bare_name_without_the_import_still_resolves() {
+    fn the_same_bare_name_without_the_import_does_not_proximity_bind() {
         let src = "module test.claim.a\nfn g() -> Int { Present }\n";
         let t = homonym_edges(src);
-        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"std.optional".to_string()), "{t:?}");
     }
 }
 
@@ -39175,20 +39407,16 @@ pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<
         if mods.contains(module) {
             continue;
         }
-        let mut best_len = 0usize;
-        let mut winners: Vec<&String> = Vec::new();
-        for m in mods.iter() {
-            let shared = module_prefix_shared_len(module, m);
-            if winners.is_empty() || shared > best_len {
-                best_len = shared;
-                winners.clear();
-                winners.push(m);
-            } else if shared == best_len {
-                winners.push(m);
+        match pick_importless_bare(module, mods) {
+            ImportlessBarePick::None => {}
+            ImportlessBarePick::Unique(w) => {
+                out.insert(w.clone());
             }
-        }
-        for w in winners {
-            out.insert(w.clone());
+            ImportlessBarePick::Ambiguous(winners) => {
+                for w in winners {
+                    out.insert(w.clone());
+                }
+            }
         }
     }
     out.into_iter().collect()
