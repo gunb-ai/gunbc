@@ -337,13 +337,18 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
 // 21-to-12 retirees. Permission is authored here, independently of that obligation, as coverage
 // over exactly those identities. It does not name srv1-01..12 -- the committed remaining
 // population -- and membership already refuses to act on an active or enabled tree.
+// srv1-13 IS LEFT OUT: since #12339 it is the committed microVM shakedown slot, not a surplus
+// runner, so no width decision may interrupt it.
 fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
-  desired_unit_names_range(host: operator_host_srv1, slot: 13, limit: 50) |> map(u => u as NonEmptyStr)
+  concat(
+    desired_unit_names_range(host: operator_host_srv1, slot: 10, limit: 12),
+    desired_unit_names_range(host: operator_host_srv1, slot: 14, limit: 50),
+  ) |> map(u => u as NonEmptyStr)
 }
 
 data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: srv1_transition_interruption_scope(),
-  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; widened by operator decision 2026-10-09 to srv1-10..12, the slots the derived width of 10 no longer covers (the served deployments and the microVM shakedown slot claim the rest of srv1's memory), and narrowed to exclude srv1-13, the committed microVM shakedown slot; the decision does not name srv1-01..09, srv1-13, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
 type HostInterruptionAuthorizationStanding
