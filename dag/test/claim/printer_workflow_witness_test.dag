@@ -1,0 +1,36 @@
+module test.claim.printer_workflow_witness_test
+
+import std.types { Bool, String }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_help_supports_private_options }
+import gunbc.fleet.printer_selection { print_inputs_admitted, select_printer, PrinterSelected, PrinterSelectionRefused }
+import gunbc.fleet.printer_federation { printer_claim_pins }
+import gunbc.auth.oidc_claim_pins { claim_pins_admit, OidcClaimPin }
+
+data project_digest: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+test fn w_print_needs_exact_version_clear_bed_and_digest() -> Bool {
+  print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "true") &&
+  !print_inputs_admitted(version: "latest", digest: project_digest, bed_clear: "true") &&
+  !print_inputs_admitted(version: "pending", digest: project_digest, bed_clear: "true") &&
+  !print_inputs_admitted(version: "1", digest: "", bed_clear: "true") &&
+  !print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "false")
+}
+
+test fn w_unknown_printer_never_selects_a_default_machine() -> Bool {
+  match select_printer(name: "printer-03") { PrinterSelectionRefused => true  PrinterSelected { printer: _ } => false }
+}
+
+test fn w_printer_federation_rejects_other_workflow_branch_and_environment() -> Bool {
+  let pins = printer_claim_pins()
+  claim_pins_admit(pins: pins, claims: pins) &&
+  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "ref" { OidcClaimPin { claim: p.claim, value: "refs/heads/untrusted" } } else { p })) &&
+  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "environment" { OidcClaimPin { claim: p.claim, value: "namecheap-dns" } } else { p })) &&
+  !claim_pins_admit(pins: pins, claims: filter(pins, p => p.claim != "workflow_ref"))
+}
+
+test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
+  mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub is a simple mqtt client that will publish a message on a single topic and exit.\nmosquitto_pub version 2.0.18 running on libmosquitto 2.0.18.") &&
+  !mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub version 1.6.12 running on libmosquitto 1.6.12.") &&
+  !mosquitto_pub_help_supports_private_options(stdout: "") &&
+  !mosquitto_pub_help_supports_private_options(stdout: "unrelated tool 2.0")
+}

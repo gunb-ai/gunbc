@@ -12,7 +12,10 @@ import extdeps.printing.orca_slicer {
   orca_slice_to_project_command, OrcaExecutable, orca_version_probe_command,
 }
 
-// WHERE THE MESH-TO-MACHINE ROUTE STOPS TODAY, DECLARED RATHER THAN DISCOVERED AT RUN TIME.
+// Direct-host ABI and execution evidence. Historical refusal observations below retain their
+// original hosts/environments. On 2026-10-03 slice_run executed the pinned archive successfully
+// after the system packages supplied its runtime closure; with_verified_orca owns the private
+// archive lifetime and prevents a caller's mutable input path becoming the executable authority.
 //
 // product.printed_chassis.export_profile ends at an STL. A Bambu Lab A1 mini in LAN Mode consumes a
 // sliced project, so exactly one step stands between a verified mesh and a printable artifact, and

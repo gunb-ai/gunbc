@@ -1,0 +1,51 @@
+module extdeps.standards.atx12v_psdg
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Millivolt, millivolt }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// THE ATX12V POWER SUPPLY DESIGN GUIDE'S +12 V REGULATION BAND, which is the voltage a board built
+// to that guide expects at its 12 V input. The board manual states no input tolerance of its own;
+// its 8-pin inputs are ATX12V connectors and this guide is the authority such a board is designed
+// against. A DC-IN feed that lands below the band's floor at the connector under load has failed
+// the feed, which is what the voltage-drop derivation checks.
+//
+// +12 V regulation is +/-5 percent of nominal (11.40 V to 12.60 V) in the guide's DC output
+// regulation table. Relayed through search summaries on 2026-10-04 and graded so.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "xDevs.com/doc/xDevs.com/Neutron/pdf/ATX12V_PSDG_2_2_public_br2.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.atx12v_psdg",
+      decl_name: "atx12v_twelve_volt_regulation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type DcOutputRegulationBand {
+  nominal: Millivolt
+  minimum: Millivolt
+  maximum: Millivolt
+  standing: CitedFigureStanding
+}
+
+data atx12v_twelve_volt_regulation: DcOutputRegulationBand = DcOutputRegulationBand {
+  nominal: millivolt(count: 12000),
+  minimum: millivolt(count: 11400),
+  maximum: millivolt(count: 12600),
+  standing: TranscribedUncited {
+    read_obligation: "Open ATX12V Power Supply Design Guide v2.2, DC Output Voltage Regulation table, and confirm +12 V at +/-5 percent (11.40 V min, 12.60 V max); relayed from search summaries that state positive rails are within 5 percent.",
+  },
+}

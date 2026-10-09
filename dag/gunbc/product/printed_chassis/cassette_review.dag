@@ -1,0 +1,66 @@
+module product.printed_chassis.cassette_review
+
+import product.printed_chassis.assembly_inventory { required_slots_json }
+import std.types { Int, String, List }
+import std.measure { micrometer_count, millimeter_count, Micrometer }
+import std.affine_space { Point3, signed_frame_component_count }
+import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
+import extdeps.languages.json.emit { JsonValue,json_object,json_kv,json_string,json_int,json_array,json_bool,json_null,serialize_json }
+import gunbc.cli_wire { CliWireResponse,CliWirePrintable }
+import std.process { ExitSuccess,exit_failure }
+import product.printed_chassis.assembly_review_checks {review_model_checks}
+import product.printed_chassis.assembly_geometry { Primitive,Block,RoundPrism,AssemblyPart,MechanicalInterface,Printed,Purchased,Metal,Clearance,Cassette,FixedFrame,LayOnXZ,LayOnXY,LayOnYZ,InterfaceStatus,FastenerKind,M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved }
+import product.printed_chassis.cassette { printed_parts,interfaces,board_w,board_d,tray_w,tray_d,bay_w,bay_pitch,m3_clearance,fan_hole_d }
+import product.printed_chassis.fit_observations {fan_fit_display}
+import product.printed_chassis.rack_assembly { hardware,fixed_parts }
+import product.printed_chassis.export_profile { exercised_stl_knobs }
+import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
+import extdeps.printing.fdm { build_envelope_x,build_envelope_y,build_envelope_z }
+
+fn xyz(p:Point3) -> JsonValue { json_array(elements:[json_int(n:signed_frame_component_count(c:p.x)),json_int(n:signed_frame_component_count(c:p.y)),json_int(n:signed_frame_component_count(c:p.z))]) }
+fn text(s:String) -> JsonValue { json_string(s:s) }
+fn primitive_json(p:Primitive) -> JsonValue {
+ match p {
+  Block {size:s,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"box")),json_kv(key:"size_um",value:json_array(elements:[json_int(n:micrometer_count(m:s.size_x)),json_int(n:micrometer_count(m:s.size_y)),json_int(n:micrometer_count(m:s.size_z))])),json_kv(key:"center_um",value:xyz(p:c))]),
+  RoundPrism {diameter:d,length:l,axis:a,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"cylinder")),json_kv(key:"diameter_um",value:json_int(n:micrometer_count(m:d))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
+ }
+}
+fn part_json(p:AssemblyPart) -> JsonValue {
+ json_object(members:[json_kv(key:"id",value:text(s:p.id)),json_kv(key:"name",value:text(s:p.name)),json_kv(key:"kind",value:text(s:match p.kind {Printed=>"printed",Purchased=>"purchased",Metal=>"metal",Clearance=>"clearance"})),json_kv(key:"scope",value:text(s:match p.scope {Cassette=>"cassette",FixedFrame=>"fixed"})),json_kv(key:"adds",value:json_array(elements:p.adds |> map(a=>primitive_json(p:a)))),json_kv(key:"cuts",value:json_array(elements:p.cuts |> map(a=>primitive_json(p:a)))),json_kv(key:"at_um",value:xyz(p:p.at)),json_kv(key:"explode_um",value:xyz(p:p.explode)),json_kv(key:"print_plane",value:text(s:match p.print_plane {LayOnXZ=>"XZ",LayOnXY=>"XY",LayOnYZ=>"YZ"})),json_kv(key:"notes",value:text(s:p.notes))])
+}
+fn fastener_display(f:FastenerKind) -> String {
+ match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved"}
+}
+fn status_display(s:InterfaceStatus) -> String {match s {Proposed=>"proposed" OriginalPlateFitOnly=>"original plate fit passed; new stack proposed" Unresolved=>"unresolved"}}
+fn interface_json(i:MechanicalInterface) -> JsonValue {
+ json_object(members:[json_kv(key:"id",value:text(s:i.id)),json_kv(key:"members",value:json_array(elements:i.members |> map(x=>text(s:x)))),json_kv(key:"fastener",value:text(s:fastener_display(f:i.fastener))),json_kv(key:"quantity",value:json_int(n:i.quantity)),json_kv(key:"status",value:text(s:status_display(s:i.status))),json_kv(key:"requirement",value:text(s:i.requirement))])
+}
+fn all_parts() -> List<AssemblyPart> { concat(printed_parts(),concat(hardware(),fixed_parts())) }
+fn vector(x:Int,y:Int,z:Int) -> JsonValue { json_array(elements:[json_int(n:x),json_int(n:y),json_int(n:z)]) }
+fn node(id:String,x:Int,y:Int) -> JsonValue { json_object(members:[json_kv(key:"id",value:text(s:id)),json_kv(key:"at_um",value:vector(x:x,y:y,z:0))]) }
+fn um(m:Micrometer) -> Int { micrometer_count(m: m) as Int }
+fn airflow(x:Int) -> JsonValue { json_object(members:[json_kv(key:"direction",value:vector(x:0,y:0,z:-1)),json_kv(key:"start_um",value:vector(x:x,y:105000,z:um(m: tray_d)/2+55000)),json_kv(key:"length_um",value:json_int(n:um(m: tray_d)+140000))]) }
+fn assembly_steps() -> List<String> {
+ ["Mate the four keyed tray panels; install four top-accessible M3 clamps.",
+ "Slide the two rear arms into the tray sockets and insert their two broad-grip retainers.",
+ "Slide the center fan frame over the two outer frames; insert the center retainer.",
+ "Seat the fan bank on the arms and insert the two rear retainers.",
+ "Fit each fan and its guard over the locating pins; install two diagonal M4 bolts per fan."]
+}
+fn manifest_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> JsonValue {
+ json_object(members:[json_kv(key:"schema",value:text(s:"gunbc.cassette-review.v1")),json_kv(key:"revision",value:text(s:"06")),json_kv(key:"quantum",value:text(s:"micrometre")),json_kv(key:"axes",value:text(s:"X across rear I/O; Y up; +Z toward front handle")),json_kv(key:"release",value:text(s:"review-only; no print or powered-operation admission")),json_kv(key:"fan_fit",value:text(s:fan_fit_display())),
+ json_kv(key:"board_um",value:json_array(elements:[json_int(n:um(m: board_w)),json_int(n:um(m: board_d))])),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:um(m: tray_w)),json_int(n:um(m: tray_d))])),json_kv(key:"bay_pitch_um",value:json_int(n:micrometer_count(m: bay_pitch))),json_kv(key:"bay_width_um",value:json_int(n:um(m: bay_w))),json_kv(key:"nodes_per_block",value:json_int(n:4)),json_kv(key:"intended_nodes",value:json_int(n:8)),
+ json_kv(key:"assembly_steps",value:json_array(elements:map(assembly_steps(),s=>text(s:s)))),
+ json_kv(key:"fastener_clearance_um",value:json_array(elements:[json_int(n:micrometer_count(m: m3_clearance)),json_int(n:um(m: fan_hole_d))])),
+ json_kv(key:"nodes",value:json_array(elements:[node(id:"N1",x:0-um(m: bay_w)/2,y:0),node(id:"N2",x:um(m: bay_w)/2,y:0),node(id:"N3",x:0-um(m: bay_w)/2,y:micrometer_count(m: bay_pitch) as Int),node(id:"N4",x:um(m: bay_w)/2,y:micrometer_count(m: bay_pitch) as Int)])),
+ json_kv(key:"airflow",value:json_array(elements:[airflow(x:-75000),airflow(x:75000)])),
+ json_kv(key:"export",value:json_object(members:[json_kv(key:"linear_tolerance_um",value:json_int(n:micrometer_count(m:exercised_stl_knobs.linear_tolerance))),json_kv(key:"angular_tolerance_radians",value:text(s:exercised_stl_knobs.angular_tolerance_text as String))])),
+ json_kv(key:"power",value:json_object(members:[json_kv(key:"placement",value:text(s:"fixed-frame shared 12 V system per four-node block")),json_kv(key:"branches",value:json_int(n:4)),json_kv(key:"rated_watts",value:json_null()),json_kv(key:"live_hot_swap",value:json_bool(b:false)),json_kv(key:"redundancy",value:json_null())])),
+ json_kv(key:"print_envelope_mm",value:json_array(elements:[json_int(n:millimeter_count(m:build_envelope_x(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_y(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_z(e:a1_mini_build_envelope)))])),
+ json_kv(key:"desired_inventory",value:required_slots_json(parts:parts)), json_kv(key:"parts",value:json_array(elements:parts |> map(p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:joints |> map(i=>interface_json(i:i)))),
+ json_kv(key:"unresolved",value:json_array(elements:[text(s:"Board standoff thread, installed height and underside keep-outs; no new gauge sequence."),text(s:"Fastener lengths/engagement, support material, rail clearance and loaded joint performance."),text(s:"Cooler location/orientation and rear I/O/cable service access."),text(s:"Shared supply selection, branch circuitry, protective earth and thermal validation."),text(s:"Drives and expansion cards are unspecified, not silently omitted requirements.")]))])
+}
+fn manifest() -> JsonValue {manifest_for(parts:all_parts(),joints:interfaces())}
+fn main() -> CliWireResponse {
+ if review_model_checks(parts:all_parts(),interfaces:interfaces()) {CliWirePrintable {bytes:serialize_json(v:manifest()),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+}

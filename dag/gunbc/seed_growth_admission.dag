@@ -8,6 +8,7 @@ import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel
 import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
+import gunbc.native_product_cache_seed_growth { native_product_cache_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
@@ -65,6 +66,7 @@ import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
+import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
@@ -313,6 +315,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_serve_program_seed_growth_justification,
     dependency_demand_census_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
+    interpolation_hole_census_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
@@ -379,7 +382,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     match_arm_guard_seed_growth_justification,
     value_depth_seed_growth_justification,
     value_drop_binding_adaptation_seed_growth_justification,
-    process_lifecycle_seed_growth_justification
+    process_lifecycle_seed_growth_justification,
+    native_product_cache_seed_growth_justification
   ]
 }
 

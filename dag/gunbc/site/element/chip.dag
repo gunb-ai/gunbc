@@ -1,0 +1,53 @@
+module gunbc.site.element.chip
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import extdeps.google.issue_tracker { issue_tracker_measured_header_chip }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, space_0 }
+import gunbc.site.element.tokens { radius_element, height_chip, chip_padding }
+import gunbc.site.element.palette { palette_var, SlotText }
+import gunbc.site.element.text { element_text_decls, ElementIdentifier }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { AlignItems, Background, BorderRadius, Display, MinHeight, Padding, WhiteSpace }
+
+// Chip: an identifier shown as the product's plain chip (the one its header draws the component
+// path and the ancestor chain in). It takes the identifier's text and nothing else. The surface
+// is exported as declarations so that an element which IS a chip with structure inside it
+// (gunbc.site.element.node_chain) draws the same surface from the same tokens under its own
+// class, and no page restyles this one.
+type Chip {
+  text: String
+}
+
+data chip_class: String = "el-chip"
+
+fn chip(input: Chip) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: chip_class)], [txt(input.text)])
+}
+
+// The fill is a fraction of the text ink over whatever is behind the chip, as measured, so it
+// reads on a card, on the ground and on a closed row in both schemes.
+fn chip_fill() -> String {
+  join(["color-mix(in srgb, ", palette_var(slot: SlotText), " ", to_string(issue_tracker_measured_header_chip.fill_ink_pct), "%, transparent)"], "")
+}
+
+fn chip_surface_decls() -> List<CssDecl> {
+  concat([
+    decl(prop: Display, value: "inline-flex"),
+    decl(prop: AlignItems, value: "center"),
+    decl(prop: MinHeight, value: scale_var(t: height_chip)),
+    decl(prop: Padding, value: scale_pair(a: space_0, b: chip_padding)),
+    decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+    decl(prop: Background, value: chip_fill()),
+  ], element_text_decls(role: ElementIdentifier))
+}
+
+fn chip_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: chip_class }, decls: concat(chip_surface_decls(), [
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ]) },
+  ]
+}

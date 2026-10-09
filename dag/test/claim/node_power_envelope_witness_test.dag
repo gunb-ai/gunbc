@@ -38,7 +38,7 @@ import gunbc.memory_provisioning {
   asrock_altrad8ud_1l2t_geometry,
   mt_collins_per_socket_geometry,
 }
-import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { Uri, File }
 import product.node_power_envelope {
   ChannelClockAdmitted,
@@ -355,6 +355,7 @@ test fn the_two_dpc_ceilings_are_empty_because_ampere_publishes_no_rank_derate()
     && match altra_two_dpc_ceilings.evidence {
       CitedToAuthority { authority: _ } => false
       TranscribedUncited { read_obligation: _ } => true
+      ObservedByReceipt { observed: _ } => false
     }
     && megatransfers_per_second_count(r: altra_memory_max_data_rate) == 3200
     && megatransfers_per_second_count(r: mt_jade_dimm_speed_at_two_dpc) == 3200
