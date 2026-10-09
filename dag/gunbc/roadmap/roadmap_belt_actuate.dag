@@ -439,7 +439,7 @@ import gunbc.scm.object_store {
   PathUniqueManifestEntries,
   path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
-  find_object, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
+  find_object, ObjectId, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
   CorpusManifestRecord, authored_source_target_locator, object_id_eq, CorpusManifestTarget,
 }
 import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat, intake_revision_eq, encode_commit_intake, CaptureWork, CommitWork, NoWork, WorkCapture, WorkUnrecordedByFormat, encode_commit_work }
@@ -6901,7 +6901,7 @@ fn belt_scm_base_advance(
       BaseAdvanceRefused { detail: belt_commit_exec_detail(step: "base-advance-diff", outcome: ExecRefused { program: program, reason: reason }) }
     ExecOk { stdout } => {
       let changes = worktree_changes_parse(stdout_nul: stdout)
-      match belt_scm_advance_texts(git_program: git_program, worktree: worktree, to_sha: to_sha, changes: changes) {
+      match belt_scm_advance_texts(git_program: git_program, worktree: worktree, to_sha: to_sha, changes: changes, step: "base-advance-file") {
         AdvanceTextsRefused { detail } => BaseAdvanceRefused { detail: detail }
         AdvanceTextsRead { texts } =>
           match materialize_objects(envelope_path: path, store: envelope.store, identities: [tip_root]) {
@@ -6945,7 +6945,7 @@ type BeltAdvanceTexts
   = AdvanceTextsRead { texts: Map<String, String> }
   | AdvanceTextsRefused { detail: String }
 
-fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String, changes: List<WorktreeChange>) -> BeltAdvanceTexts {
+fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String, changes: List<WorktreeChange>, step: String) -> BeltAdvanceTexts {
   fold(changes, init: AdvanceTextsRead { texts: empty_map() }, f: (acc, change) =>
     match acc {
       AdvanceTextsRefused { detail: _ } => acc
@@ -6956,9 +6956,9 @@ fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String,
             match belt_exec(cmd: host_exec_argv(program: git_program, args: worktree_base_file_args(base_sha: to_sha, path: path as String)), workdir: worktree) {
               ExecOk { stdout } => AdvanceTextsRead { texts: map_insert(texts, path as String, stdout) }
               ExecFailed { program, exit_code, stderr } =>
-                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join([step, " ", path as String], ""), outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
               ExecRefused { program, reason } =>
-                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecRefused { program: program, reason: reason }) }
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join([step, " ", path as String], ""), outcome: ExecRefused { program: program, reason: reason }) }
             }
         }
     })
@@ -6967,7 +6967,7 @@ fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String,
 // THE PURE RE-BINDING: the tip's entries with exactly `changes` applied, each bind to its text at
 // S_k+1. A bind whose text was not read is refused rather than skipped -- a skipped bind would leave
 // the tip's bytes at a path the diff says changed, which is the stale-base tree this exists to end.
-fn belt_scm_advance_fold(path: String, store: ObjectStore, tip_record: CorpusManifestRecord, changes: List<WorktreeChange>, texts: Map<String, String>) -> BeltDeltaFold {
+fn belt_scm_advance_fold(store: ObjectStore, tip_record: CorpusManifestRecord, changes: List<WorktreeChange>, texts: Map<String, String>) -> BeltDeltaFold {
   fold(changes, init: BeltDeltaFold { store: store, unique: path_unique_of_record(base: tip_record), refused: none }, f: (acc, change) =>
     match acc.refused {
       Present { value: _ } => acc
@@ -6979,7 +6979,7 @@ fn belt_scm_advance_fold(path: String, store: ObjectStore, tip_record: CorpusMan
             match map_get(texts, key: p as String) {
               Absent =>
                 BeltDeltaFold { store: acc.store, unique: acc.unique, refused: Present { value: join(["the advance's diff re-binds ", p as String, " but its bytes at the target revision were not read"], "") } }
-              Present { value: text } => belt_scm_delta_bind_text(path_of_envelope: path, acc: acc, path: p, text: text)
+              Present { value: text } => belt_scm_delta_bind_text(acc: acc, path: p, text: text)
             }
         }
     })
@@ -6995,7 +6995,7 @@ fn belt_scm_base_advance_mint(
   changes: List<WorktreeChange>,
   texts: Map<String, String>,
 ) -> BeltBaseAdvance {
-  let folded = belt_scm_advance_fold(path: path, store: envelope.store, tip_record: tip_record, changes: changes, texts: texts)
+  let folded = belt_scm_rebind_fold(path: path, store: envelope.store, base_record: tip_record, changes: changes, texts: texts)
   match folded.refused {
     Present { value: detail } => BaseAdvanceRefused { detail: detail }
     Absent =>
@@ -7193,18 +7193,16 @@ type BeltDeltaFold {
   refused: String?
 }
 
-// A RE-BOUND PATH WHOSE BYTES THE REPOSITORY ALREADY PERSISTS (a revert, a file restored to an
-// earlier content) is materialized before it is stored: the identity law refuses two contents under
-// one identity, and that comparison needs the one persisted object -- read from exactly its shard
-// (gunbc.scm.repository_load materialize_objects), never by decoding the repository. Bytes the
-// repository has never held need no read at all.
+// THE RE-BOUND BYTES THE REPOSITORY ALREADY PERSISTS (a revert, a file restored to an earlier
+// content) are materialized ONCE for the whole change population, before any bind: the identity law
+// refuses two contents under one identity, and that comparison needs the persisted object -- read
+// from exactly its shard (gunbc.scm.repository_load materialize_objects), never by decoding the
+// repository. The demand is derived from the texts, so every shard the population names is planned
+// and read once; a per-path demand re-read a shard for each of its members. Bytes the repository
+// has never held need no read at all.
 type BeltDeltaResident
   = DeltaResident { store: ObjectStore }
   | DeltaResidentRefused { detail: String }
-
-fn belt_scm_delta_resident_for(path: String, store: ObjectStore, text: String) -> BeltDeltaResident {
-  belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: store, identity: scm_object_identity(object: authored_source_object(text: text))))
-}
 
 fn belt_delta_resident_of(outcome: ObjectMaterialization) -> BeltDeltaResident {
   match outcome {
@@ -7213,43 +7211,76 @@ fn belt_delta_resident_of(outcome: ObjectMaterialization) -> BeltDeltaResident {
   }
 }
 
-fn belt_scm_delta_fold_step(
-  instance: HostDashboardInstance,
-  worktree: String,
-  path_of_envelope: String,
-  acc: BeltDeltaFold,
-  change: WorktreeChange,
-) -> BeltDeltaFold {
-  match acc.refused {
-    Present { value: _ } => acc
-    Absent =>
+fn belt_scm_rebound_identities(store: ObjectStore, changes: List<WorktreeChange>, texts: Map<String, String>) -> List<ObjectId> {
+  filter(
+    flat_map(changes, change =>
       match change {
-        WorktreeDelete { path } =>
-          BeltDeltaFold {
-            store: acc.store,
-            unique: path_unique_with_path_removed(unique: acc.unique, path: path),
-            refused: none,
+        WorktreeDelete { path: _ } => []
+        WorktreeBind { path } =>
+          match map_get(texts, key: path as String) {
+            Absent => []
+            Present { value: text } => [scm_object_identity(object: authored_source_object(text: text))]
           }
-        WorktreeBind { path } => {
-          let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
-          match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-            FilesystemReadRefused { error } =>
-              BeltDeltaFold {
-                store: acc.store,
-                unique: acc.unique,
-                refused: Present {
-                  value: join([
-                    "the changed path ", path as String,
-                    " could not be read from the worktree (", error,
-                    "), so the tree cannot be captured whole",
-                  ], ""),
-                },
-              }
-            FilesystemReadSucceeded { content } =>
-              belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: content)
+      }),
+    identity => match store_rostered_lookup(store: store, identity: identity) {
+      Present { value: _ } => true
+      Absent => false
+    },
+  )
+}
+
+// THE RE-BINDING OF A CHANGE POPULATION OVER A BASE MANIFEST, shared by the tick, recapture and the
+// base advance: the bytes are read first (by the caller), the persisted objects they may shadow are
+// materialized once, and the fold is then pure.
+fn belt_scm_rebind_fold(path: String, store: ObjectStore, base_record: CorpusManifestRecord, changes: List<WorktreeChange>, texts: Map<String, String>) -> BeltDeltaFold {
+  match belt_delta_resident_of(outcome: materialize_objects(envelope_path: path, store: store, identities: belt_scm_rebound_identities(store: store, changes: changes, texts: texts))) {
+    DeltaResidentRefused { detail } =>
+      BeltDeltaFold {
+        store: store,
+        unique: path_unique_of_record(base: base_record),
+        refused: Present { value: join(["the changed paths re-bind bytes the repository already holds, and they could not be read back: ", detail], "") },
+      }
+    DeltaResident { store: resident } =>
+      belt_scm_advance_fold(store: resident, tip_record: base_record, changes: changes, texts: texts)
+  }
+}
+
+// THE BYTES OF A TICK'S BOUND PATHS, read from the dirty worktree. A path that cannot be read is
+// this tick's I/O: the next tick reads again.
+fn belt_scm_worktree_texts(worktree: String, changes: List<WorktreeChange>) -> BeltAdvanceTexts {
+  fold(changes, init: AdvanceTextsRead { texts: empty_map() }, f: (acc, change) =>
+    match acc {
+      AdvanceTextsRefused { detail: _ } => acc
+      AdvanceTextsRead { texts } =>
+        match change {
+          WorktreeDelete { path: _ } => acc
+          WorktreeBind { path } => {
+            let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
+            match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+              FilesystemReadRefused { error } =>
+                AdvanceTextsRefused {
+                  detail: join(["the changed path ", path as String, " could not be read from the worktree (", error, "), so the tree cannot be captured whole"], ""),
+                }
+              FilesystemReadSucceeded { content } => AdvanceTextsRead { texts: map_insert(texts, path as String, content) }
+            }
           }
         }
-      }
+    })
+}
+
+// THE BYTES OF A CAPTURE'S BOUND PATHS: the committed revision's through the declared bridge for
+// recapture, the dirty worktree's for the tick.
+fn belt_scm_delta_texts(instance: HostDashboardInstance, worktree: String, committed_revision: String?, changes: List<WorktreeChange>) -> BeltAdvanceTexts {
+  match committed_revision {
+    Absent => belt_scm_worktree_texts(worktree: worktree, changes: changes)
+    Present { value: revision } =>
+      belt_scm_advance_texts(
+        git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+        worktree: worktree,
+        to_sha: revision,
+        changes: changes,
+        step: "recapture-file",
+      )
   }
 }
 
@@ -7257,18 +7288,8 @@ fn belt_scm_delta_fold_step(
 // the base advance (bytes read from the revision it advances to): the identity-law readback of a
 // re-bound persisted object, the store, and the path-unique re-binding are one rule, so they are one
 // function rather than two copies free to drift.
-fn belt_scm_delta_bind_text(path_of_envelope: String, acc: BeltDeltaFold, path: NonEmptyStr, text: String) -> BeltDeltaFold {
-  match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: text) {
-    DeltaResidentRefused { detail } =>
-      BeltDeltaFold {
-        store: acc.store,
-        unique: acc.unique,
-        refused: Present {
-          value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
-        },
-      }
-    DeltaResident { store: resident } =>
-  match store_authored_source(store: resident, text: text) {
+fn belt_scm_delta_bind_text(acc: BeltDeltaFold, path: NonEmptyStr, text: String) -> BeltDeltaFold {
+  match store_authored_source(store: acc.store, text: text) {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
       BeltDeltaFold {
         store: acc.store,
@@ -7289,62 +7310,6 @@ fn belt_scm_delta_bind_text(path_of_envelope: String, acc: BeltDeltaFold, path: 
           source: authored_source_target_of(reference: source),
         ),
         refused: none,
-      }
-  }
-  }
-}
-
-// THE COMMITTED-TREE FOLD, for recapture: the same re-binding as the tick, with bytes read from the
-// committed revision through the declared bridge rather than from a dirty worktree. Deletes need no
-// read. A bind whose show fails is this observation's I/O, refused rather than guessed.
-fn belt_scm_delta_fold_step_at_revision(
-  instance: HostDashboardInstance,
-  worktree: String,
-  path_of_envelope: String,
-  revision: String,
-  acc: BeltDeltaFold,
-  change: WorktreeChange,
-) -> BeltDeltaFold {
-  match acc.refused {
-    Present { value: _ } => acc
-    Absent =>
-      match change {
-        WorktreeDelete { path } =>
-          BeltDeltaFold {
-            store: acc.store,
-            unique: path_unique_with_path_removed(unique: acc.unique, path: path),
-            refused: none,
-          }
-        WorktreeBind { path } =>
-          match belt_commit_git(
-            instance: instance,
-            worktree: worktree,
-            args: worktree_base_file_args(base_sha: revision, path: path as String),
-          ) {
-            ExecOk { stdout } => belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: stdout)
-            ExecFailed { program, exit_code, stderr } =>
-              BeltDeltaFold {
-                store: acc.store,
-                unique: acc.unique,
-                refused: Present {
-                  value: belt_commit_exec_detail(
-                    step: join(["recapture-file ", path as String], ""),
-                    outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-                  ),
-                },
-              }
-            ExecRefused { program, reason } =>
-              BeltDeltaFold {
-                store: acc.store,
-                unique: acc.unique,
-                refused: Present {
-                  value: belt_commit_exec_detail(
-                    step: join(["recapture-file ", path as String], ""),
-                    outcome: ExecRefused { program: program, reason: reason },
-                  ),
-                },
-              }
-          }
       }
   }
 }
@@ -7508,27 +7473,12 @@ fn belt_scm_delta_capture_over(
           match belt_scm_delta_changes(instance: instance, worktree: worktree, base_sha: base_sha, committed_revision: committed_revision) {
             DeltaChangesRefused { detail } => ScmCaptureMintRefused { detail: detail }
             DeltaChangesCollected { changes } => {
-                  let folded = fold(
-                    changes,
-                    init: BeltDeltaFold {
-                      store: seeded.store,
-                      unique: path_unique_of_record(base: base_record),
-                      refused: none,
-                    },
-                    f: (acc, change) =>
-                      match committed_revision {
-                        Absent => belt_scm_delta_fold_step(instance: instance, worktree: worktree, path_of_envelope: path, acc: acc, change: change)
-                        Present { value: revision } =>
-                          belt_scm_delta_fold_step_at_revision(
-                            instance: instance,
-                            worktree: worktree,
-                            path_of_envelope: path,
-                            revision: revision,
-                            acc: acc,
-                            change: change,
-                          )
-                      },
-                  )
+                  let folded = match belt_scm_delta_texts(instance: instance, worktree: worktree, committed_revision: committed_revision, changes: changes) {
+                    AdvanceTextsRefused { detail } =>
+                      BeltDeltaFold { store: seeded.store, unique: path_unique_of_record(base: base_record), refused: Present { value: detail } }
+                    AdvanceTextsRead { texts } =>
+                      belt_scm_rebind_fold(path: path, store: seeded.store, base_record: base_record, changes: changes, texts: texts)
+                  }
                   match folded.refused {
                     Present { value: detail } => ScmCaptureMintRefused { detail: detail }
                     Absent =>
