@@ -4312,14 +4312,22 @@ pub fn match_arm_join_diagnostics(
                 arm.body_type.clone(),
                 scope.clone(),
             ) {
-                Rc::new(vec![type_mismatch_error(
-                    crate::v1_compiler_infer_types::node_type_shape(
-                        unified_arm_type.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ),
-                    crate::v1_compiler_infer_types::node_type_shape(
-                        arm.body_type.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+                Rc::new(vec![inference_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "match arms produce proven-disjoint types: ".to_string(),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    unified_arm_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                            ),
+                            " vs ".to_string(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            arm.body_type.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
                     ),
                     crate::v1_std_core::arm_body(arm.typed_arm.clone())
                         .span
