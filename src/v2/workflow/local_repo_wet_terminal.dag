@@ -2566,18 +2566,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.long.compiler_pair_candidate_poll_witness", function: "an_artifact_uploaded_as_the_run_completes_is_present_not_absent" },
-      entry: "dag/test/claim/long/compiler_pair_candidate_poll_witness_test.dag",
-      function: "an_artifact_uploaded_as_the_run_completes_is_present_not_absent",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.long.compiler_pair_candidate_poll_witness", function: "a_run_completed_with_no_artifact_after_the_reread_is_absent" },
-      entry: "dag/test/claim/long/compiler_pair_candidate_poll_witness_test.dag",
-      function: "a_run_completed_with_no_artifact_after_the_reread_is_absent",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed",

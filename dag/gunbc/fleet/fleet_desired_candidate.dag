@@ -182,18 +182,106 @@ fn artifact_query_statements() -> List<Node> {
   ]
 }
 
+// THE POLL'S DECISION, AS A PURE FOLD OVER WHAT IT OBSERVED. The poll makes two kinds of
+// observation of the base's merge_group run -- its candidate artifacts, and its status -- and a run
+// can upload between them: empty, then completed, then present is an ordinary interleaving. What to
+// conclude from a sequence of observations is a decision about the ORDER of reads, not about the
+// shell that performs them, so it lives here as data: `candidate_poll_step` is the one transition,
+// `candidate_poll_decide` folds it over a supplied sequence, and the emitted poll below asks
+// `candidate_poll_step` what to do after each observation instead of restating the rule in shell.
+// Completion moves to a state that awaits ONE MORE artifact read; only that read's emptiness is
+// absence, because concluding it from the earlier empty read would refuse a base compiler that
+// exists.
+type CandidateObservation
+  = ArtifactsEmpty
+  | ArtifactsPresent
+  | RunInFlight
+  | RunCompleted
+
+type CandidatePollStanding
+  = CandidatePresent
+  | CandidateUnavailable
+  | CandidatePending
+  | CandidateObservationOutOfOrder
+
+type CandidatePollState
+  = AwaitingArtifacts
+  | AwaitingStatus
+  | AwaitingArtifactsAfterCompletion
+  | CandidatePollConcluded { standing: CandidatePollStanding }
+
+// An artifact read is followed by a status read only while the artifacts are empty; a status read
+// is followed by an artifact read. Any other order is not a sequence this poll produces, and it is
+// refused as such rather than read as either answer.
+fn candidate_poll_step(state: CandidatePollState, observation: CandidateObservation) -> CandidatePollState {
+  match state {
+    CandidatePollConcluded { standing: s } => CandidatePollConcluded { standing: s }
+    AwaitingArtifacts => match observation {
+      ArtifactsPresent => CandidatePollConcluded { standing: CandidatePresent }
+      ArtifactsEmpty => AwaitingStatus
+      RunInFlight => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+      RunCompleted => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+    }
+    AwaitingStatus => match observation {
+      RunCompleted => AwaitingArtifactsAfterCompletion
+      RunInFlight => AwaitingArtifacts
+      ArtifactsEmpty => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+      ArtifactsPresent => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+    }
+    AwaitingArtifactsAfterCompletion => match observation {
+      ArtifactsPresent => CandidatePollConcluded { standing: CandidatePresent }
+      ArtifactsEmpty => CandidatePollConcluded { standing: CandidateUnavailable }
+      RunInFlight => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+      RunCompleted => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
+    }
+  }
+}
+
+fn candidate_poll_standing(state: CandidatePollState) -> CandidatePollStanding {
+  match state {
+    CandidatePollConcluded { standing: s } => s
+    AwaitingArtifacts => CandidatePending
+    AwaitingStatus => CandidatePending
+    AwaitingArtifactsAfterCompletion => CandidatePending
+  }
+}
+
+// A sequence that ends unconcluded is a run still in flight: pending, never absence.
+fn candidate_poll_decide(observations: List<CandidateObservation>) -> CandidatePollStanding {
+  candidate_poll_standing(state: fold(observations, AwaitingArtifacts, (state, o) => candidate_poll_step(state: state, observation: o)))
+}
+
+// What the emitted poll does from a state the step reached. A concluded absence stops; a state that
+// awaits artifacts reads them (after the interval, when the run is still in flight) and, if they are
+// empty, does whatever the step decides next. A concluded presence emits nothing: ARTIFACT_ID is set
+// and the fetch proceeds to download.
+fn poll_after(state: CandidatePollState, interval: Second, export: CandidateStandingExport) -> List<Node> {
+  match state {
+    CandidatePollConcluded { standing: s } => match s {
+      CandidatePresent => []
+      CandidatePending => []
+      CandidateUnavailable => [stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export)]
+      CandidateObservationOutOfOrder => [refuse(name: "PollObservationOutOfOrder", message: "the candidate poll observed the run in an order its decision does not admit")]
+    }
+    AwaitingArtifactsAfterCompletion => concat(artifact_query_statements(), [
+      bash_build_if(
+        cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
+        body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: state, observation: ArtifactsEmpty), interval: interval, export: export)),
+      ),
+    ])
+    AwaitingArtifacts => concat([cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))])], artifact_query_statements())
+    AwaitingStatus => []
+  }
+}
+
 // ONE POLL, UNROLLED: a bounded, forward sequence rather than a loop, so the wait's bound is the
-// statement count. A run that has COMPLETED with no artifact will never have one: that is absence --
-// but only once the artifacts are read AFTER completion was observed. The artifact query and the
-// status read are two observations, and a run can upload between them: empty, then completed, then
-// present is an ordinary interleaving, and concluding absence from the earlier empty read would
-// refuse a base compiler that exists. So completion triggers one more artifact read, and only that
-// read's emptiness is absence.
+// statement count. It runs only while ARTIFACT_ID is empty -- the state AwaitingStatus -- reads the
+// run's status, and hands that observation to candidate_poll_step.
 fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<Node> {
   [
     bash_build_if(
       cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
-      body: bash_build_stmt_list_from_nodes(stmts: concat([
+      body: bash_build_stmt_list_from_nodes(stmts: [
         or_refuse(
           check: api_get(
             url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID")]),
@@ -204,18 +292,10 @@ fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<No
         assign_sub(name: "RUN_STATUS", body: cmd(ws: [lit(t: "jq"), lit(t: "-r"), lit(t: ".status"), dir(file: "run.json")])),
         bash_build_if_else(
           cond: test_words(ws: [var(n: "RUN_STATUS"), lit(t: "="), lit(t: "completed")]),
-          then_body: bash_build_stmt_list_from_nodes(stmts: concat(artifact_query_statements(), [
-            bash_build_if(
-              cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
-              body: stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export),
-            ),
-          ])),
-          else_body: bash_build_stmt_list_from_nodes(stmts: concat(
-            [cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))])],
-            artifact_query_statements(),
-          )),
+          then_body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: AwaitingStatus, observation: RunCompleted), interval: interval, export: export)),
+          else_body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: AwaitingStatus, observation: RunInFlight), interval: interval, export: export)),
         ),
-      ])),
+      ]),
     ),
   ]
 }
