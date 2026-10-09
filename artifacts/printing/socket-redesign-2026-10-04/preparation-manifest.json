@@ -1,0 +1,68 @@
+{
+  "source_commit": "1a2191a7201c03d9b88f40acfc0f1ad3dcf5584f",
+  "standing": "unpowered fit prototype; orientation comparison, not a structural release",
+  "inventory": {
+    "replacements": [
+      "P1",
+      "P2"
+    ],
+    "new": [
+      "S1",
+      "S2",
+      "K3",
+      "K4",
+      "K6",
+      "K7"
+    ],
+    "preserve_existing": [
+      "P3",
+      "P4",
+      "E1",
+      "E2",
+      "B140L",
+      "B140R"
+    ],
+    "retired": [
+      "K1",
+      "K2"
+    ]
+  },
+  "files": {
+    "assembly.json": "8537a8bdda3ea0cc156db61d3fca1b21e93008f60a9b685ed9f1e2542e201591",
+    "prepare.py": "106688bae02c2ccb68dbf6558915384b638fc62608e326ec4d7d3b6f6643a72e",
+    "supported.json": "d679c046df9ef9e17352b962a6397807ef9e5772a72759a8628f0b05bab8afef",
+    "unsupported.json": "94272b7beeb91f867d48f68119626e8ecce0f7ca6e82feeccc04a10ce9549fdb",
+    "upright.json": "019635af53af3ba1ab8f43fedb5b1578cb05f1112cc85ce6ff1ea0b4cdf4a468",
+    "placement-candidates.json": "fda2d953c12e7364a48def6b48de291a8166e5432a52f4925626c1f0dca2d727",
+    "readback.py": "c960932d5d87f076c13bc9b27f8ce008393f111e71e9026f6283055f47df508b",
+    "witness-results.txt": "9887b52fbfe18ca3f595549060d36037649c8a338c8fb7fa0338f05c99980436"
+  },
+  "intended_plate_members": [
+    "P1",
+    "P2",
+    "S1",
+    "S2",
+    "K3",
+    "K4",
+    "K6",
+    "K7"
+  ],
+  "selection_policy": "Prefer one overnight bed-clear cycle for compatible unpowered prototype parts; retain flat alternatives with lower total material and machine time.",
+  "selected_project_sha256": "ebd858a69bb1fdf8c4395d0e8fc5d6ffe0ad94d3da84ad236e56064226eb6f6d",
+  "validation": {
+    "witnesses": [
+      "PASS rear_bank_has_bed_sized_interfaces_and_separate_socket_retention",
+      "PASS posts_fit_bed_and_invalid_height_cannot_produce_solids",
+      "PASS middle_pop_needs_support_and_top_pop_does_not_borrow_it",
+      "PASS rear_panels_have_no_geometry_below_the_rail_feet"
+    ],
+    "cad": "34 valid positive solids; printed solids connected; socket/tray and socket/arm intersections zero; candidate objects within bed and mutually disjoint",
+    "slice": "One plate; eight named objects; unit rigid transforms; PLA AMS slot 1; A1 mini 0.4; 220/65 C; four walls and 20 percent gyroid; G-code checksum and deposited XY bounds passed; sockets/pins have zero attributed support extrusion",
+    "unqualified": [
+      "loaded strength in upright orientation",
+      "socket bearing and creep",
+      "physical bolt engagement",
+      "bed adhesion of full-height panels"
+    ]
+  }
+}

@@ -59,6 +59,15 @@ type EventPrincipal
   = EventPrincipalAuthenticated { ref: PrincipalRef }
   | LegacyEmailPrincipal { email: NonEmptyStr, authentication_unestablished: Bool }
 
+// Whether a principal is the Fabric workflow: the one test every surface uses to tell the
+// workflow's assignment from a person's.
+fn event_principal_is_fabric(p: EventPrincipal) -> Bool {
+  match p {
+    EventPrincipalAuthenticated { ref } => principal_ref_eq(a: ref, b: fabric_workflow_principal)
+    LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => false
+  }
+}
+
 fn event_principal_label(p: EventPrincipal) -> String {
   match p {
     EventPrincipalAuthenticated { ref } => principal_ref_label(p: ref)

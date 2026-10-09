@@ -1,0 +1,85 @@
+module gunbc.fleet.printer_start_reconciliation
+
+import std.types {String,NonEmptyStr,Bool,Int}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import extdeps.tools.sleep
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,serialize_json}
+import extdeps.shell.exec {ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused}
+import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobPaused,JobFailed,JobCompletedAwaitingInspection,JobUnresolved}
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer}
+import gunbc.fleet.printer_report {report_once_using_session}
+import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
+import gunbc.auth.access_token_source {AccessTokenSource}
+
+// Observing activity is not proof of application-level exactly-once delivery. The
+// pre-start idle check and retained durable claim remain the actuation boundary.
+type StartObservation = ExpectedProjectRunning | ExpectedProjectBlocked | StartUnresolved
+
+// Never merge partial deltas into a synthetic confirmation or trust a display name.
+// State, digest-derived remote filename and error must coexist in one fresh report.
+fn observe_start(text:String,remote:String) -> StartObservation {
+ match observe_job(text:text,remote:remote) {
+  JobRunning=>ExpectedProjectRunning
+  JobPaused=>ExpectedProjectBlocked
+  JobFailed=>ExpectedProjectBlocked
+  JobCompletedAwaitingInspection=>StartUnresolved
+  JobUnresolved=>StartUnresolved
+ }
+}
+
+type ReconcileStep = ConfirmRunning | StopBlocked | StopUncertain | ReadAgain {remaining:Int}
+
+// Bounded retry is for read-only observations only. No branch can request a publish.
+fn reconcile_step(observation:StartObservation,remaining:Int) -> ReconcileStep {
+ match observation {
+  ExpectedProjectRunning=>ConfirmRunning
+  ExpectedProjectBlocked=>StopBlocked
+  StartUnresolved=>if remaining<=1 {StopUncertain} else {ReadAgain {remaining:remaining-1}}
+ }
+}
+
+// Persist every response beside the durable start claim. Eight single MQTT reads
+// (15 s each) and at most seven 5 s delays bound the MQTT observation budget; CA and
+// filesystem operations add their own runtime. Cleanup faults never become success.
+fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,publish_standing:String,cleanup_issue:String) -> ProcessExit {
+ reconcile_reads(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:8)
+}
+fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,publish_standing:String,cleanup_issue:String,remaining:Int) -> ProcessExit {
+ let response=report_once_using_session(session:session)
+ let text=match response {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
+ let evidence=join([evidence_prefix,".after-start-",to_string(9-remaining),".json"],"")
+ if !Filesystem.Write(path:evidence,content:text).success {return exit_failure(reason:"Cannot retain post-start evidence; claim retained, DO NOT REPLAY")}
+ match reconcile_step(observation:observe_start(text:text,remote:remote as String),remaining:remaining) {
+  ReadAgain {remaining:n}=>{
+   if !sleep.Delay.Seconds(seconds:"5").success {return finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation delay failed",confirmed:false,evidence_prefix:evidence_prefix)}
+   reconcile_reads(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:n)
+  }
+  ConfirmRunning=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"running-confirmed",confirmed:true,evidence_prefix:evidence_prefix)
+  StopBlocked=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"expected-project-blocked",confirmed:false,evidence_prefix:evidence_prefix)
+  StopUncertain=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation budget exhausted",confirmed:false,evidence_prefix:evidence_prefix)
+ }
+}
+fn finish_reconciliation(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence:String,publish_standing:String,cleanup_issue:String,outcome:String,confirmed:Bool,evidence_prefix:String) -> ProcessExit {
+ let standing=join([outcome,"; publisher: ",publish_standing,"; cleanup: ",cleanup_issue,"; evidence: ",evidence],"")
+ match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source) {
+  ExitSuccess=>if confirmed && cleanup_issue=="" {write_receipt(printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source)} else {exit_failure(reason:concat(standing,"; claim retained, DO NOT REPLAY"))}
+  other=>other
+ }
+}
+
+// Fleet scheduling returns after publication and observes each start on later
+// fleet-wide passes. Single-printer callers retain the bounded confirmation route.
+type StartObservationPolicy = ConfirmBeforeReturn | ObserveOnFleetTicks
+fn record_publication(policy:StartObservationPolicy,session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,publish_standing:String,cleanup_issue:String) -> ProcessExit {
+ match policy {
+  ConfirmBeforeReturn=>reconcile_start(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,publish_standing:publish_standing,cleanup_issue:cleanup_issue)
+  ObserveOnFleetTicks=>{
+   let standing=join(["publication-awaiting-observation; publisher: ",publish_standing,"; cleanup: ",cleanup_issue],"")
+   match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source) {
+    ExitSuccess=>if cleanup_issue=="" {ExitSuccess} else {exit_failure(reason:"Publication attempted but cleanup failed; retain claim and inspect")}
+    other=>other
+   }
+  }
+ }
+}
