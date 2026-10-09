@@ -464,7 +464,7 @@ import gunbc.scm.write_spine {
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
-import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
+import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, materialize_if_rostered, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
   save_repository_sharded_guarded,
   RepositoryGuardedSaveOutcome,
