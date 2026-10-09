@@ -12,7 +12,7 @@ import extdeps.apt {
   package_tailscale,
   package_tmux,
 }
-import extdeps.version.semver { SemVerVersion }
+import extdeps.version.semver { SemVerVersion, semver_version_parse }
 import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
@@ -1348,16 +1348,16 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
   }
 }
 
-data srv1_tailscale_client_observed_version: SemVerVersion = SemVerVersion {
-  major: 1,
-  minor: 98,
-  patch: 3,
-  pre_release: [],
-  build: [],
-}
+// THE OBSERVED VERSION IS THE PARSE RESULT, never a hand-built record: SemVerVersion fields
+// are confined code-point runs, so the label arrives through the parser and an unadmitted
+// label is carried as a refusal, not a fabricated version (review 77150).
+data srv1_tailscale_client_observed_version: SemVerVersion? = semver_version_parse(cps: chars(s: "1.98.3" as String))
 
 fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  tailscale_scoped_removal_capability(observed: srv1_tailscale_client_observed_version)
+  match srv1_tailscale_client_observed_version {
+    Absent => ScopedRemovalUnobserved { reason: "the observed client version label failed to parse — a defect in the observed-version row, not an observation gap" }
+    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+  }
 }
 
 fn deployment_service_config(
