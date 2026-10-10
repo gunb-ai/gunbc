@@ -79,7 +79,7 @@ data self_host_step_memory_receipt_path: NonEmptyStr = "tools/self_host_step_mem
 // THE CONFIGURATION this tree's committed receipt was written under. The reader selects rows
 // whose last column equals this cell; a receipt from a different pool policy, scope or run is
 // not this measurement.
-data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735"
+data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z"
 
 fn receipt_column(cols: List<String>, index: Int) -> String {
   match cols.skip(n: index).first() {

@@ -1,10 +1,10 @@
-stage	compile_emission_over.pre_resolve	7121797120	7119499264	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-stage	compile_emission_over.post_resolve	14368161792	14356258816	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-stage	compile_emission_over.post_emit	14371373056	14358355968	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	resolve_store	0	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	resolve_index	1823207424	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	scope_and_reference_indexes	12288	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	module_graph_facts_and_path_index	27021312	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	emit_check_and_census_memos	0	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	pool_heads	538890240	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
-bucket	pool_content_tokens_newline	4642070528	pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735
+stage	compile_emission_over.pre_resolve	7122083840	7120359424	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+stage	compile_emission_over.post_resolve	14370037760	14366101504	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+stage	compile_emission_over.post_emit	14373249024	14368198656	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	resolve_store	0	0	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	resolve_index	1831264256	1822683136	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	scope_and_reference_indexes	12288	16384	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	module_graph_facts_and_path_index	30240768	27148288	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	emit_check_and_census_memos	0	0	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	pool_heads	536297472	536297472	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z
+bucket	pool_content_tokens_newline	4645400576	4645400576	pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z

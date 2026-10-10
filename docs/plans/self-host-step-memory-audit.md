@@ -19,8 +19,8 @@ lives in the receipt the instrument wrote, and the model reads it.
 - Whether demand is strictly decreasing: no. Tree-scale structures grow with the module count and nothing shrinks by itself; each ender in `self_host_step_demand_trend` is a named change.
 - Which phase holds the step's high-water mark, and the rustc/product shares, are the sampler frontier above and are not asserted here.
 
-## Provenance and standing (DESIGN §4d)
-The committed receipt is the unedited output of one instrumented run of `gunbc test //gunbc/instruments:self-host`; its configuration column names the pool policy, the scope and the run. This audit head's cell is `gunbc.self_host_step_memory_demand` `self_host_step_memory_receipt_configuration` (container, no cgroup peak: srv1 was unreachable). Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
+## Provenance
+The committed `tools/self_host_step_memory_receipt.tsv` is the unedited output of one instrumented run by this head's writer: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> GUNBC_MEMORY_COMPOSITION_CONFIGURATION="pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z" gunbc test //gunbc/instruments:self-host` on srv1 under `systemd-run --user --scope -p MemoryMax=22G -p MemorySwapMax=0` (exit 0). Every line carries that cell as its last column; bucket lines carry the full resident drop across release and `malloc_trim` and the trimmed figure beside it. Re-derive the readout with `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag --function self_host_step_memory_readout`.
 
 ## Levers and recommendation
 Levers and the slot/trip recommendation are the lane report's, not this page's, because the pool-release lever is a production-path change measured in its own PR with its own receipt (dissolution trigger: closure-scoped ingestion). This page does not restate it.
