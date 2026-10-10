@@ -304,7 +304,7 @@ import v2.std.compilers.semantic_decl_emission {
 import v2.std.node {
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   Conj,
   Disj,
   Edge,
@@ -4788,7 +4788,7 @@ fn rust_sg5_non_ordable_type_node() -> Node {
 
 fn rust_sg5_set_non_ordable_source_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [
       Edge { label: Positional, target: target_collection_set_carrier_node() },
       Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }

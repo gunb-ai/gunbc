@@ -2,14 +2,21 @@
 // Source module: extdeps.ietf.http_semantics
 
 use self::HttpMethod::*;
+use self::HttpRetryAfter::*;
 use self::HttpStatusClass::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_checked_arithmetic::checked_int_to_nat;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_measure::Second;
+pub use crate::std_measure::{second, second_count};
+pub use crate::std_nat::nat_range_inclusive;
+pub use crate::std_nat::Nat;
+pub use crate::std_types::{Bool, HttpStatus};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -43,7 +50,7 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     }),
     }),
         first_citation: crate::extdeps_ietf_http_semantics::extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![rfc5789_patch_authority(), rfc9110_status_codes_authority()]),
+        further_citations: Rc::new(vec![rfc5789_patch_authority(), rfc9110_status_codes_authority(), rfc9110_retry_after_authority()]),
     })
             };
         }
@@ -113,6 +120,105 @@ pub fn http_status_class_digit(class: HttpStatusClass) -> i64 {
         HttpStatusClass::Redirection => 3,
         HttpStatusClass::ClientError => 4,
         HttpStatusClass::ServerError => 5,
+    }
+}
+
+pub fn http_status_class_of(status: i64) -> HttpStatusClass {
+    if (status.clone() < 200) {
+        HttpStatusClass::Informational
+    } else {
+        if (status.clone() < 300) {
+            HttpStatusClass::Successful
+        } else {
+            if (status.clone() < 400) {
+                HttpStatusClass::Redirection
+            } else {
+                if (status.clone() < 500) {
+                    HttpStatusClass::ClientError
+                } else {
+                    HttpStatusClass::ServerError
+                }
+            }
+        }
+    }
+}
+
+pub fn rfc9110_retry_after_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "www.rfc-editor.org/rfc/rfc9110#section-10.2.3".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum HttpRetryAfter {
+    RetryAfterSeconds { seconds: Second },
+    RetryAfterUnparsed { text: String },
+    RetryAfterAbsent,
+    RetryAfterUnread { cause: String },
+}
+
+pub fn http_is_ascii_digits(text: String) -> bool {
+    ((v1_rt::string_length(&text) > 0)
+        && (v1_rt::string_length(
+            &crate::std_nat::nat_range_inclusive(0, 9)
+                .iter()
+                .cloned()
+                .fold(text.clone(), |acc: String, i: i64| {
+                    v1_rt::replace(acc, (i.clone()).to_string(), "".to_string())
+                }),
+        ) == 0))
+}
+
+pub fn http_retry_after_from_text(text: String) -> Rc<HttpRetryAfter> {
+    if !http_is_ascii_digits(text.clone()) {
+        Rc::new(HttpRetryAfter::RetryAfterUnparsed { text: text.clone() })
+    } else {
+        match v1_rt::parse_int(text.clone()) {
+            std::option::Option::None => {
+                Rc::new(HttpRetryAfter::RetryAfterUnparsed { text: text.clone() })
+            }
+            Some(n) => match crate::std_checked_arithmetic::checked_int_to_nat(n.clone()) {
+                std::option::Option::None => {
+                    Rc::new(HttpRetryAfter::RetryAfterUnparsed { text: text.clone() })
+                }
+                Some(sec) => Rc::new(HttpRetryAfter::RetryAfterSeconds {
+                    seconds: crate::std_measure::second(sec.clone()),
+                }),
+            },
+        }
+    }
+}
+
+pub fn http_retry_after_wire(r: Rc<HttpRetryAfter>) -> String {
+    match (*r.clone()).clone() {
+        HttpRetryAfter::RetryAfterSeconds { seconds: n, .. } => Rc::new(vec![
+            "Retry-After ".to_string(),
+            (crate::std_measure::second_count(n.clone())).to_string(),
+            " s".to_string(),
+        ])
+        .join(&"".to_string()),
+        HttpRetryAfter::RetryAfterUnparsed { text: t, .. } => Rc::new(vec![
+            "Retry-After '".to_string(),
+            t.clone(),
+            "' (not delta-seconds; not interpreted)".to_string(),
+        ])
+        .join(&"".to_string()),
+        HttpRetryAfter::RetryAfterAbsent => "no Retry-After".to_string(),
+        HttpRetryAfter::RetryAfterUnread { cause: c, .. } => Rc::new(vec![
+            "Retry-After unknown: the response headers could not be read (".to_string(),
+            c.clone(),
+            ")".to_string(),
+        ])
+        .join(&"".to_string()),
     }
 }
 

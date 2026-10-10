@@ -66,7 +66,7 @@ type Connective
   | Conj
   | Disj
   | Arrow
-  | Cardinality
+  | Occupancy
   | Instantiation
 
 type Behavior
@@ -121,7 +121,7 @@ fn connective_from_coproduct_variant(
     ConnectiveConjArm => Conj
     ConnectiveDisjArm => Disj
     ConnectiveArrowArm => Arrow
-    ConnectiveCardinalityArm => Cardinality
+    ConnectiveCardinalityArm => Occupancy
     ConnectiveInstantiationArm => Instantiation
   }
 }
@@ -701,7 +701,7 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
-    Cardinality => PositionalEdges
+    Occupancy => PositionalEdges
     Instantiation => PositionalEdges
   }
 }
@@ -717,7 +717,7 @@ fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -
     Conj => connective_edge_discipline(c: c)
     Disj => connective_edge_discipline(c: c)
     Instantiation => connective_edge_discipline(c: c)
-    Cardinality => connective_edge_discipline(c: c)
+    Occupancy => connective_edge_discipline(c: c)
   }
 }
 
@@ -1032,7 +1032,7 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
         TypeNode { connective: Conj } => OrderUnreadable
         TypeNode { connective: Disj } => OrderUnreadable
         TypeNode { connective: Arrow } => OrderUnreadable
-        TypeNode { connective: Cardinality } => OrderUnreadable
+        TypeNode { connective: Occupancy } => OrderUnreadable
         TypeNode { connective: Instantiation } => OrderUnreadable
         ComputationNode { behavior: _ } => OrderUnreadable
       }
@@ -1144,7 +1144,7 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
         TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
         TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
         TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
-        TypeNode { connective: Cardinality } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Occupancy } => DomainBinderLabelsUnreadable
         TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
         ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
@@ -1192,7 +1192,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
         TypeNode { connective: Arrow } => false
-        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
@@ -1223,7 +1223,7 @@ fn type_binder_conj_conforms(t: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1457,7 +1457,7 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
     TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
     TypeNode { connective: Disj } => NotMarkedReference
     TypeNode { connective: Arrow } => NotMarkedReference
-    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Occupancy } => NotMarkedReference
     TypeNode { connective: Instantiation } => NotMarkedReference
     ComputationNode { behavior: _ } => NotMarkedReference
   }
@@ -1476,7 +1476,7 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     TypeNode { connective: Disj } => UnsupportedArrowBody
-    TypeNode { connective: Cardinality } => UnsupportedArrowBody
+    TypeNode { connective: Occupancy } => UnsupportedArrowBody
     TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
@@ -1545,7 +1545,7 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1688,7 +1688,7 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
     TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
     TypeNode { connective: Conj } => CostEdgeComposed
     TypeNode { connective: Disj } => CostEdgeComposed
-    TypeNode { connective: Cardinality } => CostEdgeComposed
+    TypeNode { connective: Occupancy } => CostEdgeComposed
     TypeNode { connective: Instantiation } => CostEdgeComposed
     ComputationNode { behavior: Value } => CostEdgeComposed
     ComputationNode { behavior: Transform } => CostEdgeComposed
@@ -1762,7 +1762,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
-    Cardinality =>
+    Occupancy =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
@@ -1860,7 +1860,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -2091,7 +2091,7 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
     Conj => content_hash_atom(value: ^canonical_tag_conj)
     Disj => content_hash_atom(value: ^canonical_tag_disj)
     Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
+    Occupancy => content_hash_atom(value: ^canonical_tag_cardinality)
     Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }

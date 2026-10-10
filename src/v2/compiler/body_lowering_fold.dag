@@ -195,7 +195,7 @@ import v2.std.node {
   is_positional,
   Atom,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Match,
   Value,
@@ -495,7 +495,7 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -742,7 +742,7 @@ fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
     TypeNode { connective: Atom { identity: _ } } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -849,7 +849,7 @@ fn body_term_is_leaf(n: Node) -> Bool
     TypeNode { connective: Conj } => length(xs: n.children) == 0
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -2812,7 +2812,7 @@ fn body_lower_type_wrap_cardinality(base: Node, question_capture: Node, source: 
           true =>
             optional_present(
               value: close_lowered_image(root: node_with_occurrence_id(
-                kind: TypeNode { connective: Cardinality },
+                kind: TypeNode { connective: Occupancy },
                 children: [Edge { label: Positional, target: base }],
                 occurrence_id: source.occurrence_id
               ))
@@ -4196,7 +4196,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Branch } => outcome_accepted(value: body)
@@ -4873,7 +4873,7 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Arrow } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
-        TypeNode { connective: Cardinality } =>
+        TypeNode { connective: Occupancy } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Instantiation } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
@@ -5702,7 +5702,7 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
     TypeNode { connective: Atom { identity: _ } } => node
     TypeNode { connective: Conj } => node
     TypeNode { connective: Disj } => node
-    TypeNode { connective: Cardinality } => node
+    TypeNode { connective: Occupancy } => node
     TypeNode { connective: Instantiation } => node
     ComputationNode { behavior: _ } => node
   }
@@ -5794,7 +5794,7 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
         )
       TypeNode { connective: Disj } => node
       TypeNode { connective: Arrow } => node
-      TypeNode { connective: Cardinality } => node
+      TypeNode { connective: Occupancy } => node
       TypeNode { connective: Instantiation } => node
       ComputationNode { behavior: _ } => node
     }
@@ -7648,7 +7648,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Transform } => outcome_accepted(value: body)
@@ -7670,7 +7670,7 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Loop } => outcome_accepted(value: body)
@@ -10346,7 +10346,7 @@ fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_p
       }
     TypeNode { connective: Atom { identity: _ } } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Arrow } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
-    TypeNode { connective: Cardinality } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    TypeNode { connective: Occupancy } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Instantiation } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     ComputationNode { behavior: _ } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
   }
@@ -10589,7 +10589,7 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
             Atom { identity: _ } => TypeDeclModifierSlotUnreadable { at: element }
             Disj => TypeDeclModifierSlotUnreadable { at: element }
             Arrow => TypeDeclModifierSlotUnreadable { at: element }
-            Cardinality => TypeDeclModifierSlotUnreadable { at: element }
+            Occupancy => TypeDeclModifierSlotUnreadable { at: element }
             Instantiation => TypeDeclModifierSlotUnreadable { at: element }
           }
         ComputationNode { behavior: _ } => TypeDeclModifierSlotUnreadable { at: element }

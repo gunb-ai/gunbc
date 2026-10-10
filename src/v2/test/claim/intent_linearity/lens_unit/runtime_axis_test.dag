@@ -13,7 +13,7 @@ import v2.lens.intent_linearity {
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.std.node {
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Edge,
   Node,
@@ -31,7 +31,7 @@ fn transform_leaf() -> Node {
 }
 fn cardinality_over(child: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [ Edge { label: Positional, target: child } ]
   )
 }

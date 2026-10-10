@@ -55,7 +55,7 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Behavior,
   Transform,
@@ -2355,7 +2355,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcCardinalityEmpty } =>
       Accepted { value: TypeConstruction {
-          subject: ConnectiveKernel { connective: Cardinality },
+          subject: ConnectiveKernel { connective: Occupancy },
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
       Accepted { value: TypeConstruction {

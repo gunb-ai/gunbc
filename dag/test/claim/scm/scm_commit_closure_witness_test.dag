@@ -14,7 +14,7 @@ module test.claim.scm_commit_closure_witness
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
 import v2.std.algebra { non_empty_to_list }
-import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Occupancy, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -1051,7 +1051,7 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
   fx.ok
     && match insert_from_structure(
       store: fx.store,
-      kind: TypeNode { connective: Cardinality },
+      kind: TypeNode { connective: Occupancy },
       children: [
         StoredEdge { label: Positional, target: fx.alpha },
         StoredEdge { label: Positional, target: fx.beta },
@@ -1061,7 +1061,7 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
       Stored { store: once, node: first_ref } =>
         match insert_from_structure(
           store: once,
-          kind: TypeNode { connective: Cardinality },
+          kind: TypeNode { connective: Occupancy },
           children: [
             StoredEdge { label: Positional, target: fx.beta },
             StoredEdge { label: Positional, target: fx.alpha },

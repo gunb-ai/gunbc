@@ -13,7 +13,7 @@ import v2.lens.synthesis {
 import v2.std.algebra { non_empty }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Edge,
   Node,
@@ -38,7 +38,7 @@ data synthesis_gap_it_body: Node = Node {
 }
 
 data synthesis_gap_it_inner: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: synthesis_gap_it_body }
   ],
@@ -46,7 +46,7 @@ data synthesis_gap_it_inner: Node = Node {
 }
 
 data synthesis_gap_it_input: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: synthesis_gap_it_inner }
   ],

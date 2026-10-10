@@ -7,7 +7,7 @@ import v2.lens.cost { SumCost, cost_lens, unit_cost }
 import v2.std.node {
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Edge,
@@ -27,7 +27,7 @@ import v2.std.witness { Holds }
 // include Arrow positional children, this witness goes red (domain linear cost would dominate).
 
 data arrow_body_cost_domain_param: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge {
       label: Positional,

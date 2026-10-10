@@ -510,7 +510,7 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           TypeNode { connective: Atom { identity: _ } } => false
           TypeNode { connective: Disj } => false
           TypeNode { connective: Arrow } => false
-          TypeNode { connective: Cardinality } => false
+          TypeNode { connective: Occupancy } => false
           TypeNode { connective: Instantiation } => false
           ComputationNode { behavior: _ } => false
         },
@@ -563,7 +563,7 @@ fn admit_named_exports(
     TypeNode { connective: Atom { identity: _ } } => state
     TypeNode { connective: Disj } => state
     TypeNode { connective: Arrow } => state
-    TypeNode { connective: Cardinality } => state
+    TypeNode { connective: Occupancy } => state
     TypeNode { connective: Instantiation } => state
     ComputationNode { behavior: _ } => state
   }

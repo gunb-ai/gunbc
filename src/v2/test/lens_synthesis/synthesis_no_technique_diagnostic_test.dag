@@ -5,7 +5,7 @@ import v2.lens.synthesis { AlgebraicRank, synthesis_lens_diagnostics }
 import v2.std.algebra { non_empty }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Edge,
   Node,
@@ -29,7 +29,7 @@ data synthesis_no_tech_body: Node = Node {
 }
 
 data synthesis_no_tech_inner: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: synthesis_no_tech_body }
   ],
@@ -37,7 +37,7 @@ data synthesis_no_tech_inner: Node = Node {
 }
 
 data synthesis_no_tech_input: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: synthesis_no_tech_inner }
   ],

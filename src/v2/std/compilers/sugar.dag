@@ -299,7 +299,7 @@ fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
     TypeNode { connective: Conj } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
     TypeNode { connective: Arrow } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    TypeNode { connective: Cardinality } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Occupancy } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
     TypeNode { connective: Instantiation } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
     ComputationNode { behavior: _ } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
   }
@@ -338,7 +338,7 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
                   Accepted { value: folded, diagnostics: None }
                 TypeNode { connective: Arrow } =>
                   Accepted { value: folded, diagnostics: None }
-                TypeNode { connective: Cardinality } =>
+                TypeNode { connective: Occupancy } =>
                   Accepted { value: folded, diagnostics: None }
                 TypeNode { connective: Instantiation } =>
                   Accepted { value: folded, diagnostics: None }

@@ -36,7 +36,7 @@ import v2.std.node {
   Arrow,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -64,7 +64,7 @@ data stub_empty_disj: Node = Node {
 }
 
 data stub_empty_cardinality: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [],
   occurrence_id: OccurrenceSynthetic
 }

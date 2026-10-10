@@ -138,7 +138,7 @@ import v2.std.symbol_index {
 import v2.std.node {
   BinderTypeEdge,
   core_edge,
-  Cardinality,
+  Occupancy,
   MapLiteralEntriesEdge,
   labeled_core_is,
   named_edges,
@@ -148,7 +148,7 @@ import v2.std.node {
   Atom,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Loop,
   Value,
@@ -753,7 +753,7 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
     TypeNode { connective: Atom { identity: _ } } => acc
     TypeNode { connective: Disj } => acc
     TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Occupancy } => acc
     TypeNode { connective: Instantiation } => acc
     ComputationNode { behavior: Value } => acc
     ComputationNode { behavior: Transform } => acc
@@ -806,7 +806,7 @@ fn harvest_module_root_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> M
         Atom { identity: _ } => acc
         Disj => acc
         Arrow => acc
-        Cardinality => acc
+        Occupancy => acc
         Instantiation => acc
       }
     ComputationNode { behavior: _ } => acc

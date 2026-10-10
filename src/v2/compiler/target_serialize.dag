@@ -67,7 +67,7 @@ import v2.std.node {
   TypeNode,
   node_subtree_count,
   Arrow,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Disj,
   Instantiation,
@@ -294,7 +294,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
@@ -424,7 +424,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
@@ -455,7 +455,7 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Cardinality } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
@@ -517,7 +517,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Arrow } =>
       Accepted { value: Absent, diagnostics: None }
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Instantiation } =>
       Accepted { value: Absent, diagnostics: None }
@@ -630,7 +630,7 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
       TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Cardinality } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
@@ -707,7 +707,7 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
     TypeNode { connective: Conj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Disj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Cardinality } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
+    TypeNode { connective: Occupancy } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     ComputationNode { behavior: _ } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
   }
@@ -1110,7 +1110,7 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
@@ -1148,7 +1148,7 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))

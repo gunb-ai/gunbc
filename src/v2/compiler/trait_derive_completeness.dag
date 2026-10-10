@@ -50,7 +50,7 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Value,
   Transform,
@@ -147,7 +147,7 @@ fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape 
       }
     TypeNode { connective: Conj } => ReprDeriveElemUnknown
     TypeNode { connective: Arrow } => ReprDeriveElemUnknown
-    TypeNode { connective: Cardinality } => ReprDeriveElemUnknown
+    TypeNode { connective: Occupancy } => ReprDeriveElemUnknown
     TypeNode { connective: Instantiation } => ReprDeriveElemUnknown
     ComputationNode { behavior: Value } => ReprDeriveElemUnknown
     ComputationNode { behavior: Transform } => ReprDeriveElemUnknown

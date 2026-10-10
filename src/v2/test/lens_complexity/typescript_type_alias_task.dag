@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Occupancy, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.witness { Witness }
 
 type LensComplexityClaim {
@@ -22,7 +22,7 @@ type LensComplexityClaim {
 }
 
 data ts_task_complexity_input: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: ts_task_type_alias_emitted() }
   ],

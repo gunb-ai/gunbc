@@ -1,0 +1,24 @@
+module test.claim.error_primitives_bottom_seam_test
+
+import std.types { Bool, Int, String }
+import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }
+import std.algebra { trim }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The bottom seam has ONE home, std.error_primitives, and std.algebra (which std.bytes sits above in
+// the import graph) can import it. The guarded arm is never taken, so the claim establishes that the
+// three projections resolve from the leaf; the arm taken is a supplied value.
+fn bottom_seam_resolves_from_the_leaf(selector: Bool) -> Bool {
+  if selector { true } else { (pure_dag_seam_unreachable() == 0) && (pure_dag_seam_unreachable_float() == 0.0) && (pure_dag_seam_unreachable_string() == "") }
+}
+
+test fn bottom_seam_projections_resolve_from_error_primitives() -> Bool {
+  bottom_seam_resolves_from_the_leaf(selector: true)
+}
+
+// std.algebra trim routes to free_call.trim; its body is the named seam, so trim is real on a value.
+test fn trim_still_routes_to_the_host_realization() -> Bool {
+  trim(s: "  a ") == "a"
+}

@@ -47,7 +47,7 @@ import v2.std.node {
   Atom,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -327,7 +327,7 @@ fn ingested_root_shape(path: String) -> String {
             Conj => "TypeNode/Conj"
             Disj => "TypeNode/Disj"
             Arrow => "TypeNode/Arrow"
-            Cardinality => "TypeNode/Cardinality"
+            Occupancy => "TypeNode/Cardinality"
             Instantiation => "TypeNode/Instantiation"
           }
         ComputationNode { behavior: b } =>
