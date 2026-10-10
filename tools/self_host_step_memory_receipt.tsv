@@ -1,10 +1,10 @@
-stage	compile_emission_over.pre_resolve	7121948672	7114969088
-stage	compile_emission_over.post_resolve	14370070528	14354530304
-stage	compile_emission_over.post_emit	14373412864	14356627456
+stage	compile_emission_over.pre_resolve	7122579456	7115386880
+stage	compile_emission_over.post_resolve	10467201024	10451955712
+stage	compile_emission_over.post_emit	10470608896	10454052864
 bucket	resolve_store	0
-bucket	resolve_index	1824174080
-bucket	scope_and_reference_indexes	12288
-bucket	module_graph_facts_and_path_index	27033600
-bucket	emit_check_and_census_memos	0
-bucket	pool_heads	537755648
-bucket	pool_content_tokens_newline	4642398208
+bucket	resolve_index	5085147136
+bucket	scope_and_reference_indexes	24576
+bucket	module_graph_facts_and_path_index	103297024
+bucket	emit_check_and_census_memos	24576
+bucket	pool_heads	8192
+bucket	pool_content_tokens_newline	8192

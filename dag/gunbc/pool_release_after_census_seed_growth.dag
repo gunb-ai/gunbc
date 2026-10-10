@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the one hand Rust item that releases the seed's whole-tree acquisition
 // pool once the pre-entry census has finished. It deletes retention past the last demand; it adds no
-// arm, no mode and no decision. The measurement that motivated it is the receipt
+// arm, no mode and no decision. The measurement that motivated it is the audit
 // instrument of gunbc.self_host_step_memory_demand (`gunbc test //gunbc/instruments:self-host` with
 // GUNBC_MEMORY_COMPOSITION_RECEIPT set), re-derived per head, never transcribed here; the derivation
 // is the doc comment on pool_acquire release_whole_tree_after_census, and the measurement is its
