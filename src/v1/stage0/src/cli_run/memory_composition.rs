@@ -3,9 +3,13 @@
 //! WHY THIS EXISTS. The self-host step's slot memory is sized from a peak nobody had decomposed:
 //! the seed process holds a whole-tree acquisition pool and the closure's resolution beside the
 //! emitted crate's cargo build. RSS cannot say which structure holds which bytes, and a freed
-//! arena that glibc retains reads as live. So every figure here is a PAIR read in one motion:
-//! the resident set, then `malloc_trim`, then the resident set again -- what trim returns was
-//! freed-but-retained, what it does not is live.
+//! arena that glibc retains reads as live. So every figure here is read in one motion: the
+//! resident set, the release, the resident set again, `malloc_trim`, the resident set a third
+//! time. A structure's live size is the FULL resident drop across release and trim: a large
+//! allocation above glibc's mmap threshold goes back to the OS the moment it is dropped and never
+//! passes through `malloc_trim`, so recording only what trim returned undercounted exactly the
+//! largest structures (review 78427). The trimmed figure is kept beside it as the second column.
+//! The floor is one page: a drop smaller than the resident set's granularity reads as 0.
 //!
 //! WHAT IT IS NOT. Nothing is released on a production path. `release_stages` drops structures
 //! only when `GUNBC_MEMORY_COMPOSITION` is set, and only AFTER the emission has produced the
@@ -64,10 +68,11 @@ pub(super) fn readback(stage: &str) {
     record_line(&format!("stage\t{stage}\t{}\t{}", rss * 1024, peak * 1024));
 }
 
-/// The RECEIPT: one `bucket<TAB>name<TAB>bytes<TAB>configuration` line per released structure
-/// appended to the file named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which
-/// `gunbc.self_host_step_memory_demand` reads. Bytes are what `malloc_trim` returned after the
-/// release, i.e. the structure's live size. The last column is the configuration cell.
+/// The RECEIPT: one `bucket<TAB>name<TAB>released_bytes<TAB>trimmed_bytes<TAB>configuration` line
+/// per released structure appended to the file named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which
+/// `gunbc.self_host_step_memory_demand` reads. `released_bytes` is the resident drop across the
+/// release and the trim (the structure's live size, page-granular); `trimmed_bytes` is what
+/// `malloc_trim` returned on its own. The last column is the configuration cell.
 fn record_line(line: &str) {
     use std::io::Write;
     let Some(path) = std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT") else {
@@ -87,13 +92,28 @@ fn record_line(line: &str) {
     }
 }
 
-fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
-    let Some(kb) = trimmed_kb else {
+fn record_bucket(
+    name: &str,
+    before_kb: Option<u64>,
+    after_trim_kb: Option<u64>,
+    trimmed_kb: Option<u64>,
+) {
+    let (Some(before), Some(after_trim)) = (before_kb, after_trim_kb) else {
+        refuse(&format!(
+            "resident set unreadable around the release of bucket={name}"
+        ));
+    };
+    let Some(trimmed) = trimmed_kb else {
         refuse(&format!(
             "malloc_trim reading unavailable for bucket={name}"
         ));
     };
-    record_line(&format!("bucket\t{name}\t{}", kb * 1024));
+    let released = before.saturating_sub(after_trim);
+    record_line(&format!(
+        "bucket\t{name}\t{}\t{}",
+        released * 1024,
+        trimmed * 1024
+    ));
 }
 
 fn stage(name: &str, release: impl FnOnce()) {
@@ -102,7 +122,7 @@ fn stage(name: &str, release: impl FnOnce()) {
     let after_release = rss_kb();
     let trimmed = super::trim_retained_heap();
     let after_trim = rss_kb();
-    record_bucket(name, trimmed);
+    record_bucket(name, before, after_trim, trimmed);
     eprintln!(
         "[memory-composition] release={name} rss_kb_before={before:?} rss_kb_after_release={after_release:?} \
          trim_reclaimed_kb={trimmed:?} rss_kb_after_trim={after_trim:?}"
