@@ -37,27 +37,27 @@ import extdeps.llm.claude_code_stream_json {
 }
 
 // THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
-// written with an item type derived from its HarnessTool, and codex_item_activity inverts that same
+// written with an item type derived from its HarnessTool, and provider_item_activity inverts that same
 // declaration, so a file read, a file write, a single-match edit and a command arrive as four
-// different activities. Write and edit are NOT folded onto CodexEditingFiles: that arm is the Codex
+// different activities. Write and edit are NOT folded onto EditingFiles: that arm is the Codex
 // provider's file_change, a patch item that does not say which of the two happened, and folding
 // them would make the read lossy where the write was exact. A consumer that wants "anything that
 // changed a file" takes the three arms together; one that wants them apart still can.
 // HarnessRefusingUnrecognizedTool is a tool use whose name the harness does not declare -- the
 // dispatcher refused it, and it is reported as that rather than as a command or an unknown item.
-type CodexItemActivity
-  = CodexRunningCommand
-  | CodexEditingFiles
-  | CodexUsingConnectedTool
-  | CodexSearching
-  | CodexUpdatingPlan
-  | CodexReasoningItem
-  | CodexReporting
+type ProviderItemActivity
+  = RunningCommand
+  | EditingFiles
+  | UsingConnectedTool
+  | Searching
+  | UpdatingPlan
+  | ReasoningItem
+  | Reporting
   | HarnessReadingFile
   | HarnessWritingFile
   | HarnessEditingFile
   | HarnessRefusingUnrecognizedTool
-  | CodexUnclassifiedItem
+  | UnclassifiedItem
 
 // ONE SHARED EVENT VOCABULARY. Codex, Claude Code, and the gunbc harness write one JSONL
 // stream the belt reads; the kind is not a Codex type that other providers nickname into.
@@ -74,8 +74,8 @@ type CodexItemActivity
 type ProviderEventKind
   = ThreadStarted
   | TurnStarted
-  | ItemStarted { activity: CodexItemActivity }
-  | ItemCompleted { activity: CodexItemActivity }
+  | ItemStarted { activity: ProviderItemActivity }
+  | ItemCompleted { activity: ProviderItemActivity }
   | TurnCompleted
   | TurnFailed
   | ProviderStreamError
@@ -170,6 +170,19 @@ data codex_provider_projection_detail_budget: CharacterCount = character_count(c
 data codex_provider_projection_message_budget: CharacterCount = character_count(count: 8192)
 
 // TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (DESIGN §5). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
+// DECLARED SCAFFOLD (review 44058, DESIGN 6). This is a jq PROGRAM assembled by join — a foreign
+// language built as a string. It exists ONLY to BOUND a provider JSONL line (Codex, and since
+// gunbc#13670 Claude stream-json) before the substrate reads it; every semantic decision — which
+// lines count, how a line classifies, skip versus observe versus refuse — lives in the typed
+// readers (claude_code_stream_line, parse_codex_jsonl) and in classify_*, never here. The Claude
+// arms are the growth review 78437 named; dropping them is not the repair (review 78439: the belt
+// reads Claude's attempt JSONL through this same filter, so without them every Claude line reaches
+// the classifier with only its type and tool activity is misread or dropped). They retire with
+// the filter: DISSOLVES ON observation reading the attempt JSONL under a substrate-side line bound
+// instead of shelling to a projector, at which point BOTH this filter and
+// ProviderEventProjectionCapability delete together, or earlier under a provider-neutral bound
+// (a generic string walk with reported truncation) that carries no provider field names.
+// Interpolated values are the CharacterCount budgets above, never caller input.
 data codex_provider_event_projection_filter: NonEmptyStr = join([
   "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
   to_string(character_count_value(c: codex_provider_projection_type_budget)),
@@ -207,13 +220,13 @@ fn classify_claude_code_stream_line(line: ClaudeCodeStreamLine) -> ProviderEvent
       ProviderEventObserved { kind: ThreadStarted }
     ClaudeCodeAssistantLine { has_tool_use } =>
       if has_tool_use {
-        ProviderEventObserved { kind: ItemStarted { activity: CodexRunningCommand } }
+        ProviderEventObserved { kind: ItemStarted { activity: RunningCommand } }
       } else {
-        ProviderEventObserved { kind: ItemCompleted { activity: CodexReporting } }
+        ProviderEventObserved { kind: ItemCompleted { activity: Reporting } }
       }
     ClaudeCodeUserLine { has_tool_result } =>
       if has_tool_result {
-        ProviderEventObserved { kind: ItemCompleted { activity: CodexRunningCommand } }
+        ProviderEventObserved { kind: ItemCompleted { activity: RunningCommand } }
       } else {
         ProviderEventSkipped { reason: SkipClaudeUserWithoutToolResult }
       }
@@ -242,8 +255,6 @@ fn classify_claude_code_stream_line(line: ClaudeCodeStreamLine) -> ProviderEvent
 // dispatch-platform Ensure and dashboard provisioning; absence refuses before dispatch and is also
 // visible as an observation refusal for retained attempts. A malformed raw event makes jq nonzero,
 // so no parsed prefix is accepted as a complete observation.
-
-data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and classify_provider_event_line is the one typed classifier: jq bounds and preserves fields and makes no skip-or-refuse verdict."
 
 // Codex --json is the provider protocol authority: one JSON object per line with thread.started,
 // turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
@@ -391,9 +402,9 @@ fn codex_line_item_type(raw: String) -> String? {
   }
 }
 
-fn harness_tool_item_activity(tool: HarnessTool) -> CodexItemActivity {
+fn harness_tool_item_activity(tool: HarnessTool) -> ProviderItemActivity {
   match tool {
-    RunCommandTool => CodexRunningCommand
+    RunCommandTool => RunningCommand
     ReadFileTool => HarnessReadingFile
     WriteFileTool => HarnessWritingFile
     EditFileTool => HarnessEditingFile
@@ -403,27 +414,27 @@ fn harness_tool_item_activity(tool: HarnessTool) -> CodexItemActivity {
 // The item types below are the Codex provider's own and the harness's agent_message. The kinds a
 // harness tool use is written as are not spelled here: they are read through
 // gunbc.harness.harness_tool_kind, which is also what wrote them.
-fn codex_provider_item_activity(item_type: String) -> CodexItemActivity {
+fn codex_provider_item_activity(item_type: String) -> ProviderItemActivity {
   if item_type == "file_change" {
-    CodexEditingFiles
+    EditingFiles
   } else if item_type == "mcp_tool_call" {
-    CodexUsingConnectedTool
+    UsingConnectedTool
   } else if item_type == "web_search" {
-    CodexSearching
+    Searching
   } else if item_type == "plan_update" {
-    CodexUpdatingPlan
+    UpdatingPlan
   } else if item_type == "reasoning" {
-    CodexReasoningItem
+    ReasoningItem
   } else if item_type == "agent_message" {
-    CodexReporting
+    Reporting
   } else {
-    CodexUnclassifiedItem
+    UnclassifiedItem
   }
 }
 
-fn codex_item_activity(raw: String) -> CodexItemActivity {
+fn provider_item_activity(raw: String) -> ProviderItemActivity {
   match codex_line_item_type(raw: raw) {
-    Absent => CodexUnclassifiedItem
+    Absent => UnclassifiedItem
     Present { value: item_type } =>
       match harness_tool_item_read(item_type: item_type) {
         ItemIsHarnessToolUse { tool: t } => harness_tool_item_activity(tool: t)
@@ -433,20 +444,20 @@ fn codex_item_activity(raw: String) -> CodexItemActivity {
   }
 }
 
-fn codex_item_activity_label(activity: CodexItemActivity) -> String {
+fn provider_item_activity_label(activity: ProviderItemActivity) -> String {
   match activity {
-    CodexRunningCommand => "running command"
-    CodexEditingFiles => "editing files"
-    CodexUsingConnectedTool => "using connected tool"
-    CodexSearching => "searching"
-    CodexUpdatingPlan => "updating plan"
-    CodexReasoningItem => "reasoning"
-    CodexReporting => "reporting"
+    RunningCommand => "running command"
+    EditingFiles => "editing files"
+    UsingConnectedTool => "using connected tool"
+    Searching => "searching"
+    UpdatingPlan => "updating plan"
+    ReasoningItem => "reasoning"
+    Reporting => "reporting"
     HarnessReadingFile => "reading file"
     HarnessWritingFile => "writing file"
     HarnessEditingFile => "editing file"
     HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
-    CodexUnclassifiedItem => "provider item"
+    UnclassifiedItem => "provider item"
   }
 }
 
@@ -456,9 +467,9 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.started") {
     ProviderEventObserved { kind: TurnStarted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "item.started") {
-    ProviderEventObserved { kind: ItemStarted { activity: codex_item_activity(raw: raw) } }
+    ProviderEventObserved { kind: ItemStarted { activity: provider_item_activity(raw: raw) } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "item.completed") {
-    ProviderEventObserved { kind: ItemCompleted { activity: codex_item_activity(raw: raw) } }
+    ProviderEventObserved { kind: ItemCompleted { activity: provider_item_activity(raw: raw) } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.completed") {
     ProviderEventObserved { kind: TurnCompleted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.failed") {
@@ -686,17 +697,17 @@ fn provider_execution_fold_event(
         ItemStarted { activity } =>
           ProviderRunning {
             activity: join(
-              ["Agent working · ", codex_item_activity_label(activity: activity)],
+              ["Agent working · ", provider_item_activity_label(activity: activity)],
               "",
             ),
           }
         ItemCompleted { activity } =>
           ProviderRunning {
             activity: match activity {
-              CodexReporting => "Agent finishing"
+              Reporting => "Agent finishing"
               _ =>
                 join(
-                  ["Agent working · ", codex_item_activity_label(activity: activity)],
+                  ["Agent working · ", provider_item_activity_label(activity: activity)],
                   "",
                 ),
             },

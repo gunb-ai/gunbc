@@ -8,10 +8,17 @@ import gunbc.harness.harness_tool_kind {
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
+import extdeps.llm.claude_code_stream_json {
+  ClaudeCodeAssistantLine,
+  ClaudeCodeUserLine,
+  ClaudeCodeResultLine,
+  ClaudeCodeTurnResult,
+}
 import gunbc.roadmap_provider_events {
-  CodexItemActivity, CodexRunningCommand, CodexEditingFiles, CodexUsingConnectedTool, CodexSearching,
-  CodexUpdatingPlan, CodexReasoningItem, CodexReporting, HarnessReadingFile, HarnessWritingFile,
-  HarnessEditingFile, HarnessRefusingUnrecognizedTool, CodexUnclassifiedItem,
+  ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
+  UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
+  HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+  classify_claude_code_stream_line,
   ItemStarted, ItemCompleted,
   ProviderEventsParsed,
   ProviderEventStreamRefused,
@@ -291,7 +298,7 @@ test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
 
 // The agent REPORT members of the projection filter, pinned as a string contract because the filter
 // is a jq program the substrate assembles but does not itself interpret
-// (codex_projection_filter_scaffold_note). Nothing downstream of the shell can prove what the
+// (the leading annotation on codex_provider_event_projection_filter). Nothing downstream of the shell can prove what the
 // projector emitted, so the claims that matter here are: the report bound is the MESSAGE budget and
 // not the detail budget beside it (a copy-paste of the wrong bound would still emit valid jq and
 // still look fine on a short message, failing only on the day a long one arrived); the truncation
@@ -378,20 +385,20 @@ test fn the_projector_keeps_the_wait_reason() -> Bool {
 // the four tags to one, and a reader that re-spells a kind the emitter does not write falls to
 // "other". The tag is this file's own exhaustive discriminator over the typed activity, so the
 // claims read the arm and not the operator-facing label.
-fn activity_tag(activity: CodexItemActivity) -> String {
+fn activity_tag(activity: ProviderItemActivity) -> String {
   match activity {
-    CodexRunningCommand => "run"
+    RunningCommand => "run"
     HarnessReadingFile => "read"
     HarnessWritingFile => "write"
     HarnessEditingFile => "edit"
     HarnessRefusingUnrecognizedTool => "undeclared"
-    CodexEditingFiles => "other"
-    CodexUsingConnectedTool => "other"
-    CodexSearching => "other"
-    CodexUpdatingPlan => "other"
-    CodexReasoningItem => "other"
-    CodexReporting => "other"
-    CodexUnclassifiedItem => "other"
+    EditingFiles => "other"
+    UsingConnectedTool => "other"
+    Searching => "other"
+    UpdatingPlan => "other"
+    ReasoningItem => "other"
+    Reporting => "other"
+    UnclassifiedItem => "other"
   }
 }
 
@@ -462,7 +469,7 @@ test fn classify_claude_assistant_tool_use_is_item_started_running() -> Bool {
       match kind {
         ItemStarted { activity } =>
           match activity {
-            CodexRunningCommand => true
+            RunningCommand => true
             _ => false
           }
         _ => false
@@ -555,10 +562,94 @@ test fn classify_non_array_assistant_content_is_refused() -> Bool {
   }
 }
 
+// THE FILTER BOUNDS CLAUDE LINES AND CLASSIFIES NONE (reviews 78437 and 78439 together): the belt
+// reads Claude's attempt JSONL through this filter, so the result / system / assistant / user arms
+// must pass the bounded fields through (dropping them starved the typed reader and misread tool
+// activity as Reporting); what they may never carry is a classification -- none of the
+// provider-neutral activity names appears in the jq text.
+test fn jq_filter_bounds_claude_lines_and_classifies_none() -> Bool {
+  let filter = projection_filter_text()
+  string_contains(s: filter, pattern: "$type == \"result\"")
+    && string_contains(s: filter, pattern: "$type == \"assistant\"")
+    && string_contains(s: filter, pattern: "message.content")
+    && !string_contains(s: filter, pattern: "RunningCommand")
+    && !string_contains(s: filter, pattern: "Reporting")
+    && !string_contains(s: filter, pattern: "EditingFiles")
+    && !string_contains(s: filter, pattern: "ProviderEventObserved")
+    && !string_contains(s: filter, pattern: "ProviderEventSkipped")
+}
+
+// RESTORED (review 78441): the guard against jq inventing is_error or subtype stays enrolled beside
+// the bound (DESIGN 4b(4): a climb never retires the discriminating red).
 test fn jq_result_arm_does_not_fabricate_is_error_or_subtype() -> Bool {
   let filter = codex_provider_event_projection_filter as String
   !string_contains(s: filter, pattern: "else true end")
     && string_contains(s: filter, pattern: "then {\"is_error\":.is_error} else {} end")
+}
+
+// SUPPLIED-VALUE RED: the Claude bound (which lines count, which content blocks classify as
+// tool use / tool result, skip vs observe) is decided by classify_claude_code_stream_line over
+// a constructed ClaudeCodeStreamLine, not by jq. Mapping tool_use onto Reporting, or treating
+// a user-without-tool-result as an item, reddens this without parsing a wire string.
+test fn supplied_claude_assistant_tool_use_is_running_command() -> Bool {
+  match classify_claude_code_stream_line(line: ClaudeCodeAssistantLine { has_tool_use: true }) {
+    ProviderEventObserved { kind } =>
+      match kind {
+        ItemStarted { activity } =>
+          match activity {
+            RunningCommand => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn supplied_claude_assistant_without_tool_use_is_reporting() -> Bool {
+  match classify_claude_code_stream_line(line: ClaudeCodeAssistantLine { has_tool_use: false }) {
+    ProviderEventObserved { kind } =>
+      match kind {
+        ItemCompleted { activity } =>
+          match activity {
+            Reporting => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn supplied_claude_user_without_tool_result_is_skipped() -> Bool {
+  match classify_claude_code_stream_line(line: ClaudeCodeUserLine { has_tool_result: false }) {
+    ProviderEventSkipped { reason } =>
+      match reason {
+        SkipClaudeUserWithoutToolResult => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn supplied_claude_result_error_is_turn_failed() -> Bool {
+  match classify_claude_code_stream_line(
+    line: ClaudeCodeResultLine {
+      result: ClaudeCodeTurnResult {
+        subtype: "success",
+        is_error: true,
+        terminal_reason: none,
+        api_error_status: none,
+      },
+    },
+  ) {
+    ProviderEventObserved { kind } =>
+      match kind {
+        TurnFailed => true
+        _ => false
+      }
+    _ => false
+  }
 }
 
 // INHABITANCE: the real parse fold over a captured stream shape, including a skipped rate-limit
