@@ -420,7 +420,7 @@ import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   local_tree_revision,
   landed_on_admitted_standing,
   FleetRevisionStanding,

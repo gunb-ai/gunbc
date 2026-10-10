@@ -268,7 +268,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
   TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }

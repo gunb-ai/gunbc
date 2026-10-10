@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
 }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
   LandedOnAdmittedStanding, TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }
@@ -748,7 +748,7 @@ type LaunchRevisionOutcome
 // that cannot be read. It used to refuse on drift from the admitted fleet ref as well; that made
 // admissibility a race the host could not win -- desired advances on every green merge, a deploy
 // takes minutes -- and, because the belt tick shared the gate, a lagging host stopped verifying,
-// reviewing and publishing too. Convergence is the deploy path's fact (`gunbc.fleet_desired_observe`
+// reviewing and publishing too. Convergence is the deploy path's fact (`gunbc.origin_main_revision_observe`
 // `FleetRevisionStanding`, the deployed-tree report), never an admission input here.
 fn launch_revision_outcome(revision: LocalTreeRevision) -> LaunchRevisionOutcome {
   match revision {

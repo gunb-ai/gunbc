@@ -15,7 +15,7 @@ import gunbc.fleet_ssh_locus {
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_desired_observe { observe_origin_main_revision }
+import gunbc.origin_main_revision_observe { observe_origin_main_revision }
 import gunbc.fleet_main_revision { converge_target_revision }
 import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_locus,

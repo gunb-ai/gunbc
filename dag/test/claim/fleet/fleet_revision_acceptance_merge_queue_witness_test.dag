@@ -1,4 +1,4 @@
-module test.claim.fleet_desired_merge_queue_admission_witness_test
+module test.claim.fleet_revision_acceptance_merge_queue_witness_test
 
 import std.types { String, Bool, Int, List, CommitSha, NonEmptyStr }
 import std.contract_identity { ContractEpoch }
@@ -28,9 +28,9 @@ import test.fixture.rest_exchange_replay_probe
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE MERGE-QUEUE ROUTE OF FLEET ADMISSION, exercised through fleet_desired_accepted_from_push --
-// the same pure composition admit_fleet_desired_from_push_wet runs between its payload read and
-// its forge read. One builder per carrier, and every row breaks exactly one fact.
+// THE MERGE-QUEUE ROUTE OF FLEET REVISION ACCEPTANCE, exercised through
+// accept_required_ci_merge_group_runs + observe_default_branch_push + admit_fleet_revision.
+// One builder per carrier, and every row breaks exactly one fact.
 
 data sha_r: String = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
 

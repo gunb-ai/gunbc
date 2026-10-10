@@ -22,7 +22,7 @@ import gunbc.roadmap_dispatch_environment {
   capability_ensure_observe,
   capability_ensure_receipt_json,
 }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
   LocalTreeRevisionUnobserved,

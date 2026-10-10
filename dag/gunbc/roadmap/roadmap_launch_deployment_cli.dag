@@ -40,7 +40,7 @@ import gunbc.live_deploy.apply_receipt {
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }

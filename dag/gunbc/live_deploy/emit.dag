@@ -1008,7 +1008,7 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
 //
-// `gunbc.fleet_desired_observe` reads origin/main with `git ls-remote origin`, a network
+// `gunbc.origin_main_revision_observe` reads origin/main with `git ls-remote origin`, a network
 // call through a CONFIGURED remote, and `tree_sync_git_whitelist_note` excludes .git/config from
 // the sync because a blanket sync once carried a live Actions token into the service tree. Both are
 // correct and neither was checked against the other, so the deploy produced a tree that could not

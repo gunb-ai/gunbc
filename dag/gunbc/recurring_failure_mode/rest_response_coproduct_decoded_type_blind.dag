@@ -48,6 +48,6 @@ data rest_response_coproduct_decoded_type_blind: RecurringFailureMode = Recurrin
     DeclarationRef { module_path: "extdeps.github.workflow_runs_contracts", decl_name: "workflow_run_status_wire_contract", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "an_unknown_spelling_refuses_at_the_located_field", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.fleet_desired_merge_queue_admission_witness_test", decl_name: "the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet_revision_acceptance_merge_queue_witness_test", decl_name: "the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision", field: WholeDeclaration },
   ],
 }

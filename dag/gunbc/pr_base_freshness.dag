@@ -138,7 +138,7 @@ fn base_freshness_label(f: BaseFreshness) -> String {
 
 // ---------------------------------------------------------------------------------------------
 // THE HOST OBSERVATION. Everything above is pure and takes its operands; everything below acquires
-// them. The split is the one gunbc.fleet_desired_observe already uses, and it is what lets the
+// them. The split is the one gunbc.origin_main_revision_observe already uses, and it is what lets the
 // classifier's every arm be witnessed in the hermetic floor while the acquisition stays peripheral.
 
 // A MERGE COMMIT'S FIRST PARENT IS THE BASE IT WAS MERGED INTO. `Absent` is not a formality: a
