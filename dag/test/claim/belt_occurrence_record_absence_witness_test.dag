@@ -1,6 +1,7 @@
 module test.claim.belt_occurrence_record_absence_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_belt_actuate {
   belt_occurrence_attempt_directory_standing,
   belt_occurrence_record_from_launch_observation,
@@ -156,9 +157,10 @@ test fn a_listed_record_that_does_not_decode_still_refuses() -> Bool {
   ))
 }
 
-// INHABITANCE: the real wet producers, over a directory that exists on every host ("/") and an
-// entry under it that does not.
-data missing_attempt_directory: String = "/gunbc-belt-occurrence-witness-no-such-attempt-directory"
+// INHABITANCE: the real wet producers, executed against the checkout (the claim route reads only
+// substrate inputs), over a directory every checkout carries and an entry under it that it does not.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data missing_attempt_directory: String = "dag/std/gunbc-belt-occurrence-witness-no-such-attempt-directory"
 
 test fn the_real_presence_producer_establishes_a_missing_directory_absent() -> Bool {
   match filesystem_entry_presence_of_path(path: missing_attempt_directory) {
