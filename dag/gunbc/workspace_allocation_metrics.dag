@@ -6,14 +6,14 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.measure { byte_size_count }
 import product.fabric.memory_grant { memory_grant_bytes }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
-import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json, workspace_profile_memory }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity }
-import gunbc.runner_microvm_lifecycle_realize { AttemptLaunch, bind_attempt_console, AttemptConsoleBound }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_controller_slice_unit_name }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity }
+import gunbc.runner.runner_microvm_lifecycle_realize { AttemptLaunch, bind_attempt_console, AttemptConsoleBound }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_controller_slice_unit_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_allocation_milestones { workspace_first_ready_at, workspace_observed_duration }
 import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk }
 import gunbc.clock_read { clock_now_probed_at }

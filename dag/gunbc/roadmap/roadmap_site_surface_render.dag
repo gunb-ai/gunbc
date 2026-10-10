@@ -1,4 +1,4 @@
-module gunbc.roadmap_site_surface_render
+module gunbc.roadmap.roadmap_site_surface_render
 
 import std.types { String, NonEmptyStr, List, CommitSha }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
@@ -13,8 +13,8 @@ import extdeps.languages.json.emit {
   json_string,
   JsonKeyValue,
 }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceArtifact }
+import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path }
+import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceArtifact }
 
 data roadmap_site_health_path: NonEmptyStr = "/healthz"
 data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"

@@ -1,4 +1,4 @@
-module v2.test.manual.program_partition_body_emit
+module v2.test.claim.manual.program_partition_body_emit_test
 
 import std.types { List }
 import v2.compiler.program_partition {
@@ -36,7 +36,7 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-import v2.test.manual.add_body_emit_typescript {
+import v2.test.claim.manual.add_body_emit_typescript_test {
   add_body_ts_emit_from_producer_tree,
   add_body_ts_producer_inferred_tree
 }

@@ -1,4 +1,4 @@
-module test.claim.srv3_os_install_diagnostic
+module test.claim.srv3.srv3_os_install_diagnostic_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -60,7 +60,7 @@ fn serve_ready_sol_silent_pre_boot_observations() -> OsInstallActuationObservati
 }
 
 // A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
-// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+// real rendering route is exercised by test.claim.srv3.srv3_seeded_install_media_witness_test.
 data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
 
 // A SUPPLIED built image: the diagnostic fold decides over the digest it is handed, and which bytes

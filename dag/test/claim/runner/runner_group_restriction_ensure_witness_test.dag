@@ -4,8 +4,8 @@ import std.types { Bool, String, List, Int, NonEmptyStr }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read, RunnerGroupListDecode }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused }
-import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name }
-import gunbc.runner_group_restriction_ensure {
+import gunbc.runner.runner_group_restriction_observation { microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name }
+import gunbc.runner.runner_group_restriction_ensure {
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused,
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,

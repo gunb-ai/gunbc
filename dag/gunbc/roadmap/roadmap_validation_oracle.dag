@@ -1,4 +1,4 @@
-module gunbc.roadmap_validation_oracle
+module gunbc.roadmap.roadmap_validation_oracle
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.content_hash {
@@ -29,7 +29,7 @@ import extdeps.pin {  Pin,
   admit_pin_integrity,
 }
 import extdeps.version { VersionIdentity }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ValidationOperation,
   GunbcClaimValidation,
   CargoTestValidation,
@@ -140,7 +140,7 @@ type ValidationOracleRef {
 // entry-file pin closes the direct attack — an agent editing the witness that judges it — but a
 // witness may import assertions and fixtures from OTHER test modules, and those are oracle, not
 // subject. dag/test/claim/scm_compatibility_shape_witness_test.dag is the measured specimen: it
-// imports four test.claim modules, so weakening test.claim.scm_compatibility_git_witness would
+// imports four test.claim modules, so weakening test.claim.scm.scm_compatibility_git_witness_test would
 // green Verify without moving the pinned digest. That is the same fail-open the pin exists to
 // close, reached one import away, and shipping it behind a dissolve-on would have been exactly the
 // unmarked-scaffold move DESIGN section 5 forbids — a green that means nothing for 125 of the

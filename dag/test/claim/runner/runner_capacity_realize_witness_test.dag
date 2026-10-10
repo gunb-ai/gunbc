@@ -1,18 +1,18 @@
-module test.claim.runner_capacity_realize_witness
+module test.claim.runner.runner_capacity_realize_witness_test
 
 import std.logic { Bool }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_capacity_plan {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
   PlanReady,
   PlanRefused,
 }
-import gunbc.fleet_runner_connectivity {
+import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_managed_roster_fixture,
   organization_runner_roster_materialized_slots_online_evidence,
 }
-import gunbc.runner_capacity_realize {
+import gunbc.runner.runner_capacity_realize {
   runner_capacity_apply_plan,
   runner_capacity_reapply_plans_zero_additions,
   runner_capacity_host_apply_receipt,
@@ -21,7 +21,7 @@ import gunbc.runner_capacity_realize {
   HostApplyRefused,
   HostApplySucceeded,
 }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   fabric_second_slot_index,
@@ -46,7 +46,7 @@ fn derived_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // stopped naming the thing its rows called it. What these rows actually need is a request that
 // reaches a GitHub slot BEYOND the fabric members, because a seam with no additions to apply does
 // not exercise the apply path at all -- which is exactly how the disk row below went quiet. The
-// authority for the last fabric index is gunbc.runner_slot_allocation fabric_second_slot_index, and
+// authority for the last fabric index is gunbc.runner.runner_slot_allocation fabric_second_slot_index, and
 // this is one above it, so the width follows the carve instead of being re-typed after it moves.
 fn first_width_above_the_fabric_carve() -> Int {
   fabric_second_slot_index + 1
@@ -81,7 +81,7 @@ fn first_width_above_the_fabric_carve() -> Int {
 // The whole-org corpus stopped planning on 2026-09-15 (#11204): srv2's commitment became
 // unestablished, its registrations resolve to no committed slot, and the planner refuses the
 // org corpus before this seam is reached -- correctly, and
-// test.claim.runner_capacity_plan_witness the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations
+// test.claim.runner.runner_capacity_plan_witness_test the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations
 // is the claim that runs the real producer and asserts that. This row's subject is the seam on the
 // managed pair; the slice carries the same holes and nothing about srv2.
 //

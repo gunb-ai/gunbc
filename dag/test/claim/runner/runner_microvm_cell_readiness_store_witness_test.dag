@@ -1,11 +1,11 @@
 module test.claim.runner.runner_microvm_cell_readiness_store_witness_test
 
-import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload, WorkspaceWorkload, in_flight_attempt_same }
+import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload, WorkspaceWorkload, in_flight_attempt_same }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
-import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
-import gunbc.runner_microvm_attempt_identity {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, HostIdentity }
+import gunbc.runner.runner_microvm_attempt_identity {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
 }
 import product.fabric.sanitation {
@@ -14,17 +14,17 @@ import product.fabric.sanitation {
   SanitationObservation, FactRefuted, FactUnobservable,
   UnprovenFact, FactNotObserved, FactObservedFailing,
 }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled, InFlightAttempt,
 }
-import gunbc.runner_microvm_cell_readiness_store {
+import gunbc.runner.runner_microvm_cell_readiness_store {
   Decoded, DecodeOk, DecodeRefused, encode_attempt, decode_attempt,
   encode_record_document, decode_store_documents, decode_record_document,
   CellRecordPath, CellRecordAt, CellRecordNameRefused, cell_record_path,
   cell_of_record_filename, filename_body_disagreement,
   StoreOwnershipReading, OwnershipRead, OwnershipUnread, ownership_of_readings,
 }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
 }
 
@@ -229,7 +229,7 @@ test fn the_document_the_reds_perturb_decodes() -> Bool {
 }
 
 // AN EMPTY STORE IS A STORE WITH NO RECORDS, AND IT DECODES. It is not the same fact as an absent
-// store -- gunbc.runner_microvm_cell_readiness_store read_cell_readiness_store reports the absent
+// store -- gunbc.runner.runner_microvm_cell_readiness_store read_cell_readiness_store reports the absent
 // one as StoreUnreadable at host grain -- and this keeps the two distinguishable at the codec.
 test fn a_store_with_no_record_files_decodes_to_no_records() -> Bool {
   match decode_store_documents(bodies: [] as List<String>) {

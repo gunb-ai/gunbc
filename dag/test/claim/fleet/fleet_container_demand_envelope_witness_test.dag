@@ -1,4 +1,4 @@
-module test.claim.fleet_container_demand_envelope_witness
+module test.claim.fleet.fleet_container_demand_envelope_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -4,11 +4,11 @@ import std.types { Bool, List, NonEmptyStr, String, list_length }
 import std.process { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   SolCaptureUnderCondition,
   mtcollins1_dram_training_reading,
 }
-import gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation {
+import gunbc.machine_intake.mtcollins1_sixteen_module_restore_observation {
   check_loop_before_restore_is_the_bounded_terminal,
   check_no_restart_after_the_swap,
   check_restore_window_is_undetermined_not_terminal,
@@ -19,7 +19,7 @@ import gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation {
   mtcollins1_sixteen_module_restore_capture,
   mtcollins1_stable_boot_window_capture,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareErrorStatementUnrecognized,
   NoTerminalStated,
   SolCaptureReading,
@@ -36,7 +36,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 //
 // THE DIGEST IS NOT RECOMPUTED HERE. No pure sha256 exists in the substrate and a sha256sum
 // process is a host effect the hermetic frame refuses, so the byte count is the custody half this
-// witness can execute -- the same half gunbc.bmc_fan_program_observation_witness executes, for the
+// witness can execute -- the same half gunbc.bmc.bmc_fan_program_observation_witness executes, for the
 // same reason. A swapped or truncated artifact refuses on the count; a same-length edit does not,
 // and that residue is stated rather than papered.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

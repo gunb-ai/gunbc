@@ -18,7 +18,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
   ProviderStarting, ProviderAwaitingSeat,
@@ -28,7 +28,7 @@ import gunbc.roadmap_provider_events {
   ProviderBudgetSpent,
   ProviderEventsRefused,
 }
-import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryCommit, commit_at_reference }
 import std.minted_identity { MintedId }
@@ -48,7 +48,7 @@ import std.minted_identity { MintedId }
 // teach a filename the belt does not read.
 data submission_artifact_name: NonEmptyStr = ".gunbc-submission.json" as NonEmptyStr
 
-// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent gunbc.roadmap_publish
+// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent gunbc.roadmap.roadmap_publish
 // publication_receipt_schema_v2_note sets: a document whose schema is not exactly this string is
 // refused, so a future shape cannot be silently read as this one with members missing.
 data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr

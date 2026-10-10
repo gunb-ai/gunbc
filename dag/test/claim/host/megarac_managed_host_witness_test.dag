@@ -1,4 +1,4 @@
-module test.claim.megarac_managed_host_witness
+module test.claim.host.megarac_managed_host_witness_test
 
 import test.fixture.board_fru_observation { jade_fru_read }
 import std.types { Bool, List, NonEmptyStr, String }
@@ -6,8 +6,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.managed_host {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host {
   ManagedHost, managed_host_fixture, managed_hosts, ManagedHostAccessUnobserved, ManagedHostEndpointMismatch,
   ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_account_driving,
 }
@@ -15,10 +15,10 @@ import std.types { EpochMs }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
-import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -107,7 +107,7 @@ test fn w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_o
 }
 
 // RED: A MEGARAC CONTROLLER OF ANOTHER BUILD. The family is still MegaRAC; the raw firmware is the one
-// Mt. Jade's controller reports (gunbc.machine_intake_mtjade1_access_observation), a build none of these
+// Mt. Jade's controller reports (gunbc.machine_intake.mtjade1_access_observation), a build none of these
 // operations was executed on, so each refuses it by build and names the build.
 test fn w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation() -> Bool {
   managed_hosts() |> all(h => match h.access {

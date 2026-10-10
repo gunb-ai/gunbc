@@ -22,7 +22,7 @@ import gunbc.fleet.printer_job_start {
   PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
   start_refusal, start_receipt, start_may_be_replayed, classify_publish_outcome,
 }
-import gunbc.fleet_asset_identity { printer_01, printer_02, ams_01 }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02, ams_01 }
 
 // THE ARGV IS THE SUBJECT OF MOST OF THESE WITNESSES, because the guarantee this leg adds is a
 // NEGATIVE one -- that a credential does not appear on a command line -- and a negative property is

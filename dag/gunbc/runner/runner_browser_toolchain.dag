@@ -1,4 +1,4 @@
-module gunbc.runner_browser_toolchain
+module gunbc.runner.runner_browser_toolchain
 
 import std.types { Bool, Int, List, NonEmptyStr, FilePath, list_length }
 import extdeps.shell
@@ -40,11 +40,11 @@ import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import std.content_hash { content_hash_atom }
 import extdeps.tools { apt_package_of }
-import extdeps.apt { package_xz_utils }
+import extdeps.package_managers.apt { package_xz_utils }
 import gunbc.command_runner {
   ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture, process_outcome_admitted, LocalExec,
 }
-import gunbc.verified_archive_install {
+import gunbc.host.verified_archive_install {
   ArchiveDigestPin, ArchiveSha256, ArchiveNpmIntegrity,
   ArchiveDigestVerdict, ArchiveDigestMatches, ArchiveDigestMismatch, ArchiveDigestUnverifiable,
   verify_archive_digest, verified_archive_install, VerifiedArchiveInstallOutcome, ArchiveInstalled,
@@ -53,30 +53,30 @@ import gunbc.verified_archive_install {
   ArchivePlacement, archive_placement_holds, archive_placements_text,
   stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect_realize {
   Srv3HostPredicate, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved,
   srv3_ensure_apt, AptPresenceSubject, AptBinaryOnPath, AptPackageInstalled,
 }
 import product.host_identity { HostIdentity }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
-import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
-import gunbc.fleet_posix_accounts { fleet_posix_home_directory }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
-import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.runner.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
-import gunbc.host_effect { LocalShell }
-import gunbc.runner_microvm_host_ready {
+import gunbc.host.host_effect { LocalShell }
+import gunbc.runner.runner_microvm_host_ready {
   microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text,
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import v2.std.node { Node }
-import gunbc.runner_unit { runner_unit_dropin_path }
-import gunbc.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
-import gunbc.host_effect_realize {
+import gunbc.runner.runner_unit { runner_unit_dropin_path }
+import gunbc.runner.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
+import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
   run_argv_transport_succeeded, RunArgvTransportOutcome,
 }
@@ -86,7 +86,7 @@ import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
-// CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
+// CONSUMER READS IT FROM. gunbc.machine_intake.megarac_kvm_still drives the MegaRAC KVM viewer
 // in headless Chromium through Playwright; until this module nothing put that toolchain on a runner,
 // and the only proposal was a boot-step `npm install` -- an undeclared toolchain on a fleet host
 // (DESIGN 3: interface in extdeps, realization bound to it; DESIGN 6: a hand-authored provisioning
@@ -99,7 +99,7 @@ import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command
 //   WHERE    runner_browser_toolchain_location -- a typed location, derived, never an env variable
 //   WHICH    runner_browser_toolchain_pool -- derived from the runner pool that runs the floor job
 //   CONVERGE runner_browser_toolchain_converge_ci_wet, the RunnerBrowserToolchainConverge mode of
-//            gunbc.fleet_converge_workflow (operator ruling, eager-owl-205, 2026-09-28)
+//            gunbc.fleet.fleet_converge_workflow (operator ruling, eager-owl-205, 2026-09-28)
 //   READ     runner_browser_toolchain_readback_wet -- re-verifies every retained archive, reads
 //            each version, finds every unresolved host library, and launches the browser on a
 //            local page; the converge's verdict and a consumer's admission are both this readback
@@ -135,7 +135,7 @@ data chromium_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = Bro
   sha256: "b5ad7d8fe70f230b34198ddb5626d717c016db2f627cb44b922babbcaf3479b9",
   byte_count: byte_size(count: 204732694),
   observed_on: "2026-09-28",
-  observed_by: "gunbc.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
+  observed_by: "gunbc.runner.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
 }
 
 data chromium_headless_shell_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = BrowserArchiveDigestReceipt {
@@ -143,7 +143,7 @@ data chromium_headless_shell_1234_linux_arm64_digest_receipt: BrowserArchiveDige
   sha256: "b03443e1e1a60d06e07b6cdfe650b8c2bfcbb3db497d2b652f73dc6912f4ae15",
   byte_count: byte_size(count: 116380215),
   observed_on: "2026-09-28",
-  observed_by: "gunbc.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
+  observed_by: "gunbc.runner.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
 }
 
 fn write_digest_receipt(receipt: String, line: String) -> ProcessExit {
@@ -172,7 +172,7 @@ fn runner_browser_toolchain_archive_sha256_of_wet(url: String, destination: Stri
 // the GUNBC_KVM_STILL_TOOLCHAIN convention, under which a consumer learned where the toolchain was
 // from whatever a boot step exported. The floor job isolates HOME under RUNNER_TEMP
 // (gunbc.toolchain_workflow_steps), so the base is NOT read from HOME: it is the job user's home by
-// gunbc.fleet_posix_accounts fleet_posix_home_directory, which the converge and every consumer derive
+// gunbc.fleet.fleet_posix_accounts fleet_posix_home_directory, which the converge and every consumer derive
 // the same way.
 //
 // THE TREE IS NAMED BY ITS WHOLE RECIPE (side-chat review of gunbc#12500, finding 2). An earlier
@@ -299,8 +299,8 @@ fn runner_browser_toolchain_node_command(
 // ---------------------------------------------------------------------------------------------
 
 // THE POPULATION IS DERIVED, NOT LISTED (operator condition, 2026-09-28). The floor job runs on
-// gunbc.ci_runner_target gunbc_ci_selected_runner_spec; a rostered runner host belongs to its pool
-// exactly when that host's registration labels (gunbc.runner_registration_labels, the same
+// gunbc.ci.ci_runner_target gunbc_ci_selected_runner_spec; a rostered runner host belongs to its pool
+// exactly when that host's registration labels (gunbc.runner.runner_registration_labels, the same
 // composition every registration reads) carry every label the spec asks for. So a host that stops
 // registering a floor label leaves the pool, and a new host that registers them joins it, with no
 // list here to forget. A selected target that is not self-hosted has no fleet pool at all, and that
@@ -329,7 +329,7 @@ fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserT
       }
     _ =>
       BrowserToolchainPoolUndefined {
-        cause: "the floor job's selected runner target (gunbc.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
+        cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
       }
   }
 }
@@ -390,7 +390,7 @@ fn runner_browser_toolchain_host_admission(host: NonEmptyStr) -> BrowserToolchai
 // ---------------------------------------------------------------------------------------------
 
 // FIVE ARCHIVES, ONE SHAPE. Each is fetched into the retained archives directory, verified against
-// its pin through gunbc.verified_archive_install, and only then extracted to its destination. The
+// its pin through gunbc.host.verified_archive_install, and only then extracted to its destination. The
 // archive is KEPT after extraction because the readback re-verifies it: a digest read back is a
 // digest of bytes on the host now, not a memory of a check that once passed.
 fn npm_tarball_archive(t: PlaywrightNpmTarball) -> StagedArchive {
@@ -597,7 +597,7 @@ fn runner_browser_toolchain_tree_sha256_of_wet(tree: String, manifest: String, r
 
 // THE HOST-WIDE HALF IS APT AND ONLY APT: unzip and xz-utils to extract the archives, and
 // Playwright's own install-deps set for Chromium on this platform. Each goes through
-// gunbc.host_effect_realize srv3_ensure_apt -- the fold the password-session converge also reaches
+// gunbc.host.host_effect_realize srv3_ensure_apt -- the fold the password-session converge also reaches
 // -- so the probe-before-install and install-in-a-branch walls are inherited, not re-derived.
 type BrowserToolchainAptRequirement {
   label: NonEmptyStr
@@ -773,13 +773,13 @@ fn browser_toolchain_probe_page_path(scratch: String) -> String {
 data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.runner_browser_toolchain",
+    module_path: "gunbc.runner.runner_browser_toolchain",
     decl_name: "runner_browser_toolchain_probe_script_dissolution_trigger",
     field: WholeDeclaration
   }
 }
 
-data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_megarac_kvm_still megarac_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
+data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake.megarac_kvm_still megarac_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
 // headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the
@@ -1219,7 +1219,7 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
 
 // ── BROWSER READINESS: THIS CONVERGE GRANTS THE HOST'S gunbc-browser-ready LABEL, AND NOTHING ELSE DOES ──
 //
-// The label (gunbc.runner_registration_labels gunbc_browser_ready_label) is a template drop-in that
+// The label (gunbc.runner.runner_registration_labels gunbc_browser_ready_label) is a template drop-in that
 // replaces LABELS_JSON for every runner on the host with the host's set plus the label. It is
 // written when this converge's readback holds and REMOVED when it does not, so the label is a
 // reading of the host's toolchain standing at its last converge, never a declaration. Once every
@@ -1395,7 +1395,7 @@ fn browser_toolchain_admin_transport(host: NonEmptyStr, context: FleetSshExecuti
 }
 
 // ONE HOST PER RUN, the host the dispatch selected and the machine confirms (the sealed binding of
-// gunbc.runner_microvm_host_ready, reused rather than re-derived: a run that would mutate one
+// gunbc.runner.runner_microvm_host_ready, reused rather than re-derived: a run that would mutate one
 // machine under another's name refuses before anything is fetched). Then: admitted to the floor
 // pool, the apt half over the administrator edge, placement as the job user, and the readback --
 // which runs ONLY when the apt half held and placement held, so a failed prerequisite or placement

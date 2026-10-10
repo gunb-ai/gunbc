@@ -444,7 +444,7 @@ fn find_variant_child_keyed(n: Node, variant_name: String, source_indices: Map<S
 // `type Bool = True | False`, an ordinary Disj, so a Bool column resolves to a two-arm roster and
 // a nested `{ gate_verdict: false }` arm that never covers `true` is refused -- correctly, since
 // the emitted `match` faces the same two arms. The claim was measured false by this change's own
-// census (gunbc.host_standup GreenPlaceFromGunbcGate), and it UNDERSTATED what the checker does,
+// census (gunbc.host.host_standup GreenPlaceFromGunbcGate), and it UNDERSTATED what the checker does,
 // which is still a rung-honesty defect: a scope sentence nobody can check against the code is
 // the same failure as an inflated one, pointing the other way.
 //

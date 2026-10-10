@@ -1,6 +1,6 @@
 # THE FIRST REAL JOB ON THE MT. COLLINS HOST, AND A SCAFFOLD BY ITS OWN ADMISSION.
 #
-# This file is hand-authored YAML sitting beside gunbc.witness_floor_workflow, which is the modeled
+# This file is hand-authored YAML sitting beside gunbc.witness.witness_floor_workflow, which is the modeled
 # carrier every other workflow in this repository is emitted from. That is the parallel-authority
 # tell, and naming it here is not a defence -- it is the disposition. The terminal form is a carrier
 # in .dag whose emission produces this file, exactly as witnesses.yml is produced.
@@ -57,9 +57,9 @@ jobs:
           echo "=== END ==="
 
       # THE RUNNER VERSION IS REPORTED SO THE MODEL CAN BE CHECKED AGAINST IT. The first canary ran
-      # 2.337.0 while gunbc.runner_microvm's guest image row said 2.336.0, and nothing in this
+      # 2.337.0 while gunbc.runner.runner_microvm's guest image row said 2.336.0, and nothing in this
       # repository noticed -- the mismatch was found by a human reading a job log. Printing it here
-      # does not close that; gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator
+      # does not close that; gunbc.runner.runner_microvm_boot_probe's boot_probe_verdict is the comparator
       # that does, and this line is what such a check would read.
       - name: Report the runner artifact this guest actually carries
         run: |

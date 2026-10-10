@@ -1,4 +1,4 @@
-module test.claim.srv3_seeded_install_media
+module test.claim.srv3.srv3_seeded_install_media_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

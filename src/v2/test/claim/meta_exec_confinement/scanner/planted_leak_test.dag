@@ -1,4 +1,4 @@
-module v2.test.meta_exec_confinement.scanner.planted_leak
+module v2.test.claim.meta_exec_confinement.scanner.planted_leak_test
 
 import v2.lens.meta_exec_confinement {
   meta_exec_leak_count_live

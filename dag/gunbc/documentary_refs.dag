@@ -35,7 +35,7 @@ import gunbc.design_ruling { design_rulings }
 // this program exists to remove -- so the paragraph builds its symbol text by rendering the row,
 // and a rename that moves the row moves the document.
 
-data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
+data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
 // THE REQUIRED GATE'S SUBJECTS. Until the 2026-10-09 ruling (the v1 withdrawal) this row named
 // v2.workflow.required_floor required_gate_prefixes, the roster the deleted floor lane prepared. The

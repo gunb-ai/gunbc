@@ -1,4 +1,4 @@
-module gunbc.srv3_install_media_fetch
+module gunbc.srv3.srv3_install_media_fetch
 
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
@@ -11,12 +11,12 @@ import extdeps.provisioning.ubuntu_install_media {
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
 }
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.os_install_actuator_selection {
   srv3_os_install_actuator_selection, ActuatorSelected, ActuatorUnsatisfiable,
 }
-import gunbc.fleet_intent { srv1_host }
-import gunbc.srv3_host_effect_apply {
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.srv3.srv3_host_effect_apply {
   srv3_install_media_fetch_apply,
   srv3_apply_to_process_exit,
 }

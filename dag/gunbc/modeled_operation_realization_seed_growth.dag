@@ -2,7 +2,7 @@ module gunbc.modeled_operation_realization_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the entry-bound modeled operation realization (gunbc#12486), homed
@@ -17,7 +17,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // open-ended interface/transport rewrite". Operator clarification 5859045446 and eager-owl-205's
 // conditions scope it further.
 //
-// THE FIVE REFUSED CLASSES OF gunbc.v1_maintenance_standing, one by one. NewLanguageBehavior: no --
+// THE FIVE REFUSED CLASSES OF gunbc.v1.v1_maintenance_standing, one by one. NewLanguageBehavior: no --
 // no construct, typing rule or evaluation rule changes, and a program's meaning is unchanged unless
 // a witness frame carrying a ModeledRealization binding is installed. NewCompatibilityObligation: no.
 // NewEscapeHatchOrAdmissionRow: no, and the direction is the opposite -- the realization adds

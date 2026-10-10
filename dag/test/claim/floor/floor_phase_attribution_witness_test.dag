@@ -1,8 +1,8 @@
-module test.claim.floor_phase_attribution_witness_test
+module test.claim.floor.floor_phase_attribution_witness_test
 
 import std.types { Bool, String, Int, list_length }
 import std.measure { byte_size_count }
-import gunbc.floor_demand {
+import gunbc.floor.floor_demand {
   FloorBeatReading, FloorPhaseHeldSet, floor_phase_attribution, FloorPhasesAttributed, FloorPhaseSeamUnknown, FloorPhaseReadingNegative,
   HeldSetPeakAt, SeamParse, SeamPrepareClosureResolve, StallUnread, SwapUnread,
 }

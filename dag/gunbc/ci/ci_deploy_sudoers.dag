@@ -1,4 +1,4 @@
-module gunbc.ci_deploy_sudoers
+module gunbc.ci.ci_deploy_sudoers
 
 import std.types { String, NonEmptyStr, List, Bool }
 import v2.std.algebra { fold_list, any, list_flat_map }
@@ -28,7 +28,7 @@ import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_shell_condition,
   sudo_nopasswd_grant_list_shell_condition,
 }
-import gunbc.ci_deploy_access {
+import gunbc.ci.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
   deploy_accesses_on_host,
@@ -36,7 +36,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudoers_line,
   posix_sudo_grant_to_privileged,
 }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   PosixSudoGrant,
   SudoVisudo,
   SudoInstall,
@@ -103,7 +103,7 @@ fn deploy_sudoers_line_for_grant(access: DeployAccess, g: PosixSudoGrant) -> Str
 }
 
 // THE DROP-IN IS HOST-SHARED, SO ITS BODY IS THE UNION OVER EVERY ACCESS THAT DEPLOYS TO THE HOST
-// (gunbc.ci_deploy_access deploy_accesses_on_host), not the running access's own grants. Rendering
+// (gunbc.ci.ci_deploy_access deploy_accesses_on_host), not the running access's own grants. Rendering
 // from the running access alone made an operator-local apply rewrite the file to the operator's one
 // line and delete the CI runner's grants. One line per (principal, grant), first occurrence kept
 // in roster order, header first. The heredoc row (v2.workflow.bash_emit bash_emit_heredoc)
@@ -138,7 +138,7 @@ fn deploy_sudoers_stage_word() -> Node {
 
 // THE FULL ROSTER IS DEMANDED HERE, AFTER THE INSTALL, AND A MISS STOPS THE SCRIPT BEFORE ANY OTHER
 // MUTATION. The pre-mutation gate demands only what the install spends
-// (gunbc.ci_deploy_access deploy_access_sudoers_install_scope), because the install is what grants
+// (gunbc.ci.ci_deploy_access deploy_access_sudoers_install_scope), because the install is what grants
 // the rest; so this is where the rest is required, one probe per privileged command, with the same
 // probe kind the roster row declares: an execute check runs the sudo -n argv of
 // extdeps.sudo.nopasswd_execute_probe_check_op sudo_nopasswd_execute_probe_argv, and a grant-list
@@ -174,7 +174,7 @@ fn deploy_sudoers_post_install_roster_probe_stmts(access: DeployAccess) -> List<
   map(access.privileged_commands, cmd => deploy_sudoers_post_install_probe_stmt(cmd: cmd))
 }
 
-// visudo and install are read from gunbc.fleet_posix_accounts ci_runner_sudo_binary_path, the same
+// visudo and install are read from gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binary_path, the same
 // rows ci_runner_sudoers_install_binaries names, so what this step spends and what the pre-install
 // gate demands cannot drift apart.
 fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
@@ -194,7 +194,7 @@ fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
 // The String seam into gunbc.live_deploy.emit deploy_raw cannot carry diagnostics, so a refused
 // emission becomes a marker that is not valid shell and fails the deploy step loudly. It is never a
 // partial script (DESIGN 5: refuse, never widen).
-data deploy_sudoers_install_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci_deploy_sudoers deploy_sudoers_install_shell: the bash serializer refused the install program; this marker is not valid shell\n"
+data deploy_sudoers_install_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_shell: the bash serializer refused the install program; this marker is not valid shell\n"
 
 fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
   let heredoc = bash_emit_heredoc(

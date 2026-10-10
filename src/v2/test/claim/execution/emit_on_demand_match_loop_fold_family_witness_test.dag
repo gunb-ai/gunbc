@@ -1,4 +1,4 @@
-module v2.test.execution.emit_on_demand_match_loop_fold_family_witness
+module v2.test.claim.execution.emit_on_demand_match_loop_fold_family_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List }
@@ -50,26 +50,26 @@ import v2.extdeps.languages.rust_test {
   rust_match_loop_fold_family_target_model_staging,
   rust_family_member_run_args,
 }
-import v2.test.execution.emit_host_match_equals_eval {
+import v2.test.claim.execution.emit_host_match_equals_eval_test {
   emit_match_eval_producer_tree,
   emit_match_eval_swapped_producer_tree,
   emit_match_eval_subgraph_node,
   emit_match_eval_subject,
   emit_match_eval_verdict_is_pass,
 }
-import v2.test.execution.emit_host_loop_equals_eval {
+import v2.test.claim.execution.emit_host_loop_equals_eval_test {
   emit_loop_eval_producer_tree,
   emit_loop_eval_wrong_value_producer_tree,
   emit_loop_eval_subject,
   emit_loop_eval_verdict_is_pass,
   emit_loop_eval_verdict_is_fail,
 }
-import v2.test.execution.emit_host_fold_closure_equals_eval {
+import v2.test.claim.execution.emit_host_fold_closure_equals_eval_test {
   emit_fold_eval_subject,
   emit_fold_eval_tree_for,
   emit_fold_eval_verdict_is_pass,
 }
-import v2.test.emit.fold_call_closure_fixture {
+import v2.test.claim.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_wrong_arrow,
 }
@@ -233,7 +233,7 @@ fn mlf_family_native_key(members: List<EmitFamilyMember>) -> ContentHash {
 }
 
 // THE PRIMARY FAMILY CRATE, EMITTED ONCE OUTSIDE THE CLAIM FOLD. Every native-only verdict claim
-// for this family (v2.test.long.emit_host_native_only_verdict's six match/loop/fold arms) begins
+// for this family (v2.test.claim.execution.long.emit_host_native_only_verdict_test's six match/loop/fold arms) begins
 // with the same pure walk — three primary trees, the member list, emit_family, the native key —
 // and the required floor measured all six within one runner-swing of the 500ms per-claim ceiling
 // (run 34315228217: 462-504ms cpu, loop_holds over). The members are not portable (InferredTree's

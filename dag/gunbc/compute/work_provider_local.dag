@@ -33,7 +33,7 @@ import extdeps.linux.cgroup_v2 {
 }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
@@ -46,11 +46,11 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
@@ -364,7 +364,7 @@ fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<Sys
 // WHO OWES THE READ, AND WHY A TRUNCATION CANNOT UNDER-REPORT A PEAK HERE. A truncated stderr is the
 // worst-directed hazard in this mechanism: it makes the number SMALLER -- "Memory peak: 11G" cut to
 // "Memory peak: 1G" parses cleanly as a tenth of the real figure -- and under-reporting is the
-// direction that OOMs. No guard in the parser can catch it (gunbc.machine_intake_host_capture_envelope
+// direction that OOMs. No guard in the parser can catch it (gunbc.machine_intake.host_capture_envelope
 // HostCaptureText: line-wholeness is the CALLER's fact, never inferred from the bytes), so the
 // obligation is NAMED here rather than dropped.
 //

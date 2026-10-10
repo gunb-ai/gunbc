@@ -5,7 +5,7 @@ module test.probe.seed_artifact_fetch_forged_probe
 // checked: replaying an admitted artifact into a seed directory of its choosing (where its name
 // might collide with a text seed the admission never saw, or point outside the seed), or minting
 // an admitted artifact without the admission. The witness
-// test.claim.seed_artifact_fetch_forged_probe_witness hands this source to the compiler and requires
+// test.claim.provisioning.seed_artifact_fetch_forged_probe_witness_test hands this source to the compiler and requires
 // each refusal at its subject by name. dag/test/probe/ sits under the whole-tree strict-resolve
 // exclusion, so this source reaches the compiler only through that witness.
 

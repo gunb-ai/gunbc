@@ -6,23 +6,23 @@ import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.linux.tun_fdinfo { TunQueuesAttached, TunQueuesRefused, TunCensusQueueCountUnsupported, TunCensusQueueCountUnreadable, TunCensusReaderNotRoot, TunCensusMultiQueue, tun_attached_queue_requirement }
 import extdeps.shell.exec { ProcessObservation }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
-import gunbc.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
-import gunbc.host_kernel_dependency {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
+import gunbc.host.host_kernel_dependency {
   UbuntuTunKernelProvider, HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel,
   HostKernelDependencyPlanned, HostKernelDependencyRefused,
   KernelPackageExact, KernelPackageNeedsInstall, KernelPackageReadRefused,
   tun_kernel_provider_for_host, tun_kernel_capability_decision, kernel_package_reading,
   kernel_package_readings_join, host_kernel_dependency_plan, host_kernel_maintenance_capability,
 }
-import gunbc.host_kernel_dependency_observe { kernel_provider_platform_admits, kernel_provider_candidate_admits }
-import gunbc.host_kernel_dependency_wire { host_kernel_dependency_text, host_kernel_dependency_from_text }
-import gunbc.fleet_converge_plan {
+import gunbc.host.host_kernel_dependency_observe { kernel_provider_platform_admits, kernel_provider_candidate_admits }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_text, host_kernel_dependency_from_text }
+import gunbc.fleet.fleet_converge_plan {
   WorkspaceCommissioningDependencyConverge, fleet_converge_plan_artifact_of_request,
   fleet_converge_apply_artifact_admits, ApplyAwaitingCapability,
 }
-import gunbc.fleet_converge_terminal { AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { AwaitingCapability }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 
 // SUPPLIED AT THE BOUNDARY: observations below are adversarial inputs to the production

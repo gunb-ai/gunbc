@@ -1,6 +1,6 @@
 module gunbc.evaluation_store_address_census_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // and this change adds host builtins that tokenize and resolve live trees. Requested by
 // review 67025 on gunbc#11458.
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The v2 self-host program needs an
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The v2 self-host program needs an
 // executing join of evaluation_store_address callers to a closed expected roster, plus a
 // fail-closed token-scan over admitted src/v2 so a future host caller cannot hide outside the
 // dag exact arm. Observation of ResolvedCallee edges and of call-form tokens is observation of

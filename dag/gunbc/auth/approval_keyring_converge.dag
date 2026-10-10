@@ -19,7 +19,7 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.tools.chown { chown_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,
@@ -29,14 +29,14 @@ import gunbc.auth.approval_keyring_pins {
   approval_store_receipt_mac_key_path_env,
   approval_store_receipt_mac_key_payload_sha256_prefix,
 }
-import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write {

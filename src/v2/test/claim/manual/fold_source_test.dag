@@ -1,4 +1,4 @@
-module v2.test.manual.fold_source
+module v2.test.claim.manual.fold_source_test
 
 import std.algebra { Cons, Empty }
 import v2.std.text { SourceFold, String, fold_source }

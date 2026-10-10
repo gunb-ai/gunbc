@@ -32,7 +32,7 @@ import extdeps.crypto.mac {
   mac_sign,
   mac_verify,
 }
-import gunbc.machine_intake_subject { IntakeAttemptId }
+import gunbc.machine_intake.subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
   signed_boot_manifest_window,

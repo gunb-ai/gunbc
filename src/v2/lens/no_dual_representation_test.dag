@@ -1,7 +1,7 @@
 module v2.lens.no_dual_representation_test
 
 import std.types { List }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.disposition { RealizationDispatch }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { module_declaration_facts_live }

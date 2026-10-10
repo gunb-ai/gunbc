@@ -1,4 +1,4 @@
-module test.claim.single_resolution_row_witness
+module v2.test.claim.single_resolution_row_witness_test
 
 import std.types { Bool }
 import v2.std.node { Node }

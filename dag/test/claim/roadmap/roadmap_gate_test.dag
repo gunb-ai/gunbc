@@ -1,4 +1,4 @@
-module test.claim.roadmap_gate
+module test.claim.roadmap.roadmap_gate_test
 
 import test.claim.roadmap.roadmap_node_fixture { fx_derivable, fx_sign, fx_signed }
 

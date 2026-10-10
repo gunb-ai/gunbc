@@ -1,4 +1,4 @@
-module v2.test.manual.branch_infer
+module v2.test.claim.manual.branch_infer_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

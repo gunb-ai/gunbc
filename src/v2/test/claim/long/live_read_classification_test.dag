@@ -1,7 +1,7 @@
 module v2.test.claim.long.live_read_classification_test
 
 import std.types { List }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.live_read_classification {
   live_read_classification,
@@ -208,7 +208,7 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
     module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
-      "tools.dag_compile_clean_scope",
+      "gunbc.instruments.dag_compile_clean_scope",
       "v2.std.logic",
       "v2.std.text",
       "v2.std.live_tree"
@@ -219,7 +219,7 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
     imports: []
   },
   ModuleImportFact {
-    module: "tools.dag_compile_clean_scope",
+    module: "gunbc.instruments.dag_compile_clean_scope",
     imports: []
   }
 ]

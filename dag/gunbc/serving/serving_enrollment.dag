@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_intent_network { host_lan_address }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.spark.group_b_serving_capacity { group_b_route_offer, group_b_restoration_serve_port }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
@@ -195,7 +195,7 @@ fn serving_route(group: FabricGroup) -> ServingRoute {
         Absent =>
           ServingRouteUnresolved {
             group: group,
-            obligation: join([fabric_group_wire(g: group) as String, ": the route's head has no LAN endpoint row in gunbc.fleet_intent_network, so there is no address to ask"], "") as NonEmptyStr,
+            obligation: join([fabric_group_wire(g: group) as String, ": the route's head has no LAN endpoint row in gunbc.fleet.fleet_intent_network, so there is no address to ask"], "") as NonEmptyStr,
           }
         Present { value: address } =>
           match serving_route_ceiling(group: group) {

@@ -581,7 +581,7 @@ data resolve_node_bounded_masked_boundary: String = "Selective-import fail-close
 // bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType
 // via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the
 // UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
-// gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.
+// gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger.
 
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
   if depth > 100 {

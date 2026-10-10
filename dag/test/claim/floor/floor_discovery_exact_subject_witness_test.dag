@@ -1,4 +1,4 @@
-module test.claim.floor_discovery_exact_subject_witness
+module test.claim.floor.floor_discovery_exact_subject_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { List, String }

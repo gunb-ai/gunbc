@@ -53,7 +53,7 @@ import v2.std.collection { Absent, Present }
 // so these are SubstrateInputsOnly and run in the hermetic floor.
 //
 // They say NOTHING about whether gunb-ai/gunbc has a merge queue. That is a fact about the world,
-// answerable only by the live read gunbc.repo_ruleset `verify` performs -- and as of 2026-09-03
+// answerable only by the live read gunbc.repo.repo_ruleset `verify` performs -- and as of 2026-09-03
 // that read returns no merge_queue rule, which is why merge_queue_terminal over the LIVE standing
 // is Unconfigured and why nothing here asserts otherwise. A witness claiming the queue works would
 // be asserting a value it never observed.
@@ -206,7 +206,7 @@ test fn w_RED_allgreen_refuses_an_entry_behind_a_red_one() -> Bool {
 }
 
 // THE DISCRIMINATOR BETWEEN THE TWO STRATEGIES, on the SAME queue. Without this, both arms could be
-// one function and the ALLGREEN row in gunbc.repo_ruleset's proposal would be carrying no meaning.
+// one function and the ALLGREEN row in gunbc.repo.repo_ruleset's proposal would be carrying no meaning.
 test fn w_headgreen_admits_exactly_where_allgreen_refuses() -> Bool {
   match grouping_admission(
     strategy: HeadGreenGrouping,

@@ -1,6 +1,6 @@
 module gunbc.fleet.printer_job_start
 
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
 import extdeps.tools.gnu_coreutils {timeout_command}
 import std.measure {second}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
@@ -27,7 +27,7 @@ import gunbc.auth.mosquitto_options_binding {
   place_mosquitto_options_privately, shred_mosquitto_options_binding, mosquitto_options_env,
 }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet_physical_inventory { PhysicalAsset }
+import gunbc.fleet.fleet_physical_inventory { PhysicalAsset }
 import product.printed_chassis.manufacturing_manifest { owned_printer_inventory }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.secret_provision_actuator { VerifiedVersionForAttempt }
@@ -41,7 +41,7 @@ import gunbc.fleet.printer_project_delivery {
   PrinterAddressLookup, PrinterAddressFound, PrinterAddressUnknown,
   PrinterAddressAmbiguous, PrinterAddressWrongClass, printer_endpoint_address,
 }
-import gunbc.fleet_printer_access {
+import gunbc.fleet.fleet_printer_access {
   PrinterCredentialResolution, PrinterCredentialProvisioned,
   PrinterCredentialObservationRefused, PrinterCredentialLocusUndeclared,
   PrinterCredentialLocusConflicted, PrinterCredentialMaterializationVanished,
@@ -72,7 +72,7 @@ import gunbc.fleet_printer_access {
 // meaning fork that lets one be hardened while the other stays wrong. What differs is only what the
 // credential is spent on, and that difference is one argv builder.
 //
-// gunbc.fleet_printer_access FORBIDS FALLING BACK TO THE OPERATOR'S FILES ON srv2 WHEN RESOLUTION
+// gunbc.fleet.fleet_printer_access FORBIDS FALLING BACK TO THE OPERATOR'S FILES ON srv2 WHEN RESOLUTION
 // REFUSES, and this module has no arm that does. Every refusal below ends the attempt.
 
 type PrinterSerialLookup
@@ -352,7 +352,7 @@ fn start_print_on_printer(
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
       PrintStartRefused { printer: p,
-        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network" }
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet.fleet_intent_network" }
     PrinterAddressAmbiguous { printer: p } =>
       PrintStartRefused { printer: p,
         cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and the start refuses rather than picking one by list order" }
@@ -367,7 +367,7 @@ fn start_print_on_printer(
       PrintStartRefused { printer: p, cause: cause }
     PrinterCredentialLocusUndeclared { printer: p } =>
       PrintStartRefused { printer: p,
-        cause: "this printer has no access-code locus declared in gunbc.fleet_printer_access, so there is no secret to observe and the start refuses rather than reading the operator's file on srv2" }
+        cause: "this printer has no access-code locus declared in gunbc.fleet.fleet_printer_access, so there is no secret to observe and the start refuses rather than reading the operator's file on srv2" }
     PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
       PrintStartRefused { printer: p,
         cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and the start refuses" }

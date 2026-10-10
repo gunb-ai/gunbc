@@ -46,7 +46,7 @@ import v2.test.compiler.pipeline.corpus {
   pipeline_corpus_match_source,
   pipeline_corpus_pick_source
 }
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+import v2.test.claim.manual.infer_ground_add { fixture_add_resolved_tree }
 
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {

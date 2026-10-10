@@ -23,17 +23,17 @@ import v2.std.text { String }
 // control that the two fixtures are genuinely findable at all, so an EMPTY answer cannot pass
 // the exclusion rows for the wrong reason.
 
-data alpha_root: List<String> = ["dag/test/fixture/fn_index_subject/alpha"]
-data beta_root: List<String> = ["dag/test/fixture/fn_index_subject/beta"]
+data alpha_root: List<String> = ["dag/test/fixture/fn_index_subject"]
+data beta_root: List<String> = ["dag/test/fixture/fn_index_subject"]
 data both_roots: List<String> = [
-  "dag/test/fixture/fn_index_subject/alpha",
-  "dag/test/fixture/fn_index_subject/beta"
+  "dag/test/fixture/fn_index_subject",
+  "dag/test/fixture/fn_index_subject"
 ]
 
 data no_files: List<String> = []
 data no_roots: List<String> = []
 
-data alpha_file: List<String> = ["dag/test/fixture/fn_index_subject/alpha/alpha.dag"]
+data alpha_file: List<String> = ["dag/test/fixture/fn_index_subject/alpha.dag"]
 
 data alpha_marker: String = "test.fixture.fn_index_subject.alpha.fn_index_subject_alpha_marker"
 data beta_marker: String = "test.fixture.fn_index_subject.beta.fn_index_subject_beta_marker"

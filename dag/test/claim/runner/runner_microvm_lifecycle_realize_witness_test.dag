@@ -5,13 +5,13 @@ import extdeps.posix.test_utility {
   PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
   ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable, contained_existence,
 }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.runner.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   TeardownStop, StoppedGracefully, StoppedByForce, StopFoundAlreadyQuiescent,
   ForceStopBoundExceeded, ForceNotAsked, ForceStopOutcomeUnobservable,
 }
-import gunbc.runner_microvm_lifecycle_realize {
+import gunbc.runner.runner_microvm_lifecycle_realize {
   StopQuiescence, CgroupQuiet, CgroupStillHolding, CgroupNotQuiet, CgroupHoldsTasks, CgroupHoldReadFailed,
   force_stop_outcome_after_ask, absence_of_containment, parent_directory_of,
 }

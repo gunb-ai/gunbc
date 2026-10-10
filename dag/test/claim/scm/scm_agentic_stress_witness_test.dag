@@ -1,4 +1,4 @@
-module test.claim.scm_agentic_stress_witness
+module test.claim.scm.scm_agentic_stress_witness_test
 
 import extdeps.pricing.object_storage {
   AwsS3,

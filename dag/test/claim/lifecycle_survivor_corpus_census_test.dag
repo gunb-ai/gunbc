@@ -1,4 +1,4 @@
-module dag.test.claim.lifecycle_survivor_corpus_census
+module test.claim.lifecycle_survivor_corpus_census_test
 
 import gunbc.lifecycle_survivor_scan {
   no_raw_lifecycle_string_survivors,

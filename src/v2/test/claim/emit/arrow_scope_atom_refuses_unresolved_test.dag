@@ -1,4 +1,4 @@
-module v2.test.emit.arrow_scope_atom_refuses_unresolved
+module v2.test.claim.emit.arrow_scope_atom_refuses_unresolved_test
 
 import v2.std.arrow_signature { declared_signature }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }

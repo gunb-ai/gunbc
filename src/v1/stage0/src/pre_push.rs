@@ -1,4 +1,4 @@
-//! Git pre-push hook — thin transport over `gunbc.githooks_pre_push_plan`.
+//! Git pre-push hook — thin transport over `gunbc.githooks.githooks_pre_push_plan`.
 //!
 //! Policy (which gates fire, trigger globs, entry/fn recipes) lives in the typed plan
 //! projected from `commit_gate_roster`. This module: stdin parse, git host effects,
@@ -211,11 +211,11 @@ fn execute_gate(
 /// authority shared with the emitted hooks, not a Rust restatement that can drift.
 ///
 /// HAND-RUST GATE explicit deferral (review 45175): counted interim growth (net +57 LOC), NOT a
-/// census shrink, receipted at `gunbc.githooks_pre_push_fmt_transport_scaffold`. These three
+/// census shrink, receipted at `gunbc.githooks.githooks_pre_push_fmt_transport_scaffold`. These three
 /// functions carry no policy — they replace an inline arm of the pre-existing `execute_gate`
 /// dispatch and exist only because `pre_push.rs` is the process-spawn boundary. They dissolve
-/// WITH this file on the lane `gunbc.githooks_pre_push_cli` names: delete that module,
-/// `gunbc.githooks_pre_push_plan`, `pre_push.rs` and the `--pre-push` argv row together when the
+/// WITH this file on the lane `gunbc.githooks.githooks_pre_push_cli` names: delete that module,
+/// `gunbc.githooks.githooks_pre_push_plan`, `pre_push.rs` and the `--pre-push` argv row together when the
 /// emitted crate partition lands (DESIGN open thread "emitted crate partition"). No new lane or
 /// seed entry point is added here.
 fn execute_cargo_fmt_gate(plan: &PlanCtx) -> Result<(), String> {

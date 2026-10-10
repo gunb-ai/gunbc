@@ -1,24 +1,24 @@
 module test.claim.roadmap.roadmap_centering_witness_test
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, ManualAcceptance, Dispatchable }
-import gunbc.roadmap_status { Unsigned, TicketLine }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap_belt { ManualReady }
-import gunbc.roadmap_launch_canary {
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, ManualAcceptance, Dispatchable }
+import gunbc.roadmap.roadmap_status { Unsigned, TicketLine }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_launch_canary {
   roadmap_launch_canary_parent_identity, roadmap_launch_canary_execution_contract,
   roadmap_launch_canary_parent_node_id, roadmap_launch_canary_ticket, roadmap_launch_canary_parent_lineage,
 }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_readiness { readiness_gap_label }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   Operator, LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchNotReady,
   launch_admission, LaunchGraphStanding, launch_graph_of_document,
 }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchBriefFields, dispatch_brief_with_centering,
 }
-import test.claim.roadmap_launch_canary_witness { canary_node, canary_doc }
+import test.claim.roadmap.roadmap_launch_canary_witness_test { canary_node, canary_doc }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

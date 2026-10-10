@@ -1,4 +1,4 @@
-module test.claim.host_allocation_conservation
+module test.claim.host.host_allocation_conservation_test
 
 // THIS MODULE PREVIOUSLY DECLARED NO IMPORTS AT ALL and resolved every name by bare whole-tree
 // lookup, which the flat namespace permits. The cost is that it could not be run under an entry
@@ -11,9 +11,9 @@ import std.types { String, Bool, Int, List }
 import std.measure { ByteSize, byte_size, hardware_thread_count_value }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim, HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   host_allocation_verdict,
   HostAllocationVerdict,
   HostAllocationConserves,
@@ -21,7 +21,7 @@ import gunbc.fleet_host_budget {
   HostAllocationUnchargeable,
   oomd_actuation_floor,
 }
-import gunbc.ci_runner_placement {
+import gunbc.ci.ci_runner_placement {
   host_usable_ram_or_refusal,
   HostUsableRamResolved,
   HostUsableRamUnresolved,
@@ -31,13 +31,13 @@ import gunbc.ci_runner_placement {
   SessionSliceNotApplicable,
   SessionSliceUnsized,
 }
-import gunbc.host_memory_observation {
+import gunbc.host.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   gunbc_ci_host_fixed_overhead_for,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded }
-import gunbc.fabric_control_plane_charge {
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded }
+import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim,
   ControlPlaneNotPlaced,
   ControlPlaneClaimResolved,
@@ -46,8 +46,8 @@ import gunbc.fabric_control_plane_charge {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WHY THIS PROJECTION LIVES IN THE WITNESS FILE AND NOT IN gunbc.fleet_host_budget. The Bool form
-// used to be a production function, and every production caller is gone -- gunbc.ci_runner_placement
+// WHY THIS PROJECTION LIVES IN THE WITNESS FILE AND NOT IN gunbc.fleet.fleet_host_budget. The Bool form
+// used to be a production function, and every production caller is gone -- gunbc.ci.ci_runner_placement
 // now consumes host_allocation_verdict directly so an unmeasured claim reports "unchargeable"
 // instead of borrowing the over-committed string. Leaving the Bool in the production module would
 // leave a convenient re-entry point for exactly the collapse that change removed: the next caller
@@ -56,7 +56,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // its only honest consumers are, and where a production import of it would be visibly wrong
 // (DESIGN 4b: a climb deletes the lower-rung production machinery it obsoletes, never the evidence).
 // These witnesses genuinely ask a Bool question -- does this arithmetic conserve -- and the two
-// refusal causes are discriminated by the pair in test.claim.runner_placement_witness, not here.
+// refusal causes are discriminated by the pair in test.claim.runner.runner_placement_witness_test, not here.
 fn witness_allocation_conserves(
   host: ByteSize,
   overhead: ByteSize,
@@ -284,7 +284,7 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 
 // THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because
 // this wall answers a question about RAM and the committed width is a minimum over more axes than
-// RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle
+// RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner.runner_lifecycle
 // runner_width_disk_preflight — so memory admission and committed width both read 7; the control
 // stays on the memory axis where it belongs.
 
@@ -310,7 +310,7 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // srv4 COMMITS THE CPU WIDTH LIKE srv3, AND MEMORY IS NO LONGER THE BINDING AXIS ON EITHER
 // (2026-08-22 DIMM upgrade, 2026-08-23 CPU axis). Memory admits 29 and CPU admits 21, so both
 // commit 21; before the upgrade memory admitted 6 and bound the commitment. The retired disk
-// row-pin still does not lower allocation. Disk binding is apply-time via gunbc.runner_lifecycle
+// row-pin still does not lower allocation. Disk binding is apply-time via gunbc.runner.runner_lifecycle
 // runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained
 // at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses
 // rather than falling back to a lower width.
@@ -574,7 +574,7 @@ test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
 
 // WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist
 // yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the
-// 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note
+// 2026-08-17 16GiB ruling), while gunbc.runner.runner_slot_allocation gunbc_runner_slot_width_ruling_note
 // describes those numbers as falling out of the conservation arithmetic — 'neither number is
 // authored here as a target; both are the largest width the wall will pass'. That is a claim about
 // a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in
@@ -716,7 +716,7 @@ test fn an_unsized_host_reports_no_discriminator() -> Bool {
 // DELETED HERE, AND THE DELETION IS THE CLIMB RATHER THAN A LOSS OF COVERAGE (2026-09-18). That
 // witness compared this module's derivation against host_memory_admitted_width, whose envelope was
 // one authored literal per host; its entire content was that somebody had kept those literals in
-// step with the machines by hand. gunbc.runner_slot_allocation host_runner_memory_envelope_resolution
+// step with the machines by hand. gunbc.runner.runner_slot_allocation host_runner_memory_envelope_resolution
 // now DERIVES the envelope from the same five authorities, so both sides of that comparison read the
 // same inputs and the assertion collapses to measure() == measure() -- the change detector DESIGN 5
 // names, which is worse than absent because it would be cited as coverage.
@@ -746,7 +746,7 @@ test fn the_srv2_width_derivation_is_unestablished() -> Bool {
 // everyone else and it is a split about DIMM population, not about residency.
 // srv2's AUTHORED 5 IS A HELD ALLOCATION, NOT A PROVEN MEMORY ADMISSION, and this row must not be
 // read as re-proving it. The derivation cannot run on srv2 at all, so the only honest statement
-// about its memory axis is that it is unestablished; the 5 that gunbc.runner_slot_allocation still
+// about its memory axis is that it is unestablished; the 5 that gunbc.runner.runner_slot_allocation still
 // carries is what the host is currently allocated while it is re-grounded, and nothing here
 // establishes it as the largest width the wall would pass.
 // THE 25 AND 29 THIS ROW PINNED ARE DELETED, AND THEY ARE A RECEIPT FOR THE RULE THE PARAGRAPH
@@ -882,7 +882,7 @@ fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSe
 // The positive control beside it is what stops the refusal from being satisfied by refusing always.
 // THE ROOMY ARM ASKS THE SEARCH TO REPRODUCE THE PRODUCTION WIDTH, not to match a number typed in
 // beside it. Two independent routes to the same width -- a linear search against the conservation
-// wall, and gunbc.runner_slot_allocation host_memory_admitted_width -- agree or this reds, which is
+// wall, and gunbc.runner.runner_slot_allocation host_memory_admitted_width -- agree or this reds, which is
 // exactly the property "width and verdict charge a host the same". It compared against
 // derived_width_with_charge until that stopped being a complete derivation: it subtracts neither
 // the served-deployment slices nor the shakedown slot's charge, so on srv1 it answered 15 while the
@@ -1052,7 +1052,7 @@ test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_on
 }
 
 // THE ZERO-MEMORY SLOT SHAPE, AUTHORED RATHER THAN ARGUED. This pair is the executing evidence for a
-// refusal that used to be carried by accident: gunbc.fleet_host_budget declared_runner_count_for
+// refusal that used to be carried by accident: gunbc.fleet.fleet_host_budget declared_runner_count_for
 // divided the declared slice cap by the per-slot cap, and measure_fit_count_floor answers ZERO when
 // its divisor is zero, so a zero-memory slot shape reached a zero width through arithmetic written
 // for another purpose entirely. Deleting that round trip -- correct, since slots * k / k returns its

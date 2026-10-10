@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_posix_cutover_witness_test
 import std.types { String, Bool }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.fleet_probe_identity_observe {
+import gunbc.fleet.fleet_probe_identity_observe {
   passwd_home_observation,
   passwd_home_of,
   passwd_home_receipt_text,
@@ -13,7 +13,7 @@ import gunbc.fleet_probe_identity_observe {
   PasswdHomeAbsent,
   PasswdHomeRefused,
 }
-import gunbc.fleet_host_key_enrollment {
+import gunbc.fleet.fleet_host_key_enrollment {
   authorized_keys_admits_line,
   pinned_config_content,
   PinConfigAlreadyPinned,

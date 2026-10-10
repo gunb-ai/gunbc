@@ -188,7 +188,7 @@ data typed_module_interface_body_dual_field_dissolution_trigger: DissolutionCond
 // costing an out-of-band consumer, not a production one: a demand oracle built to score resolution
 // producers read `items` and could not tell an abandoned module from a genuine single-ask module,
 // which anti-correlated its error with the defect it was built to find and killed it as an
-// instrument. That receipt is recorded in `gunbc.v1_maintenance_standing`
+// instrument. That receipt is recorded in `gunbc.v1.v1_maintenance_standing`
 // `v1_maintenance_typecheck_progress_admission_note`. A reader that treated abandoned as empty and
 // was WRONG to would be this same conflation moved one layer out; none was found, and the partition
 // above is the evidence for that claim rather than an assurance.

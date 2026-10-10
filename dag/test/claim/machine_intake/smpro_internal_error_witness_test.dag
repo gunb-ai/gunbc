@@ -15,17 +15,17 @@ import extdeps.ampere.smpro_register {
   SmproRegister, smpro_manufacturer_id_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg,
 }
-import gunbc.machine_intake_mtcollins1_smpro_error_reading {
+import gunbc.machine_intake.mtcollins1_smpro_error_reading {
   SmproErrorWindow,
   mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
 }
-import gunbc.machine_intake_ampere_smpro_observation {
+import gunbc.machine_intake.ampere_smpro_observation {
   SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_dossier_text,
   SmproPassObservation, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake_mtcollins1_power_on_account {
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence,
   HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
@@ -153,7 +153,7 @@ test fn red_info_hi_and_lo_swapped_is_undefined() -> Bool {
   }
 }
 
-// ── the real capture (gunbc.machine_intake_mtcollins1_smpro_error_reading), decoded ─────────────
+// ── the real capture (gunbc.machine_intake.mtcollins1_smpro_error_reading), decoded ─────────────
 
 fn window_at(n: Int) -> SmproErrorWindow? {
   mtcollins1_smpro_error_windows(reads: mtcollins1_smpro_error_reads_20261003).skip(n: n).first()
@@ -250,7 +250,7 @@ fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
   ]
 }
 
-// WHAT A RECORD MEANS FOR THE ATTEMPT is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account):
+// WHAT A RECORD MEANS FOR THE ATTEMPT is the power-on account's (gunbc.machine_intake.mtcollins1_power_on_account):
 // a gated, pending record is a stated error and a degradation; an ungated one is an anomaly and an
 // open question, never an error (docs/plans/power-on-sequence-model.md, law 8).
 fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {

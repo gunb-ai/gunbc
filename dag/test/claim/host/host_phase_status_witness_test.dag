@@ -1,11 +1,11 @@
-module test.claim.host_phase_status
+module test.claim.host.host_phase_status_witness_test
 
-import gunbc.host_standup { PhaseDisposition }
+import gunbc.host.host_standup { PhaseDisposition }
 import v2.std.live_tree { LiveTreeDisposition }
 import std.upsert_decision { Conflict, Inaccessible, UnknownRefused }
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
-import gunbc.fleet_reach_endpoint { fleet_reach_probe_targets }
-import gunbc.host_assimilation_program {
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.fleet.fleet_reach_endpoint { fleet_reach_probe_targets }
+import gunbc.host.host_assimilation_program {
   assimilation_program_for,
   fleet_participation_canonical_roster,
   fleet_participation_in_canonical_roster,
@@ -13,9 +13,9 @@ import gunbc.host_assimilation_program {
   step_in_program,
   step_serves_participation,
 }
-import gunbc.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot }
-import gunbc.fleet_host_identity { operator_host_183527 }
-import gunbc.fleet_enrollment {
+import gunbc.fleet.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot }
+import gunbc.fleet.fleet_host_identity { operator_host_183527 }
+import gunbc.fleet.fleet_enrollment {
   enrollment_for_host,
   fleet_enrollments,
   CiRunnerParticipation,
@@ -25,8 +25,8 @@ import gunbc.fleet_enrollment {
   ci_runner_enrollment_participation,
   inference_serving_enrollment_participation,
 }
-import gunbc.host_reach_identity_probe { host_reach_identity_probe_receipt_for }
-import gunbc.host_phase_status {
+import gunbc.host.host_reach_identity_probe { host_reach_identity_probe_receipt_for }
+import gunbc.host.host_phase_status {
   HostPhaseCell,
   HostPhaseCellStatus,
   fleet_subsumption_hosts,
@@ -46,15 +46,15 @@ import gunbc.host_phase_status {
   host_phase_verdict_gate_accepts,
   observation_verdict_eq,
 }
-import gunbc.fleet_enrollment { fleet_enrollments }
-import gunbc.host_standup {
+import gunbc.fleet.fleet_enrollment { fleet_enrollments }
+import gunbc.host.host_standup {
   DeclaredGap,
   ModeledCompose,
   PhaseDisposition,
   host_standup_gap_phase_count,
   host_standup_spine,
 }
-import gunbc.host_standup_assimilation_deduction {
+import gunbc.host.host_standup_assimilation_deduction {
   deduce_os_install_actuation_verdict,
   srv3_post_install_lease_observation,
   srv3_pre_install_lease_observation,
@@ -73,7 +73,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data modeled_phase_fixture: PhaseDisposition = ModeledCompose {
   authorities: [
     DeclarationRef {
-      module_path: "gunbc.host_phase_status",
+      module_path: "gunbc.host.host_phase_status",
       decl_name: "host_phase_verdict_from",
       field: WholeDeclaration,
     },

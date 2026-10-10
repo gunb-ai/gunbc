@@ -4,18 +4,18 @@ import std.types { Bool, NonEmptyStr, String }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
 import product.fabric.sanitation { CellId }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_executor_class { ExecutorSanctioned, ExecutorUnclassified, fleet_cell_sanction }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, srv3_fabric_first_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_executor_class { ExecutorSanctioned, ExecutorUnclassified, fleet_cell_sanction }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv3_fabric_first_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
 import std.measure { byte_size_count }
-import gunbc.build_cache_instance { runner_slot_instance_name }
-import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
+import gunbc.runner.runner_microvm_cell_readiness {
   CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, CellNeverSettled,
   InFlightAttempt, MicroVmWorkload, GitHubRunnerWorkload, WorkspaceWorkload,
   bind_attempt_to_cell, AttemptBoundToCell,
 }
-import gunbc.runner_microvm_ci_admission {
+import gunbc.runner.runner_microvm_ci_admission {
   microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
 }
 

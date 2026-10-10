@@ -1,14 +1,14 @@
-module v2.test.parse.typescript
+module v2.test.claim.parse.typescript
 
 import v2.std.verification { EqualsClaim, Integration, ManualAnchorAbsent, TestClaim, TestClassification, Tier1, manual_claim_anchor }
-import test.claim.parse_test_typescript_grammar { ts_parse_accepted, ts_parse_bool_atom, ts_tokenize_and_parse_source }
+import v2.test.claim.parse.parse_test_typescript_grammar_test { ts_parse_accepted, ts_parse_bool_atom, ts_tokenize_and_parse_source }
 
 data ts_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
 
 data ts_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 // THE TYPESCRIPT GRAMMAR CLAIMS THAT ARE RED ON MAIN, held here ungated while they are diagnosed
-// (v2.test.parse census, gunbc#13372, phase 4 item D). Their green siblings are gated in test.claim.parse_test_typescript_grammar.
+// (v2.test.claim.parse census, gunbc#13372, phase 4 item D). Their green siblings are gated in v2.test.claim.parse.parse_test_typescript_grammar_test.
 // These rows are data TestClaims, which no runner executes; the diagnosis PR, gunbc#13426, converts or frontiers them.
 
 data claim_ts_union_task_status_parses: TestClaim = EqualsClaim {

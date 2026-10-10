@@ -1,4 +1,4 @@
-module v2.test.self_host.compiler_closure_ingest_boundary_witness
+module v2.test.claim.self_host.compiler_closure_ingest_boundary_witness_test
 
 import v2.compiler.source_authority {
   SourceRootCoverageComplete,
@@ -8,7 +8,7 @@ import v2.compiler.source_authority {
 }
 import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   host_source_root_closure_refs,
   host_source_root_ingest_coverage_receipt
 }

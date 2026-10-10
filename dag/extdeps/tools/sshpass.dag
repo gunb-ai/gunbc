@@ -3,11 +3,11 @@ module extdeps.tools.sshpass
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_sshpass }
+import extdeps.package_managers.apt { apt_bin_dir, package_sshpass }
 import extdeps.exec.command { sshpass_authority, sshpass_program }
 
 // THE TOOL ROW FOR SSHPASS, and its one job is to make the binary this repository EXECS and the
-// binary gunbc.host_cli_dependency PROBES FOR the same declaration. Everything that runs sshpass
+// binary gunbc.host.host_cli_dependency PROBES FOR the same declaration. Everything that runs sshpass
 // mints its program word from sshpass_program (extdeps.exec.command, and the fixed argv of
 // ssh.PasswordFileSsh / ssh.PasswordSsh); the enrollment observes PATH for sshpass_cli_tool.program,
 // which binds that same row -- so the two cannot drift apart into a probe that passes while the
@@ -19,7 +19,7 @@ import extdeps.exec.command { sshpass_authority, sshpass_program }
 // builders call argv_command from there. So exec.command cannot reach CliTool at all, in either
 // direction, and the attempt closed a real cycle (measured: `circular dependency detected:
 // extdeps.exec.command -> extdeps.tools -> extdeps.tools.gnu_coreutils -> extdeps.tools.npm ->
-// extdeps.tools.sshpass -> gunbc.host_cli_dependency`). §4's one structural law on the import
+// extdeps.tools.sshpass -> gunbc.host.host_cli_dependency`). §4's one structural law on the import
 // graph is acyclicity, so the edge runs the only way it can: this module imports the name and the
 // authority from exec.command rather than exec.command importing the row from here.
 //

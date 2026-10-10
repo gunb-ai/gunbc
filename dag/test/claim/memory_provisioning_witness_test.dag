@@ -36,7 +36,7 @@ import extdeps.memory.types {
   dram_generation_ddr5,
   MonolithicDie,
 }
-import gunbc.runner_shape_census {
+import gunbc.runner.runner_shape_census {
   NoShapesForProviderArchitecture,
   NonIntegralRatioInSizes,
   UnitLabelNotUniformAcrossSizes,

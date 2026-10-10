@@ -21,7 +21,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // is an independently versioned upstream with its own module authority and cited row; adding one is
 // a new file, never an edit here.
 //
-// WHAT THIS REPLACES. `gunbc.fleet_intent` carried type ContainerRuntime = Docker | Podman | Gvisor
+// WHAT THIS REPLACES. `gunbc.fleet.fleet_intent` carried type ContainerRuntime = Docker | Podman | Gvisor
 // | Ubicloud | GcloudRun fusing three unrelated concepts into one enum: container engines (Docker,
 // Podman), a sandboxing runtime whose point is the isolation guarantee it adds (gVisor), and two
 // companies that rent you a machine (Ubicloud, Google Cloud Run). Widening it was the only way to

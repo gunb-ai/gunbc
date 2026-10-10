@@ -1,4 +1,4 @@
-module gunbc.host_kernel_boot_selection
+module gunbc.host.host_kernel_boot_selection
 
 import std.types { Bool, String }
 import std.algebra { trim }

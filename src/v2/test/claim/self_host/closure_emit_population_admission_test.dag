@@ -1,4 +1,4 @@
-module v2.test.self_host.closure_emit_population_admission
+module v2.test.claim.self_host.closure_emit_population_admission_test
 
 import std.types { List }
 import v2.std.node { symbol_lexeme }
@@ -17,7 +17,7 @@ import v2.compiler.source_authority {
   SourceRootProvenanceCoverageReceipt
 }
 import v2.std.algebra { Empty }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   host_source_root_closure_refs,
   host_source_root_ingest_coverage_receipt
 }

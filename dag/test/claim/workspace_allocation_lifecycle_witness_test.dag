@@ -1,4 +1,4 @@
-module gunbc.test.claim.workspace_allocation_lifecycle_witness_test
+module test.claim.workspace_allocation_lifecycle_witness_test
 
 import std.types { Bool, NonEmptyStr, String }
 import std.durable_compare_and_set { ExpectSlotAbsent }

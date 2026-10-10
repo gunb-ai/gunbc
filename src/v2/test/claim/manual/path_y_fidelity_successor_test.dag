@@ -1,4 +1,4 @@
-module v2.test.manual.path_y_fidelity_successor
+module v2.test.claim.manual.path_y_fidelity_successor_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

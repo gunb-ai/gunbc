@@ -3,7 +3,7 @@ module test.claim.typed_remote_file_converge_witness_test
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.file_access { FileTreeScope }
 import std.materialization_ladder { string_list_contains }
-import gunbc.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
 }

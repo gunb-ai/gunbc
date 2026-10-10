@@ -149,7 +149,7 @@ fn rm_force_command(path: String) -> ArgvCommand {
 }
 
 // THE SIBLING THE ANNOTATION ABOVE PROMISED, MINTED ONLY WHEN A CALLER ACTUALLY NEEDED IT AND
-// MEASURED RATHER THAN ASSUMED. gunbc.runner_guest_image's tree staging called rm_force_command on
+// MEASURED RATHER THAN ASSUMED. gunbc.runner.runner_guest_image's tree staging called rm_force_command on
 // a DIRECTORY it rebuilds each run; -f refused, exactly as the row above says it must, and the
 // build failed on the second run on any host (srv2, fleet-converge run 33993440148: "rm: cannot
 // remove '.../tree/ubuntu-24.04-aarch64-runner-2.336.0': Is a directory"). The first run on a
@@ -196,7 +196,7 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
 // link -- a witness pinning the argv stays green over an image with no link. With -T that case is a
 // nonzero exit, which is what makes the builder's claim ("this path is now a link") true whenever it
 // returns success. The target is spelled as given and never resolved: a symlink's target is text the
-// kernel reads at open time, which is the whole reason gunbc.runner_guest_image can point a file
+// kernel reads at open time, which is the whole reason gunbc.runner.runner_guest_image can point a file
 // inside an image at a path that exists only once that image has booted.
 fn ln_program() -> ProgramIdentity = uncataloged_program(invocation: "ln")
 data coreutils_ln_symbolic_force_exact_destination_flags: NonEmptyStr = "-sfnT"

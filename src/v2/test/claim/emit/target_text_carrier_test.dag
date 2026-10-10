@@ -1,4 +1,4 @@
-module v2.test.emit.target_text_carrier
+module v2.test.claim.emit.target_text_carrier_test
 
 import v2.std.compilers.target_model {
   TargetText,

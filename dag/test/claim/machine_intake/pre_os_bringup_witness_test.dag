@@ -13,7 +13,7 @@ import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemRestart,
 }
-import gunbc.machine_intake_pre_os_observation_capabilities {
+import gunbc.machine_intake.pre_os_observation_capabilities {
   OemDecodeControllerDeclaredUnknown,
   OemDecodeNotProbed,
   OemDecodeRenderedUncited,
@@ -28,7 +28,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   WebEventLogDecodeObservation,
   oem_sel_decode_capability_of_web_log,
 }
-import gunbc.machine_intake_pre_os_bringup_attempt {
+import gunbc.machine_intake.pre_os_bringup_attempt {
   BmcControllerReset,
   ChassisPowerCycle,
   CollectorNotProven,
@@ -57,7 +57,7 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   power_actuation_outcome,
   power_actuation_request,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   BootRestart,
   BringupUndetermined,
   FirmwareProgressObserved,
@@ -88,7 +88,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   TrainingRefusedByFirmware,
   pre_os_bringup_verdict,
 }
-import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   check_bounded_terminal,
   check_collectors_before_actuation,
   check_console_silence_is_not_a_terminal,

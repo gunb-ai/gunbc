@@ -1,4 +1,4 @@
-module v2.test.manual.inhabitant_neutralization
+module v2.test.claim.manual.inhabitant_neutralization_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -22,7 +22,7 @@ import v2.extdeps.languages.python {
   python_source_text,
   python_target_model
 }
-import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
+import v2.test.claim.manual.python_grammar_claim_test { python_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization {
   inhabitant_std_projection_symbol,

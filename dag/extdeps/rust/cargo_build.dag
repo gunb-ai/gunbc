@@ -1,4 +1,4 @@
-module extdeps.cargo_build
+module extdeps.rust.cargo_build
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
@@ -263,11 +263,11 @@ service cargo.Build {
 }
 
 // `cargo --version` prints ONE line naming the release, the short commit hash and the commit date.
-// It lives HERE rather than in extdeps.cargo because this module is where cargo's COMMAND
-// INVOCATIONS are modelled -- cargo.Build binds argv and shell transports -- while extdeps.cargo
+// It lives HERE rather than in extdeps.rust.cargo because this module is where cargo's COMMAND
+// INVOCATIONS are modelled -- cargo.Build binds argv and shell transports -- while extdeps.rust.cargo
 // owns the manifest vocabulary. A self-report is an invocation, not a manifest fact.
 //
-// It is bound separately from the rustc reading beside it in extdeps.rustc: the two binaries are
+// It is bound separately from the rustc reading beside it in extdeps.rust.rustc: the two binaries are
 // separately versioned, and a toolchain can carry a cargo that a rustc release line does not name.
 service cargo.Identity {
   operation Version {

@@ -1,4 +1,4 @@
-module test.claim.fabric_terminal_contract_witness
+module test.claim.fabric.fabric_terminal_contract_witness_test
 
 import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_for }
 import std.types { NonEmptyStr, String, Bool, Int }

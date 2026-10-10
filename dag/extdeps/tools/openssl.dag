@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_openssl }
+import extdeps.package_managers.apt { apt_bin_dir, package_openssl }
 import extdeps.numeric.base16 { base16_decode_lower }
 import std.optional { Absent, Present }
 import std.algebra { trim }
@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 fn openssl_program() -> ProgramIdentity = cataloged_program(invocation: "openssl")
 
 // ENROLLED THE WAY extdeps.tools.sshpass IS: the binary this module execs and the binary
-// gunbc.host_cli_dependency probes for are one declaration, so a probe cannot pass while the exec
+// gunbc.host.host_cli_dependency probes for are one declaration, so a probe cannot pass while the exec
 // fails. min_version is none: `dgst -sign -hex` is present in every OpenSSL this fleet runs (1.1 and
 // 3.x), and a floor nothing measured would be an invented constraint.
 data openssl_cli_tool: CliTool = CliTool {

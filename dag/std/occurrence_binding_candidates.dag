@@ -59,7 +59,7 @@ import std.occurrence_binding_resolve {
 // of an accepted P1 decision. It never folds cardinality itself and never treats an authored import
 // list as visibility evidence. ROADMAP lane: namespace-reference-derived-closure.
 
-data occurrence_binding_candidates_roadmap_anchor: String = "gunbc.roadmap_authority namespace-reference-derived-closure"
+data occurrence_binding_candidates_roadmap_anchor: String = "gunbc.roadmap.roadmap_authority namespace-reference-derived-closure"
 
 // The pre-strip P1 exposure predicate (git show
 // ba4d1f22671^:dag/std/occurrence_binding_resolve.dag, declaration_exposed_on_reference_chain)

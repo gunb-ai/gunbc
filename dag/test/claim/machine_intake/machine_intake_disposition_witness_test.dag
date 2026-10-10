@@ -1,11 +1,11 @@
-module test.claim.machine_intake_disposition_witness_test
+module test.claim.machine_intake.machine_intake_disposition_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value, content_hash_equal }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   SubjectCurrent,
   SubjectStale,
   StaleAxis,
@@ -24,7 +24,7 @@ import gunbc.machine_intake_subject {
   qualification_subject_of,
 }
 import gunbc.deployment_risk { ProdRisk, TestRisk }
-import gunbc.machine_intake_phase {
+import gunbc.machine_intake.phase {
   AcceptanceSoak,
   Arrival,
   BmcAccess,
@@ -46,7 +46,7 @@ import gunbc.machine_intake_phase {
   provisioning_phases_all,
   placement_phases_all,
 }
-import gunbc.machine_intake_receipt {
+import gunbc.machine_intake.receipt {
   ArtifactDigestMismatch,
   BoardSerialMismatch,
   BootAttestationRefusal,
@@ -88,7 +88,7 @@ import gunbc.machine_intake_receipt {
   intake_receipt_structural_fingerprint,
   validate_intake_receipt_ledger,
 }
-import gunbc.machine_intake_disposition {
+import gunbc.machine_intake.disposition {
   Admitted,
   FleetAdmissible,
   FleetNotAdmissible,

@@ -1,4 +1,4 @@
-module v2.test.long.emit_host_classical_not_ingested_equals_eval
+module v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval_test
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import std.types { List }

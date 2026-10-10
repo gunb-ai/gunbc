@@ -1,4 +1,4 @@
-module test.claim.parse_test_kotlin_grammar
+module v2.test.claim.parse.parse_test_kotlin_grammar_test
 
 data kotlin_extended_fn_source: String = "fun choose(x: Int): Int { val y: Int = x + 1; if (y > 0) { return y }; return 0 }"
 
@@ -24,7 +24,7 @@ fn kotlin_tokenize_and_parse() -> Outcome<ParseTree> {
 // Kotlin lex/grammar accepts an extended function with val, if, return, and binary expressions.
 // Formerly the data row `claim_kotlin_extended_function_parses: TestClaim = EqualsClaim`, which no runner executes (the
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
-// v2.test.parse census (gunbc#13372).
+// v2.test.claim.parse census (gunbc#13372).
 test fn claim_kotlin_extended_function_parses_holds() -> Bool {
   (kotlin_parse_accepted(out: kotlin_tokenize_and_parse())) == true
 }

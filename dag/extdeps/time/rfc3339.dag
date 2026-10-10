@@ -36,7 +36,7 @@ data rfc3339_utc_designator: String = "Z"
 // That is not a rounding error, it is a reversal: an older lowercase stamp sorts as newer. A
 // consumer using this to decide whether a snapshot pre-dates an observation would flip a coverage
 // obligation into a finding about somebody else's repository - precisely the confusion the
-// three-valued standing in gunbc.runner_label_resolution exists to prevent.
+// three-valued standing in gunbc.runner.runner_label_resolution exists to prevent.
 //
 // SECTION 5.1's PRECONDITION IS "expressed using the same string", AND CASE IS PART OF THE STRING.
 // The comparator requires the canonical uppercase spelling of BOTH designators and refuses anything

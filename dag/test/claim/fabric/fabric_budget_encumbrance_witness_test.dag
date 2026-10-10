@@ -1,4 +1,4 @@
-module test.claim.fabric_budget_encumbrance_witness
+module test.claim.fabric.fabric_budget_encumbrance_witness_test
 
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { money_amount_micro, money_amount_micro_count }

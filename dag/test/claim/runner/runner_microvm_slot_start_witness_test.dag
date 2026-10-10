@@ -3,7 +3,7 @@ module test.claim.runner.runner_microvm_slot_start_witness_test
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { second }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.runner_microvm_slot_start {
+import gunbc.runner.runner_microvm_slot_start {
   MicrovmSlotStartRun, SlotStartWrongHost, SlotStartRefused, SlotStartInvocationUnread,
   SlotStartAlreadyActive, SlotStartInvocationUnchanged, UnitPropertyRead, UnitPropertyUnread,
   SlotStartStillActiveAtBound, SlotStartCompleted,

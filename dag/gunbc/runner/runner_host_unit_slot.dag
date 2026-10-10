@@ -7,33 +7,33 @@ import extdeps.github.actions_runner {
   actions_runner_release_2_337_0, actions_runner_base_dir, actions_runner_listener_relative_path,
   actions_runner_listener_run_verb,
 }
-import gunbc.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.host.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause,
   systemd_run_transient_wait_unit_command,
 }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
+import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
 import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
-// gunbc.runner_jit_mint plans a JIT registration over a slot; a microVM cell is one realization of
+// gunbc.runner.runner_jit_mint plans a JIT registration over a slot; a microVM cell is one realization of
 // a slot and this is the other. The mint is not forked per binding (DESIGN §3: transport is
 // realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
 // everything else over the sum both bindings inhabit.
 //
-// The host is admitted only as a ControlledHost (gunbc.host_control_route): a host the fleet cannot
+// The host is admitted only as a ControlledHost (gunbc.host.host_control_route): a host the fleet cannot
 // recover without its OS -- through its BMC or its provider's API -- has no slot, and the refusal
 // carries the route's own refusal unchanged rather than a re-coined cause. No mtcollins1_* module is
-// named here; mtcollins1 reaches this fold through its gunbc.managed_host row and nothing else.
+// named here; mtcollins1 reaches this fold through its gunbc.host.managed_host row and nothing else.
 //
 // The unit, its systemd-run command (the full typed ArgvCommand -- program head included, so a
 // launch seam reading this field gets exactly the invocation the route stages, not a headless
 // tail it would have to re-head) and its labels are the qualification route's own derivations
-// (gunbc.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_command /
+// (gunbc.runner.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_command /
 // ephemeral_slot_labels), so the slot the mint registers is by construction the slot the route
 // stages -- one spelling of the attempt label, not two.
 //
@@ -61,7 +61,7 @@ type HostUnitSlotStanding
   = HostUnitSlotBound { slot: HostUnitSlot }
   | HostUnitSlotRefused { refusal: HostUnitSlotRefusal }
 
-// THE SAME RELEASE THE microVM GUEST RUNS (gunbc.runner_microvm), so the two bindings of one mint
+// THE SAME RELEASE THE microVM GUEST RUNS (gunbc.runner.runner_microvm), so the two bindings of one mint
 // run one listener whose environment contract is the one cited in extdeps.github.actions_runner.
 data host_unit_slot_runner_release: ActionsRunnerRelease = actions_runner_release_2_337_0
 
@@ -70,7 +70,7 @@ fn host_unit_slot_listener_argv() -> List<String> {
 }
 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
-// group restricted to any other (gunbc.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
+// group restricted to any other (gunbc.runner.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
 fn host_unit_slot_for(host: HostControlStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match host {
@@ -106,7 +106,7 @@ fn host_unit_slot_for(host: HostControlStanding, attempt: NonEmptyStr, workflow:
 // THE LANE A PROVIDER GUEST SERVES, as the one label a workflow names to reach it. A slot on a guest
 // rebuilt per job answers to exactly three labels: the provenance label every self-hosted runner
 // carries, this lane label, and its own registration name. It does NOT answer to the fleet's slot
-// class labels (gunbc.runner_slot_desired, which today include gunbc-heavy) or to the host label,
+// class labels (gunbc.runner.runner_slot_desired, which today include gunbc-heavy) or to the host label,
 // because those are what production lanes target, and a guest registered under them would take a
 // required job onto a host whose egress is uncontained
 // (gunbc.rung_drop.provider_guest_ci_egress_unfiltered). A lane reaches these guests only by naming
@@ -120,7 +120,7 @@ fn provider_guest_slot_unit(incarnation: ProviderGuestIncarnation) -> NonEmptySt
 // THE SLOT ON ONE INCARNATION, for the attempt that incarnation was rebuilt for. It takes the
 // incarnation rather than a controlled host, so a guest that was not rebuilt for this attempt has no
 // slot to register. The unit carries no resource properties: the whole guest is the attempt's, and
-// the fleet's slot bounds (gunbc.runner_slot_desired) are sized for shared Altra hosts, not for it.
+// the fleet's slot bounds (gunbc.runner.runner_slot_desired) are sized for shared Altra hosts, not for it.
 fn provider_guest_slot_for(incarnation: ProviderGuestIncarnation, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
     Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }

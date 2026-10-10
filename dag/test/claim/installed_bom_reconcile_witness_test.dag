@@ -62,7 +62,7 @@ import product.inventory {
   lot_receipt_is_recorded,
   stock_position_label,
 }
-import gunbc.fleet_physical_inventory {
+import gunbc.fleet.fleet_physical_inventory {
   dimm_lot_64gib_32x,
   dimm_lot_64gib_32x_identity,
   dimm_lot_64gib_32x_intended_allocation,
@@ -124,7 +124,7 @@ test fn srv1_live_population_confirms_the_expectation() -> Bool {
 // case: eight-of-one against eight-of-another, count identical, part axis solely responsible.
 // The expectation stays deliberately WRONG (it names the Hynix part srv3 no longer carries)
 // because this witness's subject is the refusal, not the fleet's current correctness -- the
-// matching expectation lives in gunbc.fleet_physical_inventory and is checked there.
+// matching expectation lives in gunbc.fleet.fleet_physical_inventory and is checked there.
 test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
@@ -457,7 +457,7 @@ test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bo
 //
 // WHAT REMAINS UNRECORDED IS BOUNDED AND NOT A LAG BY OVERSIGHT: QuantityInstalled needs a
 // PhysicalAssetIdentity per stick and the serials were observed but not captured, and srv2's eight
-// have no established disposition. Both are stated as obligations in gunbc.fleet_physical_inventory
+// have no established disposition. Both are stated as obligations in gunbc.fleet.fleet_physical_inventory
 // beside the lot. This claim measures THE LEDGER, never the fleet - the installed answer lives in
 // fleet_dimm_verdicts, and reading an allocation ledger for a physical-installation fact is the
 // authority-substitution failure DESIGN names.

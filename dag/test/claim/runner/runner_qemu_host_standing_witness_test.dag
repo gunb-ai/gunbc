@@ -6,8 +6,8 @@ import std.algebra { Cons }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
-import gunbc.runner_microvm_host_ready { KvmDeviceWritable }
-import gunbc.runner_qemu_host_standing {
+import gunbc.runner.runner_microvm_host_ready { KvmDeviceWritable }
+import gunbc.runner.runner_qemu_host_standing {
   qemu_binary_standing_of, QemuAbsent, QemuPinnedBuild, QemuOtherBuild,
   QemuPresence, QemuNotExecutable, QemuExecutable, QemuBannerNotRead, QemuBannerRead, qemu_banner_may_be_read,
   qemu_host_standing_text, QemuHostStanding, FirmwareFileUnreadable, FirmwareFileMatches,
@@ -16,10 +16,10 @@ import gunbc.runner_qemu_host_standing {
 import extdeps.tools.ldd { ldd_reading_of }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import extdeps.exec.command { argv_words }
-import gunbc.verified_archive_install { staged_archive_fetch_commands, staged_archive_install_commands }
+import gunbc.host.verified_archive_install { staged_archive_fetch_commands, staged_archive_install_commands }
 import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_ports_package_url }
 import extdeps.firmware.tianocore_edk2.aavmf { aavmf_2024_02_ubuntu_noble }
-import gunbc.runner_qemu_toolchain {
+import gunbc.runner.runner_qemu_toolchain {
   qemu_toolchain_archives, qemu_toolchain_archives_of, qemu_toolchain_staged_archive, qemu_toolchain_location_of, qemu_toolchain_library_path, qemu_toolchain_rooted, qemu_toolchain_recipe_identity, qemu_toolchain_location,
 }
 
@@ -109,7 +109,7 @@ fn pinned_standing_with(libraries_output: String) -> QemuHostStanding {
   pinned_standing_on(host: HostnameShortCaptured { value: "srv1" }, libraries_output: libraries_output)
 }
 
-// THROUGH THE OBSERVER'S OWN CONSTRUCTION (gunbc.runner_qemu_host_standing qemu_host_standing_of,
+// THROUGH THE OBSERVER'S OWN CONSTRUCTION (gunbc.runner.runner_qemu_host_standing qemu_host_standing_of,
 // the projection observe_qemu_host_standing_wet returns): only the reads are supplied.
 fn pinned_standing_on(host: HostnameShortCapture, libraries_output: String) -> QemuHostStanding {
   qemu_host_standing_of(

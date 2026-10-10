@@ -1,9 +1,9 @@
-module gunbc.build_cache_unit
+module gunbc.build_cache.build_cache_unit
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import gunbc.build_cache_instance { BuildCacheInstance }
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SliceUnitFile,
   SystemdServiceDirective, SystemdDropIn, DropInUnitSection,
@@ -87,7 +87,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // a sibling line, yielding a trailing BLANK line -- the write site concatenates rather than joins,
 // which is why the bytes hold.
 //
-// The receipt: gunbc.host_effect_realize build_cache_ensure_daemon_body was rendered on this tree
+// The receipt: gunbc.host.host_effect_realize build_cache_ensure_daemon_body was rendered on this tree
 // and on origin/main with one compiler, for the CI instance (absent capacity) and the session
 // instance (present capacity), and the two bodies are byte-identical -- with a control confirming
 // the two trees genuinely differ, because two runs that silently measure the same tree agree for a
@@ -153,7 +153,7 @@ fn build_cache_unit_name(instance: BuildCacheInstance) -> NonEmptyStr {
 // and START path only. It does not prevent a runner already running from outliving a stopped cache
 // unit, and it does not make a bad birth impossible — a runner started by hand with systemctl
 // --no-block, or a cache unit that starts and then dies, both leave the window open. The
-// construction-side answer is the activation admission in gunbc.runner_activation, which refuses to
+// construction-side answer is the activation admission in gunbc.runner.runner_activation, which refuses to
 // yield an enable command at all without a bound readiness receipt. These lines are defence in
 // depth beneath that, with a bounded runway: they retire when activation withdrawal lands, so that
 // a cache unit going away withdraws the admission that licensed the runners depending on it rather
@@ -178,7 +178,7 @@ fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
 
 // SLICE= IS RENDERED ONLY WHERE A MANAGED POOL IS DECLARED, AND THAT IS A CONSTRUCTION WALL RATHER
 // THAN A CHECK. This directive used to be spelled unconditionally from a bare-string field that
-// always named the managed slice, while gunbc.host_layout's placement row said the fleet has no
+// always named the managed slice, while gunbc.host.host_layout's placement row said the fleet has no
 // managed pool. Applying that unit would have named a Slice= nothing provisions, and systemd
 // creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
 // managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
@@ -270,9 +270,9 @@ fn render_build_cache_unit(instance: BuildCacheInstance) -> List<String> {
 // swap pointed them at this render. The wall built for the hand-written unit caught the generated
 // one on its first contact.
 
-// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
+// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
 //
-// memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
+// memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
 fn compile_pool_slice_unit_file(slice_unit: NonEmptyStr, sized: ByteSize) -> SystemdUnitFile {
   SliceUnitFile {
     unit: [

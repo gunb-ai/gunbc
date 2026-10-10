@@ -1,7 +1,7 @@
-module test.claim.srv3_websocat_sequence_witness
+module test.claim.srv3.srv3_websocat_sequence_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   Srv3HostPredicate,
   Srv3PredicateHolds,
   Srv3PredicateFails,

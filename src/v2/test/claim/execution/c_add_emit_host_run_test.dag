@@ -1,4 +1,4 @@
-module v2.test.execution.c_add_emit_host_run
+module v2.test.claim.execution.c_add_emit_host_run_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.communication.medium { Lossless, Medium }

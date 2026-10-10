@@ -1707,7 +1707,7 @@ pub fn contiguous_loop_elementwise_float_kernel(
     out
 }
 
-/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
+/// Integer oracle authority: `gunbc.accelerator_demo.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
 /// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures
 /// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.
 pub fn contiguous_loop_elementwise_kernel(
@@ -1869,7 +1869,7 @@ pub fn resolve_host_budget_join(
     if let Some(requested_bytes) = env_override {
         return HostBudgetJoin::DeclaredUnverified { requested_bytes, reason: "no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string() };
     }
-    HostBudgetJoin::Unreadable { reason: format!("no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.", std::env::consts::OS) }
+    HostBudgetJoin::Unreadable { reason: format!("no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.", std::env::consts::OS) }
 }
 
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {

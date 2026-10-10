@@ -11,7 +11,7 @@ import gunbc.runner.runner_host_unit_slot {
   HostUnitSlot, HostUnitSlotRefusal, HostUnitSlotBound, HostUnitSlotRefused, provider_guest_slot_for,
 }
 import gunbc.runner.jit_registration_subject { host_unit_slot_subject }
-import gunbc.runner_attempt_launch {
+import gunbc.runner.runner_attempt_launch {
   AdmittedJitCredential, JitDeviceRefusal, JitCredentialAdmitted, JitCredentialRefused, admit_jit_credential_for,
 }
 import gunbc.runner.provider_guest_incarnation {
@@ -20,7 +20,7 @@ import gunbc.runner.provider_guest_incarnation {
 
 // ONE JOB ON ONE REBUILT PROVIDER GUEST: the incarnation, the slot on it, the one registration placed
 // into it, and what the job was admitted under. This is the provider guest's counterpart of
-// gunbc.runner_attempt_launch for a microVM, and it shares that module's credential checker
+// gunbc.runner.runner_attempt_launch for a microVM, and it shares that module's credential checker
 // (admit_jit_credential_for) rather than restating it: the realizations differ in where the runner
 // process lives, not in what makes a credential this attempt's.
 //
@@ -30,7 +30,7 @@ import gunbc.runner.provider_guest_incarnation {
 // ProviderRebuildReceipt; until then the plan below is exercised by its witness only.
 
 // PLACING ONE REGISTRATION DOES NOT EARN AttemptScopedSecrets HERE. On a microVM the guarantee is a
-// property of the credential's carrier, a drive that exists for one VM (gunbc.runner_microvm
+// property of the credential's carrier, a drive that exists for one VM (gunbc.runner.runner_microvm
 // JitConfigOnReadOnlyDrive). A provider guest persists between jobs, so whatever an earlier job left
 // on it stays until something removes it, and the registration placed for this attempt is evidence
 // only about that registration. The guarantee is the reset loop's to establish -- revocation of the

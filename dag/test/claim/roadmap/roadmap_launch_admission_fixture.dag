@@ -1,18 +1,18 @@
 module test.claim.roadmap.roadmap_launch_admission_fixture
 
 import std.types { String, Int, List, Bool, NonEmptyStr, FilePath }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge, SectionElement, Group, SectionGroup }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
-import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardActuating, DashboardObserveOnly }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge, SectionElement, Group, SectionGroup }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
+import gunbc.roadmap.roadmap_dashboard_instance { DashboardActuationPosture, DashboardActuating, DashboardObserveOnly }
 import gunbc.deploy_transition { ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.fleet.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_from_untagged_hex }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import gunbc.worker_lifecycle { WorkerProcessEvidence }
-import gunbc.roadmap_launch_admission { LaunchCensusRow }
-import gunbc.roadmap_belt { SpawnMode, ManualReady, BeltCapacity }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission { LaunchCensusRow }
+import gunbc.roadmap.roadmap_belt { SpawnMode, ManualReady, BeltCapacity }
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchHostStanding, LaunchHostObserved, LaunchHostUnobserved,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   LaunchCause, LaunchIdentity,
@@ -116,7 +116,7 @@ fn launch_fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Roa
 
 fn launch_fixture_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap/roadmap_launch_admission_witness.dag" as FilePath,
     function: "witness_operator_admitted_for_ready_parent" as NonEmptyStr,
   )
 }

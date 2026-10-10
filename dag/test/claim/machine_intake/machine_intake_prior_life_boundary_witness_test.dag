@@ -1,4 +1,4 @@
-module test.claim.machine_intake_prior_life_boundary_witness
+module test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -16,13 +16,13 @@ import gunbc.bmc_model {
   BmcWorld, BmcSelRecord, BmcPowerOn, BmcRecordSurfaces, bmc_world, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled,
 }
 import gunbc.clock_read { ObserverClockObserved, ObserverClockUnreadable, observer_clock_modeled }
-import gunbc.machine_intake_subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, AssemblyManifest, FirmwareManifest, qualification_subject_of }
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, AssemblyManifest, FirmwareManifest, qualification_subject_of }
 import gunbc.fleet.convergence_fold {
   StepInstanceKey, ConvergenceRunId, StepSubjectKey, step_instance_key,
   LegCompletedWithin, LegDeadlineElapsed, LegFinishedBeforeItStarted, LegCompletionUnobserved,
   leg_budget, effect_leg_deadline, complete_effect_leg,
 }
-import gunbc.machine_intake_prior_life_boundary {
+import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreKeepsWrites, DryArchiveStoreLosesWrites, DryArchiveStoreCorruptsWrites,
   PriorLifePolicy, UnclearedBoundaryAdmitted, UnclearedBoundaryNotAdmitted, CarrierCaptured, CarrierGap, CarrierSurfaceUnmodeled, PowerStatePayload,
   PriorLifeCarrier, PriorLifeBmcClock, PriorLifeSensorSnapshot,
@@ -42,9 +42,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // CUT O1c-2, THE PRIOR-LIFE ARCHIVE AT ITS OWN INTERFACE. These claims SUPPLY the phase's inputs --
 // the subject, the step keys, the dry world -- and call the domain's phase directly (each admitted by
-// name to gunbc.machine_intake_prior_life_boundary dry_archive_prior_life; no helper here calls it,
+// name to gunbc.machine_intake.prior_life_boundary dry_archive_prior_life; no helper here calls it,
 // so no function of this module returns its sealed receipt). The pairing obligation's real path is
-// test.claim.machine_intake_arrival_converge_witness, whose route claim reaches this phase through
+// test.claim.machine_intake.machine_intake_arrival_converge_witness_test, whose route claim reaches this phase through
 // mtjade1's real AccessDiscover and IdentityBindProvisional and the fold. The worlds here model no
 // vendor: every value is a generic Redfish or IPMI record, and no world claims a controller family.
 
@@ -53,11 +53,11 @@ data run_p: ConvergenceRunId = "o1c2-witness-run-p" as ConvergenceRunId
 data unit_p: StepSubjectKey = "dry-unit" as StepSubjectKey
 
 fn key_p() -> StepInstanceKey {
-  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"), subject: unit_p)
+  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"), subject: unit_p)
 }
 
 fn identity_p() -> StepInstanceKey {
-  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional"), subject: unit_p)
+  step_instance_key(run: run_p, step: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "identity_bind_provisional"), subject: unit_p)
 }
 
 fn subject_p() -> MachineIntakeSubject {
@@ -258,9 +258,9 @@ test fn w_a_lost_corrupted_or_late_write_is_incomplete_not_refused() -> Bool {
 // budget it COMPLETED WITHIN. A finish before the start, and a finish the clock could not read, are
 // neither.
 test fn w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed() -> Bool {
-  let leg = decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive")
-  let start = observer_clock_modeled(millis: 1791158400000, realization: "test.claim.machine_intake_prior_life_boundary_witness schedule" as NonEmptyStr)
-  let finish = observer_clock_modeled(millis: 1791158440000, realization: "test.claim.machine_intake_prior_life_boundary_witness schedule" as NonEmptyStr)
+  let leg = decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive")
+  let start = observer_clock_modeled(millis: 1791158400000, realization: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test schedule" as NonEmptyStr)
+  let finish = observer_clock_modeled(millis: 1791158440000, realization: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test schedule" as NonEmptyStr)
   let short = effect_leg_deadline(budget: leg_budget(leg: leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 29999 })), started: start)
   let long = effect_leg_deadline(budget: leg_budget(leg: leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 49999 })), started: start)
   (match complete_effect_leg(deadline: short, finished: ObserverClockObserved { instant: finish }) { LegDeadlineElapsed { deadline: _, finished: _ } => true  _ => false })
@@ -279,7 +279,7 @@ test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> 
         LogsArchivedWithBaselineCursor { cursor: c } =>
           (match baseline_cursor_sel_final_record(c: c) { Present { value: id } => id == "2"  Absent => false })
             && content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: r)))
-            && ((prior_life_receipt_realization(r: r) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+            && ((prior_life_receipt_realization(r: r) as NonEmptyStr) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
       }
     _ => false
   }

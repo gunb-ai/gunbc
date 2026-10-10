@@ -1,4 +1,4 @@
-module test.claim.fabric_demand_effect_witness_test
+module test.claim.fabric.fabric_demand_effect_witness_test
 
 import std.types { NonEmptyStr, Bool, List }
 import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_for }
@@ -290,7 +290,7 @@ fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
     principal: principal,
     evidence: "binding-auth-1",
     verification_authority: decl_ref(
-      module_path: "test.claim.fabric_demand_effect_witness_test",
+      module_path: "test.claim.fabric.fabric_demand_effect_witness_test",
       decl_name: "attesting",
     ),
   )
@@ -838,7 +838,7 @@ fn release_authorities(e: DemandCommandEffect<NonEmptyStr>) -> List<DeclarationR
 
 fn witness_authority() -> DeclarationRef {
   decl_ref(
-    module_path: "test.claim.fabric_demand_effect_witness_test",
+    module_path: "test.claim.fabric.fabric_demand_effect_witness_test",
     decl_name: "attesting",
   )
 }

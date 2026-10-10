@@ -1,20 +1,20 @@
-module gunbc.fleet_converge_cli
+module gunbc.fleet.fleet_converge_cli
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.algebra { trim }
 import gunbc.command_runner { stat_owner_name_capture }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 
 import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
   hostname_short_read,
 }
-import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
-import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
-import gunbc.fleet_desired_observe {
+import gunbc.fleet.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
+import gunbc.host.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
+import gunbc.fleet.fleet_desired_observe {
   FleetRevisionStanding,
   RevisionConverged,
   RevisionDrifted,
@@ -22,7 +22,7 @@ import gunbc.fleet_desired_observe {
   fleet_revision_standing,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
-import gunbc.host_converge_slice1 {
+import gunbc.host.host_converge_slice1 {
   host_converge_slice1_converge_loop,
   host_converge_slice1_receipt_is_valid,
   host_converge_slice1_tasks_receipt_is_valid,
@@ -31,22 +31,22 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_host_result_applied_count,
   host_converge_slice1_host_result_refusal_reason,
 }
-import gunbc.host_runner_memory_provision { runner_memory_host_converge }
-import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob, HostConverge }
-import gunbc.host_effect {
+import gunbc.host.host_runner_memory_provision { runner_memory_host_converge }
+import gunbc.host.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
+import gunbc.host.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob, HostConverge }
+import gunbc.host.host_effect {
   HostOs,
   ProvisionCodexRuntime,
   host_effect_identity_evidence,
   LocalShell,
 }
-import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.host.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
 import product.host_identity { HostIdentity }
 import gunbc.hostname_allocation { resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown }
-import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host }
-import gunbc.fleet_host_backing { OwnedMachine, ProviderGuest }
-import gunbc.provider_guest_adoption {
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, ProviderGuest }
+import gunbc.host.provider_guest_adoption {
   GuestAdopted,
   GuestAdoptionRefused,
   MicroVmExecutionAdmissible,
@@ -55,22 +55,22 @@ import gunbc.provider_guest_adoption {
   guest_adoption_refusal_text,
   microvm_execution_refusal_text,
 }
-import gunbc.ci_runner_placement {
+import gunbc.ci.ci_runner_placement {
   HostRunnerDeploymentRefusal,
   HostRunnerDeploymentRefused, HostRunnerDeploymentDerived,
   HostNotEnrolledInFleet,
   runner_deployment_plan, runner_host_deployment_for,
   host_deployment_refusal_text,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.types { FilePath }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
 
-WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
+WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host.host_converge / gunbc.fleet.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
 
-WHAT REACHES THIS INTERFACE NOW. The modeled convergence spine — gunbc.fleet_converge_timer -> gunbc.fleet_converge_apply -> gunbc.host_effect_realize host_effect_apply — consuming modeled desired state and native host-effect realizations. The stage0 driver refuses the converge and serve verbs with a typed status-2 reason naming that spine.
+WHAT REACHES THIS INTERFACE NOW. The modeled convergence spine — gunbc.fleet.fleet_converge_timer -> gunbc.fleet.fleet_converge_apply -> gunbc.host.host_effect_realize host_effect_apply — consuming modeled desired state and native host-effect realizations. The stage0 driver refuses the converge and serve verbs with a typed status-2 reason naming that spine.
 
 WHY THE HANDLER WAS NOT REBUILT, since not-rebuilt is a decision and not an omission. The cheapest available implementation while the frozen v1 engine stands is resolve-a-.dag-entry plus build-an-interpreter-context plus run, and that is precisely why it is wrong: it would make the interpreter load-bearing for a capability at the moment two lanes are deleting it, converting removable debt into an architectural dependency (DESIGN §3, the deferred-deletion consequence catalogue). The Rust side carries no converge logic, and this row is not a scaffold pending dissolution: nothing here dissolves, because nothing temporary was built."
 }
@@ -187,7 +187,7 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
   r.verdict == VerdictConverged
 }
 
-// A fleet compute host is one the hardware catalog carries (gunbc.fleet_intent) -- read from that
+// A fleet compute host is one the hardware catalog carries (gunbc.fleet.fleet_intent) -- read from that
 // catalog rather than re-listed here, so a host added to it is a compute host without editing this
 // predicate. A rented guest has no hardware row; it converges through the provider-guest route.
 fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
@@ -340,7 +340,7 @@ fn converge_cli_routes_to_slice1(host: String) -> Bool {
 // the host's knobs today. srv2/srv4 are knob-frontier (whole-host typed refusal, the
 // pre-existing arm, dissolving as slice1 realizes their knobs); srv5/srv6 are
 // PRE-ENROLLMENT (no runner slots, no host layout yet — SPARK-SERVE-0 owns the repair;
-// their reach is probed at the modeled endpoint, gunbc.fleet_reach_endpoint) — a state
+// their reach is probed at the modeled endpoint, gunbc.fleet.fleet_reach_endpoint) — a state
 // DISTINCT from UnknownHost, which now means only an identity outside the fleet.
 // SPARK-SERVE-0: the Sparks now have a ROUTE, and the route carries its own access standing.
 // ConvergeSparkPreEnrollment was nullary, so "CONVERGE does not know about this host" and "CONVERGE
@@ -927,7 +927,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
 }
 
 // THE PROVIDER-GUEST ROUTE. The adoption runs where this process runs and refuses unless the provider
-// says that machine is the named guest (gunbc.provider_guest_adoption adopt_local_provider_guest); the receipt keeps its two
+// says that machine is the named guest (gunbc.host.provider_guest_adoption adopt_local_provider_guest); the receipt keeps its two
 // answers apart: a refused adoption is NotAdopted with its cause; an adopted guest whose microVM
 // execution is refused is reported as exactly that -- adopted, and unable to run the runner role --
 // so a green adoption is never presented as runnable capacity. An adopted guest whose execution is

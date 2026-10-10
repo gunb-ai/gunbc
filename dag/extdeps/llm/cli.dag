@@ -307,7 +307,7 @@ type CodexCliApprovalPolicy
 // both provider surfaces at once — spliced into Codex's `-c model_reasoning_effort="…"` config
 // expression and passed as Claude's `--effort` value — so a typo reached the provider as a value it
 // rejects at run time, a host-side failure standing where a construction refusal was available
-// (DESIGN 5). One type, not two: gunbc.roadmap_dispatch_actuator.dispatch_applied_effort projects
+// (DESIGN 5). One type, not two: gunbc.roadmap.roadmap_dispatch_actuator.dispatch_applied_effort projects
 // the selection kernel's applied_effort to both provider argv builders, which is the proven
 // coincidence that earns a shared carrier rather than a bare alias (DESIGN 6); each provider keeps
 // its own flag spelling in its own argv row, and reasoning_effort_label is the single place the

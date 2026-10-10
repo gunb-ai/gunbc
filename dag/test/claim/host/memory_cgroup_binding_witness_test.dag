@@ -1,16 +1,16 @@
-module test.claim.memory_cgroup_binding_witness
+module test.claim.host.memory_cgroup_binding_witness_test
 
 import std.logic { Bool }
 import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   HostBudgetObservation,
   HostBudgetObserved,
   BudgetSourceCgroupMemoryHigh,
   BudgetSourceCgroupMemoryMax,
   BudgetSourceDarwinPhysicalMemory,
 }
-import gunbc.memory_cgroup_binding {
+import gunbc.host.memory_cgroup_binding {
   CgroupBindRequest,
   CgroupBindRequested,
   CgroupBindRequestUnreadable,

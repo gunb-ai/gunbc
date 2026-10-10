@@ -1,9 +1,9 @@
-module test.claim.roadmap_closing_contract_authoring_witness_test
+module test.claim.roadmap.roadmap_closing_contract_authoring_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
@@ -23,7 +23,7 @@ import gunbc.roadmap_execution_contract {
   PathsUnrestricted,
 }
 import gunbc.ensure { EnsureObserveOnly }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
   OracleFound,
@@ -32,7 +32,7 @@ import gunbc.roadmap_validation_oracle {
   OracleDependsOnUnpinnedOracle,
 }
 import std.content_hash { content_hash_atom }
-import gunbc.roadmap_closing_contract_authoring {
+import gunbc.roadmap.roadmap_closing_contract_authoring {
   ClosingContractAuthoringVerdict,
   ClosingContractAuthored,
   ClosingContractTargetNotDeclared,

@@ -1,10 +1,10 @@
-module gunbc.test.claim.runner.runner_microvm_network_apply_witness_test
+module test.claim.runner.runner_microvm_network_apply_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_microvm_network_converge { runner_microvm_staging_dir }
-import gunbc.runner_microvm_network_apply {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_microvm_network_converge { runner_microvm_staging_dir }
+import gunbc.runner.runner_microvm_network_apply {
   MicrovmNetworkApplyAdmission, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused,
   microvm_network_apply_admission, microvm_network_local_admission, staging_ancestor_paths,
   path_metadata_ok,
@@ -12,7 +12,7 @@ import gunbc.runner_microvm_network_apply {
   runner_microvm_root_only_probe_argv,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }
-import gunbc.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, runner_host_path_ancestors }
+import gunbc.runner.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, runner_host_path_ancestors }
 import gunbc.file_access { path_ancestor_prefixes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -80,7 +80,7 @@ test fn the_staging_ancestor_check_enumerates_every_prefix_and_not_only_the_leaf
     && length(staging_ancestor_paths()) > 1
 }
 
-// THE STAGING ROOT IS OUTSIDE THE JOB USER'S OWN TREE. gunbc.runner_host_grants creates
+// THE STAGING ROOT IS OUTSIDE THE JOB USER'S OWN TREE. gunbc.runner.runner_host_grants creates
 // /var/lib/gunbc/fleet-converge with owner=job, so a staged file beneath it is content the job user
 // can rewrite -- which is what the frontier says does not satisfy it. The RED is the previous value.
 test fn the_staging_root_is_not_under_the_job_user_owned_converge_state_directory() -> Bool {
@@ -108,7 +108,7 @@ test fn an_operation_succeeds_only_on_a_leg_that_ran_and_exited_zero() -> Bool {
 
 // THE SHARED PREFIX FOLD ANSWERS ONE QUESTION AND LEAVES THE REST TO ITS CALLERS, and that split is
 // what makes it shareable. It was authored twice -- once here and once in
-// gunbc.runner_host_file_converge -- because that module's version filtered to its own /etc scope,
+// gunbc.runner.runner_host_file_converge -- because that module's version filtered to its own /etc scope,
 // so it could not be called (review 69712). The reds this pins are the two ways the consolidation
 // could have gone wrong: the shared fold silently including the leaf (which would make the /etc
 // caller test the FILE for directory ownership), and it silently applying a scope (which would make

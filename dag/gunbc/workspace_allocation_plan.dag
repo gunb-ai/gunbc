@@ -20,7 +20,7 @@ import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_ide
 import product.fabric.supply { GrantDuration, offer_quote_currency }
 import product.fabric.selection { ResourceBudgetPolicy, ResourceBudgetSelected, ResourceBudgetRefused }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest, reserve_money, AccountAdvanced, MoneyRefused }
-import gunbc.fabric_control_plane { broker_select_resource_budget, fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
+import gunbc.fabric.fabric_control_plane { broker_select_resource_budget, fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire_prepare, file_hold_acquire_commit, observe_file_hold,
   FileHoldAcquirePlan, FileHoldAcquirePlanned, FileHoldAcquireNotEligible, FileHoldAcquired, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
@@ -28,7 +28,7 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_work, workspace_execution_requirements, workspace_memory_grant, workspace_reservation_json, workspace_reservation_from_json, workspace_json_string }
-import gunbc.fabric_memory_grant_policy { MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw }
+import gunbc.fabric.fabric_memory_grant_policy { MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw }
 
 // A prepared target is immutable across retries. Its predicted incarnation is derived from a
 // live absent/free hold observation; persistence of this plan precedes every acquisition effect.

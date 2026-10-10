@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_profile_codec
+module v2.test.claim.emit.semantic_decl_profile_codec_test
 
 import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,

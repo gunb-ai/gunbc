@@ -1,4 +1,4 @@
-module gunbc.ci_workflow_expressions
+module gunbc.ci.ci_workflow_expressions
 
 import extdeps.github.expressions {
   Expression, FunctionCall, StringLiteral,

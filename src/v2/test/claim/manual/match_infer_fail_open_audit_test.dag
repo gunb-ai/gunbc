@@ -1,4 +1,4 @@
-module v2.test.manual.match_infer_fail_open_audit
+module v2.test.claim.manual.match_infer_fail_open_audit_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import std.occurrence_identity { OccurrenceSynthetic }

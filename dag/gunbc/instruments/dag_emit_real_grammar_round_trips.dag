@@ -21,7 +21,7 @@ import v2.std.node { Node, content_hash, symbol_lexeme }
 // WHY AN INSTRUMENT AND NOT FLOOR CLAIMS. Two real parses of any of these constructs exceed the
 // required floor's per-claim eval-step budget, and several cross its wall clock. The floor keeps one
 // real round trip, over a one-line data declaration, as its inhabitance claim
-// (v2.test.execution.dag_grammar_backward_round_trip). The loss of the rest from the floor is the
+// (v2.test.claim.execution.dag_grammar_backward_round_trip_test). The loss of the rest from the floor is the
 // declared drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, whose population IS
 // dag_emit_real_grammar_round_trip_expected_identities below. Run by name; not a merge gate.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver

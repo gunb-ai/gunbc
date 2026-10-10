@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_language_model_anchor
+module v2.test.claim.manual.typescript_language_model_anchor
 
 import v2.extdeps.languages.typescript { ts_fn_add_language_model, ts_inhabitant_number_node }
 

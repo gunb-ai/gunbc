@@ -11,10 +11,10 @@ import gunbc.spark.managed_grant_reconcile {
   spark_inspect_dropin_shape_of_listing,
   spark_sudoers_dropin_listing_argv,
 }
-import gunbc.fleet_multi_principal_probe { spark_standing_hosts, spark_standing_hosts_of }
+import gunbc.fleet.fleet_multi_principal_probe { spark_standing_hosts, spark_standing_hosts_of }
 import product.host_identity { HostIdentity }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
-import gunbc.fleet_converge_workflow {
+import gunbc.fleet.fleet_converge_workflow {
   SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
   fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
@@ -29,7 +29,7 @@ import gunbc.spark.grant_privileged_operation {
 }
 import gunbc.remote_operation { RemoteStepUnattempted }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending }
-import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
+import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
 // alone; a host converged by the #13040 installer carries per-container files and no shared one.

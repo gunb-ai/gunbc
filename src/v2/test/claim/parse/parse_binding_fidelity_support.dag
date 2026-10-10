@@ -1,4 +1,4 @@
-module v2.test.parse.parse_binding_fidelity_support
+module v2.test.claim.parse.parse_binding_fidelity_support
 
 import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }

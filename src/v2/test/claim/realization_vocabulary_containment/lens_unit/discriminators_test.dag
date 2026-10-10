@@ -1,4 +1,4 @@
-module v2.test.realization_vocabulary_containment.lens_unit.discriminators
+module v2.test.claim.realization_vocabulary_containment.lens_unit.discriminators_test
 
 import std.types { List }
 import v2.std.layer { LayerImportFact }

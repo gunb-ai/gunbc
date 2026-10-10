@@ -32,7 +32,7 @@ type GitattributesGenerationOutcome
 // nobody can execute is what let the gap stand. committed_generated_artifact_paths() remains the
 // heal/registry authority. .gitattributes classifies itself through the same derivation with no
 // handwritten self-row. The merge-driver DEFINITION lives in repository-local Git config
-// (gunbc.repo_local_git_config), not in this file.
+// (gunbc.repo.repo_local_git_config), not in this file.
 
 // Seam history for the two-arm population. #7609 (operator sequence step 4, 2026-08-01) established
 // deterministic_generated_projection_paths() as the registry roster joined with a stage0 arm

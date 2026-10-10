@@ -1,12 +1,12 @@
-module test.claim.roadmap_workflow_command_witness
+module test.claim.roadmap.roadmap_workflow_command_witness_test
 
-import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_workflow_command {
+import gunbc.roadmap.roadmap_workflow_command {
   Supersedes,
   WorkerTurn,
   WorkflowCommandAdmitted,
@@ -20,27 +20,27 @@ import gunbc.roadmap_workflow_command {
   worker_turn_row_label,
   attempt_key_short_form,
 }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreeUnobserved,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubjectUnobserved,
   VerificationReceiptAbsent,
   SelectionAbsent,
 }
-import gunbc.roadmap_presentation {
+import gunbc.roadmap.roadmap_presentation {
   activity_view_from_progress,
   LegacySupersedableAttempt,
   ActiveWorkRefused,
 }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   PublicationSubjectUnobserved,
   ReceiptSourceAbsent,
 }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderEventsRefused,
 }
 

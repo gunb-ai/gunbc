@@ -63,7 +63,7 @@ fn broker_selects(method: HttpMethod, path: String, want: ApprovalBrokerHandler)
   }
 }
 
-// THE POSITIVE CONTROL FOR THE ROADMAP'S WALL. test.claim.roadmap_serve_witness
+// THE POSITIVE CONTROL FOR THE ROADMAP'S WALL. test.claim.roadmap.roadmap_serve_witness_test
 // roadmap_serve_table_owns_no_approval_route asserts the roadmap answers NOTHING for these four
 // (method, path) pairs; on its own that claim is satisfiable by deleting the approval loop. This
 // one establishes the same four pairs are answered HERE, so the pair together says the routes

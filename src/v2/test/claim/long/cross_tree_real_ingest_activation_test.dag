@@ -1,4 +1,4 @@
-module v2.test.long.cross_tree_real_ingest_activation
+module v2.test.claim.long.cross_tree_real_ingest_activation_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

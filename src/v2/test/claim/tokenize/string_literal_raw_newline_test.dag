@@ -1,4 +1,4 @@
-module v2.test.tokenize.string_literal_raw_newline
+module v2.test.claim.tokenize.string_literal_raw_newline_test
 
 import v2.std.text { String }
 import v2.std.compilers.lexing { ModeledLexRules, TokenStream }

@@ -14,7 +14,7 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_bios_3_10_instant_flash_release,
   asrock_altrad8ud_bios_3_10_openbmc_release,
 }
-import gunbc.host_boot_supervision {
+import gunbc.host.host_boot_supervision {
   HostBootStallSignature,
   HostSelfResetOnError,
   LoopCauseConfounded,

@@ -1,6 +1,6 @@
-module gunbc.machine_intake_mtjade1_coverage_frontier
+module gunbc.machine_intake.mtjade1_coverage_frontier
 
-import gunbc.machine_intake_subject { BoardSerialAbsent }
+import gunbc.machine_intake.subject { BoardSerialAbsent }
 import std.types { List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -91,12 +91,12 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: gsg_chassis_decl(name: "mt_jade_gsg_chassis_fan_count"),
     reason: "Table 6 chassis fan count, read by nothing. The fan standing carries FirstPostFanCapture, which is AwaitingFirstPostWithDimms and has no per-fan readings to count yet.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: FirstPostFanCapture in gunbc.machine_intake_mtjade1_fan_standing. TRIGGER: AwaitingFirstPostWithDimms becomes FirstPostFanCaptured carrying a product.fan_policy_standing standing with per-fan readings, and a fold counts them against this figure. SUFFICIENT FOR deleting this row. NOT satisfied by the first POST alone if the capture records a finding without per-fan rows."),
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: FirstPostFanCapture in gunbc.machine_intake.mtjade1_fan_standing. TRIGGER: AwaitingFirstPostWithDimms becomes FirstPostFanCaptured carrying a product.fan_policy_standing standing with per-fan readings, and a fold counts them against this figure. SUFFICIENT FOR deleting this row. NOT satisfied by the first POST alone if the capture records a finding without per-fan rows."),
   ),
   frontier_row_decl(
     ref: gsg_chassis_decl(name: "mt_jade_gsg_minimum_bmc_firmware_family"),
-    reason: "THE GSG'S MINIMUM FAMILY IS NOT THIS UNIT'S FAMILY, AND THAT IS WHY IT HAS NO CONSUMER. Review 67954 and the parent lane both proposed wiring it into gunbc.machine_intake_bmc_first_contact_standing; that consumer may not be written. BmcFirmwareFamilyStanding is two arms and deliberately no function from a document to an installed family (review 67792), so reading this row as a stand-in for an observed family is the exact fork that module exists to prevent.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence, which dispatches on an OBSERVED family onto a gunbc.fleet_fan_converge_routes row. TRIGGER: a SEPARATE per-unit discriminator constructs FamilyObserved -- an observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe -- NOT the ProbeServiceRoot surface, which establishes reachability and Redfish presence only. That surface CANNOT fire this trigger: IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible rather than merely unchecked (DESIGN section 4b rung 4). Once the discriminator lands, this row becomes the minimum an observed family is compared AGAINST rather than a substitute for one. SUFFICIENT FOR deleting this row. NOT satisfied by any document read, and explicitly NOT by a fold that mints a family from Redfish presence or from this figure."),
+    reason: "THE GSG'S MINIMUM FAMILY IS NOT THIS UNIT'S FAMILY, AND THAT IS WHY IT HAS NO CONSUMER. Review 67954 and the parent lane both proposed wiring it into gunbc.machine_intake.bmc_first_contact_standing; that consumer may not be written. BmcFirmwareFamilyStanding is two arms and deliberately no function from a document to an installed family (review 67792), so reading this row as a stand-in for an observed family is the exact fork that module exists to prevent.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence, which dispatches on an OBSERVED family onto a gunbc.fleet.fleet_fan_converge_routes row. TRIGGER: a SEPARATE per-unit discriminator constructs FamilyObserved -- an observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe -- NOT the ProbeServiceRoot surface, which establishes reachability and Redfish presence only. That surface CANNOT fire this trigger: IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible rather than merely unchecked (DESIGN section 4b rung 4). Once the discriminator lands, this row becomes the minimum an observed family is compared AGAINST rather than a substitute for one. SUFFICIENT FOR deleting this row. NOT satisfied by any document read, and explicitly NOT by a fold that mints a family from Redfish presence or from this figure."),
   ),
   frontier_row_decl(
     ref: gsg_chassis_decl(name: "mt_jade_gsg_without_1p_bmc_image_fan_duty"),
@@ -158,7 +158,7 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
 // consumer -- the same "an annotation makes a row look consumed" failure this roster exists to
 // record, reproduced inside the tool checking for it.
 data mtjade1_j3_rmedia_residue_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.machine_intake_mtjade1_access_observation",
+  module_path: "gunbc.machine_intake.mtjade1_access_observation",
   decl_names: [
     "read_mtjade1_rmedia_general_residue",
     "read_mtjade1_media_general_put_standing",
@@ -168,16 +168,16 @@ data mtjade1_j3_rmedia_residue_frontier_rows: List<FrontierRow> = frontier_rows_
 )
 
 data mtjade1_access_observation_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.machine_intake_mtjade1_access_observation",
+  module_path: "gunbc.machine_intake.mtjade1_access_observation",
   decl_names: [
     "mtjade1_managed_bmc_secret_standing",
   ],
-  reason: "The secret locus for unit 1 is reserved off the accessor roster because the secret is not minted. It is a refusal, and nothing in production reads a refusal that has no alternative yet. (The unit key is no longer a row here: gunbc.machine_intake_arrival_converge identity_bind_provisional derives it from the committed FRU and SMBIOS captures.)",
+  reason: "The secret locus for unit 1 is reserved off the accessor roster because the secret is not minted. It is a refusal, and nothing in production reads a refusal that has no alternative yet. (The unit key is no longer a row here: gunbc.machine_intake.arrival_converge identity_bind_provisional derives it from the committed FRU and SMBIOS captures.)",
   dissolution: unbound_dissolution(description: "NAMED CONSUMER: the BMC onboarding route, which reads the secret standing to decide whether a credential may be fetched and the unit key to name the machine it belongs to. TRIGGER: THREE STAGES IN ORDER, and the first does not imply the second -- (1) a wet ProbeServiceRoot read establishes reachability and a Redfish surface; (2) a SEPARATE per-unit discriminator (observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe) constructs FamilyObserved; (3) only then may the family-specific rotation route run, the secret be minted and read back, and the locus join fleet_accessor_grant_roster - at which point SecretLocusReservedNotOnAccessorRoster is no longer the only arm and a fold must choose between them. SUFFICIENT FOR deleting the NAME the route reads. NOT satisfied by minting the secret without rotating, which is the 'secret populated, server never rotated' state extdeps.bmc.http warns about."),
 )
 
 data mtjade1_first_dpc_plan_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.machine_intake_mtjade1_first_dpc_population_plan",
+  module_path: "gunbc.machine_intake.mtjade1_first_dpc_population_plan",
   decl_names: [
     "jade_first_dpc_topology",
     "jade_first_dpc_slots",
@@ -193,7 +193,7 @@ data mtjade1_first_dpc_plan_frontier_rows: List<FrontierRow> = frontier_rows_for
 )
 
 data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.machine_intake_mtjade1_fan_standing",
+  module_path: "gunbc.machine_intake.mtjade1_fan_standing",
   decl_names: [
     "mtjade1_residence_acoustic_intent",
     "mtjade1_failsafe_window_close",
@@ -202,7 +202,7 @@ data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_d
     "jade_current_fan_policy_convergence",
   ],
   reason: "The fan standing for Mt. Jade unit 1, recorded from one operator receipt and read by no production fold. FirstPostFanCapture is AwaitingFirstPostWithDimms and the post state is HostPoweredOnPrePost, so there is nothing yet for a realizer to converge against.",
-  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer jade_fan_policy_convergence selects once a family is observed - the BOUND gunbc.fleet_fan_converge_routes openbmc_fan_converge_route, or a MegaRAC route that is still UNBOUND. TRIGGER: a separate per-unit discriminator constructs FamilyObserved -- NOT the ProbeServiceRoot surface, which establishes reachability only -- AND the unit POSTs with DIMMs so FirstPostFanCaptured carries a reading the realizer can act on. BOTH are required: a family with no post gives the realizer no thermal input, and a post with no family gives it no realizer. SUFFICIENT FOR deleting the NAME the realizer reads. NOT satisfied by the acoustic intent alone, which is a constraint on the realizer and not a consumer of it."),
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer jade_fan_policy_convergence selects once a family is observed - the BOUND gunbc.fleet.fleet_fan_converge_routes openbmc_fan_converge_route, or a MegaRAC route that is still UNBOUND. TRIGGER: a separate per-unit discriminator constructs FamilyObserved -- NOT the ProbeServiceRoot surface, which establishes reachability only -- AND the unit POSTs with DIMMs so FirstPostFanCaptured carries a reading the realizer can act on. BOTH are required: a family with no post gives the realizer no thermal input, and a post with no family gives it no realizer. SUFFICIENT FOR deleting the NAME the realizer reads. NOT satisfied by the acoustic intent alone, which is a constraint on the realizer and not a consumer of it."),
 )
 
 // ONE LIST SO A READER ASKS ONE QUESTION. The witness folds this, not the parts.

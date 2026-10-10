@@ -1,4 +1,4 @@
-module test.claim.runner_host_file_converge_witness_test
+module test.claim.runner.runner_host_file_converge_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -10,14 +10,14 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix_regex,
 }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_population_census { desired_unit_names_range, committed_unit_names_at }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
-import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.runner.runner_slot_population_census { desired_unit_names_range, committed_unit_names_at }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv }
-import gunbc.runner_slot_retirement {
+import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   CgroupOccupancy,
   CgroupAbsent,
@@ -31,7 +31,7 @@ import gunbc.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner_unit {
+import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
   gunbc_runner_main_exits_when_incarnation_ends,
@@ -39,7 +39,7 @@ import gunbc.runner_unit {
   runner_unit_prefix,
   runner_unit_name_of_registration,
 }
-import gunbc.runner_unit_file {
+import gunbc.runner.runner_unit_file {
   runner_unit_teardown_dropin,
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -54,7 +54,7 @@ import extdeps.uri { Uri, File }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
-import gunbc.runner_host_file_converge {
+import gunbc.runner.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
@@ -703,7 +703,7 @@ test fn observe_reports_what_apply_refuses() -> Bool {
 // ── The population joined against the retirement authority ──────────────────────────────────────
 
 // srv1's reading in run 35416072847: slots 01..12 loaded with the declared pair, 13..21 masked by
-// gunbc.runner_slot_retirement. Names come from the census authority and the retired set from the
+// gunbc.runner.runner_slot_retirement. Names come from the census authority and the retired set from the
 // width transition itself, so the control exercises the real join rather than a designed roster.
 fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
   desired_unit_names_range(host: "srv1" as HostIdentity, slot: slot, limit: limit)
@@ -729,7 +729,7 @@ fn srv1_width() -> Int? {
 }
 
 // THE LIVE SET IS THE COMMITTED IDENTITIES, NOT 1..width. Since #12339 srv1's committed population
-// is srv1-01..(width - 1) plus the shakedown slot srv1-13 (gunbc.runner_slot_allocation
+// is srv1-01..(width - 1) plus the shakedown slot srv1-13 (gunbc.runner.runner_slot_allocation
 // host_committed_identities_at), so cutting the listing at the width named a slot the width no longer
 // charges as live and masked srv1-13. The live set comes from the census authority's one derivation;
 // the retiring set is the rest of the listing.
@@ -771,7 +771,7 @@ fn srv1_population(units: List<String>, retirements: List<RunnerRetirementStandi
 
 // The retirement authority's own verdict over the property readings `mask --now` leaves behind, for
 // every unit the real srv1 subject carries as a required retiree. The readings are the boundary; the
-// fold from readings to standing is gunbc.runner_slot_retirement's, not restated here.
+// fold from readings to standing is gunbc.runner.runner_slot_retirement's, not restated here.
 fn srv1_retirements(active: String, occupancy: CgroupOccupancy) -> List<RunnerRetirementStanding> {
   match witness_subject() {
     Absent => []
@@ -823,7 +823,7 @@ test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
 
 // RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
 // retirement, so the population is built from the real srv1 subject's desired and retired rosters
-// (the desired range and the retirement obligation gunbc.runner_width_transition declares) over a
+// (the desired range and the retirement obligation gunbc.runner.runner_width_transition declares) over a
 // listing that names every slot but 21; slot 21 must still be a member, its retirement standing must still be joined, and
 // forty-nine healthy units must not carry the verdict.
 fn srv1_list_units_without_21() -> String {
@@ -969,7 +969,7 @@ test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool
 }
 
 // THE DECIDING BOUNDARY, EXECUTED (review 68654). The events argv is run through the SAME
-// gunbc.fleet_known_hosts_anchor portable_remote_words admission the production leg applies in
+// gunbc.fleet.fleet_known_hosts_anchor portable_remote_words admission the production leg applies in
 // gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh, and must be ADMITTED -- an argv refused there
 // reads nothing, which would make SlotRetiredAsDeclared unreachable for every retiree that still
 // holds a cgroup while the observation still looked like three execs.

@@ -17,7 +17,7 @@ import std.temporal_effect {
   TemporalEffectPolicy,
   HeldSessionLease,
 }
-import gunbc.roadmap_workflow_command { WorkerTurn, AttemptKey }
+import gunbc.roadmap.roadmap_workflow_command { WorkerTurn, AttemptKey }
 import gunbc.provider_turn_adjudication {
   ProviderTurnDisposition,
   ProviderTurnCompleted,

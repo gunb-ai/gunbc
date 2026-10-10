@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_eval
+module gunbc.accelerator_demo.accelerator_demo_eval
 
 
 fn int_relu(x: Int) -> Int {

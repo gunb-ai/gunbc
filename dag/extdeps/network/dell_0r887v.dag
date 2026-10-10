@@ -6,7 +6,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.standards.nic_attachment { NicAttachmentClass, VendorDaughterCard }
 
 // The part owns its attachment, independently of Ampere or any other card.
-// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// Consumer: gunbc.machine_intake.mtcollins1_expansion_candidates.candidate_verdicts.
 // The cited Dell network-adapter table identifies R887V as rNDC.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
   scheme: Https, locator: "dl.dell.com/manuals/all-products/esuprt_software/esuprt_it_ops_datcentr_mgmt/dell-management-solution-resources_White-Papers_en-us.pdf",

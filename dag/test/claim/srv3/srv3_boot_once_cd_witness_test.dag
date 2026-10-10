@@ -1,4 +1,4 @@
-module test.claim.srv3_boot_once_cd
+module test.claim.srv3.srv3_boot_once_cd_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,4 +1,4 @@
-module v2.test.long.add_arrow_eval_by_execution
+module v2.test.claim.execution.long.add_arrow_eval_by_execution_test
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -7,7 +7,7 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_add_module_source
 }
 import v2.compiler.parse { parse_module }
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
 import v2.compiler.eval {
@@ -340,7 +340,7 @@ fn add_arrow_eval_tokenize_source() -> Outcome<TokenStream> {
 // add_arrow_eval_produced_add_body_executes_holds went with them: its body was
 // byte-identical to add_arrow_eval_source_driven_add_executes_holds, same fixture,
 // same operands, same expected value. Both deletions are receipted in the
-// gunbc.witness_deferral_freeze shrink log, and the roster rows go in this change
+// gunbc.witness.witness_deferral_freeze shrink log, and the roster rows go in this change
 // because a frozen row naming an absent witness is a StaleFrozenPathDeferral refusal.
 test fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = dag_language_model()

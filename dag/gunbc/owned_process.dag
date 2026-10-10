@@ -9,19 +9,19 @@ import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, proc_pid_stat_start_time }
-import gunbc.machine_intake_sol_hold
+import gunbc.machine_intake.sol_hold
 
 // A BACKGROUND PROCESS THIS RUN STARTED, OWNED BY (pid, start time). The launch publishes
 // "<pid> <starttime>" (proc(5) field 22 at spawn, written to a temporary name and renamed) beside the
 // process's own log, kills the child it started if that record cannot be published, and appends the
 // child's exit status and instant to the log when it ends. Standing is read from the record against
 // /proc/<pid>/stat: a pid the kernel has handed to another process fails the start-time join, so it
-// reads Foreign, never Running. Release is gunbc.machine_intake_sol_hold's owned release (TERM, then
+// reads Foreign, never Running. Release is gunbc.machine_intake.sol_hold's owned release (TERM, then
 // KILL, each only while (pid, start time) still match), and release is OBSERVED afterwards, never
 // assumed from the signal.
 //
 // This is the lifecycle the SOL collector hold already runs, lifted out so the KVM observer and the
-// loopback BMC transport hold their processes the same way; gunbc.machine_intake_mtcollins1_boot_run
+// loopback BMC transport hold their processes the same way; gunbc.machine_intake.mtcollins1_boot_run
 // reads the SOL collector's record through owned_process_record too, so the record format has one parser.
 data owned_process_launch_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -32,7 +32,7 @@ data owned_process_launch_scaffold: Disposition = Scaffold {
   }
 }
 
-data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake_sol_hold ActivateHeld waits on. Admission: operator escalation msg_4bbcf810, default-approved on recommendation A, 2026-09-30")
+data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake.sol_hold ActivateHeld waits on. Admission: operator escalation msg_4bbcf810, default-approved on recommendation A, 2026-09-30")
 
 data owned_process_exit_prefix: String = "gunbc-owned: exited status="
 

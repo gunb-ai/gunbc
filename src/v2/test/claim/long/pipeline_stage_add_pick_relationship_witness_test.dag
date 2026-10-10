@@ -1,4 +1,4 @@
-module v2.test.long.pipeline_stage_add_pick_relationship
+module v2.test.claim.long.pipeline_stage_add_pick_relationship_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

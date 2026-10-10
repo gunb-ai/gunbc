@@ -1,17 +1,17 @@
-module test.claim.roadmap_served_observation_witness
+module test.claim.roadmap.roadmap_served_observation_witness_test
 
 import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemReadSucceeded, FilesystemFileObservation }
 
 import std.types { String, Int, Bool, List, FilePath }
 import extdeps.http.server { text_html_utf8, text_plain_utf8, application_json_utf8 }
-import gunbc.host_layout { instance_receipts_dir }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
 }
-import gunbc.roadmap_serve { roadmap_serve_route_specs, ObservationJsonHandler }
-import gunbc.roadmap_served_observation {
+import gunbc.roadmap.roadmap_serve { roadmap_serve_route_specs, ObservationJsonHandler }
+import gunbc.roadmap.roadmap_served_observation {
   ServedObservationKind, DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   ServedObservationSurface,
   ServedObservationSnapshot,

@@ -4,17 +4,17 @@ import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlString }
-import gunbc.fleet_converge_workflow {
+import gunbc.fleet.fleet_converge_workflow {
   PrinterWorkflow, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
   fleet_converge_printer_job, fleet_converge_shared_job_if,
   fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr,
 }
-import gunbc.ci_spec { gunbc_run_step_targets }
+import gunbc.ci.ci_spec { gunbc_run_step_targets }
 import gunbc.fleet.printer_federation { printer_service_account, printer_provider_resource }
 
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
-import gunbc.fleet_printer_access {printer_access_code_loci}
+import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {

@@ -1,4 +1,4 @@
-module test.claim.scm_squash_merge_witness
+module test.claim.scm.scm_squash_merge_witness_test
 
 // CONTROLS FOR THE MERGE VERB, WRITTEN TO WHAT A COMPOSITION GETS WRONG.
 //

@@ -1,4 +1,4 @@
-module v2.test.emit.decl_emit_consolidated
+module v2.test.claim.emit.decl_emit_consolidated_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

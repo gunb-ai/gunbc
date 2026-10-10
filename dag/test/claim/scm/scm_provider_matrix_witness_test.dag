@@ -1,4 +1,4 @@
-module test.claim.scm_provider_matrix_witness
+module test.claim.scm.scm_provider_matrix_witness_test
 
 import extdeps.pricing.object_storage {
   AwsS3,

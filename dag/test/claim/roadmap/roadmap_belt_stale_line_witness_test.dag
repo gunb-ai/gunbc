@@ -16,7 +16,7 @@ import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
 import gunbc.scm.repository_envelope { RepositoryEnvelope }
 import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message, belt_candidate_commit_subject, CandidateCommitSubject }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
   belt_line_integrated_sources, LineSourcesRead, LineSourcesUnreadable,
   belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,

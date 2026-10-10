@@ -1,4 +1,4 @@
-module gunbc.parsed_import_statement_production
+module gunbc.namespace.parsed_import_statement_production
 
 import std.import { ParsedImportStatements, ParsedImportObservation }
 import std.types { String }

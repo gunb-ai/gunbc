@@ -1,6 +1,6 @@
 module test.claim.namespace_clause_e_projection_law_witness_test
 
-import gunbc.namespace_clause_e_projection_law {
+import gunbc.namespace.namespace_clause_e_projection_law {
   assess_controlled_two_mention_provenance_projection,
   NamespaceClauseEProjectionEstablished,
   NamespaceClauseEProjectionRefused,
@@ -29,7 +29,7 @@ import std.occurrence_binding_candidates {
 }
 import std.types { Bool, FilePath, List, NonEmptyStr }
 
-// Planted controls for gunbc.namespace_clause_e_projection_law
+// Planted controls for gunbc.namespace.namespace_clause_e_projection_law
 // assess_controlled_two_mention_provenance_projection. Each NamespaceClauseEProjectionFailure
 // variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the
 // full projection fields. B2 row-closure over OrdinaryLoadedCompilationClosure is excluded from

@@ -1,7 +1,7 @@
 module test.claim.docs_projection_gate_test
 
 import std.process { ExitSuccess, ExitFailure }
-import tools.docs_projection_agreement { docs_projection_bytes_agree, docs_projection_regen_command }
+import gunbc.instruments.docs_projection_agreement { docs_projection_bytes_agree, docs_projection_regen_command }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

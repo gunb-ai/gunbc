@@ -1,4 +1,4 @@
-module v2.test.workflow.product_receipt
+module v2.test.claim.workflow.product_receipt_test
 
 import v2.workflow.product_receipt {
   ArtifactIdentityAbsent,

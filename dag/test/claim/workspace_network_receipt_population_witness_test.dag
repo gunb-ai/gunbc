@@ -1,10 +1,10 @@
 module test.claim.workspace_network_receipt_population_witness_test
 
 import std.types { Bool, String }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
-import gunbc.runner_microvm_network_receipt_store { parse_host_network_receipt, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
-import gunbc.runner_microvm_network { parse_converged_slot_network, ConvergedSlotNetworkMalformed,
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_microvm_network_receipt_store { parse_host_network_receipt, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+import gunbc.runner.runner_microvm_network { parse_converged_slot_network, ConvergedSlotNetworkMalformed,
   slot_network_sanitation_subject, SanitationSubjectAdmitted }
 import test.fixture.srv1_network_receipt { observed_srv1_network_receipt }
 

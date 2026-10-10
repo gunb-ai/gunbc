@@ -1,4 +1,4 @@
-module test.claim.host_memory_qualification_witness_test
+module test.claim.host.host_memory_qualification_witness_test
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, List, NonEmptyStr }
@@ -26,7 +26,7 @@ import extdeps.ampere.scp_diagnostic {
   ReadAcknowledgesBootProgress,
   scp_token_is_error_class,
 }
-import gunbc.host_memory_qualification {
+import gunbc.host.host_memory_qualification {
   BootReachedOperatingSystem,
   ClassSupportedByBoard,
   HostMemoryStanding,
@@ -51,7 +51,7 @@ import product.build_fulfillment {
   CompatibilityRefutedForPlatform,
   compatibility_of,
 }
-import gunbc.host_diagnostic_channel {
+import gunbc.host.host_diagnostic_channel {
   projection_absence_establishes_source_absence,
   redfish_only_observation_is_complete,
 }
@@ -225,7 +225,7 @@ test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
 //
 // These five claims came from test.claim.memory_part_selection_witness when
 // gunbc.memory_part_selection was deleted at the root. They test the evidence
-// grading, which moved INTACT to gunbc.host_memory_qualification, so they are
+// grading, which moved INTACT to gunbc.host.host_memory_qualification, so they are
 // re-enrolled here rather than retired.
 //
 // RETIRED WITH THIS RECEIPT, and not re-enrolled anywhere, because they tested

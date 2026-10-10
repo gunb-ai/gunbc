@@ -1,4 +1,4 @@
-module v2.test.manual.map_structural_key_equality
+module v2.test.claim.manual.map_structural_key_equality_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type SKey {

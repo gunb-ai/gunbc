@@ -25,7 +25,7 @@ import gunbc.cloudflare.r2_origin {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_object_bound }
 import std.measure { measure_count, second_count }
-import gunbc.ci_spec { gunbc_ci_sm_max_time }
+import gunbc.ci.ci_spec { gunbc_ci_sm_max_time }
 
 // THE FABRIC BLOB PLANE FOR A RUN THAT HAS NOT BUILT gunbc YET. std.fabric_blob's two operations --
 // an exact-key GET into a directory this script minted, and a create-only PUT -- rendered as workflow
@@ -126,7 +126,7 @@ fn or_refuse(check: Node, name: String, message: String) -> Node {
 fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
 
 // A command substitution is always ASSIGNED and read back as "$var" (the fold renders a substitution
-// argument unquoted), as gunbc.fleet_release_bins_key does.
+// argument unquoted), as gunbc.fleet.fleet_release_bins_key does.
 fn assign_sub(name: String, body: Node) -> Node {
   bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: body))
 }

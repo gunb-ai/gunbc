@@ -1,4 +1,4 @@
-module v2.test.discrimination_gate.discrimination_roster
+module v2.test.claim.discrimination_gate.discrimination_roster_test
 
 import std.types { List }
 import v2.lens.discrimination { unit_is_discriminating }
@@ -20,28 +20,28 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.test.impossible_bug.suboptimal_complexity {
+import v2.test.claim.impossible_bug.suboptimal_complexity {
   claim_within_structural_bound_passes,
   claim_overcost_against_structural_bound_violates,
   within_bound_input
 }
-import v2.test.impossible_bug.nested_optional_flatten {
+import v2.test.claim.impossible_bug.nested_optional_flatten {
   claim_optional_chaining_no_double_unwrap,
   claim_optional_double_unwrap_rejected
 }
-import v2.test.impossible_bug.transport_type_drift {
+import v2.test.claim.impossible_bug.transport_type_drift {
   claim_shared_declaration_compiles_both_sides,
   claim_target_contract_drift_impossible
 }
-import v2.test.impossible_bug.idempotency_contract {
+import v2.test.claim.impossible_bug.idempotency_contract {
   claim_idempotent_inhabitant_passes,
   claim_repeated_append_in_idempotent_position_caught
 }
-import v2.test.impossible_bug.unenumerated_effects {
+import v2.test.claim.impossible_bug.unenumerated_effects {
   claim_explicit_reread_passes,
   claim_redundant_read_caught
 }
-import v2.test.impossible_bug.unhandled_diagnostic_paths {
+import v2.test.claim.impossible_bug.unhandled_diagnostic_paths {
   claim_division_by_zero_total_or_proven_safe,
   claim_unproven_division_rejected
 }

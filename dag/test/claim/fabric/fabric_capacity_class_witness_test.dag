@@ -1,4 +1,4 @@
-module test.claim.fabric_capacity_class_witness
+module test.claim.fabric.fabric_capacity_class_witness_test
 
 import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
@@ -12,8 +12,8 @@ import product.fabric.work { MaterializedProgram,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_executor_class {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified,
   CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
   admit_executor_capacity, fleet_cell_sanction,

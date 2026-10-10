@@ -1,4 +1,4 @@
-module test.claim.floor_expected_red_coherence_witness_test
+module test.claim.floor.floor_expected_red_coherence_witness_test
 
 import v2.std.algebra { count_where, length }
 import v2.std.decl_index { DeclFact, decl_facts }

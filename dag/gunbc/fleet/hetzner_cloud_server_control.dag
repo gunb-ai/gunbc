@@ -1,4 +1,4 @@
-module gunbc.hetzner_cloud_server_control
+module gunbc.fleet.hetzner_cloud_server_control
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.resources { Network }
@@ -10,11 +10,11 @@ import extdeps.cloud.hetzner_cloud_api {
   HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused,
   classify_hetzner_server_get,
 }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
-import gunbc.hetzner_cloud_server_reading {
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.hetzner_cloud_server_reading {
   AcquiredServerRead, AcquiredServerIdUnparsed, acquired_server_id, judge_acquired_server_read, acquired_server_read_line, acquired_server_observed,
 }
-import gunbc.hetzner_cloud_acquisition {
+import gunbc.fleet.hetzner_cloud_acquisition {
   hetzner_cloud_default_read_token, HetznerProjectToken, hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition,
 }
 import gunbc.auth.access_token_source {
@@ -27,7 +27,7 @@ import gunbc.auth.secret_ref_credential {
 }
 
 // THE FLEET'S HANDS ON A HETZNER CLOUD GUEST THROUGH ITS PROVIDER: the out-of-band route
-// gunbc.host_control_route ProviderApiControlRoute names, driven from a controller with the
+// gunbc.host.host_control_route ProviderApiControlRoute names, driven from a controller with the
 // project's token read from Secret Manager by reference. Nothing here runs on the guest.
 
 // THE CUSTODY LADDER, as gunbc.cloudflare.r2_bucket_ensure walks it: the run's resolved GCP identity,

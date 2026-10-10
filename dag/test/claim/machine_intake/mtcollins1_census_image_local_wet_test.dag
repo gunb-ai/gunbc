@@ -1,6 +1,6 @@
-module test.claim.mtcollins1_census_image_local_wet
+module test.claim.machine_intake.mtcollins1_census_image_local_wet_test
 
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { LocalExec }
@@ -8,7 +8,7 @@ import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell.exec { ProcessObservation }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope,
   host_capture_argv_open,
   host_capture_envelope_rule,
@@ -26,7 +26,7 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_program,
   host_capture_workload_command,
 }
-import gunbc.machine_intake_host_capture_historical_binding {
+import gunbc.machine_intake.host_capture_historical_binding {
   bindings_hold_against_capture_text,
   census_stages_with_mutated_command,
   census_historical_capture,
@@ -40,14 +40,14 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   ubuntu_seeded_install_media_built,
   ubuntu_seeded_install_media_record_path,
 }
-import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
-import gunbc.machine_intake_mtcollins1_census_image {
+import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
+import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_image_stem,
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
 }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.seeded_install_media_publish {
+import gunbc.provisioning.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
   SeededImageRecordedImageAbsent,
@@ -58,14 +58,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE HALF OF test.claim.mtcollins1_census_image (DESIGN §3: a supplied input owes one
+// THE INHABITANCE HALF OF test.claim.machine_intake.mtcollins1_census_image_witness_test (DESIGN §3: a supplied input owes one
 // claim that the real producer emits that shape). The hermetic file hands the parser designed
 // captures; these two claims run the real producers. The first reads the one capture a census host
 // has actually written. The second executes the PROGRAM THE RENDERER WRITES under a real shell and
 // hands its real output to the parser, so the route asserted is render -> run -> parse and not a
 // string built from the same tokens the parser reads.
 //
-// It is local-wet for the reason the precedent in test.claim.spark_snapshot_verify_wrapper_local_wet
+// It is local-wet for the reason the precedent in test.claim.spark.spark_snapshot_verify_wrapper_local_wet_test
 // gives: shell.Exec.RunArgv and Filesystem.Read carry no mock_response, and their subject here is the
 // output of a real process and the bytes of a real file. Nothing leaves the host; there is no network.
 //
@@ -173,7 +173,7 @@ test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool {
 // the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
 // and the omitted section must be present in the file and absent from the roster.
 // The capture is READ, not re-bound: binding it is the_attempt_three_capture_binds_and_reads_by_real_execution's
-// subject, and this claim's is the ARGV lines (gunbc.machine_intake_host_capture_historical_binding
+// subject, and this claim's is the ARGV lines (gunbc.machine_intake.host_capture_historical_binding
 // host_capture_text_section_argv). The RED is live on the same bytes: the roster with nproc's command
 // mutated fails against the file, so the claim still discriminates by execution.
 test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
@@ -250,7 +250,7 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
 
 // A SUPPLIED user-data body: these claims drive the real resolver over a real directory and need
 // an input's shape, not the renderer's output; the rendering route is exercised by
-// test.claim.mtcollins1_census_image.
+// test.claim.machine_intake.mtcollins1_census_image_witness_test.
 data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - \"*\"\n  early-commands:\n    - sh /cdrom/gunbc-census/capture.sh\n" as NonEmptyStr
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {

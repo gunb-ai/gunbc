@@ -2,11 +2,11 @@ module test.claim.capability_ensure_fixture
 
 import std.types { String, NonEmptyStr, FilePath }
 import gunbc.ensure { EnsureObserveOnly, EnsureObserved, EnsureAbsent }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
   CapabilityRealization,
 }
-import gunbc.roadmap_dispatch_environment {
+import gunbc.roadmap.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   capability_ensure_receipt,
 }
@@ -57,8 +57,8 @@ fn grounded_capability_ensure_witness_fixture(
   evidence: String,
 ) -> CapabilityEnsureReceipt
   admit_callers: [
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "grounded_receipt"),
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "grounded_capability"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "grounded_receipt"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "grounded_capability"),
     decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "grounded_receipt"),
   ]
 {

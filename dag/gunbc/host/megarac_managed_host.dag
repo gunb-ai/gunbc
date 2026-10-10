@@ -1,4 +1,4 @@
-module gunbc.megarac_managed_host
+module gunbc.host.megarac_managed_host
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
@@ -8,28 +8,28 @@ import product.placement_supply { HostIdentity }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
-import gunbc.managed_host {
+import gunbc.host.managed_host {
   ManagedHost, ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
   ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding,
   managed_membership_for,
 }
-import gunbc.megarac_operation_standing {
+import gunbc.host.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
   megarac_operation_executed_at, megarac_current_build,
 }
-import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 
 // A MEGARAC-ONLY OPERATION ON A MANAGED HOST, ADMITTED FROM WHAT THE HOST'S CONTROLLER WAS OBSERVED TO
 // BE (docs/plans/managed-host-untangle.md, cut 3). The BMC stack is read, never assumed: the family,
-// baseboard and build come off the access observation gunbc.managed_host managed_host_binding bound,
+// baseboard and build come off the access observation gunbc.host.managed_host managed_host_binding bound,
 // and a host whose binding refuses -- its access unobserved, its controller not secured, its observed
 // endpoint not the secured one -- has no family to read and is refused here before any request. A bound
 // controller of another family is refused by family.
 //
-// AN OPERATION IS ADMITTED ONLY WHERE IT IS GROUNDED. gunbc.megarac_operation_standing grounds an
+// AN OPERATION IS ADMITTED ONLY WHERE IT IS GROUNDED. gunbc.host.megarac_operation_standing grounds an
 // operation at an observed controller identity -- baseboard and firmware together -- from committed
-// evidence (gunbc.machine_intake_megarac_operation_evidence): a receipt joined to a reading of that
+// evidence (gunbc.machine_intake.megarac_operation_evidence): a receipt joined to a reading of that
 // build. A MegaRAC appliance of another product line
 // reporting the same raw version is refused, and so is Mt. Jade's MegaRAC at 2.11, which none of these
 // operations was ever run on.
@@ -89,8 +89,8 @@ fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
 // family step (and, for the gate, the current-build step) before reaching it.
 fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission
   admit_callers: [
-    decl_ref(module_path: "gunbc.megarac_managed_host", decl_name: "admit_megarac_host_observed_in"),
-    decl_ref(module_path: "gunbc.megarac_managed_host", decl_name: "admit_megarac_host_at_current_build"),
+    decl_ref(module_path: "gunbc.host.megarac_managed_host", decl_name: "admit_megarac_host_observed_in"),
+    decl_ref(module_path: "gunbc.host.megarac_managed_host", decl_name: "admit_megarac_host_at_current_build"),
   ]
 {
   if megarac_operation_executed_at(evidence: evidence, operation: operation, identity: identity) {
@@ -186,7 +186,7 @@ fn megarac_binding_refusal_text(standing: ManagedHostBindingStanding) -> String 
 // THE TEXT A REFUSED CALLER PRINTS, naming the operation, so every refusal is located.
 fn megarac_host_refusal_text(cause: MegaRacHostRefusal) -> NonEmptyStr {
   let why = match cause {
-    MegaRacHostNotManaged { host: h } => join(["'", h as String, "' is not a managed host (gunbc.managed_host managed_hosts has no row for it)"], "")
+    MegaRacHostNotManaged { host: h } => join(["'", h as String, "' is not a managed host (gunbc.host.managed_host managed_hosts has no row for it)"], "")
     MegaRacHostNotBound { standing: s } => megarac_binding_refusal_text(standing: s)
     MegaRacHostNotMegaRac { family: f } => join(["the controller is observed as ", megarac_family_text(family: f), ", not AMI MegaRAC"], "")
     MegaRacOperationNotGrounded { operation: o, identity: i } =>

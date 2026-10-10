@@ -7,7 +7,7 @@ import std.witness_admission {
   FalsifierSelfHostWet,
   witness_cadence_has_scheduled_route
 }
-import gunbc.ci_layer_roots {
+import gunbc.ci.ci_layer_roots {
   WitnessExclusionRow,
   BinWitnessWet,
   QuarantineProbeExpectRed,
@@ -38,7 +38,7 @@ import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 import v2.std.text { String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-// Executable reconciliation for gunbc.ci_layer_roots.witness_exclusion_frontier, which is a PATH
+// Executable reconciliation for gunbc.ci.ci_layer_roots.witness_exclusion_frontier, which is a PATH
 // POLICY carrier as of 2026-08-03: every row is well-formed (never DiscoverySelection, never
 // QuarantineProbeExpectRed, NoConsumer only for the synthetic admission RED-control path, nonempty
 // reason and dissolve_on), the remaining explicit-roster classifications name files those rosters
@@ -167,7 +167,7 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
   ) == false
 }
 
-// falsifier_self_host_wet_dark_lane_population (gunbc.ci_layer_roots) derives its count from the
+// falsifier_self_host_wet_dark_lane_population (gunbc.ci.ci_layer_roots) derives its count from the
 // real witness_exclusion_frontier rather than a hand-typed ordinal, but a derived count is only as
 // trustworthy as the predicate deriving it: a row could phrase its dissolve_on around the same wet
 // lane in a spelling the positive predicate has not learned, silently deflating the count for a
@@ -200,9 +200,9 @@ test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_h
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
 }
 
-// Re-homed here from gunbc.ci_layer_roots (this file is its only consumer, and it already
+// Re-homed here from gunbc.ci.ci_layer_roots (this file is its only consumer, and it already
 // reaches both authorities the note joins). Keeping it in ci_layer_roots forced that module
-// to import v2.compiler.self_host.wet_receipt_enrollment, and since gunbc.ci_spec imports
+// to import v2.compiler.self_host.wet_receipt_enrollment, and since gunbc.ci.ci_spec imports
 // ci_layer_roots, that edge widened ~63 witness entries' import closures into the self_host
 // subtree and its two live-read carrier homes — which permanently disabled affected-set
 // skipping for them. A status projection must not decide selection for the corpus.

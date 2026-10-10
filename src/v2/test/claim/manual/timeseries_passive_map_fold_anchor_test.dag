@@ -1,4 +1,4 @@
-module v2.test.manual.timeseries_passive_map_fold_anchor
+module v2.test.claim.manual.timeseries_passive_map_fold_anchor_test
 
 import std.types { List }
 import std.algebra { Cons, Empty }

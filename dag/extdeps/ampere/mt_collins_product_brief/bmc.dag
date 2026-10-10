@@ -30,7 +30,7 @@ type MtCollinsBmcImplementationExpected {
 // unit, and a report rendered as an extdeps fact would be the provenance inversion DESIGN §3
 // names. So the row is typed as what it is — what a workflow holding a Mt. Collins should
 // EXPECT to find — and the observation that would confirm or contradict it is a workflow-layer
-// gunbc.machine_intake_access BmcImplementationObserved receipt keyed to unit, attempt,
+// gunbc.machine_intake.access BmcImplementationObserved receipt keyed to unit, attempt,
 // endpoint, time and raw Manager-response evidence. No such receipt is authored yet: the raw
 // producer output of the 2026-08-29 run (Manager Manufacturer/Model/FirmwareVersion payload,
 // both VirtualMedia discovery routes, service roster) was not preserved, and the ruling forbids

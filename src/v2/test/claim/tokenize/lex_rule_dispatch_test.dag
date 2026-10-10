@@ -1,4 +1,4 @@
-module v2.test.tokenize.lex_rule_dispatch
+module v2.test.claim.tokenize.lex_rule_dispatch_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.tokenize { LexCursor }

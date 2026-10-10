@@ -1,4 +1,4 @@
-module v2.test.manual.branch_lazy_arm_eval_acceptance
+module v2.test.claim.manual.branch_lazy_arm_eval_acceptance_test
 
 import std.types { List }
 import v2.std.arrow_signature { declared_signature }

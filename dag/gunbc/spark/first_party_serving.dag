@@ -34,8 +34,8 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
 }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
-import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import gunbc.fleet.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
 // ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
 //
@@ -55,7 +55,7 @@ import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, oper
 // no reader has to take this paragraph's word for which one they are holding.
 //
 // THE SITE IS NOT MINTED HERE, AND THAT IS THE SECOND HALF OF THE POINT. The operator's premises
-// already have one authority -- gunbc.fleet_physical_inventory operator_site -- and
+// already have one authority -- gunbc.fleet.fleet_physical_inventory operator_site -- and
 // gunbc.fleet_site_locale records that minting a second SiteIdentity for this exact place was
 // already done once and reverted as the section 3 nickname failure. So the allocation is keyed on
 // that identity rather than on a new one.
@@ -96,7 +96,7 @@ data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAlloc
   allocation: OperatorAllocation {
     decided_by: "operator (2026-09-11): 'srv5, 6, and all the sparks sit outside the rack right now, but in my NYC home'",
     decided_on: "2026-09-11",
-    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. IT IS KEYED ON THE SITE IDENTITY THE CORPUS ALREADY CARRIES -- gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale records as America/New_York -- rather than introducing a second name for one place. WHAT IS NOT ESTABLISHED, asked and answered on the same date: the operator BELIEVES operator-lab is his NYC apartment and does not know it, so the join between that site identity and the home named in the assertion is a belief and is not confirmed here. Confirming it means tagging an address to this site identity, which belongs in the private fleet records rather than this repository. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
+    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. IT IS KEYED ON THE SITE IDENTITY THE CORPUS ALREADY CARRIES -- gunbc.fleet.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale records as America/New_York -- rather than introducing a second name for one place. WHAT IS NOT ESTABLISHED, asked and answered on the same date: the operator BELIEVES operator-lab is his NYC apartment and does not know it, so the join between that site identity and the home named in the assertion is a belief and is not confirmed here. Confirming it means tagging an address to this site identity, which belongs in the private fleet records rather than this repository. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
   },
 }
 

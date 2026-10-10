@@ -1,4 +1,4 @@
-module v2.test.parse.block_expr_as_binary_operand_parse
+module v2.test.claim.parse.block_expr_as_binary_operand_parse_test
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }

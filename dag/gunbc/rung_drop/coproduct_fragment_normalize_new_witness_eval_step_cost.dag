@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coproduct_fragment_normalize_rows }
 
-// DECLARED 4b(3) DROP (gunbc v2.test.parse census phase 3, 2026-10-05; ruling stern-bear-500,
+// DECLARED 4b(3) DROP (gunbc v2.test.claim.parse census phase 3, 2026-10-05; ruling stern-bear-500,
 // grammar program, under sharp-raven-357's phase-3 approval). The DECLARATION lives here; the
 // POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
 // `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`.
@@ -19,7 +19,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coprodu
 // fn_fragment_lowering_exceeds_the_enrolment_margin); a drop covers only claims the gate runs.
 //
 // WHY A DROP AND NOT A SMALLER CLAIM. Each claim already lowers ONE declaration fragment parsed at
-// its own production (test.claim.parse_test_coproduct_leading_pipe cp_lowered), not a whole module.
+// its own production (v2.test.claim.parse.parse_test_coproduct_leading_pipe_test cp_lowered), not a whole module.
 // A scaling probe (claim_batch, BuildBuddy invocation d04df9ae) read body lowering of one fn_decl as
 // LINEAR in its node count, with no quadratic or exponential link, and the fragment probe (BuildBuddy
 // invocation b01c394f) showed the bill: a fixed term per declaration lowered plus a per-token term, on
@@ -32,7 +32,7 @@ data coproduct_fragment_normalize_new_witness_eval_step_cost_population: List<St
 data coproduct_fragment_normalize_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "coproduct_fragment_normalize_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the three coproduct type-declaration lowering claims of test.claim.parse_test_coproduct_leading_pipe (one type declaration fragment parsed at its production and lowered by normalize): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the three coproduct type-declaration lowering claims of v2.test.claim.parse.parse_test_coproduct_leading_pipe_test (one type declaration fragment parsed at its production and lowered by normalize): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-10-05",
 

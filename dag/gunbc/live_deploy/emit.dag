@@ -2,24 +2,24 @@ module gunbc.live_deploy.emit
 
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_image_delivery { workspace_image_staging_root }
-import gunbc.workspace_guest_image { workspace_image_path, workspace_installed_image_root }
-import gunbc.microvm_guest_artifacts { runner_guest_kernel_artifact, runner_guest_base_artifact_path, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable }
+import gunbc.runner.workspace_guest_image { workspace_image_path, workspace_installed_image_root }
+import gunbc.runner.microvm_guest_artifacts { runner_guest_kernel_artifact, runner_guest_base_artifact_path, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable }
 
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
 
 import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
-import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
 import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
 import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
 import gunbc.workspace_commissioning_executor_unit {
   workspace_executor_template_name, workspace_executor_script_name, workspace_executor_helper_name,
   workspace_executor_unit_text, workspace_executor_unit_path, workspace_executor_wait_bound,
 }
-import gunbc.fleet_generation_execution { fleet_generation_lock }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 
-import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
-import gunbc.runner_microvm_network { runner_microvm_converged_receipt_root }
+import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
 import gunbc.live_deploy.belt_cadence { belt_tick_cadence, belt_tick_run_bound }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -40,7 +40,7 @@ import gunbc.live_deploy.release_locus {
   helper_locus_dir,
   approval_broker_ntfy_runtime_observe_operation_at,
 }
-import gunbc.fleet_converge_timer {
+import gunbc.fleet.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
@@ -95,7 +95,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_elevated_argv,
   executor_privileged_operation_sudoers_line,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
@@ -127,7 +127,7 @@ import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.exec.command { argv_words }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
   microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
@@ -144,13 +144,13 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
 }
-import gunbc.fabric_storage_placement { fabric_storage_door_socket }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
 }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
-import gunbc.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -185,8 +185,8 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.ci_release_bins { gunbc_release_bin_name }
-import gunbc.host_layout {
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.host.host_layout {
   belt_spawn_workdir_env_var,
   instance_receipts_dir,
   publication_spool_root,
@@ -195,7 +195,7 @@ import gunbc.host_layout {
   publication_refused_dir,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
-import gunbc.host_axis_caps {
+import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
   CapConvergeDecision,
@@ -260,14 +260,14 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
-import gunbc.ci_deploy_access {
+import gunbc.ci.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access_or_refusal,
   DeployAccessReady,
   DeployAccessJobPrincipalRefused,
   deploy_access_job_principal_refused_emit_poison,
 }
-import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
+import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
 import gunbc.live_deploy.effect_leaf {
@@ -520,11 +520,11 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 }
 
 // The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the
-// ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
+// ONE .dag entry gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
 // verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is
 // non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and
-// entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
+// entry are relative to it, and the belt's spawn workdir projects the same gunbc.host.host_layout fact.
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   live_deploy_serve_unit_file_over(
@@ -599,7 +599,7 @@ fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRev
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
-// gunbc.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
+// gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
 // route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
 // the identity header's trust rests on. Same principal, slice, tree, binary and declared evaluation
 // caps as the dashboard's unit: a request is one store operation on local files, and the caps turn an
@@ -920,7 +920,7 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 }
 
 // THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
-// gunbc.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
+// gunbc.roadmap.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
 // event services resolve the same instance the belt service does and start obligation units in the
 // same user manager the belt's workers run in.
 //
@@ -1008,14 +1008,14 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
 //
-// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
+// `gunbc.fleet.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
 // call through a CONFIGURED remote, and `tree_sync_git_whitelist_note` excludes .git/config from
 // the sync because a blanket sync once carried a live Actions token into the service tree. Both are
 // correct and neither was checked against the other, so the deploy produced a tree that could not
 // answer an observation the belt makes every sixty seconds (srv1, measured 2026-08-18).
 //
 // WHY A UNIT AND NOT AN APPLY STEP: the tree is service-user-owned and the deploy principal is the
-// unprivileged ci-runner, whose NOPASSWD roster (gunbc.fleet_posix_accounts
+// unprivileged ci-runner, whose NOPASSWD roster (gunbc.fleet.fleet_posix_accounts
 // fleet_posix_ci_runner_sudo_grants) contains no git, so
 // `git config` from the apply is refused on one side and EACCES on the other. The same reasoning
 // that produced gunbc-tree-sync.service produces this one -- the owner writes its own tree.
@@ -1076,7 +1076,7 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
 // Receipt *publication* (superseding a stale root-owned file) is atomic rename in
-// gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
+// gunbc.fleet.fleet_converge_cli (gunbc.host.host_layout fleet_converge_receipt_atomic_publish_note).
 // Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
@@ -1484,7 +1484,7 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 
 // THE BELT'S RECEIPT WRITE IS NOT CRASH-SAFE, AND THAT IS ADMITTED RATHER THAN OVERLOOKED. The tick
 // writes its receipt in place instead of through the same-directory staging + rename that
-// gunbc.fleet_converge_cli uses. In-place is correct on ownership grounds — the directory is
+// gunbc.fleet.fleet_converge_cli uses. In-place is correct on ownership grounds — the directory is
 // service-user-owned and the file is not a stale root-owned artifact — but a tick interrupted
 // mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a
 // wrong verdict. Adopting the atomic publish is the strictly better construction and is not done
@@ -1494,7 +1494,7 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 // and no declaration carries that today — binding forward to a name nobody has written is the §3
 // fabricated-citation class std.dissolution refuses by name.
 data belt_receipt_in_place_write_residue_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "dissolves-on: the belt tick publishes its receipt through the same-directory staging + rename gunbc.fleet_converge_cli uses, so an interrupted tick cannot leave a truncated receipt behind." as NonEmptyStr
+  description: "dissolves-on: the belt tick publishes its receipt through the same-directory staging + rename gunbc.fleet.fleet_converge_cli uses, so an interrupted tick cannot leave a truncated receipt behind." as NonEmptyStr
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
@@ -1507,7 +1507,7 @@ fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
 }
 
 // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
-// irreducible part. The principal itself is not stated here: gunbc.fleet_posix_accounts owns it —
+// irreducible part. The principal itself is not stated here: gunbc.fleet.fleet_posix_accounts owns it —
 // FleetAccountCiRunner is the deploy principal (unit_user=root is NOT the authorization principal)
 // and fleet_posix_ci_runner_sudo_grants() enumerates its NOPASSWD roster. Reading it from there is
 // the point of this paragraph; an earlier revision spelled the roster and its size inline and went
@@ -1688,14 +1688,14 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
 //
-// THIS IS THE PRODUCTION WRITER. `gunbc.host_axis_caps` authors the per-slot drop-in content and
+// THIS IS THE PRODUCTION WRITER. `gunbc.host.host_axis_caps` authors the per-slot drop-in content and
 // THIS path applies it -- `gunbc converge` does not (operator privilege hold, 2026-08-13) -- so a
 // gate that lives only beside the authoring helpers leaves the reachable route intact. Until this
 // parameter existed the guard here checked author-before-shadow-revert composition and a nonempty
 // unit list, neither of which is evidence that the surplus old slots have finished.
 //
 // THE DEFAULT IS WITHHELD AND THAT IS DELIBERATE. No caller yet supplies a live
-// `SurplusSlotObservation` (`gunbc.runner_slot_population_census` produces one but is not wired to
+// `SurplusSlotObservation` (`gunbc.runner.runner_slot_population_census` produces one but is not wired to
 // a converge call site), so every caller today reaches the refusal arm. A deploy that cannot prove
 // retirement does not write caps; it stops and says which evidence is missing. That is the safe
 // default the previous shape did not have.
@@ -1704,7 +1704,7 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 // shadow reverts that follow it, because a revert is a change to the same subject and authorising
 // half a transaction is how the ordering hazard returns under a different name.
 // THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
-// fleet plan's slot teardown uses (gunbc.runner_slot_provision slot_removal_withheld_line), so a
+// fleet plan's slot teardown uses (gunbc.runner.runner_slot_provision slot_removal_withheld_line), so a
 // reader of the apply transcript sees one vocabulary for "this member was not performed and why".
 // Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
 // and a quote inside a single-quoted echo would end the word and run the rest.
@@ -1765,7 +1765,7 @@ fn deploy_memory_cap_apply_steps(
 // back its receipt before continuing. Target-local worktree registrations, session refs and
 // unrelated refs are preserved by the convergence adjudication rather than by an additive file
 // copy. Flags are -rlpt, not -a: the sync principal is the service user
-// (gunbc.fleet_posix_accounts FleetAccountCiRunner is the deploy principal, not the tree's owner),
+// (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner is the deploy principal, not the tree's owner),
 // so -a's owner/group replication would chgrp toward the runner's
 // group and fail EPERM — ownership is the destination principal's by construction, never replicated
 // from the source.
@@ -1781,7 +1781,7 @@ fn deploy_memory_cap_apply_steps(
 // THIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE.
 // fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on
 // fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now
-// corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the
+// corrected in gunbc.host.host_layout, so this sentence describes the prior revision rather than the
 // current text), and that member is a retired refusal poison (the cadence moved to on-demand
 // plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh
 // instance root since. Green has no receipts directory at all; production's exists only because it
@@ -1897,9 +1897,9 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // restart-looped: the same symptom as the missing tree, from the other half of the pair.
 //
 // THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
-// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci_spec
+// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci.ci_spec
 // ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
-// gunbc.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
+// gunbc.fleet.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
 // the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
 // put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier
 // one. That is what makes the copy source a verified artifact rather than a file that happens to be
@@ -1907,13 +1907,13 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // job before the install step runs.
 //
 // THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
-// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci_deploy_access
+// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci.ci_deploy_access
 // ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
 // and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
 // copy is not reaching any further than the tree copy already does. Were the transport ever remote,
 // both would break together and loudly, rather than this one silently copying a file that is not
 // there.
-// The copy source is that artifact; gunbc.ci_release_bins gunbc_release_bin_name is the row both
+// The copy source is that artifact; gunbc.ci.ci_release_bins gunbc_release_bin_name is the row both
 // the pack verification and this copy read, so the two spellings cannot drift.
 //
 // THE LOCUS IS PER-CANDIDATE AND IMMUTABLE, which is what makes the readback mean anything. Under a
@@ -1997,7 +1997,7 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 
 // EVERY RELEASE LOCUS IS POPULATED BY THE PRIVILEGED PER-FILE MOVER, BECAUSE THE PRINCIPAL THAT
 // RUNS THE COPY IS NEVER THE PRINCIPAL THAT OWNS THE LOCUS. The deploy job runs as the ci-runner
-// principal (gunbc.fleet_posix_accounts srv1_ci_deploy_runner_principal job_user); the broker's
+// principal (gunbc.fleet.fleet_posix_accounts srv1_ci_deploy_runner_principal job_user); the broker's
 // locus is owned by the service user its unit runs as (spec.service.service_user, User= in the
 // unit) and the microVM controller's by root. The directories above are created OWNED by that
 // owner through the granted `sudo -n install -d -o`, so the job user can neither write into them
@@ -2010,7 +2010,7 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 // there is no job-user/owner pairing in the fleet it is correct for. The first root-owned run
 // (fleet-converge run 35655377521) is the same class from the microVM side.
 //
-// gunbc.ci_deploy_sudoers REFUSES the generic movers (rsync, chown) as sudo grants by design -- so
+// gunbc.ci.ci_deploy_sudoers REFUSES the generic movers (rsync, chown) as sudo grants by design -- so
 // the privileged copy is install(1), the one granted mover, ONE FILE AT A TIME: every directory
 // `install -d -o <owner>`, every file `install -m 0644 -o <owner>` from the job's checkout, driven
 // by find over the same subdirectories and never by a recursive tool the owner would have to
@@ -2187,12 +2187,12 @@ fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: Release
 
 // ── THE microVM SLOT CONTROLLER'S RELEASE LOCUS AND UNIT ──────────────────────────────────────
 //
-// THE SAME LOCUS, OWNED BY root, PLUS THE VMM AND THE JAILER. gunbc.runner_microvm_slot_unit owns
+// THE SAME LOCUS, OWNED BY root, PLUS THE VMM AND THE JAILER. gunbc.runner.runner_microvm_slot_unit owns
 // the root, the owner and the unit's shape; this module owns the install because the locus is the
 // live_deploy one. The two binaries the controller execs beside gunbc -- Firecracker and its jailer
 // -- are installed INTO the locus from the upstream release tarball, digest-verified against
 // extdeps.virtualization.firecracker's cited sha256 before extraction, as root-owned 0755 files.
-// They were previously installed under the job user's HOME by gunbc.runner_microvm_host_ready
+// They were previously installed under the job user's HOME by gunbc.runner.runner_microvm_host_ready
 // (firecracker only; the jailer was never copied out of the archive), which is a job-user-writable
 // binary that a root controller would exec -- the same class the slot-network frontier names for
 // staged sources -- so the controller reads them from here and from nowhere else.
@@ -2258,7 +2258,7 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 }
 
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
-// belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
+// belong to this module while the unit's shape belongs to gunbc.runner.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
 // EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
 // over any such unit: the slot controller and the shakedown broker both exec from this locus.

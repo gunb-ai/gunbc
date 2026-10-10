@@ -1,11 +1,11 @@
-module gunbc.fleet_intent_network
+module gunbc.fleet.fleet_intent_network
 
 import std.types { NonEmptyStr }
-import gunbc.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
-import gunbc.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import product.network_topology {
   NetworkAttachmentRole,
   NetworkEndpoint,
@@ -31,7 +31,7 @@ import product.network_topology {
   TailscaleOverlay,
 }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet_host_identity {
+import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_mtcollins1,
 }
 
@@ -47,7 +47,7 @@ import gunbc.fleet_host_identity {
 // rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until
 // then these literals are the §3 residual the reach lane closes, tracked here so the loop is
 // visible rather than silently forked. The grounded rows the reach lane already built —
-// gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by
+// gunbc.fleet.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by
 // srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent
 // second grounding: srv2/srv3's address becomes those rows when the field re-types, so the
 // transitional dual representation is marked debt heading toward one authority, not a permanent

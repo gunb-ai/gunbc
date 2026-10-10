@@ -1,4 +1,4 @@
-module test.claim.scm_checkout_verb_witness
+module test.claim.scm.scm_checkout_verb_witness_test
 
 // THE CHECKOUT VERB AT REPOSITORY GRAIN. The reconstruction half of checkout is already covered by
 // scm_object_store_witness; these claims are about SELECTION -- which commit a repository is
@@ -623,7 +623,7 @@ fn scm_ck_partial_repository(store: ObjectStore, root: CorpusManifestTarget) -> 
 // where it is observed, on the representation that was actually written and read back.
 //
 // So this encodes, decodes, and checks out THE DECODED ENVELOPE. Its missing object is the same
-// authored source test.claim.scm_repository_envelope_witness omits from its document, so both halves
+// authored source test.claim.scm.scm_repository_envelope_witness_test omits from its document, so both halves
 // name one subject rather than two absences that merely rhyme.
 //
 // The snapshot designation is asserted UNCHANGED across the repair -- same commit, same manifest

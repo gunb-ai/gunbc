@@ -1,4 +1,4 @@
-module gunbc.namespace_step0_candidate_run
+module gunbc.namespace.namespace_step0_candidate_run
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
@@ -14,7 +14,7 @@ import std.import {
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
-import tools.multi_module_compile_fixture {
+import gunbc.instruments.multi_module_compile_fixture {
   FixtureSource,
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -24,14 +24,14 @@ import tools.multi_module_compile_fixture {
   compile_fixture
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
-import gunbc.parsed_import_statement_production { parsed_import_statements_live }
-import gunbc.namespace_step0_strip_producer {
+import gunbc.namespace.parsed_import_statement_production { parsed_import_statements_live }
+import gunbc.namespace.namespace_step0_strip_producer {
   Step0SourceStrip,
   Step0SourceStripped,
   Step0SourceStripRefused,
   namespace_step0_strip_source
 }
-import gunbc.namespace_step0_subject_collector {
+import gunbc.namespace.namespace_step0_subject_collector {
   Step0PopulationIdentity,
   Step0SubjectCollected,
   Step0SubjectCollection,
@@ -45,7 +45,7 @@ import gunbc.namespace_step0_subject_collector {
   step0_source_population_identity,
   step0_subject_vector_size
 }
-import gunbc.namespace_step0_canary_v2 {
+import gunbc.namespace.namespace_step0_canary_v2 {
   NamespaceStep0V2Receipt,
   NamespaceStep0V2Admission,
   NamespaceStep0V2ReceiptAdmitted,

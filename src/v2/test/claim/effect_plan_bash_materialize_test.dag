@@ -434,7 +434,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
 
 test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_locus() -> Bool {
   let plan = one_step_plan(inv: invocation(
-    path: "dag/extdeps/git/git.dag",
+    path: "dag/extdeps/git.dag",
     service: "git.Core",
     operation: "DiffUnified0",
     bindings: [
@@ -448,7 +448,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
-          path: "dag/extdeps/git/git.dag",
+          path: "dag/extdeps/git.dag",
           service: "git.Core",
           operation: "DiffUnified0"
         )

@@ -1,4 +1,4 @@
-module gunbc.fleet_desired_admission_workflow
+module gunbc.fleet.fleet_desired_admission_workflow
 
 
 import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
@@ -16,13 +16,13 @@ import gunbc.action_use_admission {
   checkout_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
-import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.repo_self_build { repo_self_build_command }
-import gunbc.fleet_desired_candidate { fleet_desired_candidate_fetch_script }
-import gunbc.fleet_release_bins_key { compiler_pair_release_product, release_bins_canonical_consumer_script_for }
+import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.fleet.fleet_desired_candidate { fleet_desired_candidate_fetch_script }
+import gunbc.fleet.fleet_release_bins_key { compiler_pair_release_product, release_bins_canonical_consumer_script_for }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.witness_floor_workflow { witness_floor_toolchain_step }
+import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step }
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
@@ -33,7 +33,7 @@ import gunbc.toolchain_home_standing {
   WorkflowToolchainHomeRefused,
   toolchain_home_refusal_reason,
 }
-import gunbc.fleet_desired_admission {
+import gunbc.fleet.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_action_path,
 }
@@ -43,7 +43,7 @@ import std.types { String, List }
 // THIS WORKFLOW IS THE ADMISSION GATE'S TRIGGER, AND IT IS SEPARATE FROM THE DEPLOY WORKFLOW
 // FOR A REASON THAT IS NOT ORGANISATIONAL.
 //
-// gunbc.fleet_main_revision requires the desired revision to derive from MERGED, FLOOR-GREEN
+// gunbc.fleet.fleet_main_revision requires the desired revision to derive from MERGED, FLOOR-GREEN
 // main. Before the merge queue, a push to main landed with no floor conclusion for its revision to
 // consult -- the required floor took about thirty minutes to reach one -- so a push-triggered
 // advance could only fabricate floor-green or refuse. That is why the ORIGINAL route was keyed to
@@ -54,21 +54,21 @@ import std.types { String, List }
 // default branch to exactly that revision only after the run succeeds, so when the push of R is
 // delivered the floor's verdict on R already exists. The route reads the branch fact from the push
 // itself and the CI fact from the merge_group runs on R
-// (gunbc.fleet_desired_admission admit_fleet_desired_from_push_wet). A push that bypassed the queue
+// (gunbc.fleet.fleet_desired_admission admit_fleet_desired_from_push_wet). A push that bypassed the queue
 // has no such run and refuses loudly as RequiredCiMergeGroupRunAbsent.
 //
 // THE workflow_run ROUTE IS DELETED, on the condition this module stated for it: it stayed only
 // until the witnesses push-on-main run was cut, and that cut is
-// gunbc.witness_floor_workflow witness_floor_triggers. With no push-event run of the required
+// gunbc.witness.witness_floor_workflow witness_floor_triggers. With no push-event run of the required
 // workflow there is no completion event to key on, so keeping the route would have left a second
 // authority for one fact that nothing can reach.
 //
 // WHAT THIS REPLACES. deploy.yml previously ended with a step that stamped $GITHUB_SHA onto
 // refs/fleet/desired on every push to main, consulting nothing. The modeled gate
-// (gunbc.fleet_main_revision decide_fleet_desired_advance) existed the whole time with its witness
+// (gunbc.fleet.fleet_main_revision decide_fleet_desired_advance) existed the whole time with its witness
 // test as its only caller.
 // That is not a missing feature, it is a wall standing beside an actuator that walked around it,
-// and the blast radius reaches further than the ref: gunbc.roadmap_belt_actuate gates worker
+// and the blast radius reaches further than the ref: gunbc.roadmap.roadmap_belt_actuate gates worker
 // dispatch on revision standing, so a desired ref that always equals whatever last landed makes
 // that gate agree unconditionally and pass in silence.
 //
@@ -112,8 +112,8 @@ fn fleet_desired_admission_checkout_step() -> Step {
 //
 // THE ADMISSION BINARY IS THE MERGE QUEUE'S CANDIDATE WHEN ONE EXISTS. The queue's floor built
 // claim_executor and gunbc from exactly this revision and uploaded them as the compiler pair candidate
-// (gunbc.compiler_gate_workflow); this job fetches that candidate (gunbc.fleet_desired_candidate),
-// verifies it as the canonical compiler pair for this checkout's tree (gunbc.fleet_release_bins_key
+// (gunbc.witness.compiler_gate_workflow); this job fetches that candidate (gunbc.fleet.fleet_desired_candidate),
+// verifies it as the canonical compiler pair for this checkout's tree (gunbc.fleet.fleet_release_bins_key
 // release_bins_canonical_consumer_statements: kind, source closure, every member's digest, the
 // executor's own --verify-build-artifacts) and only then runs it. A revision with no candidate -- a
 // push that bypassed the queue, an expired artifact -- builds gunbc as before; a candidate that fails
@@ -203,7 +203,7 @@ fn fleet_desired_admission_stage_payload_step() -> Step {
 // step, so the ref keeps its previous admitted revision and the cause is in the log, located and
 // typed. There used to be TWO steps, one per admission route, selected by the triggering event:
 // the workflow_run route keyed to the push-on-main required run's completion, and this one. The
-// push-on-main run is cut (gunbc.witness_floor_workflow witness_floor_triggers), so that run never
+// push-on-main run is cut (gunbc.witness.witness_floor_workflow witness_floor_triggers), so that run never
 // completes and the event that carried its conclusion is never delivered -- the route went with it
 // rather than standing as a second authority that nothing can reach. This step reads the forge, so
 // it carries GITHUB_TOKEN, which github.WorkflowRuns resolves from its auth_source.
@@ -432,14 +432,14 @@ fn fleet_desired_admission_job() -> Job {
 // checkout's default ref to the DEFAULT BRANCH HEAD rather than to the triggering run's head_sha,
 // so the judge was whatever happened to be on main when the admission ran -- an accident of timing
 // that nothing recorded. On a push event the checkout's default ref IS the pushed revision, so the
-// judge is the candidate, and gunbc.fleet_desired_admission reads the worktree revision and refuses
+// judge is the candidate, and gunbc.fleet.fleet_desired_admission reads the worktree revision and refuses
 // rather than materializing an unattributable action
 // (fleet_desired_unobservable_judge_source_refusal_reason); every admission prints the observed
 // judge source beside the revision it admits.
 //
 // WHAT REMAINS IS THE OTHER HALF, AND IT IS NOT CLOSED: the candidate now adjudicates itself under
 // a token carrying contents: write, which is the pattern GitHub's own guidance warns against, and
-// the trust wall in gunbc.fleet_desired_admission runs AFTER checkout and compilation, so it cannot
+// the trust wall in gunbc.fleet.fleet_desired_admission runs AFTER checkout and compilation, so it cannot
 // protect a step that already executed candidate code. The mitigation the queue supplies is that a
 // revision only reaches this workflow after the required floor passed on it, which is a weaker fact
 // than trusted provenance. Two honest constructions exist -- build the judge from the currently
@@ -465,7 +465,7 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
 
 // WHY THESE TWO CLASSES ARE NAMED IN PROSE RATHER THAN CARRIED AS ROWS, since section 4c says a
 // machine-consumed fact belongs in a typed carrier and these are not in one. The intended owner
-// EXISTS AS A PLAN AND NOT AS A MODULE: gunbc.roadmap_authority specifies GuaranteeRequirement
+// EXISTS AS A PLAN AND NOT AS A MODULE: gunbc.roadmap.roadmap_authority specifies GuaranteeRequirement
 // (class identity, domain, harm, ceiling with typed reason, next_rung_trigger) with GuaranteePath
 // and GuaranteeMeasurement beside it and the disposition DERIVED rather than stored, as Stage 1b.
 // Grepping the tree finds that vocabulary only in that roadmap prose; no module declares it.
@@ -481,7 +481,7 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
 // The SEARCH KEYS above exist so that migration can find them by name rather than by memory.
 // EMISSION REFUSES RATHER THAN REPORTS. The classification is conjoined into the emitter, not
 // asserted beside it, so a job added to this workflow without a toolchain-home standing produces no
-// yaml at all -- the construction gunbc.witness_floor_workflow already uses for its capability
+// yaml at all -- the construction gunbc.witness.witness_floor_workflow already uses for its capability
 // closure, applied to the fact that closure cannot see.
 type FleetDesiredGenerationOutcome
   = FleetDesiredGenerated { content: String }
@@ -490,17 +490,17 @@ type FleetDesiredGenerationOutcome
 fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
   match admit_workflow_action_uses(workflow: fleet_desired_admission_workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
-      FleetDesiredGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: rs) }
+      FleetDesiredGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet.fleet_desired_admission_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
       match admit_workflow_checkout_refs(workflow: fleet_desired_admission_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
-      FleetDesiredGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: crs) }
+      FleetDesiredGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet.fleet_desired_admission_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
         WorkflowToolchainHomesAdmitted =>
           match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow)) {
           EmittedYaml { text: t } => FleetDesiredGenerated { content: t }
-          YamlEmitRefused { path: p, reason: r } => FleetDesiredGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet_desired_admission_workflow", path: p, reason: r) }
+          YamlEmitRefused { path: p, reason: r } => FleetDesiredGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.fleet_desired_admission_workflow", path: p, reason: r) }
         }
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }

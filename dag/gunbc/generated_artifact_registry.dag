@@ -3,7 +3,7 @@ module gunbc.generated_artifact_registry
 import std.types { String, List, Bool }
 import gunbc.os_install { fleet_autoinstall_specs }
 import gunbc.plan_registry { all_plans }
-import gunbc.fleet_intent { fleet_intent_known_hosts }
+import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import gunbc.generated_artifact {
   GeneratedArtifact, GeneratedArtifactProducerRow,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact,
@@ -16,7 +16,7 @@ import gunbc.generated_artifact {
 // gunbc.generated_artifact says what an artifact IS -- its variant, location, commit policy and
 // producer. Which artifacts EXIST is this module's fact, and it enumerates every plan through
 // gunbc.plan_registry, whose plan bodies project censuses derived from the live tree. While the two
-// shared a module, a consumer that needed one artifact's PATH (gunbc.fleet_revision_acceptance, and
+// shared a module, a consumer that needed one artifact's PATH (gunbc.fleet.fleet_revision_acceptance, and
 // through it the approval broker) compiled every plan and the v2 resolver behind them.
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(

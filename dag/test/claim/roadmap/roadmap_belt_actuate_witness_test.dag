@@ -1,9 +1,9 @@
-module test.claim.roadmap_belt_actuate_witness
+module test.claim.roadmap.roadmap_belt_actuate_witness_test
 
-import gunbc.roadmap_session_placement { SessionPlacementAbsent }
-import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -12,15 +12,15 @@ import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessUnobserved }
 import std.types { String, Int, List, Bool }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
   RoadmapNodeIdentity,
   PrsMerged,
   Dispatchable,
 }
-import gunbc.roadmap_status { DerivableLine, Unsigned }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
   RoadmapPublicationSubject,
@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_alignment {
 }
 import gunbc.roadmap.roadmap_attempt_continuation { FreshFromBase, ContinueFromAttempt }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_integration_capture_gate, IntegrationCaptureAdvances, IntegrationCaptureStops,
   belt_verify_capture_gate, VerifyCaptureAdvances, VerifyCaptureStops,
   belt_candidate_subject_reading, CandidateSubjectSettled, CandidateSubjectBound,
@@ -59,17 +59,17 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionReadiness, SubmissionReady, SubmissionNeedsContext,
   submission_candidacy, SubmissionIsCandidate, SubmissionNotCandidate,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   SelectionUnaddressable, SelectionUnreadable, SelectionMalformed, CurrentVerificationSelectionObservation,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
   cargo_test_execution_contract,
 }
 import std.types { NonEmptyStr, FilePath }
-import gunbc.roadmap_validation_oracle { ValidationOracleRef }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap.roadmap_validation_oracle { ValidationOracleRef }
+import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
@@ -82,7 +82,7 @@ import gunbc.worker_lifecycle {
   worker_observation_without_provider_probe,
   worker_observation_without_provider_probe_for_process,
 }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   HostExecArgv,
   host_exec_argv,
@@ -93,18 +93,18 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_worker_attempt_identity,
 }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
-import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
+import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
-import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
-import gunbc.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
-import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
+import gunbc.roadmap.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltAlignmentBinding, BeltAlignmentBindingOk, BeltAlignmentBindingRefused,
   BeltAlignmentBindingText, BeltAlignmentBindingAbsent, BeltAlignmentBindingRead, BeltAlignmentBindingUnreadable,
   belt_alignment_binding_check, belt_alignment_binding_gate,
 }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
   CommitSubjectUnaddressable, CandidateCaptured, CommitCapturePoisoned,
   belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
@@ -189,7 +189,7 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_node_staged_over,
   srv1_live_dashboard_instance,
 }
-import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts, ContinuationTurnKnown, ContinuationEscalate,
   continuation_decision, continuation_turn_cap,
@@ -203,20 +203,20 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureRootBound,
   SubmissionCaptureObservation, CaptureForHead, CaptureUnreadable,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, WorkflowSegmentFailed,
   WorkflowSegmentRefused,
 }
-import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.worker_lifecycle { WorkerProcessUnobserved }
 import gunbc.roadmap.roadmap_attempt_occurrence {
   ObservedContainerRow, DurableAttemptRecord,
   AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit,
   occurrence_population,
 }
-import gunbc.roadmap_launch_admission { occurrence_census_row }
+import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
   belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
   SupervisorConvened,
@@ -235,12 +235,12 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationComplete, ContinuationSpawnFromPrior,
   ContinueFromAttempt,
 }
-import gunbc.roadmap_belt_tick_cli {
+import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_escalate_one_result_json, belt_integrate_one_result_json,
 }
 import v2.std.node_reflection { coproduct_arm_keys }
 import v2.std.diagnostic { Accepted, Rejected }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
@@ -257,23 +257,23 @@ import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependenc
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
 }
-import gunbc.roadmap_launch_canary {
+import gunbc.roadmap.roadmap_launch_canary {
   roadmap_launch_canary_child_identity, roadmap_launch_canary_child_node_id,
   roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
 }
-import test.claim.roadmap_launch_canary_witness { canary_node, canary_parent, canary_child, canary_doc }
-import gunbc.roadmap_dashboard_instance {
+import test.claim.roadmap.roadmap_launch_canary_witness_test { canary_node, canary_parent, canary_child, canary_doc }
+import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.fleet.fleet_desired_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
@@ -805,7 +805,7 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
     && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() }) == "spawn_failed"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapDependencies { blockers: ["p"] }] })) == "not_ready"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
 }
 
 test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
@@ -1275,7 +1275,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
 // carries the DECIDED activity view beside the progress members, so the client paints without
 // composing. The fixture is a completed agent turn with process exited and four pending obligations
 // — the falsifier's own shape. The assertions pin the decided fields (arm, the consequence-first
-// summary composed by gunbc.roadmap_presentation, the reconcile-derived remaining count, the
+// summary composed by gunbc.roadmap.roadmap_presentation, the reconcile-derived remaining count, the
 // evidence rows) landing as JSON, plus the progress members surviving beside them. The decided
 // strings are the contract; a client rebuilding any of them from segments has nothing asserted
 // here to rebuild FROM.
@@ -1619,7 +1619,7 @@ test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
 }
 
 // The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so
-// it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every
+// it lives in dag/test/claim/dispatch_attempts_witness.dag, which discovery scans on every
 // affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host
 // commands; a pure row parked here would be enrolled with zero executing consumers, which the
 // Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION

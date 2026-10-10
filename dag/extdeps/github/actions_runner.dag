@@ -130,7 +130,7 @@ data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease
 }
 
 // 2.337.0 IS PINNED BECAUSE A RUN EXECUTED IT WHILE THIS MODULE STILL SAID 2.336.0. The Mt. Collins
-// canary reported "Current runner version: 2.337.0" to GitHub, and gunbc.runner_microvm's guest
+// canary reported "Current runner version: 2.337.0" to GitHub, and gunbc.runner.runner_microvm's guest
 // image row named 2.336.0 -- one concept, two answers, which is the fork this file exists to
 // prevent. Adding the row is how the model catches up to what shipped, not a version bump for its
 // own sake.
@@ -255,7 +255,7 @@ fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationR
 data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -268,7 +268,7 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
 // the extract before it was privileged for no reason.
 //
 // It was also not a preference. The runner principal's NOPASSWD roster
-// (gunbc.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants) grants install, rm, systemctl,
+// (gunbc.fleet.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants) grants install, rm, systemctl,
 // apt-get, visudo and tailscale -- it does not grant tar or chown, and never did. So the emitted
 // script named two binaries the principal executing it could not sudo, and nothing joined the two
 // authorities: the mismatch was discoverable only by running a wet apply on a real host, which is
@@ -282,7 +282,7 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
 // THE PRIVILEGED BINARIES ARE SUPPLIED, NOT SPELLED, and that is the whole content of this type.
 // This module knows the SHAPE of runner installation -- fetch, verify, place, own -- and it does
 // not know which POSIX principal will run it or what that principal is permitted to execute. Those
-// are fleet policy, and gunbc.fleet_posix_accounts owns them.
+// are fleet policy, and gunbc.fleet.fleet_posix_accounts owns them.
 //
 // The prior form wrote `sudo install` and `sudo rm` as literals here, which made this module a
 // second, silent authoring of "these two verbs are available as root". It was correct only by
@@ -323,7 +323,7 @@ fn actions_runner_slot_extract_script(
 data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }

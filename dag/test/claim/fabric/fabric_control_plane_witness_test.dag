@@ -1,4 +1,4 @@
-module test.claim.fabric_control_plane_witness
+module test.claim.fabric.fabric_control_plane_witness_test
 
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for, fixture_permit_for }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -32,13 +32,13 @@ import product.fabric.selection {
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_executor_class {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CustomerExecutableCapacity, ControlPlaneCapacity,
   CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
 }
-import gunbc.fabric_floor_dispatch { floor_demand }
-import gunbc.fabric_control_plane {
+import gunbc.fabric.fabric_floor_dispatch { floor_demand }
+import gunbc.fabric.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
   CellSettlementAdmission, SettlementAdmitted, SettlementReceiptRefused,

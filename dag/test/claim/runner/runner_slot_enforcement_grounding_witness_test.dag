@@ -1,4 +1,4 @@
-module test.claim.runner_slot_enforcement_grounding_witness
+module test.claim.runner.runner_slot_enforcement_grounding_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

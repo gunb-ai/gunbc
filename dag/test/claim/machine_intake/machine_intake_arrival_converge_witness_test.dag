@@ -1,4 +1,4 @@
-module test.claim.machine_intake_arrival_converge_witness
+module test.claim.machine_intake.machine_intake_arrival_converge_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -10,17 +10,17 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
-import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
+import gunbc.machine_intake.subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
   FirmwareEntry, FirmwareManifest, UnitKey, MachineIntakeSubject, IntakeAttemptId,
   qualification_subject_of,
 }
-import gunbc.machine_intake_mtjade1_access_observation {
+import gunbc.machine_intake.mtjade1_access_observation {
   CurrentManagerRead, read_mtjade1_fru, read_mtjade1_smbios_type2, FruObserved, FruReadRefused, SmbiosObserved, SmbiosReadRefused,
   SmbiosBaseBoardDecode, SmbiosBaseBoardSerial, SmbiosBaseBoardRefused, SmbiosSerialLineCount, decode_smbios_type2_capture, sol_session_controller, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
 }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
   RedfishAccountPasswordWrite, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead, PublicStandardOperation,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded,
@@ -45,14 +45,14 @@ import gunbc.fleet.convergence_fold {
   ungated_readonly_step, AuthorizationUndischarged, instance_authorization,
   step_instance_key_eq, InstanceAuthorization,
 }
-import gunbc.machine_intake_prior_life_boundary {
+import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
 }
 import std.content_hash { content_hash_equal, content_hash_of_value }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import test.claim.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test { prior_life_minimal_dry_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingBmcSecureAccountWrite,
   StandingOperatorGrant,
@@ -62,8 +62,8 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, StandingRulingUnderInterlock, NoWitnessDischarge,
   PatternSelected, OperatorApprovedCapability, AuthorizationPatternSelection,
 }
-import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
-import gunbc.machine_intake_arrival_converge {
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+import gunbc.machine_intake.arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
   ArrivalStepIncomplete, PriorLifeBoundaryIncomplete, PriorLifeInputs, prior_life_boundary_step_ref, prior_life_boundary, PriorLifeIdentityForAnotherInstance,
@@ -82,7 +82,7 @@ import gunbc.machine_intake_arrival_converge {
   bound_bmc_secure_host,
   bmc_secure_bound,
 }
-import gunbc.machine_intake_bmc_secure {
+import gunbc.machine_intake.bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
   BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
   BmcSecurePhaseNoop, BmcSecurePhaseApplied, ControllerClockReading,
@@ -213,7 +213,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
               && ((prior_life_receipt_consumed_identity(r: p).subject as NonEmptyStr) as String) == "mtjade1"
               && (match prior_life_receipt_application(r: p) { ArchiveWritten { write: _, within: _ } => true  _ => false })
               && (match prior_life_receipt_boundary(r: p) { LogsArchivedWithBaselineCursor { cursor: c } => content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: p))) && baseline_cursor_sel_final_record(c: c) == Present { value: "1" } })
-              && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+              && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
           AccessDiscoverReceipt { receipt: _ } => false
           IdentityBindReceipt { receipt: _ } => false
           BmcSecureReceipt { receipt: _ } => false
@@ -281,7 +281,7 @@ fn mtjade1_bmc_firmware() -> BmcFirmwareReleaseIdentity {
 
 fn cited_mtjade1_managed_route() -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   rotation_route_from_citation(
@@ -294,7 +294,7 @@ fn cited_mtjade1_managed_route() -> BmcRotationRouteStanding
 
 fn cited_mtjade1_published_route() -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   rotation_route_from_citation(
@@ -387,7 +387,7 @@ fn mtjade1_fetched_generation(
   bytes: String,
 ) -> ManagedCredentialGenerationFetched?
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   let store_at = dry_bmc_account_instant(millis: 1791072010000)
@@ -423,16 +423,16 @@ fn mtjade1_rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> R
 
 fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInputs?
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_falls_through_to_capability"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_uncovered_grant_falls_through_to_capability"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
   ]
 {
   let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
@@ -817,7 +817,7 @@ test fn w_a_step_whose_phase_rank_disagrees_with_the_authority_refuses() -> Bool
 // A real declaration that is not a step of the plan, so the precondition names nothing the plan
 // carries.
 test fn w_an_unknown_precondition_refuses() -> Bool {
-  let unknown = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix")
+  let unknown = decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_arrival_prefix")
   match plan_refusal(admission: admit_convergence_plan(planning: arrival_planning_authority(), steps: [access_step_bound_to(phase: Arrival { phase: AccessDiscover }), identity_step_with(preconditions: [SameSubject { step: access_discover_step_ref }, SameSubject { step: unknown }])])) {
     Present { value: c } => match c {
       PreconditionUnknown { step: s, precondition: p } => declaration_ref_eq(a: s, b: identity_bind_provisional_step_ref) && match p { SameSubject { step: ps } => declaration_ref_eq(a: ps, b: unknown) }
@@ -829,7 +829,7 @@ test fn w_an_unknown_precondition_refuses() -> Bool {
 
 // converge_arrival_prefix is a real declaration with no census row: as a step it refuses.
 test fn w_a_step_with_no_census_row_refuses() -> Bool {
-  let uncensused = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix")
+  let uncensused = decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_arrival_prefix")
   match plan_refusal(admission: admit_convergence_plan(planning: arrival_planning_authority(), steps: [ungated_readonly_step(identity: uncensused, order_member: Arrival { phase: AccessDiscover }, preconditions: [])])) {
     Present { value: c } => match c { StepMissingFromCensus { step: s } => declaration_ref_eq(a: s, b: uncensused)  _ => false }
     Absent => false
@@ -1205,8 +1205,8 @@ test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dr
 
 fn bmc_secure_bound_refuses_foreign_apply(foreign_subject: MachineIntakeSubject) -> Bool
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_unit_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_another_attempt_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_another_unit_is_refused"),
   ]
 {
   let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)

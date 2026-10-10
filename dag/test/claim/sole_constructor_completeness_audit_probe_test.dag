@@ -364,7 +364,7 @@ test fn f18_admitted_caller_accepted_clean() -> Bool {
 
 // ---------------------------------------------------------------------------
 // Form 19: record literal in a PARAMETER'S DECLARED DEFAULT VALUE EXPRESSION
-// (gunbc.roadmap_authority's fourth unverified axis). CONFIRMED HOLE, executed
+// (gunbc.roadmap.roadmap_authority's fourth unverified axis). CONFIRMED HOLE, executed
 // 2026-08-20: f19_diag_total_row_count reads 0 - the compile produces ZERO
 // diagnostics of any class for this position. infer_record_lit_structural is
 // never reached here; the wall does not exist for this AST position at all.

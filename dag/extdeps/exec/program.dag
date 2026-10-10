@@ -124,7 +124,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
-    decl_ref(module_path: "extdeps.cargo_build", decl_name: "cargo_program"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_program"),
@@ -169,7 +169,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_program"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program"),
     decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
-    decl_ref(module_path: "extdeps.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "openssh_client_program"),

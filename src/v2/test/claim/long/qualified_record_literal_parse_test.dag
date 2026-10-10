@@ -1,4 +1,4 @@
-module v2.test.long.qualified_record_literal_parse
+module v2.test.claim.long.qualified_record_literal_parse_test
 
 import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.filesystem.filesystem_io

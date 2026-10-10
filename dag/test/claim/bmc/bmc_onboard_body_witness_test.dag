@@ -1,4 +1,4 @@
-module test.claim.bmc_onboard_body_witness
+module test.claim.bmc.bmc_onboard_body_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

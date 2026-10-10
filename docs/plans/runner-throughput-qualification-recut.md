@@ -29,13 +29,13 @@ delivers. Nothing imports either module, so the cost of the recut is zero consum
 
 ## 2. The four types (target shape)
 
-Three live in `gunbc.runner_throughput_qualification` (the route stays in
-`gunbc.runner_throughput_qualification_route`); the fourth is an arm on the fabric's existing
+Three live in `gunbc.runner.runner_throughput_qualification` (the route stays in
+`gunbc.runner.runner_throughput_qualification_route`); the fourth is an arm on the fabric's existing
 delivery-claim carrier. Names are the operator's. **One module was added after the cut for a
-measured reason:** `gunbc.runner_throughput_selection` consumes the fleet authorities
+measured reason:** `gunbc.runner.runner_throughput_selection` consumes the fleet authorities
 (`runner_slot_allocation`, `fleet_host_budget`, `fabric_executor_class`) and projects them into the
 selection carriers, because `product.fabric.node_qualification` imports the leaf and, on the
-current seed, an import edge from that closure to `gunbc.build_cache_instance` (reached by all
+current seed, an import edge from that closure to `gunbc.build_cache.build_cache_instance` (reached by all
 three) breaks bare-name resolution in `gunbc.harness.harness_backend` with the module set
 unchanged — bisected 2026-09-20 on #11722, reported to the parent lane as a seed defect.
 
@@ -44,7 +44,7 @@ unchanged — bisected 2026-09-20 on #11722, reported to the parent lane as a se
 ```
 type SelectedRunnerQualification<P> {
   offer: SupplierOffer<P>                      // selected supply row: quantity_bound, shape, evidence
-  executor_sanction: ExecutorSanction          // selected fleet-side class permission (gunbc.fabric_executor_class)
+  executor_sanction: ExecutorSanction          // selected fleet-side class permission (gunbc.fabric.fabric_executor_class)
   requirements: ExecutionRequirements          // the work this offer is claimed to deliver (the floor's)
   workload: FloorWorkloadPin                   // program + revision + calibration specimen identity
   host_plan: SelectedHostPlan                  // FleetHostPlanDerived + HostAllocationConserves, control plane charged
@@ -97,7 +97,7 @@ group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the
 
 ## 3. Disposition of every existing declaration
 
-`gunbc.runner_throughput_qualification`:
+`gunbc.runner.runner_throughput_qualification`:
 
 | declaration | disposition |
 |---|---|
@@ -126,7 +126,7 @@ group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the
 | `qualified_supplier_offer`, `slot_usable_threads` | DELETED (item 1: the offer is selected, not derived) |
 | `nat_wire`, `*_wire`, `admission_wire` | survive as `assessment_wire` |
 
-`gunbc.runner_throughput_qualification_route`:
+`gunbc.runner.runner_throughput_qualification_route`:
 
 | declaration | disposition |
 |---|---|
@@ -140,7 +140,7 @@ group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the
 | `qualification_route`, `mtcollins1_qualification_route` | survive; take the selection rather than a bare workload |
 | `route_registers_one_slot`, `route_deregisters_what_it_registered`, `route_dispatch_selector_names_the_attempt`, `route_boot_leg_is_bound` | survive |
 
-Witness (`test.claim.runner_throughput_qualification_witness`): rewritten around the four types.
+Witness (`test.claim.runner.runner_throughput_qualification_witness_test`): rewritten around the four types.
 Fixtures supply a `SelectedRunnerQualification` and producer-shaped observed runs; every REDs row
 of §1 gets a claim; the frontier claims stay expecting-red; the inhabitance claims for
 `floor_execution_requirements`, `admit_delivered_offer` and `gunbc_runner_cores_per_slot` stay.

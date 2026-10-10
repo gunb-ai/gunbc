@@ -7,7 +7,7 @@ module test.claim.emitter_callable_field_capture_witness_test
 // consumed at the arrow-typed fn RETURN by rust_callable_return_wrap). An arrow realizes as Rc<dyn
 // Fn(..) -> ..>, a dyn trait object defaults to 'static, so a non-move closure captured the
 // enclosing locals BY REFERENCE and rustc refused every coercion. Population at d72ffe8708 on the
-// src/v2/compiler/03_ingest.dag closure: 27 E0597 sites, and the measurement is what establishes
+// src/v2/compiler/ingest.dag closure: 27 E0597 sites, and the measurement is what establishes
 // the population is ONE mechanism rather than the description asserting it -- 27 of 27 blocks carry
 // the same 'due to object lifetime defaults' note and every specimen is a lambda in an arrow-typed
 // record-literal field, eight of them NodeFold { init, step }. WHY THIS FILE CARRIES TWO FAILURE

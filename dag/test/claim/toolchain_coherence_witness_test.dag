@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.nat { Nat }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import extdeps.realization.emit_on_demand_host { ObservedToolIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.toolchain_coherence {
   ToolchainSpawn,
   ToolchainCoherence,

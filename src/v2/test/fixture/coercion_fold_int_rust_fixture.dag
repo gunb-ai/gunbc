@@ -1,4 +1,4 @@
-module v2.test.coercion_fold_int_rust_fixture
+module v2.test.fixture.coercion_fold_int_rust_fixture
 
 fn int_source_node() -> Node {
   Node {

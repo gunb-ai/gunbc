@@ -3,11 +3,11 @@ module test.claim.runner.runner_microvm_attempt_cleanup_witness_test
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.runner.runner_microvm_lifecycle {
   StoppedGracefully, StoppedByForce, StopFoundAlreadyQuiescent,
   ForceStopBoundExceeded, ForceNotAsked, ForceStopOutcomeUnobservable,
 }
-import gunbc.runner_microvm_lifecycle_realize { stop_admits_cleanup, attempt_mounts_deepest_first, mount_point_is_within }
+import gunbc.runner.runner_microvm_lifecycle_realize { stop_admits_cleanup, attempt_mounts_deepest_first, mount_point_is_within }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

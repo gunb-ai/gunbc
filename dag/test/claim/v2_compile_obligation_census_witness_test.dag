@@ -51,7 +51,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // file folded over rows the census itself authored and called the result a check; review 63152 named
 // that correctly as a change detector over a copy of the current tree, and DESIGN section 5 says the
 // same thing in its own words. The census now DERIVES each obligation's per-PR standing by asking
-// gunbc.witness_deferral_freeze and gunbc.ci_layer_roots, so the arms below exercise a join against
+// gunbc.witness.witness_deferral_freeze and gunbc.ci.ci_layer_roots, so the arms below exercise a join against
 // two live rosters this file does not own and cannot edit — which is what makes them oracles rather
 // than mirrors, and which is what would have caught the reading error that cut shipped.
 //
@@ -72,7 +72,7 @@ data fixture_stall: DeclarationRef = decl_ref(
 )
 
 // TWO REAL SUBJECTS FROM OPPOSITE SIDES OF THE LIVE ROSTERS, chosen because each is decided by a
-// DIFFERENT authority. The mandatory-tag entry is covered by gunbc.witness_deferral_freeze AND sits
+// DIFFERENT authority. The mandatory-tag entry is covered by gunbc.witness.witness_deferral_freeze AND sits
 // under the "test/claim/long/" exclusion pattern; the occurrence-binding entry (gate_admitted_subject) is
 // subtracted by neither and is admitted by the required gate's `test.claim.occurrence_binding_` row. The survivor
 // was a v2.test. fact-density witness until the 2026-09-19 nominal-roster ruling withdrew
@@ -84,7 +84,7 @@ fn frozen_and_excluded_subject() -> WitnessSubject {
   witness_subject(
     entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
     function: "mandatory_tag_enrolled_in_root_roster_rejects_violating_module",
-    module_path: "v2.test.long.mandatory_tag_gate_witness"
+    module_path: "v2.test.claim.long.mandatory_tag_gate_witness_test"
   )
 }
 
@@ -103,7 +103,7 @@ fn gate_admitted_subject() -> WitnessSubject {
 // and inside the native lane -- and outside the required gate.
 fn discovered_subject() -> WitnessSubject {
   witness_subject(
-    entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
+    entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag",
     function: "hollow_alias_blocked_via_always_required_lenses_holds",
     module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
   )

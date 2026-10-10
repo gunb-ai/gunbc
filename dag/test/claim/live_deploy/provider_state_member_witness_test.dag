@@ -7,12 +7,12 @@ import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity { DirectoryRoot, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_provider_state_root, dashboard_instance_provider_state_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_provider_state_root, dashboard_instance_provider_state_directory }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 
 // THE PROVIDER-STATE ROOT IS CREATED ON THE PRODUCTION ROUTE AND READ BACK AS A MEMBER (CONVERGENCE-ONE
-// C7), now as one owned-directory demand among the instance's (gunbc.roadmap_dashboard_instance
+// C7), now as one owned-directory demand among the instance's (gunbc.roadmap.roadmap_dashboard_instance
 // dashboard_instance_provider_state_directory) rather than an ensured dependency of its own. The
 // expected path comes from the instance's own projection, which is what the provider preflight reads.
 

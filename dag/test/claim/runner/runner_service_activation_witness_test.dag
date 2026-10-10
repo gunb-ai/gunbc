@@ -1,6 +1,6 @@
-module test.claim.runner_service_activation
+module test.claim.runner.runner_service_activation_witness_test
 
-import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
+import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -8,7 +8,7 @@ import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { shell_command_render }
 import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
-import gunbc.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoSystemctl }
+import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoSystemctl }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
   SystemdEnableUnit,
@@ -16,21 +16,21 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_sudoers_command,
   executor_privileged_operation_shell_command,
 }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy,
   admit_runner_host,
   runner_enable_command_argv,
 }
-import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations, fabric_cell_host_slots }
-import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
-import gunbc.build_cache_instance {
+import gunbc.runner.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations, fabric_cell_host_slots }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
+import gunbc.build_cache.build_cache_instance {
   BuildCacheInstance, ProcessIdentity, ci_cache_instance,
 }
-import gunbc.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
-import gunbc.runner_service_activation {
+import gunbc.host.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
+import gunbc.runner.runner_service_activation {
   RunnerUnitStandings,
   RunnerUnitStanding,
   UnitStandingsObserved,
@@ -53,13 +53,13 @@ import gunbc.runner_service_activation {
   runner_transition_affected_set_identity,
   runner_host_activation_units,
 }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile, fleet_converge_desired_caps,
 }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
-import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
 // daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence
@@ -84,9 +84,9 @@ import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 // measurement rather than a property of the pattern never matching anything.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE READINESS FIXTURE, AUTHORED HERE RATHER THAN SHARED. test.claim.runner_activation_wall carries
+// THE READINESS FIXTURE, AUTHORED HERE RATHER THAN SHARED. test.claim.runner.runner_activation_wall_test carries
 // the same shape and the full reasoning for the pool-declared instance; the duplication is deliberate
-// for the reason that module's own note gives, and gunbc.runner_service_activation's stall row gives
+// for the reason that module's own note gives, and gunbc.runner.runner_service_activation's stall row gives
 // the other half: on the live tree gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so a
 // fixture reading the production instance would assert this fleet's topology instead of this
 // module's subject, and every admitted-pole witness below would red for a reason that has nothing to
@@ -198,8 +198,8 @@ fn witness_transition_word(verb: NonEmptyStr) -> String {
 
 // THE VERB PATTERN IS BUILT FROM THE SAME AUTHORITIES THE EMITTER USES, never spelled here. A literal
 // "'systemctl' 'enable'" in this file would be a third authoring of two facts extdeps.systemd.systemctl
-// and gunbc.fleet_posix_accounts already own, and it would rot exactly the way the sibling witness in
-// test.claim.runner_host_deploy did when the builder started routing through an authority: the
+// and gunbc.fleet.fleet_posix_accounts already own, and it would rot exactly the way the sibling witness in
+// test.claim.runner.runner_host_deploy_witness_test did when the builder started routing through an authority: the
 // assertion would go red for a spelling change with no behaviour behind it.
 fn witness_transition_pattern(verb: NonEmptyStr, unit: NonEmptyStr) -> String {
   concat(
@@ -360,7 +360,7 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
 // from 5 to 21 within the month.
 //
 // THE HOST'S START POPULATION ALSO CARRIES ONE SLICE START PER FABRIC CELL ON THE HOST, and that is
-// gunbc.runner_host_grants fabric_cell_slice_property_operations, not an activation grant: it
+// gunbc.runner.runner_host_grants fabric_cell_slice_property_operations, not an activation grant: it
 // re-applies a cgroup boundary's directives and enables nothing. This row compared the host's
 // starts to the desired slots alone, which held only while srv4 carried no fabric slot; #11625 gave
 // it two, so the row was red from that landing. The enable count, which the slices do not touch,
@@ -433,7 +433,7 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
 }
 
 // THE SAFETY ROW STATES A MITIGATABLE RUNG, AND THIS IS THE ROW THAT REDS IF SOMEBODY INFLATES IT.
-// The host boundary is not structural: gunbc.runner_host_grants installs the raw systemctl verbs for
+// The host boundary is not structural: gunbc.runner.runner_host_grants installs the raw systemctl verbs for
 // the job user, so the grantee can run enable and start directly, outside the admission entirely.
 // Claiming StructurallyGuaranteed here would be the section 4b(1) inflation in the module whose job
 // is to stop an unadmitted activation, so the rung is asserted rather than left to a reader's

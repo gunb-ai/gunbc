@@ -1,4 +1,4 @@
-module test.claim.host_run_boundary_admission_witness_test
+module test.claim.host.host_run_boundary_admission_witness_test
 
 import std.types { Bool, String, List }
 import std.effect_grant {

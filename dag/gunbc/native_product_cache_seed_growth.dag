@@ -1,13 +1,13 @@
 module gunbc.native_product_cache_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that keys, stores and reuses the two native instruments'
 // emitted products (CI programme row R3, docs/plans/ci-end-to-end-accounting.md).
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). `//gunbc/instruments:self-host` and
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). `//gunbc/instruments:self-host` and
 // `:v2-native-cli` each emit and cargo-build one closure on every required run, then run their
 // door and refusal controls against the executable. The emit/build is a pure function of the six
 // causal axes of v2.compiler.self_host.generation PreMaterializationIdentity, so the repeat is

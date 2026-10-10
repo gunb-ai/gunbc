@@ -480,7 +480,7 @@ fn partition_severance_point_count() -> Int {
 // resolves the import closure and then calls `extend_with_reference_closure`, which scans each
 // source for DOTTED module paths outside strings and annotations and pulls in each named module's
 // own import closure. An import-edge-only walk understates this population, measured: 152 modules
-// and 23 colliding names for src/v2/compiler/00_compile.dag by imports alone, 161 and 25 once the
+// and 23 colliding names for src/v2/compiler/compile.dag by imports alone, 161 and 25 once the
 // reference extension is applied.
 //
 // RULE 2 IS NOT AS OBJECTIVE AS THE OTHER TWO, AND A READER WILL ASSUME IT IS. Its population is a
@@ -533,7 +533,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
   },
   PoolMeasured {
     pool_rule: "rule 2 -- single entry, imports plus the reference extension",
-    pool_subject: "src/v2/compiler/00_compile.dag",
+    pool_subject: "src/v2/compiler/compile.dag",
     modules_in_pool: 161,
     type_declarations: 1182,
     distinct_colliding_names: 25,

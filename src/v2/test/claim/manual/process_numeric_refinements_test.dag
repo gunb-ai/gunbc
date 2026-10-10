@@ -1,4 +1,4 @@
-module v2.test.manual.process_numeric_refinements
+module v2.test.claim.manual.process_numeric_refinements_test
 
 import v2.extdeps.posix {
   make_exit_code,
@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   Rejected,
   node_locus
 }
-import v2.test.manual.connective_anchors {
+import v2.test.claim.manual.connective_anchors {
   stub_empty_conj
 }
 

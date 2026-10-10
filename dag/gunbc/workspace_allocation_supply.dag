@@ -11,27 +11,27 @@ import std.durable_compare_and_set { cas_generation_count, cas_generation_succes
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
 import product.host_identity { HostIdentity }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
-import gunbc.fleet_enrollment { enrollment_for_host }
-import gunbc.provider_guest_adoption { provider_microvm_refusal, microvm_execution_refusal_text }
+import gunbc.fleet.fleet_enrollment { enrollment_for_host }
+import gunbc.host.provider_guest_adoption { provider_microvm_refusal, microvm_execution_refusal_text }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.provider_route { CompliancePostureRevision }
 import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.candidate_field { CandidateField, FieldRequest, assemble_candidate_field }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities, identity_is_workspace_execution_member, gunbc_committed_host_runner_slot_allocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved }
-import gunbc.fabric_executor_class { fleet_cell_sanction }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key, bind_fabric_cell_candidate, CellCandidateBound, OfferExecutorIsNotTheCell }
-import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
-import gunbc.fabric_required_build_cell { members_for_slot, fabric_cell_shape, FabricCellShaped, FabricCellShapeIncomplete }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities, identity_is_workspace_execution_member, gunbc_committed_host_runner_slot_allocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved }
+import gunbc.fabric.fabric_executor_class { fleet_cell_sanction }
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key, bind_fabric_cell_candidate, CellCandidateBound, OfferExecutorIsNotTheCell }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.fabric.fabric_required_build_cell { members_for_slot, fabric_cell_shape, FabricCellShaped, FabricCellShapeIncomplete }
+import gunbc.fabric.fabric_cell_observation_admission {
   FabricCellObservationDecision, fabric_cell_observation_outcome, FabricCellObservationAdmitted,
   fabric_cell_observed_population_members, fabric_cell_observed_population_host, admit_fabric_cell_probe, FabricCellObservationDenied, FabricCellObservationNotApplicable,
 }
-import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
-import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn }
-import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.runner.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
@@ -57,7 +57,7 @@ type WorkspaceHostSupplyRead
 // supply or reading readiness; remote orchestration must execute this observer on that host.
 // A HOST WHOSE PROVIDER FORBIDS THE MICROVM PATH HAS NO MICROVM SUPPLY, and says why before any cell
 // is probed: an enrolled provider guest is refused on its offer's cited nested-virtualization fact
-// (gunbc.provider_guest_adoption provider_microvm_refusal), so a fabric reader sees the cause rather
+// (gunbc.host.provider_guest_adoption provider_microvm_refusal), so a fabric reader sees the cause rather
 // than an empty cell list it would have to interpret.
 fn workspace_host_supply_refusal(host: HostIdentity) -> NonEmptyStr? {
   match enrollment_for_host(host: host) {

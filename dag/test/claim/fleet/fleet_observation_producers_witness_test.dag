@@ -1,6 +1,6 @@
-module test.claim.fleet_observation_producers_witness
+module test.claim.fleet.fleet_observation_producers_witness_test
 
-import gunbc.fleet_shell_transport_observation {
+import gunbc.fleet.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   still_ram_738_session_shell_transport_receipt_note,
   ShellTransportReachRefused,
@@ -14,24 +14,24 @@ import gunbc.session_residency {
   SessionsObservedPresent,
   SessionsOperatorDeclaredAbsent,
 }
-import gunbc.host_disk_observation {
+import gunbc.host.host_disk_observation {
   host_disk_observation,
   DiskUnobserved,
   DiskObservationRefused,
 }
-import gunbc.host_swap_backing {
+import gunbc.host.host_swap_backing {
   host_swap_backing_host_verdict,
 }
-import gunbc.build_cache_endpoint_observation {
+import gunbc.build_cache.build_cache_endpoint_observation {
   build_cache_ci_placement_observation,
   build_cache_ci_endpoint_observation,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   EndpointObservationUnavailable,
   ServerPlacementUnknown,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.host_phase_status { fleet_subsumption_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_phase_status { fleet_subsumption_hosts }
 import std.upsert_decision { UnknownRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -49,7 +49,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // join, not a count equality. A count says six hosts are unobserved but never WHICH, so a producer
 // arriving moves a number and the diff cannot say what acquired one. The sharper reason: a count
 // and its own prose cannot contradict each other detectably -- a count has no members, so nothing
-// can check a sentence about it against it; the sibling witness in test.claim.host_swap_backing
+// can check a sentence about it against it; the sibling witness in test.claim.host.host_swap_backing_witness_test
 // carries the specimen, where a note saying "all four enrolled hosts" sat beside a fold over six
 // until someone read both.
 //

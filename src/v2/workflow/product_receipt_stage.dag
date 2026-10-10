@@ -1,6 +1,6 @@
 module v2.workflow.product_receipt_stage
 
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemEstablishedAbsence,
@@ -51,7 +51,7 @@ import v2.workflow.body_lowering_retention_census {
   retention_census,
   retention_census_render
 }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   host_compiler_closure_admission,
   host_source_root_closure_refs,
   host_source_root_ingest_content_hash,
@@ -103,7 +103,7 @@ import v2.workflow.product_receipt {
   product_receipt_green,
   product_receipt_render
 }
-import tools.emitted_crate_harness_manifest {
+import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   HarnessManifestDerived,
   EmittedManifestNotUsable,

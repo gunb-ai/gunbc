@@ -1,4 +1,4 @@
-module v2.test.emit.rust_call_emit
+module v2.test.claim.emit.rust_call_emit_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }

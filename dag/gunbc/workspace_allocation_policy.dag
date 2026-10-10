@@ -1,8 +1,8 @@
 module gunbc.workspace_allocation_policy
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.ssh { SshPublicKey, Ed25519 }
-import gunbc.fleet_posix_accounts { fleet_posix_home_directory, fleet_posix_operator_user }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory, fleet_posix_operator_user }
 import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit, workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
@@ -41,7 +41,7 @@ fn workspace_enrollment_roster() -> WorkspaceEnrollmentRoster {
   ] }
 }
 
-// Each reference names exactly one enrolled ed25519 key, carried in the extdeps.ssh key model.
+// Each reference names exactly one enrolled ed25519 key, carried in the extdeps.ssh.keys key model.
 // Guest enrollment is independent of the credentials used to log into a fleet host.
 fn workspace_public_key_catalog() -> List<WorkspacePublicKeyCatalogRow> {
   [

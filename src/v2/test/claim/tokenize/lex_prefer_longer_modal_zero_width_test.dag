@@ -1,4 +1,4 @@
-module v2.test.tokenize.lex_prefer_longer_modal_zero_width
+module v2.test.claim.tokenize.lex_prefer_longer_modal_zero_width_test
 
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

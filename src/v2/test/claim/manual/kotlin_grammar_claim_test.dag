@@ -1,4 +1,4 @@
-module v2.test.manual.kotlin_grammar_claim
+module v2.test.claim.manual.kotlin_grammar_claim_test
 
 import v2.compiler.parse {
   grammar_validate_for_parse,

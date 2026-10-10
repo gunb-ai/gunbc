@@ -1,9 +1,9 @@
-module test.claim.runner_capacity_plan_witness
+module test.claim.runner.runner_capacity_plan_witness_test
 
 import std.logic { Bool }
 import std.nat { Nat, nat_range_inclusive }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_capacity_plan {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_capacity_plan {
   parse_positive_width,
   desired_github_identities,
   validate_observed_github_slot_members,
@@ -11,16 +11,16 @@ import gunbc.runner_capacity_plan {
   SlotPopulationReconciled,
   SlotPopulationRefused,
 }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   fabric_second_slot_index,
 }
-import gunbc.runner_capacity_plan {
+import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
@@ -32,7 +32,7 @@ import gunbc.runner_capacity_plan {
   PlanReady,
   PlanRefused,
 }
-import gunbc.fleet_runner_connectivity {
+import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
   incident_2026_08_06_managed_roster_fixture,
   RosterReadUnavailable,
@@ -41,9 +41,9 @@ import gunbc.fleet_runner_connectivity {
 }
 import std.types { String, NonEmptyStr, Int, List }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
-import gunbc.runner_capacity_plan {
+import gunbc.runner.runner_capacity_plan {
   plan_runner_capacity_host,
   HostCapacityPlanOutcome,
   HostCapacityPlanReady,
@@ -113,7 +113,7 @@ fn committed_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // WHAT THESE ROWS ACTUALLY NEED IS NOT THE COMMITTED WIDTH AT ALL. Their subject is that the
 // enumeration steps OVER the fabric members rather than counting through them, so the request must
 // reach the first GitHub slot on the far side of the carve. That is one above the last fabric index,
-// and gunbc.runner_slot_allocation fabric_second_slot_index is its authority -- so if the carve
+// and gunbc.runner.runner_slot_allocation fabric_second_slot_index is its authority -- so if the carve
 // moves, this width moves with it, and no number here needs editing. If the committed width ever
 // falls BELOW the carve, admission refuses and every row consuming this goes red naming the width,
 // which is the loud direction.
@@ -207,7 +207,7 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 
 // THE WHOLE 2026-08-06 CORPUS, AND WHAT IT ESTABLISHES IS A REFUSAL -- BUT NOT THE ONE THIS ROW
 // USED TO ASSERT. incident_2026_08_06_roster_fixture was what gunbc.apply and
-// gunbc.runner_capacity_realize handed the planner until they moved to the live read
+// gunbc.runner.runner_capacity_realize handed the planner until they moved to the live read
 // (gunbc.fleet.organization_runner_roster_read). Against the fleet as committed today the planner
 // still REFUSES this corpus and still names srv2-01, and the refusal is still correct -- what
 // changed is WHY, and the why is the whole subject of this row.
@@ -259,7 +259,7 @@ fn observed_prefix_from_roster(host: HostIdentity, roster: OrganizationRunnerRos
 }
 
 // ENROLLED REGRESSION CONTROL FOR THE EMPTY-OBSERVATION NARROW
-// (gunbc.runner_capacity_plan slot_enumeration_narrow_class_note).
+// (gunbc.runner.runner_capacity_plan slot_enumeration_narrow_class_note).
 //
 // IT ASSERTS THE PRODUCTION PATH, NOT A HELPER. An earlier revision of this row asserted
 // desired_slot_indices and addition_slot_indices directly; the set-difference planner removed the
@@ -294,7 +294,7 @@ fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
 // six now yields five and the counts below stopped measuring the run at all.
 //
 // srv1 IS UNCARVED BY A DECISION AND NOT BY ACCIDENT, which is what makes it the right substitute
-// rather than a host that happens to be convenient today. gunbc.runner_slot_allocation holds it out
+// rather than a host that happens to be convenient today. gunbc.runner.runner_slot_allocation holds it out
 // of fabric_execution_slot_identities so the control plane has a host it can still land on -- a
 // relation between two placements, recorded there with the reason to revisit it. If srv1 is ever
 // carved, these counts go red and the row beside them is where the purpose difference is asserted.
@@ -346,7 +346,7 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // srv4 now carries srv4-06 and srv4-07 and answers ZERO at this transition exactly as srv3 does.
 // Two hosts that agree cannot discriminate anything, so the row could not be repaired by moving a
 // number -- the contrast had to be re-derived. srv1 is the host that still differs, and it differs
-// BY A DECISION: gunbc.runner_slot_allocation holds it out of the execution population so the
+// BY A DECISION: gunbc.runner.runner_slot_allocation holds it out of the execution population so the
 // control plane keeps a host it can land on. The name moves with the subject rather than keeping a
 // width in it that was never what the row was about.
 test fn the_same_widening_differs_by_purpose_across_a_carved_and_an_uncarved_host() -> Bool {

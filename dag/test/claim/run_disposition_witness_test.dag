@@ -30,7 +30,7 @@ import gunbc.compile_permit_scope {
   accumulate_observed_disposition,
   finalize_fleet_standing
 }
-import gunbc.witness_floor_workflow {
+import gunbc.witness.witness_floor_workflow {
   running_supersession_for_fleet_standing,
   cancel_in_progress_of_policy,
   WitnessFloorConcurrencyPolicy,
@@ -104,7 +104,7 @@ import gunbc.run_disposition {
 
 // THE CLASSIFIER'S ARMS ARE EXERCISED UNDER AN EXPLICIT POLICY, NOT UNDER THE LIVE ONE.
 //
-// The live policy is now an unconditional false -- gunbc.witness_floor_workflow
+// The live policy is now an unconditional false -- gunbc.witness.witness_floor_workflow
 // witness_floor_concurrency_policy, whose running axis is NeverSupersedeRunning -- because superseding a run SIGKILLs cargo and permanently
 // leaks its host jobserver permits. Under that policy NO production input can reach
 // DispositionSuperseded, so every arm below asking about supersession would be permanently green

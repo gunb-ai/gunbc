@@ -1,4 +1,4 @@
-module gunbc.ci_deploy_access
+module gunbc.ci.ci_deploy_access
 
 import std.algebra { trim }
 
@@ -9,9 +9,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect }
 import std.effects { ExecuteEffect }
-import gunbc.fleet_intent { ComputeHost, srv1_host }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
   PosixSudoGrant,
   DeployRunnerPrincipal,
@@ -27,7 +27,7 @@ import gunbc.fleet_posix_accounts {
   fleet_apt_get_binary_path,
   posix_sudo_grant_to_effect_grant,
 }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
@@ -44,7 +44,7 @@ import extdeps.sudo.nopasswd_execute_probe {
   NopasswdExecuteCheck,
   NopasswdGrantListCheck,
 }
-import gunbc.ci_deploy_target_host {
+import gunbc.ci.ci_deploy_target_host {
   DeployTargetHostProof,
   deploy_target_proof,
   deploy_target_host_preflight_block,
@@ -87,11 +87,11 @@ data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame
 // paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user).
 // Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant
 // (never a parallel grant vocabulary). Observation and typed-effect execution live in
-// gunbc.ci_deploy_access_observe / gunbc.host_effect_realize at the runtime-present realization
+// gunbc.ci.ci_deploy_access_observe / gunbc.host.host_effect_realize at the runtime-present realization
 // edge: present binaries use sudo.NopasswdExecuteProbe.Check; package-managed binaries that may not
 // exist yet use sudo.NopasswdGrantList.Read plus an exact NOPASSWD-row check for the roster path. A
 // successful list query alone is not authorization evidence. The duplicate in-script
-// gunbc.ci_deploy_access_emit path is deleted; gunbc.ci_deploy_sudoers remains the roster-derived
+// gunbc.ci_deploy_access_emit path is deleted; gunbc.ci.ci_deploy_sudoers remains the roster-derived
 // sudoers materialization.
 
 data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
@@ -117,7 +117,7 @@ fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
 
 // THE PRE-INSTALL SCOPE OF A DEPLOY WHOSE SCRIPT INSTALLS THE DROP-IN FIRST. The principal, host and
 // transport are unchanged; only the demanded commands narrow, to exactly what the install spends
-// (gunbc.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
+// (gunbc.fleet.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
 // rather than filtered from the principal's roster, so a principal whose roster lacks visudo or
 // install still has them demanded and still refuses before mutation -- a filter would have answered
 // an empty demand, and an empty demand is a permit.
@@ -310,13 +310,13 @@ fn deploy_access_grant_admits_probe(
 }
 
 data deploy_access_preflight_shell_disposition: Disposition = Terminal {
-  reason: "deploy_access_preflight_script dissolved (Wave B): deploy-preflight is an authorization query + typed effect-plan, not a concat shell script. Authority: deploy_access_authorization_query + deploy_access_preflight_plan; observation: gunbc.ci_deploy_access_observe."
+  reason: "deploy_access_preflight_script dissolved (Wave B): deploy-preflight is an authorization query + typed effect-plan, not a concat shell script. Authority: deploy_access_authorization_query + deploy_access_preflight_plan; observation: gunbc.ci.ci_deploy_access_observe."
 }
 
 data deploy_access_preflight_plan_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_deploy_access_observe",
+    module_path: "gunbc.ci.ci_deploy_access_observe",
     decl_name: "deploy_access_preflight_plan",
     field: WholeDeclaration
   }
@@ -409,7 +409,7 @@ fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
 // EVERY ACCESS THAT APPLIES A DEPLOYMENT, AS ONE ROSTER. A host-shared resource whose content is a
 // function of who deploys to that host -- /etc/sudoers.d/gunbc-deploy -- is derived from this list
 // filtered by host, never from the one access that happens to be running, so applying any
-// deployment through any access renders the same bytes (gunbc.ci_deploy_sudoers
+// deployment through any access renders the same bytes (gunbc.ci.ci_deploy_sudoers
 // deploy_sudoers_dropin_body). A new access is a row here; one left out is a principal whose grants
 // the next apply through another access would delete.
 fn deploy_access_roster() -> List<DeployAccess> {

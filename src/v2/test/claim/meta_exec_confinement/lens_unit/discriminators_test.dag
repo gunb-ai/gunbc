@@ -1,4 +1,4 @@
-module v2.test.meta_exec_confinement.lens_unit.discriminators
+module v2.test.claim.meta_exec_confinement.lens_unit.discriminators_test
 
 import std.types { List }
 import v2.std.layer { LayerImportFact }

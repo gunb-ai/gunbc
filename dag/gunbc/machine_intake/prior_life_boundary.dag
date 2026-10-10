@@ -1,4 +1,4 @@
-module gunbc.machine_intake_prior_life_boundary
+module gunbc.machine_intake.prior_life_boundary
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -88,7 +88,7 @@ import gunbc.fleet.convergence_fold {
   effect_leg_deadline,
   complete_effect_leg,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
 
 // THE PRIOR-LIFE BOUNDARY, ITS ARCHIVE ARM (docs/plans/managed-host-untangle.md, cut O1c-2;
 // docs/plans/machine-intake-design.md §5). Before anything is cleared, the controller's prior-life
@@ -99,12 +99,12 @@ import gunbc.machine_intake_subject { MachineIntakeSubject }
 //
 // THE PHASE IS EFFECTFUL, BUT NOT ON THE CONTROLLER. Its reads of the controller are read-only; its
 // one effect is the archive WRITE into the intake staging service's content-addressed store
-// (gunbc.machine_intake_staging IntakeStagingCapability ContentAddressedArtifactStore), followed by
+// (gunbc.machine_intake.staging IntakeStagingCapability ContentAddressedArtifactStore), followed by
 // an independent re-read of that store by digest. Observe, assess and decide go through
 // gunbc.host_convergence_protocol HostEffectDomainProjection; the write and the readback are this
 // domain's own, minted into this domain's sealed receipt, because the projection's apply side is the
 // open C8 frontier (host_effect_decide_apply_frontier). Nothing here discharges C8: the write is not
-// reconciled through gunbc.host_effect_realize host_effect_apply.
+// reconciled through gunbc.host.host_effect_realize host_effect_apply.
 //
 // THIS CUT IS DRY. The only realization is over gunbc.bmc_model BmcWorld and the dry store below; no
 // live controller is read and no live store is written. A live realization lands with its own
@@ -223,14 +223,14 @@ type DryPriorLifeWorld {
   write_returned_at_millis: EpochMs
 }
 
-data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
+data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
 
 // THE DRY REALIZATION'S CLOCK, confined to the two functions of this realization that stamp a read
 // and a write.
 fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: prior_life_dry_realization_name)
@@ -536,13 +536,13 @@ fn positions_json(p: CursorPositions) -> JsonValue {
 // elsewhere.
 fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverClockInstant) -> PriorLifeArchive
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "observe_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "observe_prior_life"),
   ]
 {
   let captures = map(prior_life_carriers_all, c => capture_from_world(world: world, carrier: c))
   let positions = cursor_positions_of(captures: captures)
   let body = serialize_json(v: json_object(members: [
-    json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake_prior_life_boundary prior-life archive v1")),
+    json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake.prior_life_boundary prior-life archive v1")),
     json_kv(key: "unit_key", value: json_string(s: (subject.subject.unit_key as NonEmptyStr) as String)),
     json_kv(key: "attempt", value: json_string(s: (subject.attempt_id as NonEmptyStr) as String)),
     json_kv(key: "captures", value: json_array(elements: map(captures, c => capture_json(c: c)))),
@@ -628,7 +628,7 @@ fn store_object_at(store: DryArchiveStore, digest: ContentHash) -> ArchivedObjec
 
 fn observe_prior_life(key: StepInstanceKey, request: PriorLifeRequest) -> ObservationAttempt<PriorLifeObservation, NonEmptyStr>
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "prior_life_projection"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_projection"),
   ]
 {
   let archive = archive_of(subject: request.subject, world: request.world.bmc, read_at: request.read_at)
@@ -701,7 +701,7 @@ fn prior_life_projection() -> HostEffectDomainProjection<StepInstanceKey, PriorL
 
 // ── APPLY: the write, its deadline, and the independent readback ───────────────────────────────────
 
-data prior_life_archive_write_leg: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive")
+data prior_life_archive_write_leg: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive")
 
 // THE WRITE LEG'S BUDGET: thirty seconds for one archive object into the staging store. The one
 // function that declares it, admitted by gunbc.fleet.convergence_fold leg_budget.
@@ -730,7 +730,7 @@ type DryArchiveWrite {
 
 fn dry_write_archive(store: DryArchiveStore, plan: PriorLifeArchivePlan, budget: LegBudget, started_millis: EpochMs, returned_millis: EpochMs) -> DryArchiveWrite
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
   ]
 {
   let deadline = effect_leg_deadline(budget: budget, started: dry_prior_life_instant(millis: started_millis))
@@ -753,8 +753,8 @@ type ArchiveReadBackStanding
 
 fn read_back_archive(store: DryArchiveStore, archive: PriorLifeArchive) -> ArchiveReadBackStanding
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
   ]
 {
   match store_object_at(store: store, digest: archive.digest) {
@@ -851,8 +851,8 @@ type DryPriorLifeStep {
 
 fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
   ]
 {
   PriorLifeArchiveEstablished {
@@ -875,7 +875,7 @@ fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: Machine
 // store now holds. Then the store is re-read by digest, independently of what the write returned.
 fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld) -> DryPriorLifeStep
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
   ]
 {
   let written = dry_write_archive(store: world.store, plan: PriorLifeArchivePlan { archive: archive }, budget: prior_life_archive_write_budget(), started_millis: world.read_at_millis, returned_millis: world.write_returned_at_millis)
@@ -907,16 +907,16 @@ fn dry_archive_prior_life(
   world: DryPriorLifeWorld,
 ) -> DryPriorLifeStep
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_a_policy_refusal_writes_nothing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
   ]
 {
   match prior_life_policy_for(platform: platform) {

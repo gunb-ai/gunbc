@@ -1,12 +1,12 @@
-module v2.test.parse.rust
+module v2.test.claim.parse.rust
 
 import v2.std.verification { EqualsClaim, Integration, ManualAnchorAbsent, TestClaim, TestClassification, Tier1, manual_claim_anchor }
-import test.claim.parse_test_rust_grammar { rust_parse_accepted, rust_parse_bool_atom, rust_tokenize_and_parse_source }
+import v2.test.claim.parse.parse_test_rust_grammar_test { rust_parse_accepted, rust_parse_bool_atom, rust_tokenize_and_parse_source }
 
 data rust_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32 { let\nz=x+1;\nif z>0 { return z; }\nreturn 0; }"
 
 // THE RUST GRAMMAR CLAIMS THAT ARE RED ON MAIN, held here ungated while they are diagnosed
-// (v2.test.parse census, gunbc#13372, phase 4 item D). Their green siblings are gated in test.claim.parse_test_rust_grammar.
+// (v2.test.claim.parse census, gunbc#13372, phase 4 item D). Their green siblings are gated in v2.test.claim.parse.parse_test_rust_grammar_test.
 // These rows are data TestClaims, which no runner executes; the diagnosis PR, gunbc#13426, converts or frontiers them.
 
 data claim_rust_layout_tight_parses: TestClaim = EqualsClaim {

@@ -1,4 +1,4 @@
-module v2.test.provenance.image_occurrence_projection
+module v2.test.claim.provenance.image_occurrence_projection_test
 
 import std.types { Bool, Int }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
@@ -27,7 +27,7 @@ import v2.std.node {
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }

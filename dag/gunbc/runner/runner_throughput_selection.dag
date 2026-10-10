@@ -1,30 +1,30 @@
-module gunbc.runner_throughput_selection
+module gunbc.runner.runner_throughput_selection
 
 import std.types { NonEmptyStr }
 import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
-import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
-import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
-import gunbc.fleet_host_budget {
+import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.fleet.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
   HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable,
 }
-import gunbc.fabric_executor_class { ExecutorSanction }
+import gunbc.fabric.fabric_executor_class { ExecutorSanction }
 import v2.workflow.floor_eval_step_calibration { EvalStepCalibration }
-import gunbc.runner_throughput_qualification {
+import gunbc.runner.runner_throughput_qualification {
   SelectedRunnerQualification, SelectedSlot, SelectedHostAllocation, HostAllocationAdmitted, HostAllocationRefused,
   SlotQuotaThreads, FloorWorkloadPin, SelectedRunnerRuntime, WorkspaceBacking, SamplingPolicy, PhaseCeilings,
 }
 
 // THE SELECTION IS THE FLEET'S ACT, AND THIS IS WHERE THE FLEET'S AUTHORITIES ARE CONSUMED.
 //
-// gunbc.runner_throughput_qualification assesses a selection it never mints. This module makes
+// gunbc.runner.runner_throughput_qualification assesses a selection it never mints. This module makes
 // the selection from the authorities that own each part -- the fleet slot shape
-// (gunbc.runner_slot_allocation), the host plan and its conservation verdict
-// (gunbc.fleet_host_budget), the fleet-side sanction (gunbc.fabric_executor_class) -- and projects
+// (gunbc.runner.runner_slot_allocation), the host plan and its conservation verdict
+// (gunbc.fleet.fleet_host_budget), the fleet-side sanction (gunbc.fabric.fabric_executor_class) -- and projects
 // them into the carriers the assessment reads. It is a separate module for a measured reason
-// recorded on the leaf: an import edge from the fabric's closure to gunbc.build_cache_instance
+// recorded on the leaf: an import edge from the fabric's closure to gunbc.build_cache.build_cache_instance
 // breaks bare-name resolution in gunbc.harness.harness_backend on the current seed, so the fleet
 // authorities (all of which reach build_cache_instance) are consumed here, one module above the
 // leaf product.fabric.node_qualification imports. The defect is dashboard work item
@@ -33,7 +33,7 @@ import gunbc.runner_throughput_qualification {
 //
 // THE SANCTION TRAVELS BESIDE THE SELECTION, NOT INSIDE THE ASSESSMENT. The assessment reads no
 // class-specific fact, so the sanction is not an input to it; it is the input the fabric's
-// admission (gunbc.fabric_executor_class admit_executor_capacity) joins on. Carrying it here keeps
+// admission (gunbc.fabric.fabric_executor_class admit_executor_capacity) joins on. Carrying it here keeps
 // the operator hold's shape -- selected sanction, offer and requirements exist before the
 // assessment -- without letting the assessment mint or read it.
 type RunnerQualificationInputs<P> {

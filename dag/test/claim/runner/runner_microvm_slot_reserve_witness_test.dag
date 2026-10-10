@@ -20,30 +20,30 @@ import product.fabric.selection {
 import product.fabric.supply { SupplierOffer }
 import extdeps.currency.currency { Usd }
 import test.claim.fabric.provider_use_fixture { fixture_route, fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload }
-import gunbc.fabric_control_plane {
+import gunbc.fabric.fabric_control_plane {
   CellReserved, ReservationLost, NoCellAdmissible, fabric_hold_owner, fabric_money_reservation_ref,
 }
 import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_sudoers_command }
-import gunbc.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
-import gunbc.runner_host_grants { microvm_slot_reserve_start_operations }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
-import gunbc.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
+import gunbc.runner.runner_host_grants { microvm_slot_reserve_start_operations }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account }
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_file, microvm_slot_reserve_unit_name, microvm_slot_reserve_entry_function,
   microvm_controller_owner,
 }
-import gunbc.runner_microvm_slot_start {
+import gunbc.runner.runner_microvm_slot_start {
   SlotStartCompleted, SlotStartRefused, UnitPropertyRead, ControllerReceiptRead, ControllerReceiptUnreadable,
 }
-import gunbc.runner_microvm_slot_reserve {
+import gunbc.runner.runner_microvm_slot_reserve {
   ShakedownRosterBound, ShakedownOfferIsNotTheCell, bind_shakedown_roster,
   microvm_slot_reserve_admitted, cell_reservation_text, shakedown_broker_subject_text,
   microvm_shakedown_candidate_field, microvm_shakedown_route_facts, microvm_shakedown_sanctions,
   microvm_shakedown_scope, microvm_shakedown_broker_decide, ShakedownBrokerDecided,
 }
-import gunbc.fabric_executor_class { CapacityClassRefused }
+import gunbc.fabric.fabric_executor_class { CapacityClassRefused }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
 import std.decl_ref { declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
@@ -52,7 +52,7 @@ import product.fabric.provider_admission {
   ProviderUseAdmitted, ProviderUseDenied, PostureRevisionStale, TransferOrLocationUnresolved,
   admit_provider_use,
 }
-import gunbc.runner_fleet_ci_posture { fleet_ci_posture, fleet_ci_posture_ref, fleet_ci_github_terms_ref }
+import gunbc.runner.runner_fleet_ci_posture { fleet_ci_posture, fleet_ci_posture_ref, fleet_ci_github_terms_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -89,7 +89,7 @@ test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool {
 }
 
 // A SECOND RESERVE OF A HELD CELL REFUSES, INCLUDING A RESERVE BY THE SAME SHAKEDOWN DEMAND. The
-// broker's CAS step (gunbc.fabric_control_plane reserve_selected_cell, over file_hold_acquire) admits
+// broker's CAS step (gunbc.fabric.fabric_control_plane reserve_selected_cell, over file_hold_acquire) admits
 // only an absent or free slot; a slot held by the shakedown's own owner is Occupied -- the same spelling
 // does not prove the earlier holder is gone -- which the broker reports as ReservationLost. The control
 // is the absent slot, which is eligible. The live counterpart is the srv1 run's second dispatch.

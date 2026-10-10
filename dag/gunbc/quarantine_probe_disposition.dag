@@ -108,7 +108,7 @@ import std.algebra { Cons, Empty }
 // floor's exclusion list decides which modules ENTER the prepared subject, so a list evaluated
 // from inside that subject cannot be consulted before the subject exists. The one list the
 // floor consults is the Rust literal `floor_prepared_subject_exclusions` in `cli_run.rs`, whose
-// own comment records that adding rows to gunbc.ci_layer_roots witness_exclusion_frontier had
+// own comment records that adding rows to gunbc.ci.ci_layer_roots witness_exclusion_frontier had
 // no effect at all. Mirroring that literal here would be a second representation of one fact
 // (DESIGN section 3) that drifts silently, which is worse than an arm with no production
 // producer, so the substrings stay a PARAMETER.
@@ -140,7 +140,7 @@ type QuarantineProbeHolder =
 //
 // `module` is the entry file's AUTHORED module declaration, never derived from its path -- the
 // two disagree in this corpus (src/v2/test/claim/manual/english_emit_add_test.dag declares
-// v2.test.manual.english_emit_add), and a path-shaped guess would silently miss the roster it
+// v2.test.claim.manual.english_emit_add_test), and a path-shaped guess would silently miss the roster it
 // is joining against. The caller supplies it from the same declaration the floor reads.
 type QuarantineProbeSubject {
   module: String

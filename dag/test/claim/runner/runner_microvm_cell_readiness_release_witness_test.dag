@@ -2,7 +2,7 @@ module test.claim.runner.runner_microvm_cell_readiness_release_witness_test
 
 import std.types { Bool, List }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessRecord, CellSettled, CellReadinessWriteResult, apply_cell_readiness_write,
   cell_reservation_released_write, cell_incarnation_admission, StoreRead, StoreRootOwned,
   CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn,

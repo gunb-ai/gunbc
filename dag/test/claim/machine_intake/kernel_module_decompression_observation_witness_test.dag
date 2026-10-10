@@ -4,12 +4,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.measure { byte_size }
 import extdeps.linux.module_decompress { ZstdCorruptionDetected, ZstdErrorCodeOther }
-import gunbc.machine_intake_kernel_module_decompression_observation {
+import gunbc.machine_intake.kernel_module_decompression_observation {
   kernel_module_decompression_observation, kernel_module_decompression_text,
   KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded,
   RefusalIdentityUnread, RefusalIdentityCandidates, ModuleInsertFailure, DriverPrintedLater, DriverNotSeenInCapture,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

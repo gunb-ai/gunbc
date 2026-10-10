@@ -1,4 +1,4 @@
-module test.claim.host_cli_dependency_witness_test
+module test.claim.host.host_cli_dependency_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
@@ -6,7 +6,7 @@ import std.types { Bool, String, NonEmptyStr }
 import extdeps.tools { install_hint }
 import extdeps.tools.sshpass { sshpass_cli_tool }
 import extdeps.exec.command { sshpass_program }
-import gunbc.host_cli_dependency {
+import gunbc.host.host_cli_dependency {
   password_session_host_cli_requirements,
   host_dependency_absent_wire,
   host_cli_dependency_failure_receipt,
@@ -17,7 +17,7 @@ import gunbc.host_cli_dependency {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wire shape is built by host_dependency_absent_wire (escaped braces in source); failure_receipt is Optional so Present does not conflate with an empty string."
+data witness_note: String = "Hermetic controls for gunbc.host.host_cli_dependency: wire shape is built by host_dependency_absent_wire (escaped braces in source); failure_receipt is Optional so Present does not conflate with an empty string."
 
 // THE PASSWORD-SESSION ENROLLMENT IS A ROW, and this is the hermetic half of its evidence: the
 // roster names the binary that ssh.PasswordFileSsh's argv actually execs, and its hint resolves to

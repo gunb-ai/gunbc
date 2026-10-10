@@ -1,6 +1,6 @@
-module gunbc.roadmap_forecast
+module gunbc.roadmap.roadmap_forecast
 
-import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import std.types { EpochMs, NonEmptyStr }
 import std.measure {
   Millisecond,
@@ -27,7 +27,7 @@ import extdeps.github.pulls {
   gunbc_pr_7441_timing,
   gunbc_pr_7542_timing,
 }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
   RoadmapEdge,
@@ -42,15 +42,15 @@ import std.keyed_row { KeyedRow, keyed_row_find }
 import std.keyed_roster {
   keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey,
 }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   NodeSizing,
   SizingSubjectId,
   SizingDerived,
   SizingNotDerivable,
   node_sizing_eq,
 }
-import gunbc.roadmap_belt { BeltCapacity }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_authority {
   roadmap_acceptance_event_history_load,
   declared_roadmap_nodes,
   active_roadmap_nodes_for_accepted,
@@ -102,7 +102,7 @@ data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod
 // NodeSizing WAS A SECOND NAME FOR A SIZE. It carried exactly intricacy and volume, and existed
 // only because the authored NodeSizing coproduct fused a size with the repository and the
 // acceptance route, so this module had to project the size back out of the bundle. With the
-// unbundling that projection has nothing to strip: gunbc.roadmap_sizing NodeSizing IS the cell, and
+// unbundling that projection has nothing to strip: gunbc.roadmap.roadmap_sizing NodeSizing IS the cell, and
 // keeping both would be the section 3 nickname. Calibration now keys on the DERIVED size, which is
 // why this module's population is empty until the deriver lands -- see the declared drop
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived.
@@ -114,7 +114,7 @@ type AcceptedNodePullLink {
 
 // The business join between a durable roadmap acceptance and its implementation/acceptance pull
 // request. Pull wire shape and its normalized timing observations stay under the single
-// extdeps.github.pulls authority; acceptance stays in gunbc.roadmap_authority. This list says only
+// extdeps.github.pulls authority; acceptance stays in gunbc.roadmap.roadmap_authority. This list says only
 // which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration
 // sample only when exactly one accepted node links to that PR; a shared delivery is reported once
 // as BundledPullDelivery and excluded because the source does not allocate its elapsed time among
@@ -542,7 +542,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
 // node with no assignment is unsized to this fold, which is the same refusal the authored Unsized
 // arm used to produce.
 // THE ASSIGNMENT IS KEYED BY THE KEY THE DERIVER ANSWERED UNDER, THROUGH THE CARRIER std ALREADY
-// OWNS. A derivation is SUBJECTED to a SizingSubjectId -- gunbc.roadmap_model node_sizing_subject_id,
+// OWNS. A derivation is SUBJECTED to a SizingSubjectId -- gunbc.roadmap.roadmap_model node_sizing_subject_id,
 // the node's minted identity, because roadmap_node_identity_law forbids the slug as an identity
 // input. Keying by RoadmapNodeId would have derived evidence under a durable key and then matched
 // it to nodes by a mutable one, so a rename would silently break the join: the strength of a join
@@ -576,10 +576,10 @@ fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId
 }
 
 // A DERIVED CELL IS ADMITTED FOR THE SUBJECT IT NAMES OR FOR NO SUBJECT AT ALL. The adapter below
-// is the seam where an answer from gunbc.roadmap_sizing becomes a fact about a roadmap node, and it
+// is the seam where an answer from gunbc.roadmap.roadmap_sizing becomes a fact about a roadmap node, and it
 // is the one place a wrong answer could be rebound to the wrong node. It does not rebind: it
 // compares the subject the deriver ANSWERED UNDER against the subject the node was ASKED UNDER --
-// the same gunbc.roadmap_model node_sizing_subject_id projection on both sides -- and a mismatch
+// the same gunbc.roadmap.roadmap_model node_sizing_subject_id projection on both sides -- and a mismatch
 // produces SizingForAnotherSubject rather than an assignment.
 //
 // THIS ARM IS UNREACHABLE TODAY AND THAT IS EXACTLY WHY IT IS HERE. The stub refuses every subject,
@@ -588,7 +588,7 @@ fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId
 // seam would therefore not be a dormant defect -- it would be a live defect scheduled to arrive
 // silently on the day the seam activates. The control that fires it is authorable because the
 // derivation is a PARAMETER here:
-// test.claim.roadmap_forecast_witness.witness_a_cell_answered_for_another_subject_refuses hands
+// test.claim.roadmap.roadmap_forecast_witness_test.witness_a_cell_answered_for_another_subject_refuses hands
 // this function a cell carrying another node's subject and reads the refusal, and
 // witness_a_cell_answered_for_its_own_subject_is_admitted is its positive twin, so the arm is shown
 // to discriminate rather than merely to fire.
@@ -634,7 +634,7 @@ fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizin
   }
 }
 
-// THE PRODUCTION ADAPTATION, AND IT IS EMPTY TODAY. gunbc.roadmap_sizing derive_task_sizing is a
+// THE PRODUCTION ADAPTATION, AND IT IS EMPTY TODAY. gunbc.roadmap.roadmap_sizing derive_task_sizing is a
 // stub that refuses for every subject, so this fold yields no assignments and no refusals, and the
 // forecast refuses with NodeUnsized over the whole graph. That is the declared loss, rostered as
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived; it is written as a fold over the real deriver

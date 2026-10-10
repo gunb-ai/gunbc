@@ -1,4 +1,4 @@
-module test.claim.roadmap_dashboard_instance_witness
+module test.claim.roadmap.roadmap_dashboard_instance_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
@@ -7,7 +7,7 @@ import gunbc.auth.session_store { session_store_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_directory }
 import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
 import gunbc.auth.profile_projection { profile_store_directory }
-import gunbc.roadmap_view_preference_store { issue_view_store_directory }
+import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {
   CodexDefaultAccount,
@@ -17,7 +17,7 @@ import gunbc.provider_account {
   codex_roadmap_account_selection,
   codex_roadmap_account_evidence,
 }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   srv1_host_layout,
   srv2_host_layout,
   GunbcHostLayout,
@@ -29,7 +29,7 @@ import gunbc.host_layout {
   srv1_codex_bundled_executable,
 }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_admitted_revision_source,
   HostDashboardInstance,
   DashboardObserveOnly,

@@ -15,7 +15,7 @@ import v2.std.subject_evidence {
   subject_evidence_establishes
 }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   WitnessBinReady,
   WitnessBinRefused,
   witness_bin,
@@ -43,7 +43,7 @@ data product_receipt_manifest_dir_rel: String = "/target/product-receipt/manifes
 data product_receipt_manifest_file: String = "/host_source_root_ingest_manifest.dag"
 data product_receipt_stage_entry_file: String = "src/v2/workflow/product_receipt_stage.dag"
 data product_receipt_ingest_source_root: String = "src/v2"
-data product_receipt_compiler_entry: String = "src/v2/compiler/00_compile.dag"
+data product_receipt_compiler_entry: String = "src/v2/compiler/compile.dag"
 
 // The manifest lands in target/product-receipt/manifest and THAT directory -- never bare target/ --
 // is the source root handed to the stage process. Adding bare target/ as a source root admits the

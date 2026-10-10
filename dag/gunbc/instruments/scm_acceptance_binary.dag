@@ -1,4 +1,4 @@
-module tools.scm_acceptance_binary
+module gunbc.instruments.scm_acceptance_binary
 
 // THE EXECUTABLE THE ACCEPTANCE CHILDREN SPEND, ACQUIRED RATHER THAN ASSUMED.
 //
@@ -82,8 +82,8 @@ import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.tools.sha512sum { sha512sum_observe_file, Sha512FileObserved, Sha512FileObservationRefused }
-import extdeps.cargo_build
-import extdeps.cargo_message {
+import extdeps.rust.cargo_build
+import extdeps.rust.cargo_message {
   CargoArtifactSelection,
   CargoArtifactSelected,
   CargoArtifactAbsent,

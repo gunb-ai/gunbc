@@ -15,7 +15,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
 }
-import gunbc.fleet_workflow_steps { gunbc_ci_live_deploy_step_timeout_minutes }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_live_deploy_step_timeout_minutes }
 import std.measure { second_count }
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergencePlacementOperands,

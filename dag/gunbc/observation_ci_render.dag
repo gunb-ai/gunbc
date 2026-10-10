@@ -24,7 +24,7 @@ import std.measure {
 }
 import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
 import std.disposition { Disposition, Terminal }
-import gunbc.witness_row_cost {
+import gunbc.witness.witness_row_cost {
   SharedFillPayer,
   SharedFillDisposition,
   shared_fill_disposition,
@@ -32,7 +32,7 @@ import gunbc.witness_row_cost {
   shared_fill_payer_tag,
 }
 import extdeps.render.glyphs { resolve_symbol }
-import gunbc.memory_stall_refusal {
+import gunbc.host.memory_stall_refusal {
   MemoryStallObservation,
   memory_stall_major_fault_rate,
   memory_stall_self_cpu_share,
@@ -168,7 +168,7 @@ fn ci_human_elapsed(d: Nanosecond) -> String {
   }
 }
 
-// A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a
+// A second duration projection beside gunbc.ci.ci_render.format_duration is deliberate and is not a
 // fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s),
 // this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces,
 // chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that
@@ -625,7 +625,7 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
 // source_path, module_path, and the two identity segments), and `ci_subject_detail_text` renders
 // at most ONE of module/phase, so folding the path into the subject would have silently dropped
 // either the path or the intent. THE OPERAND IS NEVER DROPPED, because the pre-attempt trace is
-// load-bearing: gunbc.roadmap_dispatch_actuator records a measured incident (srv1, 2026-08-19)
+// load-bearing: gunbc.roadmap.roadmap_dispatch_actuator records a measured incident (srv1, 2026-08-19)
 // where twelve publication receipts wrote into a directory that did not exist, and the
 // `[file] write <path>` line emitted BEFORE the attempt made every one of them log exactly like a
 // success. A projection that rendered "started Filesystem.Write" with no path would restore that
@@ -1143,7 +1143,7 @@ fn ci_witness_runtime_error_detail_text(
 // ci_witness_budget_warn_text, the warn-tier line, which is deleted (see
 // ci_witness_budget_warn_retirement_receipt) — this row-cost projection is unaffected by that
 // retirement and remains live. The disposition is derived from the payer and the consumer breadth
-// by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed
+// by gunbc.witness.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed
 // authored beside the numbers that decide it.
 
 fn ci_shared_fill_row_text(

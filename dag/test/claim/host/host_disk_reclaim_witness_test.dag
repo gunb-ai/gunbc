@@ -1,11 +1,11 @@
-module test.claim.host_disk_reclaim_witness_test
+module test.claim.host.host_disk_reclaim_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { byte_size, second_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv4 }
-import gunbc.host_disk_reclaim {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.host.host_disk_reclaim {
   SlotJobState,
   SlotIdle,
   SlotRunningJob,

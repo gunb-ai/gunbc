@@ -1,4 +1,4 @@
-module gunbc.bmc_onboarding
+module gunbc.bmc.bmc_onboarding
 
 import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin }
@@ -9,8 +9,8 @@ import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, 
 import gunbc.auth.access_token_source { AccessEnsurePlan }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
-import gunbc.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13 }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13 }
 import product.host_identity { HostIdentity }
 
 // QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
@@ -21,14 +21,14 @@ import product.host_identity { HostIdentity }
 // no new producer or consumer may be added to BmcOnboardingPhase; no
 // BmcOnboardingPhase, BmcLifecycleState or FabricJoined value may construct an
 // IntakePhaseStanding, an intake receipt, a disposition or a fleet admission
-// (test.claim.bmc_onboarding_quarantine_witness_test derives both populations
+// (test.claim.bmc.bmc_onboarding_quarantine_witness_test derives both populations
 // from the parse-only declaration census and requires each empty: consumers of
 // this module's names under gunbc.machine_intake_*, and declarations in the
 // intake and bmc pools whose atoms bridge this module's names to a
 // gunbc.machine_intake_* name at field-type or top-level-expression grain; its
 // authored RED is dag/test/fixture/onboarding_quarantine); the split of this module's BMC-security,
 // OS-provisioning and fabric-join content into the three intake transactions
-// (gunbc.machine_intake_phase) must land before the effectful intake executor
+// (gunbc.machine_intake.phase) must land before the effectful intake executor
 // or before any live producer for BmcSecure, OsInstalled or
 // ServiceRuntimeAdmitted; and that migration terminates by DELETING this
 // lifecycle after its consumers move, never by keeping it as a second lifecycle
@@ -235,8 +235,8 @@ fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPostur
 // ONE HOST CARRIER, EVERY NAME DERIVED FROM IT. The plan carries the fleet host identity beside its
 // BMC endpoint, and the custody secret name is derived from that identity rather than typed next to
 // it, so no caller can pair one host's secret with another host's BMC (review 67867). Both inputs
-// come from the fleet authorities: the identity from gunbc.fleet_intent_network, the endpoint from
-// that host's gunbc.fleet_intent baseboard.
+// come from the fleet authorities: the identity from gunbc.fleet.fleet_intent_network, the endpoint from
+// that host's gunbc.fleet.fleet_intent baseboard.
 fn altra_onboarding_plan(host: HostIdentity, bmc_host: NonEmptyStr) -> BmcOnboardingPlan {
   BmcOnboardingPlan {
     host: host,

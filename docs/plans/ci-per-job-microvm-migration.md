@@ -2,7 +2,7 @@
 
 *Subject: get gunbc and gunbc-private CI onto per-job Firecracker guests. This document does not switch `runs-on`, does not bind `host_boot_cutover_frontier`, and does not start the M1 dogfood clock. It answers the four questions the operator asked, with named instruments. Cutover is a later operator decision.*
 
-*Governed by DESIGN §3 replacement-migration (gap-intolerant staged carve-out). Continues [microvm-launch-displacement-analysis](microvm-launch-displacement-analysis.md) and gunbc#10927 (`gunbc.runner_attempt_launch`).*
+*Governed by DESIGN §3 replacement-migration (gap-intolerant staged carve-out). Continues [microvm-launch-displacement-analysis](microvm-launch-displacement-analysis.md) and gunbc#10927 (`gunbc.runner.runner_attempt_launch`).*
 
 ## Why this is already a plan item (say this first)
 
@@ -13,7 +13,7 @@
 
 This is not an infrastructure detour competing with the year-end plan. **Public CI on our own microVM runners is the M1 dogfood deliverable.** Until that exit is true, the two-week clock cannot start, and M1b `dogfood-window` cannot start.
 
-The 2026-09-10 motive is independent and already declared. gunbc-private PR #50 went red on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). Public `gunbc.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` is the named cure for that shared-FS eviction class. **gunbc#10985** (still-bear-335) rewrites that row so the probe dissolves only on **both** conjuncts this plan already named — public `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` and private `witnesses_job()` `SelfHosted` custom labels, not the empty-custom fleet slot — and identifying a deleter on the shared slot is **not** a substitute. Typed env-vs-code (POSIX 126/127, BMC/host/JIT) does not dissolve here. This PR does not flip `runs-on`; #10985 does not either.
+The 2026-09-10 motive is independent and already declared. gunbc-private PR #50 went red on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). Public `gunbc.witness.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` is the named cure for that shared-FS eviction class. **gunbc#10985** (still-bear-335) rewrites that row so the probe dissolves only on **both** conjuncts this plan already named — public `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` and private `witnesses_job()` `SelfHosted` custom labels, not the empty-custom fleet slot — and identifying a deleter on the shared slot is **not** a substitute. Typed env-vs-code (POSIX 126/127, BMC/host/JIT) does not dissolve here. This PR does not flip `runs-on`; #10985 does not either.
 
 ## The class caught in the act (2026-09-11)
 
@@ -36,7 +36,7 @@ One mechanism, four presentations already seen tonight:
 
 ## 1. What must be true for `host_boot_cutover_frontier` to fire
 
-Authority: `gunbc.runner_attempt_launch` `host_boot_cutover_frontier`. It is an unbound `DissolutionCondition`.
+Authority: `gunbc.runner.runner_attempt_launch` `host_boot_cutover_frontier`. It is an unbound `DissolutionCondition`.
 
 **The capability, not an artifact:** Y (`plan_attempt_launch` or a successor of the same root) **executes at host boot on tmpfs**, and **the host image is built from that model**, so the recovered `initramfs/init` path has **zero production consumers**. Sufficient for deleting `docs/recovered/mtcollins-host-image-source` and the frontier row in one motion.
 
@@ -46,7 +46,7 @@ Authority: `gunbc.runner_attempt_launch` `host_boot_cutover_frontier`. It is an 
 
 1. **Placeability of an amd64/aarch64-correct binary at boot** — `gunbc.runner.runner_host_image_placeability`. Closed is not answered: `HostShellAndBootImageAccessRefused` closes the work item without measuring the image. The wet probe (`host_image_placeability_wet_probe_frontier`) is still unbound.
 2. **Carry that binary (or a smaller fold that execs the planned argv) in the host image** and invoke it as the per-attempt driver at the point X currently `exec`s jailer. The converge-time `gunbc run` channel that already displaced steps 1–2 **cannot** do this: it presupposes a self-hosted runner, a checkout, and a built binary, which is what step 9 creates (displacement analysis, reading half).
-3. **Discriminating RED + positive control on the host-boot jailer-exec path** — empty/absent credential yields **zero** VMM processes (FCI-3); a live grant starts exactly one. VMM exit 0 stays `WorkNotEstablished` (`gunbc.runner_attempt_launch`).
+3. **Discriminating RED + positive control on the host-boot jailer-exec path** — empty/absent credential yields **zero** VMM processes (FCI-3); a live grant starts exactly one. VMM exit 0 stays `WorkNotEstablished` (`gunbc.runner.runner_attempt_launch`).
 4. **Host image rebuild from Y**, BMC redirect to that digest, recovered init has no production consumer. Then bind the frontier and delete recovered source in one motion. Gap-intolerant: JIT is one-shot, so Y is built in shadow (already) and the switch is one transition — not A/B on the same attempt.
 
 Until step 4, reported rung stays the **minimum** across paths: `reported_attempt_launch_rung` = `Mitigatable`.
@@ -62,7 +62,7 @@ Until step 4, reported rung stays the **minimum** across paths: `reported_attemp
 
 **Condition 3, measured today (not transcribed from chat):**
 
-- Instrument: `curl -sk --max-time 3 -o /dev/null -w '%{http_code}' https://192.168.1.228/` against `gunbc.machine_intake_mtcollins1_access_observation` `mtcollins1_endpoint`. Result at plan authoring: **HTTP 200**. The BMC answers. Powered-on is not a lie.
+- Instrument: `curl -sk --max-time 3 -o /dev/null -w '%{http_code}' https://192.168.1.228/` against `gunbc.machine_intake.mtcollins1_access_observation` `mtcollins1_endpoint`. Result at plan authoring: **HTTP 200**. The BMC answers. Powered-on is not a lie.
 - `ping`/`ip`/`ipmitool` are not present in this session, so chassis power and neighbour state are **not** claimed.
 - `host_image_placeability_standing` is still `PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused }`. That arm **does not answer the image**. BMC HTTPS ≠ tmpfs exec of a carried `gunbc`.
 
@@ -74,7 +74,7 @@ Not yet represented; CI need vs customer need:
 
 | Missing constructor | CI-on-microVMs | Customer-job |
 |---|---|---|
-| Host-side JIT mint and jail staging | **Required before any production CI job on this path.** The receipted fail-open was `jitconfig-bytes=0` then launch anyway. `gunbc.github_effect_perform` `perform_organization_jit_mint` now performs the App path on the host (RS256 App JWT via openssl, installation token, generate-jitconfig), and `gunbc.runner_attempt_launch` admits only a delivered, attempt-bound, floor-to-ceiling credential: no admitted credential means no jit device and no VMM, in one plan arm. What stays open is execution by the lifecycle controller: `gunbc.github_effect_perform` `jit_mint_lifecycle_controller_consumer_frontier`. | Same. |
+| Host-side JIT mint and jail staging | **Required before any production CI job on this path.** The receipted fail-open was `jitconfig-bytes=0` then launch anyway. `gunbc.github_effect_perform` `perform_organization_jit_mint` now performs the App path on the host (RS256 App JWT via openssl, installation token, generate-jitconfig), and `gunbc.runner.runner_attempt_launch` admits only a delivered, attempt-bound, floor-to-ceiling credential: no admitted credential means no jit device and no VMM, in one plan arm. What stays open is execution by the lifecycle controller: `gunbc.github_effect_perform` `jit_mint_lifecycle_controller_consumer_frontier`. | Same. |
 | nft install/readback | **Required.** The guest must reach `github.com` (JIT register, checkout, API). A plan that cannot install or read back NAT is a guest that cannot run Actions. | Same. |
 | mkfs failure | **Required.** Checkout and toolchain isolation live on the workspace image. | Same. |
 | Live bidirectional cgroup placement census | **Defer for first CI dogfood.** Isolation is structurally the guest+jailer; a live census is evidence quality, not the class that made private exit 126. | Required before selling tenancy (`tenant-boundary-minimum`). |
@@ -84,7 +84,7 @@ Like-for-like reproduction of six absent admission checks is still forbidden (di
 
 ## 3. Public and private are different problems — sequence
 
-Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci_runner_target` `gunbc_ci_selected_runner_spec` → fleet offer; private `.github/workflows/witnesses.yml` the same labels). That is the **shared-filesystem srv slot** class (`ctrl` `jit-runner.sh` on srv1–srv4). The canary guest is **Aarch64** (`gunbc.runner.runner_guest_network_receipt` `guest_userspace`). Architecture is not the blocker.
+Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci.ci_runner_target` `gunbc_ci_selected_runner_spec` → fleet offer; private `.github/workflows/witnesses.yml` the same labels). That is the **shared-filesystem srv slot** class (`ctrl` `jit-runner.sh` on srv1–srv4). The canary guest is **Aarch64** (`gunbc.runner.runner_guest_network_receipt` `guest_userspace`). Architecture is not the blocker.
 
 | | Public | Private |
 |---|---|---|
@@ -92,7 +92,7 @@ Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci_
 | Merge consequence | Blocks every gunbc PR | Blocks private PRs (already largely red today) |
 | Adjacent lanes | Filesystem probe already in `witness_floor_workflow`. Typed env-vs-code classification: **still-bear-335** (`adhoc-3b2f737a-7b8`). | Process count: **warm-badger-62** / private #46 — one `gunbc run` per roster row → one process for the enforced half. DESIGN §2, not §5. Do not fork `strategy.private_witness_workflow`. |
 | M1 | **`dogfood-started` is this repo's CI** | Not the year-end exit |
-| `runs-on` | `gunbc.ci_runner_target` `gunbc_ci_selected_runner_spec` | Not a YAML literal. `witnesses_job()` is `SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) }`. Per-attempt label goes in `custom`. #46 does not touch `witnesses_job()`. |
+| `runs-on` | `gunbc.ci.ci_runner_target` `gunbc_ci_selected_runner_spec` | Not a YAML literal. `witnesses_job()` is `SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) }`. Per-attempt label goes in `custom`. #46 does not touch `witnesses_job()`. |
 
 **Why order matters — two improvements can compose into a wash.** #46 removes 34 redundant world acquisitions, which *leaves the seed build as the dominant term*. A naive microVM flip that then compiles that seed with no reachable cache reintroduces cost on that same term. Isolation of the deleter class is still a win; the *job wall* can be a wash. That is the argument for sequencing, and it is stronger than "private is smaller".
 
@@ -152,7 +152,7 @@ Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… 
 - **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable. Lost *local* reuse is accepted under the working assumption: 815–1053 s still clears 3341 s and the ~61-minute cancel class. External sccache is an optimization blocked on `GuestEgressNotEstablished`, not cover for the cut.
 - **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — that question belongs to **still-bear-335**, not to the process-count PR.
 - **Persistent runner registration.** Replaced by JIT per attempt. Covered only when the lifecycle controller executes the mint and staging (`jit_mint_lifecycle_controller_consumer_frontier`).
-- **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
+- **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
 - **Canary-only capacity.** Covered by refusing to cut public until capacity is named, or by a declared §4b drop of dual-lane parallelism with a restoration trigger = a second canary host or serialized lanes that still meet the floor.
 
 X may remain as an offline oracle (srv slots keep running **until** the switch). Y must not resolve through X.

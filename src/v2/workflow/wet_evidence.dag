@@ -181,7 +181,7 @@ type WetScheduledClaim {
 // verdict, so the executor reads it BEFORE invoking the claim and records which one it read.
 //
 // The arms name premises, not probes. How a premise is read back is realized where its authority
-// lives (`gunbc.wet_host_premise_readback`), so this vocabulary stays free of the runner modules
+// lives (`gunbc.runner.wet_host_premise_readback`), so this vocabulary stays free of the runner modules
 // and the join below can be validated against supplied readings.
 type WetHostPremise
   = RunnerBrowserToolchainReadyForJobUser {}

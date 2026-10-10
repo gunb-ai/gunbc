@@ -1,16 +1,16 @@
 module test.claim.machine_intake.mtcollins1_census_medium_readback_witness_test
 
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
-import gunbc.fleet_known_hosts_anchor { SshTarget }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium,
+import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium,
   mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused,
   mtcollins1_census_image_stem, mtcollins1_census_volume_id, mtcollins1_seeded_image_input,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
-import gunbc.machine_intake_mtcollins1_census_medium_readback {
+import gunbc.machine_intake.mtcollins1_census_medium_readback {
   CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
   mtcollins1_census_medium_readback,
   CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,

@@ -74,7 +74,7 @@ fn scope_exit_runtime_derived_replace_existing() -> ProviderRetention {
       limit: EntryCountCapacity {
         limit: RuntimeDerivedLimit {
           authority: {
-            module_path: "gunbc.host_budget_source",
+            module_path: "gunbc.host.host_budget_source",
             decl_name: "HostBudgetResolution",
             field: WholeDeclaration
           }

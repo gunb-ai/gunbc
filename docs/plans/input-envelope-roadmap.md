@@ -17,7 +17,7 @@ An unbounded input is the data-side of a non-terminating Loop (which requires De
 
 ## P2 (follow-on, operator sign-off before landing) — ceiling derivation
 
-- Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)
+- Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)
 - Derive SourceNodeCount and CorpusNodeCount from the measured per-file / per-tree node counts (the ci_floor_measurement infrastructure)
 - Replace the Scaffold ceiling rows in gunbc_ci_corpus_envelope with derived values; the Scaffold disposition dissolves on this replacement
 - Wire input_admitted into the scheduler / admission path as a fail-closed gate (operator controls timing; this PR's gate is a wall on WorkDemand construction, not a runtime check yet)

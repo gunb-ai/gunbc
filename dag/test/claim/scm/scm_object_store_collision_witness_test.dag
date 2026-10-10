@@ -1,4 +1,4 @@
-module test.claim.scm_object_store_collision_witness
+module test.claim.scm.scm_object_store_collision_witness_test
 
 // THE ENROLLED HALF of gunbc.scm.object_store's collision claims.
 //

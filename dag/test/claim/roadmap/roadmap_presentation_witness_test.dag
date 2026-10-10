@@ -1,4 +1,4 @@
-module test.claim.roadmap_presentation_witness
+module test.claim.roadmap.roadmap_presentation_witness_test
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
@@ -11,17 +11,17 @@ import gunbc.harness.harness_throughput {
   RoundObservation }
 import extdeps.languages.json.emit { serialize_json }
 
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge,
   RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   AuthoredLine,
   RedControlExecuted, HandbackDelivered,
   TicketLine, TicketFields, Unsigned,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_page {
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_page {
   issue_chain_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
 }
 import gunbc.roadmap.roadmap_hierarchy_view {
@@ -30,8 +30,8 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   issue_hierarchy_view, hierarchy_nodes, relation_summary,
 }
 import gunbc.roadmap.roadmap_lineage { lineage_refusal_detail }
-import gunbc.roadmap_priority { DerivedPriority, PriorityP2 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_priority { DerivedPriority, PriorityP2 }
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused,
@@ -43,16 +43,16 @@ import gunbc.roadmap_workflow_stage {
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
 }
-import gunbc.roadmap_belt { ManualReady }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, Operator,
   LaunchNotReady, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
-import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplaySuperseded, issue_display_status_is_closed }
-import gunbc.roadmap_presentation {
+import gunbc.roadmap.roadmap_issue_status { DisplayReady, DisplayDone, DisplaySuperseded, issue_display_status_is_closed }
+import gunbc.roadmap.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
   WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
@@ -250,7 +250,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
 // back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine,
 // where the lead heuristic is the declared residue of this projection.
 test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
-  let t = gunbc.roadmap_authority.fields(
+  let t = gunbc.roadmap.roadmap_authority.fields(
     headline: "Close the wall — phase 2. Cleanly",
     boundary: "brief text",
     displaced_cost: "",
@@ -465,7 +465,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
   let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
   let signed_node = fx_sign(rn: open_node, s: fx_signed(
     by: "operator",
-    works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
+    works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness_test", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
     scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
     as_expected: true))
   let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
@@ -477,7 +477,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
 
 // Owner, repo, sizing, and carriers are supporting facts for the disclosure region — present when
 // declared, absent (not empty-labeled) when not. SIZING IS NOW THE ABSENT ONE: the row's badge is
-// derived (gunbc.roadmap_sizing) and the deriver is a stub, so a fixture node carries its repo and
+// derived (gunbc.roadmap.roadmap_sizing) and the deriver is a stub, so a fixture node carries its repo and
 // no sizing cell. A sizing badge appearing here again means the deriver started answering, which is
 // the declared drop gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. The integration witness drives work_row_view
 // end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary,
@@ -495,8 +495,8 @@ fn fx_row_nodes() -> List<RoadmapNode> {
 
 fn fx_row_edges() -> List<RoadmapEdge> {
   [
-    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
-    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
+    gunbc.roadmap.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
+    gunbc.roadmap.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
   ]
 }
 
@@ -585,7 +585,7 @@ test fn witness_bar_signal_names_blockers_for_upcoming_rows() -> Bool {
     fx_sized(id: "hier-single-child", content: "single blocked row"),
     fx_sized(id: "hier-single-parent", content: "single blocker"),
   ]
-  let single_edges = [ gunbc.roadmap_authority.edge(child: "hier-single-child", parent: "hier-single-parent") ]
+  let single_edges = [ gunbc.roadmap.roadmap_authority.edge(child: "hier-single-child", parent: "hier-single-parent") ]
   let bar_one = task_bar_view_of(
     view: fx_hier_view(rn: first(single_nodes).value, nodes: single_nodes, edges: single_edges, merged: [], activity: NoActiveWork, standing: none),
     observation: ObservationsNominal)
@@ -934,7 +934,7 @@ fn fx_hier_nodes() -> List<RoadmapNode> {
       rn: fx_sized(id: "hier-task-done", content: "done task"),
       s: fx_signed(
         by: "op",
-        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_project_progress_counts_accepted_or_superseded_only", executed_on: "2026-09-20" },
+        works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness_test", witness_fn: "witness_project_progress_counts_accepted_or_superseded_only", executed_on: "2026-09-20" },
         scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
         as_expected: true)),
     fx_superseded(identity: "rnfx-hier-task-superseded", id: "hier-task-superseded", by: "hier-task-done", content: "old shape"),
@@ -948,10 +948,10 @@ fn fx_hier_nodes() -> List<RoadmapNode> {
 
 fn fx_hier_edges() -> List<RoadmapEdge> {
   [
-    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-done"),
-    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-superseded"),
-    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-review"),
-    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-open"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-project", parent: "hier-task-done"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-project", parent: "hier-task-superseded"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-project", parent: "hier-task-review"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-project", parent: "hier-task-open"),
   ]
 }
 
@@ -1119,8 +1119,8 @@ test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
 // Blocker declaration order cannot choose ownership. Only the independent nesting does.
 test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
   let nodes = [fx_sized(id: "hier-p1", content: "project one"), fx_sized(id: "hier-p2", content: "project two"), fx_sized(id: "hier-shared", content: "shared prerequisite")]
-  let edges = [gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
-  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1", contribution: "fixture contribution" }]
+  let edges = [gunbc.roadmap.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
+  let nesting = [gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1", contribution: "fixture contribution" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: nesting)) == Present { value: "hier-p1" }
     && row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: [])) == none
@@ -1160,8 +1160,8 @@ test fn witness_single_child_chain_collapses() -> Bool {
     fx_sized(id: "hier-chain-c", content: "chain base"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
-    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1203,9 +1203,9 @@ test fn witness_multi_child_project_never_collapses() -> Bool {
     fx_sized(id: "hier-multi-c", content: "base leaf"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-b"),
-    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-x"),
-    gunbc.roadmap_authority.edge(child: "hier-multi-b", parent: "hier-multi-c"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-b"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-x"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-multi-b", parent: "hier-multi-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1249,17 +1249,17 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
       rn: fx_sized(id: "hier-cc-t1", content: "done task"),
       s: fx_signed(
         by: "op",
-        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_chain_end_tasks_count_in_top_row", executed_on: "2026-09-21" },
+        works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness_test", witness_fn: "witness_chain_end_tasks_count_in_top_row", executed_on: "2026-09-21" },
         scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
         as_expected: true)),
     fx_sized(id: "hier-cc-t2", content: "open task"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-cc-r", parent: "hier-cc-g"),
-    gunbc.roadmap_authority.edge(child: "hier-cc-g", parent: "hier-cc-e"),
-    gunbc.roadmap_authority.edge(child: "hier-cc-e", parent: "hier-cc-arc"),
-    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t1"),
-    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t2"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-cc-r", parent: "hier-cc-g"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-cc-g", parent: "hier-cc-e"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-cc-e", parent: "hier-cc-arc"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t1"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t2"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1291,11 +1291,11 @@ test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
     fx_sized(id: "hier-sp-t", content: "shared project task"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
-    gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
-    gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
   ]
-  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
+  let nesting = [gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)
   let ids = fx_ws_rendered_ids(ws: ws)
@@ -1329,7 +1329,7 @@ test fn witness_family_member_never_nests() -> Bool {
     fx_sized(id: "hier-fam-task", content: "family member task"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-fam-project", parent: "hier-fam-task"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-fam-project", parent: "hier-fam-task"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let families = [ WorkFamilyDecl { id: "fx-fam", claim: "fx family claim" } ]
@@ -1579,11 +1579,11 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
     fx_sized(id: "hier-sp-t", content: "shared project task"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
-    gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
-    gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
   ]
-  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
+  let nesting = [gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let p1 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p1"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
   let p2 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p2"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
@@ -1618,8 +1618,8 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
     fx_sized(id: "hier-chain-c", content: "chain base"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
-    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1648,9 +1648,9 @@ test fn witness_dependency_relations_list_every_declared_edge() -> Bool {
     fx_sized(id: "lnk-done", content: "closed prerequisite"),
   ]
   let edges = [
-    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-mid"),
-    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-done"),
-    gunbc.roadmap_authority.edge(child: "lnk-child", parent: "lnk-top"),
+    gunbc.roadmap.roadmap_authority.edge(child: "lnk-top", parent: "lnk-mid"),
+    gunbc.roadmap.roadmap_authority.edge(child: "lnk-top", parent: "lnk-done"),
+    gunbc.roadmap.roadmap_authority.edge(child: "lnk-child", parent: "lnk-top"),
   ]
   let dependency = issue_hierarchy_view(node: "lnk-top" as RoadmapNodeId, nodes: nodes, edges: edges, status_of: fx_supplied_status).dependency
   let summary = relation_summary(relation: dependency.blocked_by)
@@ -1775,7 +1775,7 @@ fn fx_aln_ticket(id: String, headline: String, brief: String) -> RoadmapNode {
 // The fixture rows take their parents from the planted memberships (the membership list is a
 // projection of the rows' parents, so the planted rows carry what the planted list says); the one
 // node named gunbc-project-root is the admitted root.
-fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>) -> RoadmapNode {
+fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap.roadmap_nesting.RoadmapMembership>) -> RoadmapNode {
   let mine = memberships |> filter(m => m.member == (n.node as String))
   RoadmapNode {
     identity: n.identity,
@@ -1787,8 +1787,8 @@ fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap_nesting.Ro
     owner: n.owner,
     signoff: n.signoff,
     parent: match mine.first() {
-      Present { value: m } => Present { value: gunbc.roadmap_model.MemberOf { project: m.project, contribution: m.contribution as NonEmptyStr } }
-      Absent => if (n.node as String) == "gunbc-project-root" { Present { value: gunbc.roadmap_model.AdmittedRoot } } else { none }
+      Present { value: m } => Present { value: gunbc.roadmap.roadmap_model.MemberOf { project: m.project, contribution: m.contribution as NonEmptyStr } }
+      Absent => if (n.node as String) == "gunbc-project-root" { Present { value: gunbc.roadmap.roadmap_model.AdmittedRoot } } else { none }
     },
     centering: n.centering,
   }
@@ -1798,7 +1798,7 @@ fn fx_aln_ready(rn: RoadmapNode) -> NodeStatus {
   node_status_derived(status: DisplayReady)
 }
 
-fn fx_aln_chain(task: String, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> NodeChain {
+fn fx_aln_chain(task: String, memberships: List<gunbc.roadmap.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> NodeChain {
   issue_hierarchy_view(node: task as RoadmapNodeId, nodes: nodes |> map(n => fx_aln_with_parent(n: n, memberships: memberships)), edges: [], status_of: fx_aln_ready).chain
 }
 
@@ -1810,10 +1810,10 @@ fn fx_aln_rooted_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> {
+fn fx_aln_rooted_memberships() -> List<gunbc.roadmap.roadmap_nesting.RoadmapMembership> {
   [
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-aln-task", project: "hier-aln-mid", contribution: "task to mid" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-aln-mid", project: "gunbc-project-root", contribution: "mid to root" },
+    gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-aln-task", project: "hier-aln-mid", contribution: "task to mid" },
+    gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "hier-aln-mid", project: "gunbc-project-root", contribution: "mid to root" },
   ]
 }
 
@@ -1887,8 +1887,8 @@ test fn witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost
 // closure spellings together: each closed lifecycle maps to a status the vocabulary calls closed,
 // and no open lifecycle is closed.
 test fn witness_omitted_node_status_is_done_when_accepted_and_absent_when_unknown() -> Bool {
-  let open_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { done: false, content: "An open row" })
-  let superseded_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_sup", id: "omit-sup", owner: "", carriers: [], line: gunbc.roadmap_status.SupersededLine { by: "omit-open", content: "A replaced row" })
+  let open_row = gunbc.roadmap.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { done: false, content: "An open row" })
+  let superseded_row = gunbc.roadmap.roadmap_authority.roadmap_node(identity: "rnfx_omit_sup", id: "omit-sup", owner: "", carriers: [], line: gunbc.roadmap.roadmap_status.SupersededLine { by: "omit-open", content: "A replaced row" })
   let accepted = omitted_node_display_status(rn: open_row, merged: [], accepted: true)
   let unknown = omitted_node_display_status(rn: open_row, merged: [], accepted: false)
   let superseded = omitted_node_display_status(rn: superseded_row, merged: [], accepted: false)
@@ -1927,8 +1927,8 @@ test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
 
 // These older fixtures explicitly declare both relations with the same endpoints. Production
 // never derives ownership this way; the independent-relation control uses different endpoints.
-fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_nesting.RoadmapMembership> {
-  map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
+fn fixture_nesting_relation(edges: List<gunbc.roadmap.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap.roadmap_nesting.RoadmapMembership> {
+  map(edges, e => gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
 }
 
 // A MEMBERSHIP WHOSE PROJECT IS NOT AMONG THE PLAN ROWS STILL NAMES ITS PARENT. The live issue page
@@ -1940,7 +1940,7 @@ fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Lis
 // anywhere is NAMED as undeclared rather than shown as a row; and the parent relation is empty only
 // for a node that is a member of nothing.
 test fn witness_parent_relation_follows_membership_not_the_plan_rows() -> Bool {
-  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
+  let nesting = [gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
   let member = fx_aln_with_parent(n: fx_sized(id: "pm-member", content: "the member"), memberships: nesting)
   let root = fx_sized(id: "pm-root", content: "the root program")
   let declared = issue_hierarchy_view(node: member.node, nodes: hierarchy_nodes(plan: [member], declared: [member, root]), edges: [], status_of: fx_aln_ready).membership
@@ -1982,7 +1982,7 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
 
 test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
   let not_ready = SchedulingNotReady { missing: [GapCentering] }
-  let memberships = [gunbc.roadmap_nesting.RoadmapMembership { member: "vis-member", project: "vis-project", contribution: "fixture contribution" }]
+  let memberships = [gunbc.roadmap.roadmap_nesting.RoadmapMembership { member: "vis-member", project: "vis-project", contribution: "fixture contribution" }]
   row_is_shown(row: fx_visibility_row(scheduling: SchedulingReady, activity: NoActiveWork, node_id: "vis-ready-leaf"), memberships: memberships)
     && !row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: NoActiveWork, node_id: "vis-idle-leaf"), memberships: memberships)
     && row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: NoActiveWork, node_id: "vis-project"), memberships: memberships)

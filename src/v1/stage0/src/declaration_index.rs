@@ -35,7 +35,7 @@
 //!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. Not a widening of the required floor's source roots; the objection
-//! `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` raises against that
+//! `gunbc.ci.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` raises against that
 //! cannot reach it, as it cannot reach the parse sweep it rides on: NOTHING HERE RESOLVES
 //! ACROSS FILES IN THE COMPILER'S SENSE. Each record derives from one file's own tree; the
 //! index maps the module path a file DECLARES to that file's facts. Two roots colliding on a
@@ -52,9 +52,9 @@
 //!
 //! IT WAS OCCUPIED, NOT MERELY REACHABLE, which settled the grain. Measured over the live corpus
 //! through `DAG_PARSE_SWEEP_ROOTS`, the 70 target-keyed rows covered 87 refusing sites, and seven
-//! targets were cited from more than one module: `gunbc.host_effect` `host_effect_apply` from
+//! targets were cited from more than one module: `gunbc.host.host_effect` `host_effect_apply` from
 //! three (`extdeps.github.actions_runner`, `gunbc.executor_privileged_operation`,
-//! `gunbc.runner_slot_provision`), `std.bytes` `builtin_function_registry` from three,
+//! `gunbc.runner.runner_slot_provision`), `std.bytes` `builtin_function_registry` from three,
 //! `extdeps.network.mac` `parse_mac_address` from two (`extdeps.dhcp.v4` and a witness), and
 //! four more from two apiece. (That measurement stands; the `parse_mac_address` example has since
 //! been DISCHARGED, not falsified — the module landed, the witness citations resolve and their
@@ -1919,7 +1919,7 @@ fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> boo
 ///
 /// WHY COUNTED RATHER THAN REFUSED. Refusing changes what the SEED COMPILER ACCEPTS —
 /// `get_exported_names` is the authority and editing it is `NewLanguageBehavior`, which
-/// `gunbc.v1_maintenance_standing` refuses, a refusal dominating every admission. What this
+/// `gunbc.v1.v1_maintenance_standing` refuses, a refusal dominating every admission. What this
 /// may do, and what DESIGN §5 requires of any widening arm, is make the frequency OBSERVABLE:
 /// a bare `continue` zeroes the deficit by construction so the class never ranks for fixing
 /// (§6 prices by displaced cost; a masked cost displaces nothing). Counted, it can be watched,
@@ -2394,7 +2394,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
         "redundancy_region_budget_per_service_overhead_locator",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
@@ -2408,7 +2408,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
         "redundancy_region_rust_gates_synthetic_present",
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "per_unit_test_selector",
         "",
     ),
@@ -2439,14 +2439,14 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "extdeps.github.actions_runner",
         "actions_runner_base_dir_ensure_script_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
     (
         "extdeps.github.actions_runner",
         "actions_runner_slot_extract_script_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
@@ -2544,49 +2544,49 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "gunbc.executor_privileged_operation",
         "executor_privileged_operation_shell_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "no_class_carrier",
         "product.fabric.supply",
         "Offer",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "protection_has_no_reach",
-        "gunbc.ci_runner_placement",
+        "gunbc.ci.ci_runner_placement",
         "ci_runner_placement_authority",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "protection_has_no_reach",
-        "gunbc.fleet_host_budget",
+        "gunbc.fleet.fleet_host_budget",
         "fleet_host_budget_authority",
         "",
     ),
     (
-        "gunbc.host_budget_source",
+        "gunbc.host.host_budget_source",
         "host_budget_source_seed_mirror_disposition",
-        "gunbc.host_budget_source",
+        "gunbc.host.host_budget_source",
         "host_budget_source_emitted_into_stage0",
         "",
     ),
     (
-        "gunbc.host_memory_observation",
+        "gunbc.host.host_memory_observation",
         "gunbc_ci_legacy_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
         "",
     ),
     (
-        "gunbc.host_memory_observation",
+        "gunbc.host.host_memory_observation",
         "gunbc_ci_managed_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
@@ -2598,16 +2598,16 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.runner_connectivity_repair_plan",
+        "gunbc.runner.runner_connectivity_repair_plan",
         "runner_jit_installation_token_cache_scaffold",
-        "gunbc.runner_lifecycle",
+        "gunbc.runner.runner_lifecycle",
         "EnsureRunnerJitWrapper",
         "",
     ),
     (
-        "gunbc.runner_slot_provision",
+        "gunbc.runner.runner_slot_provision",
         "runner_slot_provision_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
@@ -2619,9 +2619,9 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.srv3_os_install_actuate_scope",
+        "gunbc.srv3.srv3_os_install_actuate_scope",
         "srv3_os_install_actuate_credential_source_scaffold",
-        "gunbc.roadmap_authority",
+        "gunbc.roadmap.roadmap_authority",
         "roadmap_document",
         "",
     ),
@@ -2689,9 +2689,9 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "unit_must_run_staged_note",
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "per_unit_test_selector",
         "",
     ),

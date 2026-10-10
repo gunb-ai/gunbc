@@ -1,6 +1,6 @@
-module gunbc.machine_intake_mtcollins1_boot_run
+module gunbc.machine_intake.mtcollins1_boot_run
 
-import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
+import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
@@ -17,44 +17,44 @@ import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.machine_intake_mtcollins1_census_medium_readback {
+import gunbc.machine_intake.mtcollins1_census_medium_readback {
   mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
 }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
+import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image_stem }
-import gunbc.managed_host_boot {
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image_stem }
+import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
 }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.managed_host_unit_hold {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
-import gunbc.machine_intake_megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
-import gunbc.machine_intake_megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
-import gunbc.fleet_reach { srv2_lan_ipv4 }
+import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
+import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
-import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
-import gunbc.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
-import gunbc.managed_host_boot_phase_timing {
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
+import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
+import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
+import gunbc.host.managed_host_boot_phase_timing {
   BootPhaseTiming, BootStartUnobserved, boot_phase_timing_not_taken,
   BootPhaseRunResult, PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
   boot_phase_timing_of, boot_route_sol_refused, boot_smpro_pass_result,
 }
 import extdeps.linux.proc_uptime { ProcUptimeRead, proc_uptime_read, UptimeObserved, UptimeRefused }
-import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_boot_topology_expectation }
-import gunbc.managed_host_boot_milestone {
+import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_boot_topology_expectation }
+import gunbc.host.managed_host_boot_milestone {
   BootTopologyExpectation,
   BootPlacementReading, PlacementHeld, PlacementNoNodeLines, PlacementMismatch, boot_placement_reading,
 }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.machine_intake.host_capture_envelope {
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
   host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
@@ -63,7 +63,7 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_workload_shm_avail_token, host_capture_workload_mem_available_token, HostCaptureWorkloadShape,
   HostCaptureLiveStream, host_capture_lines,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
   FirmwareStatedLocus, firmware_console_report,
 }
@@ -71,8 +71,8 @@ import extdeps.bootloader.grub {
   GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report,
   GrubError, grub_error_text,
 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import std.optional { Present }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
@@ -80,16 +80,16 @@ import extdeps.bmc.ipmi
 import extdeps.shell
 import extdeps.bmc.ipmi { IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.machine_intake_sol_hold {
+import gunbc.machine_intake.sol_hold {
   mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line,
 }
-import gunbc.machine_intake_ampere_smpro_observation {
+import gunbc.machine_intake.ampere_smpro_observation {
   smpro_pass_probes, smpro_site_probe_bound, smpro_pass_subject_refusal_text,
   SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.managed_host {
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host {
   ManagedHost,
   managed_host_binding, managed_host_smpro_subject, managed_membership_for,
   ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
@@ -97,13 +97,13 @@ import gunbc.managed_host {
 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
-import gunbc.host_boot_attempt_admission {
+import gunbc.host.host_boot_attempt_admission {
   BootAttemptCleared, BootAttemptRefused, BootAttemptClearance, admit_boot_attempt, attempt_configuration_receipt,
   attempt_configuration_with_pre_power, PrePowerFirmwareUnread,
   attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
 }
-import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, mtcollins1_kvm_observer_dir, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
@@ -119,8 +119,8 @@ import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.owned_process { owned_process_record, OwnedRecorded, OwnedUnrecorded }
-import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, RunnerBrowserToolchainResolution }
-import gunbc.machine_intake_megarac_kvm_still {
+import gunbc.runner.runner_browser_toolchain { runner_browser_toolchain_here_wet, RunnerBrowserToolchainResolution }
+import gunbc.machine_intake.megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
@@ -137,7 +137,7 @@ data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_C
 data mtcollins1_boot_sol_pid_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_PID_FILE"
 
 // The collector executable the hold starts: resolved on the runner's PATH, as every extdeps.bmc.ipmi
-// operation's `ipmitool` is. On srv1 that is /usr/bin/ipmitool 1.8.19 (gunbc.machine_intake_sol_hold).
+// operation's `ipmitool` is. On srv1 that is /usr/bin/ipmitool 1.8.19 (gunbc.machine_intake.sol_hold).
 data mtcollins1_sol_collector_executable: NonEmptyStr = "ipmitool"
 
 data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
@@ -160,7 +160,7 @@ data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 
 data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
-// THE SOL NOTICE WATCHER'S TWO TERMS (gunbc.machine_intake_mtcollins1_sol_notice), inside this step's
+// THE SOL NOTICE WATCHER'S TWO TERMS (gunbc.machine_intake.mtcollins1_sol_notice), inside this step's
 // budget like every other phase. PREPARATION: the boot waits (mtcollins1_sol_await_observer) until the
 // watcher has published readiness before any BMC contact; resolving its entry was measured at 340 s on
 // a loaded host, so the allowance is 900 s. FINAL DELIVERY: after the trap asks it to stop, the watcher drains what is still
@@ -171,13 +171,13 @@ data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
 data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
 
 // THE SHARE THIS UNIT BOOTS FROM, derived from its authorities rather than typed: srv2's LAN
-// address (gunbc.fleet_reach) and the export this lane publishes into
-// (gunbc.boot_medium bmc_boot_image_export), over NFS. The controller answered exactly this on
+// address (gunbc.fleet.fleet_reach) and the export this lane publishes into
+// (gunbc.host.boot_medium bmc_boot_image_export), over NFS. The controller answered exactly this on
 // 2026-09-27 (15:40Z and 18:37Z reads, test.claim.machine_intake.megarac_media_convergence_witness_test
-// mtcollins1_media_general_2026_09_27). The generic attach (gunbc.machine_intake_megarac_boot_media_attach)
+// mtcollins1_media_general_2026_09_27). The generic attach (gunbc.machine_intake.megarac_boot_media_attach)
 // takes it as the boot's fact.
 // THE ACCOUNT THIS UNIT'S BOOT DRIVES ITS CONTROLLER AS: the bound managed host's account
-// (gunbc.managed_host ManagedHostBinding account), never the published factory literal "admin" and
+// (gunbc.host.managed_host ManagedHostBinding account), never the published factory literal "admin" and
 // never a second spelling of "gunbc". Absent means the host is not a bound managed host (no BmcSecured,
 // or its access names another controller), and the reads that need it refuse before any controller
 // write. It moved here from the deleted unit actuation module with its value unchanged; the handoff
@@ -191,7 +191,7 @@ data mtcollins1_media_share: MegaRacShareBinding = MegaRacShareBinding {
 }
 
 // THE BOUND ON ONE ipmitool READ OF THIS UNIT'S CONTROLLER, as the generic attach takes it
-// (gunbc.machine_intake_mtcollins1_access_observation is its authority).
+// (gunbc.machine_intake.mtcollins1_access_observation is its authority).
 data mtcollins1_boot_ipmi_read_bound: MegaRacIpmiReadBound = MegaRacIpmiReadBound {
   deadline: mtcollins1_boot_ipmi_read_deadline,
   kill_after: mtcollins1_boot_ipmi_kill_after,
@@ -368,8 +368,8 @@ fn mtcollins1_sol_release(
   password_file: NonEmptyStr,
 ) -> Bool
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_release_sol"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_release_sol"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: "mtcollins1 SOL release") {
@@ -435,7 +435,7 @@ fn mtcollins1_sol_bind_capture_to_attempt(capture_path: String) -> Bool {
     && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: "").success
 }
 
-// THE COLLECTOR'S OWN WORDS LIVE BESIDE THE HOST'S, NEVER AMONG THEM. gunbc.machine_intake_sol_hold
+// THE COLLECTOR'S OWN WORDS LIVE BESIDE THE HOST'S, NEVER AMONG THEM. gunbc.machine_intake.sol_hold
 // sends the collector's stdout (the host console) to the capture and its stderr plus the hold's exit
 // record to this file; both carry the capture's name so the boot's artifact glob keeps them together.
 fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
@@ -445,7 +445,7 @@ fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
 // Where a lost observation channel is frozen the moment it is observed (mtcollins1_sol_loss_freeze).
 // Bound to the attempt with the capture, so an earlier attempt's incident is never read as this one's.
 // THIS FILE IS THE OPERATOR ROUTE'S SOURCE (operator ruling 2026-09-27: no ntfy, no new credential):
-// the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
+// the boot step (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
 // within a second of it becoming non-empty, prints it as one Actions `::error::` annotation in the
 // live run log and appends it to the step summary -- so the notice leaves the runner while the watch
 // is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
@@ -462,7 +462,7 @@ data mtcollins1_sol_workflow_suffix: String = ".workflow"
 
 data mtcollins1_sol_client_suffix: String = ".client"
 
-// Where the step's watcher records every notice delivery outcome (gunbc.ci_spec), beside the capture.
+// Where the step's watcher records every notice delivery outcome (gunbc.ci.ci_spec), beside the capture.
 data mtcollins1_sol_delivery_suffix: String = ".delivery"
 
 // Every line the workflow writes to its events file starts with this, so a reader -- the step's exit
@@ -504,7 +504,7 @@ fn mtcollins1_sol_acquire_under_unit_hold(
   capture_path: String,
 ) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match mtcollins1_bmc_username {
@@ -614,7 +614,7 @@ fn mtcollins1_sol_activate_held(
   capture_path: String,
 ) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: "mtcollins1 SOL activate") {
@@ -828,14 +828,14 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // THE CAPTURE IS READ THROUGH THE ONE GRAMMAR THE CENSUS PROGRAM RENDERS. The eight parsers that
 // lived here re-derived the envelope by substring: they accepted a section from any run in the
 // capture, and their workload check matched tokens the ARGV line echoes, so a failed workload read
-// as stable. gunbc.machine_intake_host_capture_envelope binds ONE begin/end pair for one machine
+// as stable. gunbc.machine_intake.host_capture_envelope binds ONE begin/end pair for one machine
 // and one run, and its readers match whole output lines; a capture that does not bind is not a
 // terminal, whatever it contains.
 //
 // BOOT MEDIA IS THE CENSUS MEDIUM, NOT THE POINT RELEASE. The stock live-server ISO and the derived
 // census image share a point release, so matching "24.04.3" could not tell a boot that ran the
 // census program from one that ran the installer. The derived medium carries its own volume id
-// (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_volume_id), which blkid prints
+// (gunbc.machine_intake.mtcollins1_census_image mtcollins1_census_volume_id), which blkid prints
 // in the boot-media section; the digest-grade binding of the attached image to that medium is
 // census stage 0D and lands with the built image, whose name is its digest.
 // THE MEDIUM DECIDES BEFORE THE CONTROLLER IS TOUCHED. The census terminal is printed by the census
@@ -924,7 +924,7 @@ fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: HardwareThr
 
 // THE COUNT IS NOT THE MILESTONE: nproc 80 is also what a boot with both sockets half-enumerated
 // prints. The placement is read from the numa section against the same expectation, so 80 on
-// socket 0 holds and 80 split across sockets refuses (gunbc.machine_intake_mtcollins1_boot_milestone).
+// socket 0 holds and 80 split across sockets refuses (gunbc.machine_intake.mtcollins1_boot_milestone).
 fn placement_qualification(envelope: BoundHostCaptureEnvelope, expected: BootTopologyExpectation) -> TerminalQualification {
   match host_capture_section_reading(envelope: envelope, name: "numa") {
     SectionAbsent => QualificationPending
@@ -1035,7 +1035,7 @@ fn workload_reading_is(declared: ByteSize, r: WorkloadByteReading) -> Bool {
 
 // THE FIT IS DECIDED HERE, OVER MEASURES, not taken from the host's word. The census program must
 // refuse on the host BEFORE writing -- once dd has run, the tmpfs is already full -- so it carries its
-// own guard (gunbc.machine_intake_host_capture_envelope host_capture_workload_command, declared under
+// own guard (gunbc.machine_intake.host_capture_envelope host_capture_workload_command, declared under
 // host_capture_program_shell_emit_dissolution_trigger). This verdict does not trust that guard: it
 // re-derives the fit from the two printed capacities against the profile's declared ByteSize, and
 // refuses when EITHER the host said refused OR the readings do not hold the declared total. A host
@@ -1337,7 +1337,7 @@ fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCaus
 // session ended about twelve seconds into Linux, then reported "no begin marker".
 //
 // WHAT DECIDES LOSS IS THE PROCESS, AND ONLY THE PROCESS. The channel is gone exactly when the
-// collector this hold started -- (pid, start time), gunbc.machine_intake_sol_hold -- is no longer
+// collector this hold started -- (pid, start time), gunbc.machine_intake.sol_hold -- is no longer
 // running. The collector's own diagnostics (its stderr and the hold's exit record, in the client
 // diagnostic file, never in the host capture) CLASSIFY a loss once it is observed and never trigger
 // one: a live collector is live whatever any file says, so a host that prints "SOL session closed"
@@ -1544,7 +1544,7 @@ type SolLossFreeze
 // PUBLISHED WHOLE OR NOT AT ALL: the incident is written to a temporary sibling and renamed into
 // place, so the step's watcher (which publishes the file the moment it is non-empty) can never read
 // half of it. A rename that fails leaves no incident at the watched path and is reported as such; the
-// watcher's independent exit notice (gunbc.ci_spec) still reports the collector's exit.
+// watcher's independent exit notice (gunbc.ci.ci_spec) still reports the collector's exit.
 fn mtcollins1_sol_loss_freeze(loss: SolObservationLoss, capture_path: String) -> SolLossFreeze {
   let path = mtcollins1_sol_incident_path(capture_path: capture_path)
   let staged = concat(path, ".staged")
@@ -1917,7 +1917,7 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // the boot parameter 5 read and before the attach, so the phase clock counts its bounded wait
 // (megarac_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
 // it logs in with (the established line carries its id) and the attempt. The toolchain is resolved,
-// never assumed (gunbc.runner_browser_toolchain). // NOT REQUIRED IN PUBLIC: no public KVM client exists, so this answers NotStarted with its typed reason
+// never assumed (gunbc.runner.runner_browser_toolchain). // NOT REQUIRED IN PUBLIC: no public KVM client exists, so this answers NotStarted with its typed reason
 // and the record carries it; the handoff's required observer is the SOL collector (sol_handoff_admission).
 fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
   match admit_megarac_host(host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
@@ -1933,7 +1933,7 @@ fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, att
   }
 }
 
-// THE PASS READS THROUGH THE MANAGED HOST'S SUBJECT (gunbc.managed_host managed_host_smpro_subject):
+// THE PASS READS THROUGH THE MANAGED HOST'S SUBJECT (gunbc.host.managed_host managed_host_smpro_subject):
 // the row's bound controller joined to its SMpro site, so the reads go to the controller the site is
 // evidence about or are not taken, with the refusal as the reason.
 fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, password_file: NonEmptyStr) -> SmproReading {
@@ -1964,7 +1964,7 @@ fn mtcollins1_boot_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr)
   }
 }
 
-// ONE SMpro PASS, READ-ONLY AND FOLD-SEQUENCED (gunbc.machine_intake_ampere_smpro_observation smpro_pass_probes). Taken only where the run
+// ONE SMpro PASS, READ-ONLY AND FOLD-SEQUENCED (gunbc.machine_intake.ampere_smpro_observation smpro_pass_probes). Taken only where the run
 // has established the host is powered on.
 fn mtcollins1_boot_smpro_pass(password_file: String) -> SmproReading {
   if password_file == "" {
@@ -1993,7 +1993,7 @@ fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
 }
 
 // HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
-// only from the powered-on arms: gunbc.machine_intake_oob_boot_handoff returns success only after a
+// only from the powered-on arms: gunbc.machine_intake.oob_boot_handoff returns success only after a
 // chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
 // exit code.
 type MtCollins1BootActuationStage
@@ -2065,7 +2065,7 @@ fn param5_phase_result(r: BootParam5Reading) -> BootPhaseRunResult {
 }
 
 // THE POWER-ON SMpro PASS IS VERIFIED ONLY WHEN A REGISTER ANSWERED
-// (gunbc.managed_host_boot_phase_timing boot_smpro_pass_result).
+// (gunbc.host.managed_host_boot_phase_timing boot_smpro_pass_result).
 fn smpro_phase_result(reading: SmproReading) -> BootPhaseRunResult {
   match reading {
     SmproProbed { observation: o } => boot_smpro_pass_result(outcomes: o.outcomes)
@@ -2171,7 +2171,7 @@ type HandoffRun {
 
 fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match mtcollins1_bmc_username {
@@ -2186,8 +2186,8 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 // such, never as a power state.
 fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> PowerAfterAttempt
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
   ]
 {
   match mtcollins1_bmc_username {
@@ -2320,7 +2320,7 @@ fn mtcollins1_sol_release_owned(pid_path: String) -> SolReleaseOutcome {
 
 fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String, capture_path: String) -> SolReleaseOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match mtcollins1_bmc_username {
@@ -2334,7 +2334,7 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 }
 
 // THE BOOT-DEVICE AND POWER HANDOFF IS BEHIND THE MEDIA GATE, AND THIS IS THE ONLY ROUTE TO IT.
-// boot_drive_handoff admits exactly this caller (gunbc.managed_host_boot_handoff), so
+// boot_drive_handoff admits exactly this caller (gunbc.host.managed_host_boot_handoff), so
 // an actuation that called the handoff without passing the gate is a located admission refusal at
 // compile time, not a reviewer's catch. While the presentation is pending, timed out or refused,
 // nothing here writes the override or the power state; once ready, the existing handoff runs under
@@ -2362,7 +2362,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
   last_live_at: String,
 ) -> MediaGatedHandoff
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match megarac_boot_media_gate(record: media) {
@@ -2418,7 +2418,7 @@ fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> 
 // device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
 // approval stage left for the SOL to precede, and the gate it must follow is the hold.
 //
-// THE PHASE CLOCK (gunbc.managed_host_boot_phase_timing): each reading is a local read
+// THE PHASE CLOCK (gunbc.host.managed_host_boot_phase_timing): each reading is a local read
 // of /proc/uptime taken between two BMC calls; it changes no order and writes nothing.
 fn mtcollins1_boot_actuate(
   proof: UnitHoldProof,
@@ -2430,7 +2430,7 @@ fn mtcollins1_boot_actuate(
   resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
 ) -> MtCollins1BootActuation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held"),
   ]
 {
   let hold_acquired = proc_uptime_read()
@@ -2595,7 +2595,7 @@ fn mtcollins1_boot_actuate(
 // the only arm that reaches a BMC write is UnitHeld, whose proof exists only because the
 // compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
 // caller could author. The hold is freed whatever the actuation answered.
-// THE ACTUATION AND THE ATTEMPT CONFIGURATION IT RAN UNDER, frozen by gunbc.host_boot_attempt_admission
+// THE ACTUATION AND THE ATTEMPT CONFIGURATION IT RAN UNDER, frozen by gunbc.host.host_boot_attempt_admission
 // before any pre-power read or write.
 type MtCollins1HeldBoot {
   actuation: MtCollins1BootActuation
@@ -2624,7 +2624,7 @@ fn mtcollins1_boot_under_live_unit_hold(
   baseline: fn() -> MtCollins1BootBaseline,
 ) -> MtCollins1HeldBoot
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
   match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id) {
@@ -2655,7 +2655,7 @@ fn mtcollins1_boot_under_live_unit_hold(
 }
 
 // THE PRE-POWER READ, AFTER ADMISSION AND BEFORE ANY WRITE: the firmware each component runs (hpm
-// check), joined to the frozen configuration by gunbc.host_boot_attempt_admission.
+// check), joined to the frozen configuration by gunbc.host.host_boot_attempt_admission.
 fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> AttemptConfigurationReceipt {
   match mtcollins1_bmc_username {
     Absent => attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" })
@@ -2683,7 +2683,7 @@ fn mtcollins1_boot_actuate_held(
   resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
 ) -> MtCollins1BootActuation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
   let act = mtcollins1_boot_actuate(
@@ -2699,7 +2699,7 @@ fn mtcollins1_boot_actuate_held(
 }
 
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
-// writes the diagnostic bundle (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) and the
+// writes the diagnostic bundle (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) and the
 // receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
 // was read -- including the unit held -- still uploads a bundle
@@ -2914,7 +2914,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   concluded
 }
 
-// THE HOST ADMISSION lives in gunbc.machine_intake_mtcollins1_boot_admission, whose closure is
+// THE HOST ADMISSION lives in gunbc.machine_intake.mtcollins1_boot_admission, whose closure is
 // small enough for the credential-free step; the wet entry re-runs the same fold.
 fn mtcollins1_boot_wet() -> ProcessExit
 {

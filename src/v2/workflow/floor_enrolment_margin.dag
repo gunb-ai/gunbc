@@ -98,7 +98,7 @@ import v2.workflow.floor_eval_step_calibration {
 //
 // THE RUNNER ENVELOPE NO LONGER BELONGS HERE, AND WHAT REPLACES IT (sharp-raven-357 review of
 // gunbc#13352, 2026-10-05). Until that change the margin was the per-subject line inside the p90
-// RUNNER envelope -- 1.653x, measured by `tools.floor_cost_distribution_instrument`
+// RUNNER envelope -- 1.653x, measured by `gunbc.instruments.floor_cost_distribution_instrument`
 // `floor_cost_envelope_report` over twelve green main runs on three hosts, p90 by operator ruling
 // 2026-09-11. That envelope is the spread of identical work ACROSS RUNNERS, and every reading this
 // gate judges is now normalised to the calibration runner's speed by the run's host-speed factor

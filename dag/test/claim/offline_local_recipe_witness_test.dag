@@ -1,4 +1,4 @@
-module dag.test.claim.offline_local_recipe_witness
+module test.claim.offline_local_recipe_witness_test
 
 import gunbc.offline_local_recipe {
   OfflineLocalRecipeRow,
@@ -28,7 +28,7 @@ import gunbc.offline_local_recipe {
   offline_recipe_defect_rows_well_formed_in,
   policy_is_declared
 }
-import gunbc.ci_layer_roots { WitnessExclusionRow }
+import gunbc.ci.ci_layer_roots { WitnessExclusionRow }
 import std.witness_admission { OfflineLocalRecipe, DiscoverySelection }
 import std.execution_mode { Wet, Hermetic }
 import std.dissolution { unbound_dissolution }

@@ -1,4 +1,4 @@
-module tools.rust_item_census_instrument
+module gunbc.instruments.rust_item_census_instrument
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.rust_item_host_observation {
@@ -40,7 +40,7 @@ import std.algebra { list_append }
 // then named nothing that could produce it. This is the producer those figures may cite.
 //
 // THE REPORT IS WRITTEN RATHER THAN RETURNED because `gunbc run` maps a returned value to an exit
-// status and has no value-printing verb -- the same wall tools.emission_entry_instrument records.
+// status and has no value-printing verb -- the same wall gunbc.instruments.emission_entry_instrument records.
 //
 // THE EXIT STATUS REPORTS THE SUBJECT HERE, AND THAT IS A DELIBERATE DIFFERENCE from the emission
 // instrument beside it, whose status reports the instrument. This one is an ADMISSION verdict: its

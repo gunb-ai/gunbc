@@ -8,8 +8,8 @@ import std.measure {
 import std.checked_arithmetic { int_inclusive_max, IntegerAdd, BinaryOperands, UnaryOperand }
 
 // THE SUBJECT IS std.measure round_up_to_grain AND NOTHING BENEATH IT. Its grain is a declared
-// input, so the claims here vary the grain -- the gibibyte binding in gunbc.floor_demand keeps its
-// own witnesses (test.claim.floor_demand_witness_test) and they are not restated.
+// input, so the claims here vary the grain -- the gibibyte binding in gunbc.floor.floor_demand keeps its
+// own witnesses (test.claim.floor.floor_demand_witness_test) and they are not restated.
 
 fn grain_of(n: Int) -> FiniteByteSize {
   finite_byte_size(count: positive_measure_count(predecessor: n - 1))
@@ -48,7 +48,7 @@ test fn an_aligned_count_at_the_bound_is_its_own_ceiling() -> Bool {
 
 // THE POWER-OF-TWO CONTROL: at the gibibyte the last aligned count is exactly max - (g - 1), so
 // both forms accept it; this claim is the positive control for the gibibyte binding's own red in
-// test.claim.floor_demand_witness_test, not a discriminator.
+// test.claim.floor.floor_demand_witness_test, not a discriminator.
 test fn a_gibibyte_aligned_count_at_the_bound_is_its_own_ceiling() -> Bool {
   let g = gibibyte_scale_factor_bytes()
   let aligned = int_inclusive_max() - (int_inclusive_max() % g)

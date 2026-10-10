@@ -1,4 +1,4 @@
-module test.claim.parse_test_else_less_if_value_category
+module v2.test.claim.parse.parse_test_else_less_if_value_category_test
 
 import v2.compiler.body_lowering_fold {
   body_lower_admitted_guard_optional,
@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // else-less if_expr route; at statement position the guard reader admits it; where a value is owed
 // the if reader refuses it as body_lowering_reason_else_less_if_unlowered, located at the `if`. The
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is
-// executed by v2.test.parse.closure_parse_batch_two an_early_return_guard_parses_and_lowers_holds
+// executed by v2.test.claim.parse.closure_parse_batch_two_test an_early_return_guard_parses_and_lowers_holds
 // (a guard specimen normalized end to end), which is the pairing this file's supplied nodes owe.
 // Each source is parsed as the production where its position lives, with nothing around it: the
 // `if` alone as the expr production is where a value is owed, and a fn body alone as the fn_body

@@ -1,4 +1,4 @@
-module v2.test.manual.derivable_coercion_nickname_triple
+module v2.test.claim.manual.derivable_coercion_nickname_triple_test
 
 import std.types { List }
 import v2.compiler.eval { run_test_claim_assert }

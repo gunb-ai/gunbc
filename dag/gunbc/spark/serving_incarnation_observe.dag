@@ -45,14 +45,14 @@ import extdeps.prometheus.client {
 }
 import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPathProperty, systemd_unit_property_wire }
 import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
-import gunbc.host_operation_exec {
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
   ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, ProcfsReadNetTcp, ProcfsReadNetTcp6, GetconfClockTicksPerSecond, Sha256SumFile,
 }
 import extdeps.linux.proc_net_tcp { TcpSocketRow, ProcNetTcpParsed, ProcNetTcpUnparseable, proc_net_tcp_table, tcp_rows_listening_on }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 
 // ── WHICH INCARNATION ANSWERED, OBSERVED ON THE HOST ──────────────────────────────────────────
@@ -185,7 +185,7 @@ type UnitTextRead
 // ONE PROPERTY, ONE READ. The systemd property IS the argument -- there is no second enum naming
 // the same two properties, and a refusal's wire label is derived from the property by
 // systemd_unit_property_wire rather than passed beside it, so a caller cannot name a property whose
-// message disagrees with the read (the dual-fact shape gunbc.host_operation_exec already forbids).
+// message disagrees with the read (the dual-fact shape gunbc.host.host_operation_exec already forbids).
 fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitTextRead {
   match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
@@ -198,7 +198,7 @@ type HostTextRead
   = HostTextObserved { stdout: String }
   | HostTextRefused { cause: String }
 
-// ONE HOST READ, TYPED, over a gunbc.host_operation_exec HostOperation directly -- this module does
+// ONE HOST READ, TYPED, over a gunbc.host.host_operation_exec HostOperation directly -- this module does
 // not re-roster those operations under second names (DESIGN 3): a read it needs is a variant there,
 // not a variant here. Every one of these reads answers with exit 0 or fails; a non-zero exit is a
 // typed, located refusal. pgrep is NOT one of these -- its exit code is its answer (1 = no match, 2/3

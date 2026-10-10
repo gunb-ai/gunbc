@@ -1,4 +1,4 @@
-module test.claim.mtcollins1_candidate_attachment_witness_test
+module test.claim.machine_intake.mtcollins1_candidate_attachment_witness_test
 
 import std.types { Bool, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
@@ -7,22 +7,22 @@ import extdeps.standards.nic_attachment { OcpNic2, OcpNic3, PcieCem, VendorDaugh
 import extdeps.standards.ocp_nic_2_0 { Type1, Type2, Type3, Type4, Type5 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications { NoOcpSlot, OcpMezzanineSlotPresent, mt_collins_1u_ocp_slot, mt_collins_1u_expansion }
-import gunbc.machine_intake_mtcollins1_expansion_observation {
+import gunbc.machine_intake.mtcollins1_expansion_observation {
   expansion_evidence_for_unit, UnitExpansionEvidence, NoExpansionObservationForUnit,
   AttachmentPointUnobserved, AttachmentPointOffered, AttachmentPointAbsent,
   AttachmentPointOccupied, AttachmentPointReportExceedsPlatform, mtcollins1_expansion_observation,
 }
-import gunbc.machine_intake_mtcollins1_expansion_attachment {
+import gunbc.machine_intake.mtcollins1_expansion_attachment {
   AttachmentVerdict, Admitted, Refused, InterfaceGenerationOnly, InterfaceFamilyOnly, PhysicalFitUnresolved,
   WrongOcpGeneration, WrongInterfaceFamily, RiserOccupancyUnobserved,
   AttachmentPointUnavailable, OccupiedAttachmentPoint, RiserReportExceedsPlatform,
   NoObservationForUnit, attachment_for_unit, attachment_against_evidence,
 }
-import gunbc.machine_intake_mtcollins1_expansion_candidates {
+import gunbc.machine_intake.mtcollins1_expansion_candidates {
   candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved, FullHeightBracket, LowProfileBracket,
 }
-import gunbc.machine_intake_mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
-import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
+import gunbc.machine_intake.mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
+import gunbc.machine_intake.mtcollins1_dimm_connector_observation { observed_unit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -106,7 +106,7 @@ test fn matching_generation_does_not_establish_physical_variant() -> Bool {
 }
 
 test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
-  let other = DeclarationRef { module_path: "test.claim.mtcollins1_candidate_attachment_witness_test", decl_name: "unknown_unit_never_borrows_mtcollins1_observation", field: WholeDeclaration }
+  let other = DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_candidate_attachment_witness_test", decl_name: "unknown_unit_never_borrows_mtcollins1_observation", field: WholeDeclaration }
   let rows = candidate_verdicts(unit: other)
   list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => acc && match row.verdict {
     Refused { cause: NoObservationForUnit { requested_unit: unit } } => declaration_ref_eq(a: unit, b: other)

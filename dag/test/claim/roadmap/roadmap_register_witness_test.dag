@@ -1,4 +1,4 @@
-module test.claim.roadmap_register_witness
+module test.claim.roadmap.roadmap_register_witness_test
 import gunbc.site.brand { site_brand_link }
 import gunbc.site.document { site_styles, site_styles_rules, site_styles_theme_css }
 
@@ -27,9 +27,9 @@ import gunbc.design.interaction {
   ElementId, DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
-import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_styles, roadmap_instance_rules }
+import gunbc.roadmap.roadmap_style { roadmap_rules, roadmap_css, roadmap_styles, roadmap_instance_rules }
 import gunbc.site.document { site_header }
-import gunbc.roadmap_interaction {
+import gunbc.roadmap.roadmap_interaction {
   roadmap_elements, roadmap_behaviors,
   roadmap_unrealized_behaviors,
 }
@@ -177,7 +177,7 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
 // Historical context: replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed
 // 2026-08-01): the header's brand element is the TEXT wordmark, not the site mark — the mark that
 // stood here was gunbc.site.mark candidate A, an unselected brand experiment whose aria-label said
-// gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap_page.roadmap_wordmark_note). The
+// gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap.roadmap_page.roadmap_wordmark_note). The
 // structural claim is the same shape as before: the header Fragment contains the exact wordmark
 // node, on both page instantiations.
 

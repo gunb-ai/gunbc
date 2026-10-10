@@ -3,14 +3,14 @@ module test.claim.host_kernel_maintenance_witness_test
 import std.types { Bool, String, NonEmptyStr, CommitSha }
 import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.linux.tun_fdinfo { tun_attached_queue_requirement }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
-import gunbc.host_kernel_dependency { HostKernelDependencyPlan, UbuntuTunKernelProvider, InstallKernelAndActivate, ActivateInstalledKernel }
-import gunbc.host_kernel_dependency_wire { host_kernel_dependency_text }
-import gunbc.host_kernel_dependency_apply {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, UbuntuTunKernelProvider, InstallKernelAndActivate, ActivateInstalledKernel }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_text }
+import gunbc.host.host_kernel_dependency_apply {
   kernel_maintenance_plan_continues, kernel_maintenance_plan_read, kernel_maintenance_runner_units,
   kernel_maintenance_unit_readback_admits, KernelDrain, KernelInstall, KernelActivate,
 }
-import gunbc.runner_slot_retirement { CgroupAbsent, CgroupObservedEmpty, CgroupObservedPopulated, CgroupUnobserved }
+import gunbc.runner.runner_slot_retirement { CgroupAbsent, CgroupObservedEmpty, CgroupObservedPopulated, CgroupUnobserved }
 
 fn maintenance_fixture() -> HostKernelDependencyPlan {
   HostKernelDependencyPlan { host: operator_host_srv1,

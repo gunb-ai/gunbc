@@ -1,4 +1,4 @@
-module v2.test.self_host.stage0_production_target
+module v2.test.claim.self_host.stage0_production_target_test
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.emit_module { emit_module_decl_separator }

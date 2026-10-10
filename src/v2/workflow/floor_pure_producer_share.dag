@@ -56,7 +56,7 @@ import std.optional { Absent, Present, Optional }
 // of the row type declared here, retained only because no `.dag` carrier yet hands the floor
 // per-claim call-site demand identity: when demand-engine M1.b's demand-identity carrier lands
 // it produces these same rows and the seed observer is deleted
-// (`gunbc.floor_call_site_demand_seed_growth`). The seed counts distinct claims per identity --
+// (`gunbc.floor.floor_call_site_demand_seed_growth`). The seed counts distinct claims per identity --
 // it carries a fact across the claim-frame boundary only it can see -- and decides nothing: the
 // threshold, the identity grade, and every exclusion are this fold's.
 //
@@ -852,7 +852,7 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
 // gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
 // gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (red with the join deleted and with input-only recognition). Its own-frame eval steps are
-// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe_test.dag
+// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe.dag
 // --functions gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (receipt: BuildBuddy a63835e8, pinned
 // 46da0c8fa0; red with the join deleted, BuildBuddy 50c58a76, and with input-only recognition, BuildBuddy 2002ea86).
 // Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
@@ -1506,7 +1506,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "test.claim.parse_test_pattern_and_let_sugar",
+    module: "v2.test.claim.parse.parse_test_pattern_and_let_sugar_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_bare_assignment_lowers_identically_to_let_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_generic_pattern_refuses_at_its_generic_params_holds", standing: ActiveFillDebt },
@@ -1614,13 +1614,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.execution.data_decl_lowering_grounding",
+    module: "v2.test.claim.execution.data_decl_lowering_grounding_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "fn_eq_body_is_the_literal_not_its_digits_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.execution.infer_declaration_formation",
+    module: "v2.test.claim.execution.infer_declaration_formation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "an_authored_empty_record_is_not_grounded_by_the_opaque_rule_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt },
@@ -1628,13 +1628,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
+    module: "v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "ingested_classical_not_staging_swapped_emit_accepts_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.long.pick_ingested_structural_lowering",
+    module: "v2.test.claim.execution.long.pick_ingested_structural_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "pick2_ingested_pick_false_executes_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "pick2_ingested_pick_true_executes_holds", standing: ActiveFillDebt },
@@ -1645,13 +1645,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.manual.body_lowering_projection_call",
+    module: "v2.test.claim.manual.body_lowering_projection_call_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "body_lowering_projection_lowers_to_transform", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.parse.block_expr_as_binary_operand_parse",
+    module: "v2.test.claim.parse.block_expr_as_binary_operand_parse_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_bare_if_still_lowers_to_the_branch_itself_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_bare_match_still_lowers_to_the_match_itself_holds", standing: ActiveFillDebt },
@@ -1662,7 +1662,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.parse.closure_parse_batch_two",
+    module: "v2.test.claim.parse.closure_parse_batch_two_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "admit_callers_clause_normalizes_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_early_return_guard_parses_and_lowers_holds", standing: ActiveFillDebt },
@@ -1672,7 +1672,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse",
+    module: "v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "braced_pattern_binder_still_normalizes_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
@@ -1684,13 +1684,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.parse.match_arm_statement_body_parse",
+    module: "v2.test.claim.parse.match_arm_statement_body_parse_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.parse.variant_field_lowering",
+    module: "v2.test.claim.parse.variant_field_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "vf_braced_pattern_binds_named_field", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "vf_braced_variant_declares_named_field", standing: ActiveFillDebt },
@@ -1708,14 +1708,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.provenance.occurrence_file_attribution",
+    module: "v2.test.claim.provenance.occurrence_file_attribution_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "native_route_threads_the_occurrence_mark_across_files_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "refused_assembly_still_locates_the_files_it_parsed_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.self_host.stage0_production_target",
+    module: "v2.test.claim.self_host.stage0_production_target_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "stage0_production_target_emits_boundary_compatible_source_holds", standing: ActiveFillDebt }
     ]
@@ -1870,8 +1870,8 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     producer: "v2.extdeps.languages.rust.rust_target_model",
     verdict: MeasuredServeAboveRecompute,
     carrier_modules: [
-      "v2.test.emit.produced_decl_two_target",
-      "v2.test.emit.rust_produced_decl_emit"
+      "v2.test.claim.emit.produced_decl_two_target_test",
+      "v2.test.claim.emit.rust_produced_decl_emit_test"
     ],
     measurement: "gunbc#10094 required_floor_claim_cost.tsv, absent run 33657893880 against present runs 33661252708 and 33664119594, normalised on the rows in no consumer module of any enrolled key",
     next_trigger: "the remaining serve cost identified, and a measured serve-below-recompute on the produced-decl consumers specifically -- never on their family total, which has already been observed pointing the wrong way"
@@ -1880,10 +1880,10 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     producer: "v2.extdeps.languages.rust.rust_target_model_core_edges",
     verdict: NoMeasuredEffectOverItsConsumers,
     carrier_modules: [
-      "v2.test.emit.rust_bind_let_emit",
-      "v2.test.emit.rust_call_emit",
-      "v2.test.execution.rust_emit_host_call_equals_eval",
-      "v2.test.manual.rust_add_emit_translate"
+      "v2.test.claim.emit.rust_bind_let_emit_test",
+      "v2.test.claim.emit.rust_call_emit_test",
+      "v2.test.claim.execution.rust_emit_host_call_equals_eval_test",
+      "v2.test.claim.manual.rust_add_emit_translate_test"
     ],
     measurement: "gunbc#10094 required_floor_claim_cost.tsv, same run pair; four consumer modules, no movement beyond the control in either direction",
     next_trigger: "a measured recompute this row actually removes -- a producer that neither costs nor saves is cache population, which this roster refuses on its own terms"
@@ -1892,9 +1892,9 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     producer: "v2.extdeps.languages.rust.rust_target_model_staging",
     verdict: MeasuredServeAboveRecompute,
     carrier_modules: [
-      "v2.test.emit.produced_decl_support_preserved",
-      "v2.test.emit.produced_decl_two_target",
-      "v2.test.emit.rust_produced_decl_emit"
+      "v2.test.claim.emit.produced_decl_support_preserved_test",
+      "v2.test.claim.emit.produced_decl_two_target_test",
+      "v2.test.claim.emit.rust_produced_decl_emit_test"
     ],
     measurement: "gunbc#10094 required_floor_claim_cost.tsv, run 33667640710 (this row alone enrolled) against 33671317370 (none of the three); its consumer set is the one it INHERITED after rust_target_model was withdrawn, 133 claims across 44 modules, read from that run's own shared-fill ledger",
     next_trigger: "the same trigger as rust_target_model, because it is the same measured effect reached through a second identity -- these two do not retire independently"
@@ -1920,10 +1920,10 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     carrier_modules: [
       "v2.test.claim.affected_set_universe",
       "v2.test.claim.generated_conformance_floor",
-      "v2.test.manual.value_null_split_witness",
-      "v2.test.manual.coproduct_reflection_conformance"
+      "v2.test.claim.manual.value_null_split_witness_test",
+      "v2.test.claim.manual.coproduct_reflection_conformance_test"
     ],
-    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
+    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.claim.manual.value_null_split_witness_test. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
     next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (DESIGN section 5), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
   },
   RefusedShareCandidate {
@@ -1981,7 +1981,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // misread as clearing the producer it refused. Nothing here says
 // v2.compiler.target_serialize.grammar_relation_row_for_emitted earns its enrolment. The core_edges
 // measurement measures a DIFFERENT producer and says nothing about that key's own serving cost
-// over v2.test.manual.rust_add_emit_translate; what it establishes is only that the overlap is
+// over v2.test.claim.manual.rust_add_emit_translate_test; what it establishes is only that the overlap is
 // not EVIDENCE of a cost, because the row overlapped measured none. Whether that key beats
 // recompute over its own consumers is the question this roster's ordinary admission discipline
 // already owns, answered present-vs-absent like every other row, and it is open.
@@ -2073,7 +2073,7 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // such a producer could only ever be CLAIM-FORCED, where it re-derives once per claim frame:
 // the rostered class `shared_precondition_re_derived_once_per_claim_frame`.
 //
-// THE LIVE INSTANCE. `gunbc.roadmap_authority.roadmap_authority_projection` is one
+// THE LIVE INSTANCE. `gunbc.roadmap.roadmap_authority.roadmap_authority_projection` is one
 // `Filesystem.Read` of `dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl` followed by a
 // pure fold, demanded by seven required-lane claims and by gunbc#10994 — whose merge path is
 // blocked by an enrolment margin on exactly this shared precondition.
@@ -2109,7 +2109,7 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // carried value is that refusal, faithfully, and every claim receives the IDENTICAL typed value
 // it would have computed for itself. That is propagation, not widening: no claim passes where it
 // would otherwise have failed, and the alternative — the floor stopping on a named domain
-// variant — would make this module enumerate `gunbc.roadmap_authority`'s vocabulary, the section
+// variant — would make this module enumerate `gunbc.roadmap.roadmap_authority`'s vocabulary, the section
 // 3 layer inversion (adjudicated 2026-09-14: fierce-lark-661 and bright-boar-435, both
 // approving, the second conditioning approval on the disposition being PRINTED so a run where
 // the carrier refused is diagnosable rather than silent — the floor's phase line carries the
@@ -2201,17 +2201,17 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
   PreparedEffectInput {
     acquisition: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
     checkout_input: "dag/test/fixture/reference_derived_graph/",
-    ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument tools.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
+    ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument gunbc.instruments.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
     measurement: "The floor's own refusal on gunbc#11461 run 35059914771 (PureProducerShareWarmDispatchedEffect producer=xl4_fixture_trees effects=11) is the absent arm: the warm reached the world eleven times. The present arm is the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier, which is one prepared acquisition with the row enrolled and eleven inside the warm without it."
   },
   PreparedEffectInput {
     acquisition: "test.claim.legacy_repair_tap_live_bridge_witness.xl1_fixture_root_tap",
     checkout_input: "dag/test/fixture/reference_derived_graph/ (primary root) + dag/std/ (dependency pool) + tools/whole_corpus_compile_measured_root_demands.json (the root's admission row)",
     ground: "The NAMESPACE-XL-1 live tap over its measured fixture root: the seed builtin emit_rust_reference_derived_rows_bridge compiles the eleven committed fixture modules against the dag/std pool and returns the Observed encoding (repair rows, occurrence transport, binding rows). Every input is under the checkout root and fixed by the commit the run prepared - the sources, and the demand projection whose row admits the root - so one acquisition at preparation is the same value each of the two Observed-arm claims of that module would have compiled for itself. Demanded by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and the_live_census_over_the_measured_fixture_root_counts_its_rows. THE MODULE IS UNDER dag/test/claim/**, OUTSIDE THE GATE CLOSURE, AND THAT IS ADMITTED BY gunbc#11455 RATHER THAN BY THE LIVE-DEPLOY ARGUMENT ABOVE: roster admission is scoped to the prepared subject, and a rostered module present in the corpus but outside the subject is counted and not evaluated (required_floor_runner disposition 2) - so this acquisition runs exactly when its two consumers are planned, which is when this witness module is in the subject, and is never demanded by a subject that does not carry it.",
-    measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness_test.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
+    measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
   },
   PreparedEffectInput {
-    acquisition: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    acquisition: "gunbc.roadmap.roadmap_authority.roadmap_acceptance_event_history_load",
     checkout_input: "dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl",
     ground: "A committed carrier under the checkout root, so hermetic evaluation already reads it as INPUT ACCESS rather than a host effect (v1_interpreter hermetic_checkout_input_disposition). Its content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same value every claim would have read for itself. Demanded by every claim that reaches the roadmap authority: the seven required-lane roadmap claims and gunbc#10994's forecast witness.",
     measurement: "Present-vs-absent on this row, both arms by workflow_dispatch on a branch ref pinned to an exact sha per this module's corrected procedure, read over required_floor_claim_cost.tsv and the run's own [floor-shared-fill] ledger; the acquisition's own arm is the run's effect-dispatch count for this carrier, which is 1 with the row enrolled and one-per-consuming-claim without it."
@@ -2232,8 +2232,8 @@ data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
     measurement: "The parse-and-normalize of the carried ingest, shared by the two XL-4 claim files whose claims name the collector and the edge fold (the seam is the ingest, not the collection). Present-vs-absent as its input row: gunbc#11202 run 34730467598 refused both files ENROLMENT-MARGIN-REFUSED at the 500ms ceiling without the share; run 34762428707 passed with it as a plain warm row; the carried-input shape replaces that row because the warm reached the world (run 35059914771). ImplicitAcquisition: xl4_fixture_trees is nullary and calls fixture_ingest inside itself."
   },
   CarriedInputWarmRow {
-    producer: "gunbc.roadmap_authority.roadmap_authority_projection",
-    carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    producer: "gunbc.roadmap.roadmap_authority.roadmap_authority_projection",
+    carried_input: "gunbc.roadmap.roadmap_authority.roadmap_acceptance_event_history_load",
     dependence: BoundParameter { parameter: "history" },
     measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. BoundParameter since gunbc#11303 landed the explicit-history spelling: the producer's nullary wrapper no longer exists, so the warm supplies `history` by name and the claim's own call already carries the content in its argument row. This row was authored ImplicitAcquisition with that transition written into it as the anticipated row edit, and the floor is what forced the edit rather than a reader noticing — the warm refused PureProducerShareWarmFailed with a call-contract mismatch naming the missing argument, which is the mechanism working."
   }

@@ -118,7 +118,7 @@ import gunbc.guarantee_rung {
 // predicted. The probe itself is expressible today: `extdeps.git.plumbing` already models git
 // plumbing with typed argv, existing wet witnesses already reach `extdeps.shell` and
 // `extdeps.filesystem.filesystem_io`, and the three arms above ARE the probe. What it would not do
-// is produce a verdict. Its nearest existing analogue is `test.claim.fleet_revision_relation_wet_matrix`,
+// is produce a verdict. Its nearest existing analogue is `test.claim.fleet.fleet_revision_relation_wet_matrix_test`,
 // a witness matrix over real git operations: `v2.workflow.floor_route_gap` declares all seven of its
 // identities as expected route gaps, every one `operation: "MergeBase"` with ground `NoMockResponse`,
 // and the recorded fixtures for that operation EXIST in the corpus while the matrix still yields no

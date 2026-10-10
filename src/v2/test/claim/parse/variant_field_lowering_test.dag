@@ -1,4 +1,4 @@
-module v2.test.parse.variant_field_lowering
+module v2.test.claim.parse.variant_field_lowering_test
 
 import std.types { List }
 import v2.compiler.normalize { normalize }
@@ -48,7 +48,7 @@ import v2.std.node_query {
 import std.optional { Absent, Optional, Present }
 import v2.std.collection { list_at_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -72,7 +72,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // section 3 asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
 // parsing keeps that subject and needs no carve-out. The real tokenizer is not deleted from the
 // evidence: every specimen owes a vfs_fidelity_* claim asserting this stream IS what tokenize
-// emits for the same text (v2.test.parse.supplied_token_stream_support), so deleting the
+// emits for the same text (v2.test.claim.parse.supplied_token_stream_support), so deleting the
 // integration reddens a control.
 fn vf_parse(tokens: TokenStream) -> Outcome<Node> {
   match dag_prepared_grammar() {

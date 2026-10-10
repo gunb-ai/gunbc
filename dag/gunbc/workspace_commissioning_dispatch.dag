@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import v2.std.algebra { any }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import std.process { ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -21,11 +21,11 @@ import gunbc.workspace_commissioning_executor_input { workspace_executor_input_f
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
 import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
 import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
-import gunbc.host_kernel_dependency_wire { host_kernel_dependency_row }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_row }
 import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, workspace_commissioning_candidate, workspace_commissioning_basis_rows, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartUnreadable }
-import gunbc.build_cache_instance { runner_slot_instance_name }
-import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_publication_as_owner }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }

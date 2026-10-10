@@ -11,7 +11,7 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
 import std.types { Bool,String }
 import gunbc.fleet.printer_operator_approval { print_subject, report_allows_start, start_claim_path }
-import gunbc.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 
 test fn approval_subject_changes_with_device_bytes_version_or_attempt() -> Bool {
   let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")

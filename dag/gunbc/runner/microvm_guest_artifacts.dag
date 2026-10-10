@@ -1,4 +1,4 @@
-module gunbc.microvm_guest_artifacts
+module gunbc.runner.microvm_guest_artifacts
 
 import std.types { String, NonEmptyStr, Bool }
 import extdeps.crypto.hash { Digest, sha256_digest }

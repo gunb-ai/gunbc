@@ -1,4 +1,4 @@
-module ctl.pos_service
+module test.ctl.pos_service
 
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }

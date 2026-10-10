@@ -1,14 +1,14 @@
 module test.claim.workspace_workflow_dispatch_witness_test
 
 import std.types { Bool, String }
-import gunbc.fleet_converge_workflow {
+import gunbc.fleet.fleet_converge_workflow {
   WorkspaceAllocationPlan, WorkspaceImageBuild,
   fleet_converge_job_with_steps, fleet_converge_shared_job_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
   fleet_converge_mode_release_product, CompilerPairOnly,
   fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyNotConsumed,
 }
-import gunbc.fleet_converge_scope { WorkspaceAllocationOnly }
-import gunbc.ci_spec { gunbc_ci_workspace_image_build_invoke }
+import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_image_build_invoke }
 import gunbc.workspace_image_delivery { workspace_image_artifact_paths }
 
 test fn workspace_allocation_uses_its_existing_scope() -> Bool {

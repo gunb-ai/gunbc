@@ -1,4 +1,4 @@
-module v2.test.long.inhabitant_neutralization_e2e_witness
+module v2.test.claim.long.inhabitant_neutralization_e2e_witness_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -15,7 +15,7 @@ import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { ParseTree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
+import v2.test.claim.manual.python_grammar_claim_test { python_grammar_parse_fixture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE ONE INHABITANCE CLAIM FOR THE PYTHON->TYPESCRIPT CHAIN (DESIGN section 3, a witness
 // discriminates at one interface). The claims in
-// v2.test.manual.cross_language_add_python_to_typescript start from a SUPPLIED core,
+// v2.test.claim.manual.cross_language_add_python_to_typescript_test start from a SUPPLIED core,
 // python_emitted_add_fn_node; this claim is what keeps that supply honest. It asserts the ROUTE as
 // well as the answer: the real parse through the real bridge produces exactly that supplied core,
 // AND the real end-to-end compile of that parse emits ts_source_text. A compile reaching the same

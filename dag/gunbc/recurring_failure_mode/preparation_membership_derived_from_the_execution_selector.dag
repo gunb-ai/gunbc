@@ -15,7 +15,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "**THE DISTINGUISHING FACT AGAINST EVERY NEIGHBOURING CLASS IS THAT NOTHING EVER LOOKED.** No diagnostic was produced and dropped, no lane swallowed an error, no aggregation lost a red, no exit status was mis-propagated. The first missing edge is ADMISSION TO THE PREPARED POPULATION, upstream of body resolution, which is why every instrument downstream of preparation reads clean and why looking for a suppressed diagnostic finds nothing.",
 
-    "SPECIMEN WITH ITS POSITIVE CONTROL, both executed on main at 4da9c1a3fdd through the real acceptance path (`claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/systemd_property_directive_overlap_test.dag`, GUNBC_MEMORY_BUDGET_BYTES set): `extdeps.systemd` declares `RuntimeDirectoryProperty` as a variant of `SystemdUnitProperty`; `gunbc.systemd_property_directive_overlap` `systemd_property_writability` does not eliminate it.",
+    "SPECIMEN WITH ITS POSITIVE CONTROL, both executed on main at 4da9c1a3fdd through the real acceptance path (`claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/systemd_property_directive_overlap.dag`, GUNBC_MEMORY_BUDGET_BYTES set): `extdeps.systemd` declares `RuntimeDirectoryProperty` as a variant of `SystemdUnitProperty`; `gunbc.systemd_property_directive_overlap` `systemd_property_writability` does not eliminate it.",
 
     "The run refuses at closure-strict-resolve with `non-exhaustive match: missing variant(s) RuntimeDirectoryProperty`.",
 
@@ -41,7 +41,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "30 of 1199 is 2.5 percent coverage and supports no statement about the population; `no further defects found` is not `no further defects exist`.",
 
-    "THAT INSTRUMENT HAS A STRUCTURAL CEILING, stated so a later complete-looking run is not read as covering 1208: it works by importing an exported symbol, so the 9 modules exporting none are unreachable by construction and stay unreachable however long it runs -- `extdeps.fixture.external_authority_missing`, `gunbc.auth.optional_impersonation`, `gunbc.toolchain_home_interference_probe`, `gunbc.tools.bmc_read_telemetry`, `tools.cheap_claim_pool_gate`, `tools.extdeps_external_authority_gate`, `tools.floor_effect_gate_witness`, `v2.workflow.ci_heal_revalidation_preflight_emit_test`, `v2.workflow.source_root_ingest_gate`.",
+    "THAT INSTRUMENT HAS A STRUCTURAL CEILING, stated so a later complete-looking run is not read as covering 1208: it works by importing an exported symbol, so the 9 modules exporting none are unreachable by construction and stay unreachable however long it runs -- `v2.test.fixture.extdeps_external_authority.missing_anchor.plant`, `gunbc.auth.optional_impersonation`, `gunbc.toolchain_home_interference_probe`, `gunbc.tools.bmc_read_telemetry`, `gunbc.instruments.cheap_claim_pool_gate`, `gunbc.instruments.extdeps_external_authority_gate`, `gunbc.instruments.floor_effect_gate_witness`, `v2.workflow.ci_heal_revalidation_preflight_emit_test`, `v2.workflow.source_root_ingest_gate`.",
 
     "A SECOND, SHARPER LIMIT WAS NOT RESOLVED AND MUST BE RESOLVED BEFORE ANY CENSUS IS BELIEVED: the specimen run reported ONE error and stopped, so if resolve halts at the first defect per closure then a full census yields a LOWER BOUND with an unquantified gap rather than a count -- and a lower bound would immediately be quoted as `the census`.",
 

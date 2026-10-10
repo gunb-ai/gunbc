@@ -1,4 +1,4 @@
-module v2.test.long.realization_sweep_probe_entry
+module v2.test.claim.long.realization_sweep_probe_entry
 
 import v2.workflow.realization_sweep {
   RealizationSweepRow,
@@ -7,7 +7,7 @@ import v2.workflow.realization_sweep {
   sweep_receipt_tsv,
   sweep_histogram_tsv
 }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   frontier_probe_entry_module_path,
   host_compiler_closure_admission,
   host_source_root_closure_refs,

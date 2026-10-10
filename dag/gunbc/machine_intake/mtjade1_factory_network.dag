@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtjade1_factory_network
+module gunbc.machine_intake.mtjade1_factory_network
 
 import std.types { Bool, NonEmptyStr }
 import extdeps.network.ipv4 { Ipv4Address, PrefixLength, ipv4_address, ipv4_address_eq }

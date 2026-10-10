@@ -1,4 +1,4 @@
-module test.claim.fleet_converge_cli_witness
+module test.claim.fleet.fleet_converge_cli_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -12,7 +12,7 @@ fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
 // THE OPERATOR-FACING REMEDY MUST NAME AN OPERATION THE REPOSITORY WOULD ACTUALLY PERFORM. This arm
 // told a human "tree-sync is the catch-up realization" while gunbc.live_deploy.deployed_tree_report
 // BLOCKS exactly that: a tree-only publication flips the launch admission's revision gate
-// (gunbc.roadmap_launch_admission launch_gate_revision) to admitting while the
+// (gunbc.roadmap.roadmap_launch_admission launch_gate_revision) to admitting while the
 // installed binary is still old, so the next tick dispatches a mixed realization never admitted as a
 // release. The typed verdict was correct throughout, which is why nothing caught it -- no consumer of
 // the VERDICT was wrong, only the sentence a human acts on, and this fn had no witness at all.
@@ -68,7 +68,7 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
 // per-host refusal, srv2 stopped appearing among the derived converge targets, and the CLI's Absent
 // arm reported it as UnknownHost -- an enrolled, known, correctly-refused host rendered as an
 // identity outside the fleet. That is the conflation this module already split once (see the
-// applicability note in gunbc.fleet_converge_cli), reintroduced one host over. So the assertion
+// applicability note in gunbc.fleet.fleet_converge_cli), reintroduced one host over. So the assertion
 // pins the CAUSE, not just the refusal: a row asserting only "srv2 fails closed with applied == 0"
 // would have passed against exactly the defect being removed, because UnknownHost fails closed too.
 test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bool {

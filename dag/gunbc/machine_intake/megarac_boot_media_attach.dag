@@ -1,4 +1,4 @@
-module gunbc.machine_intake_megarac_boot_media_attach
+module gunbc.machine_intake.megarac_boot_media_attach
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
@@ -6,12 +6,12 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
-import gunbc.managed_host_unit_hold { UnitHoldProof }
-import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import gunbc.host.managed_host_unit_hold { UnitHoldProof }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import product.host_identity { host_identity_eq }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacVirtualMediaAttach }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
   MediaAttachNotAttempted,
   MtCollins1MediaAttachRecord,
@@ -25,7 +25,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
-import gunbc.machine_intake_megarac_media_attach {
+import gunbc.machine_intake.megarac_media_attach {
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
   MegaRacDetachNotAdmitted,
@@ -51,14 +51,14 @@ import gunbc.machine_intake_megarac_media_attach {
 }
 
 // A MANAGED HOST'S BOOT MEDIUM, PRESENTED BY ITS MEGARAC CONTROLLER (docs/plans/managed-host-untangle.md,
-// cut 3). This is the policy layer above the operation (gunbc.machine_intake_megarac_media_attach
+// cut 3). This is the policy layer above the operation (gunbc.machine_intake.megarac_media_attach
 // megarac_attach_remote_image): the session, the stale-medium power-off, the detach admission and the
 // gate the handoff is behind. It used to be one unit's module with that unit's endpoint, firmware and
 // account written in; none of those is a constant here.
 //
 // THE CONTROLLER IS READ OFF THE HOLD. Every entry takes the unit-hold proof, whose only mint is the live
-// acquire in gunbc.managed_host_unit_hold, and the proof carries the ManagedHost it was acquired for.
-// The MegaRAC admission is minted from THAT host (gunbc.megarac_managed_host admit_megarac_host,
+// acquire in gunbc.host.managed_host_unit_hold, and the proof carries the ManagedHost it was acquired for.
+// The MegaRAC admission is minted from THAT host (gunbc.host.megarac_managed_host admit_megarac_host,
 // operation MegaRacVirtualMediaAttach), never passed beside it, so the endpoint the session opens, the
 // account it logs in with and the firmware its wire is decoded against are one managed host's binding,
 // and that host is the one the caller holds. A host that is not MegaRAC, whose controller is unobserved
@@ -82,9 +82,9 @@ type MegaRacIpmiReadBound {
 // THE CHASSIS POWER READ, over the admitted controller only.
 fn megarac_boot_media_chassis_power(host: AdmittedMegaRacHost, password_file: NonEmptyStr, bound: MegaRacIpmiReadBound) -> ChassisPowerObservation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_power_after_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_power_after_stale_power_off"),
   ]
 {
   let r = diagnostic.ipmi.Tool.ChassisStatus(
@@ -107,12 +107,12 @@ fn megarac_boot_media_cookie_jar(host: AdmittedMegaRacHost, attempt: NonEmptyStr
 }
 
 // THE ONE ROUTE TO A MANAGED HOST'S VIRTUAL MEDIA FOR A BOOT. It takes the unit-hold proof and the
-// admitted boot subject (gunbc.managed_host_boot AdmittedBootSubject), and is sealed to the boot's
+// admitted boot subject (gunbc.host.managed_host_boot AdmittedBootSubject), and is sealed to the boot's
 // actuation. The image it presents and the digest it records are the subject's medium, the one the
 // boot was admitted with and the verdict judges, never a second copy passed beside it; a hold on
 // one host cannot present media for another host's subject; the proof is the authorization the
 // scoped approval grant used to be, and the MegaRAC admission is read from the host it holds.
-// Password remains a caller argument (gunbc.machine_intake_mtcollins1_bmc_secure_observation
+// Password remains a caller argument (gunbc.machine_intake.mtcollins1_bmc_secure_observation
 // mtcollins1_managed_secret_fetch_frontier).
 fn megarac_attach_boot_image(
   proof: UnitHoldProof,
@@ -124,7 +124,7 @@ fn megarac_attach_boot_image(
   attempt: String,
 ) -> MtCollins1MediaAttachRecord
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   let image_name = subject.medium.image_name
@@ -217,7 +217,7 @@ fn megarac_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachAdmi
 // reading is taken and is what the admission receives. A command refused or a read-back that never
 // saw OFF does not admit the detach, whatever the fresh reading would say.
 //
-// POWER DOWN IS NOT ON THE BOOT HANDOFF'S VOCABULARY, ON PURPOSE (gunbc.machine_intake_oob_boot_handoff
+// POWER DOWN IS NOT ON THE BOOT HANDOFF'S VOCABULARY, ON PURPOSE (gunbc.machine_intake.oob_boot_handoff
 // OobPowerAction, review 5310234917 on gunbc#12247: power down cannot mean a boot handoff). This is a
 // different action for a different purpose -- making a stale medium safe to withdraw -- so it is its
 // own sealed route here, not a widening of that type.
@@ -297,7 +297,7 @@ fn megarac_stale_power_off(
   bound: MegaRacIpmiReadBound,
 ) -> StaleMediumPowerOff
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
   ]
 {
   if stale_power_off_look_owed(before: before) == false {
@@ -338,8 +338,8 @@ fn megarac_stale_power_off(
 // THE READ-BACK, BOUNDED; returns the last sample, which is OFF exactly when the poll observed it.
 fn megarac_stale_power_off_poll(host: AdmittedMegaRacHost, password_file: NonEmptyStr, bound: MegaRacIpmiReadBound, remaining: Int) -> ChassisPowerObservation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
   ]
 {
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_stale_power_off_interval)
@@ -361,7 +361,7 @@ fn megarac_power_after_stale_power_off(
   bound: MegaRacIpmiReadBound,
 ) -> ChassisPowerObservation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
   ]
 {
   match off {
@@ -426,8 +426,8 @@ fn megarac_observe_boot_presentation(
   look: NonEmptyStr,
 ) -> MegaRacAttachResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {

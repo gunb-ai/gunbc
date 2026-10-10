@@ -3,10 +3,10 @@ module test.claim.repo_ruleset_witness_test
 import std.types { Bool, String, Int, NonEmptyStr }
 import std.dissolution { dissolution_description }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.witness.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
-import gunbc.repo_ruleset {
+import gunbc.repo.repo_ruleset {
   RulesetDivergence,
   RulesetObserved,
   RulesetObservation,
@@ -97,13 +97,13 @@ import extdeps.github.rulesets {
 }
 
 // WHAT THESE WITNESSES COVER AND WHAT THEY DO NOT, stated first because the gap is the reason to
-// read them carefully. The subject is the PURE half of gunbc.repo_ruleset: the desired
+// read them carefully. The subject is the PURE half of gunbc.repo.repo_ruleset: the desired
 // declaration, the wire projections, and the divergence fold turning an observation into a
 // verdict. Every one runs over values authored in this file, so they are SubstrateInputsOnly and
 // execute in the hermetic floor.
 //
 // THEY SAY NOTHING ABOUT THE LIVE RULESET. Whether GitHub's ruleset currently agrees with desired
-// is a fact about the world, answerable only by the read gunbc.repo_ruleset `verify` performs, and
+// is a fact about the world, answerable only by the read gunbc.repo.repo_ruleset `verify` performs, and
 // a witness asserting it from here would assert a value it never observed. That read was executed
 // by hand while landing this change -- green against the live ruleset, and RED with a planted
 // extra desired context, refusing with `required context missing:` and exit 1 -- and it is a route

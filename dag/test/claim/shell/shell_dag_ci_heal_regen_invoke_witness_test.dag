@@ -1,13 +1,13 @@
 module test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.ci_spec { gunbc_ci_heal_regen_invoke, gunbc_ci_heal_regen_target, gunbc_ci_heal_verify_target }
+import gunbc.ci.ci_spec { gunbc_ci_heal_regen_invoke, gunbc_ci_heal_regen_target, gunbc_ci_heal_verify_target }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ACCEPTANCE ORACLE FOR shell-dag-ci-heal-regen-invoke, RED BY DESIGN UNTIL THE NODE IS DONE.
-// The node's bar is that gunbc.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the
+// The node's bar is that gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the
 // deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of
 // ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd), the absorbing fallback deleted. The
 // typed toplevel authority is the SAME ONE shell-dag-ci-deploy-invoke-prelude binds — this

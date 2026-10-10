@@ -4,9 +4,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable, ChassisStatusUndecodable }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_firmware }
-import gunbc.machine_intake_megarac_media_attach {
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_firmware }
+import gunbc.machine_intake.megarac_media_attach {
   CdErrorNone,
   CdErrorRead,
   ConvergeStepAwaitReadiness,
@@ -30,13 +30,13 @@ import gunbc.machine_intake_megarac_media_attach {
   presented_convergence,
   presented_media,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   StalePowerOffCommandRefused,
   StalePowerOffNotNeeded,
   StalePowerOffNotObserved,
   StalePowerOffObserved,
 }
-import gunbc.machine_intake_megarac_boot_media_attach {
+import gunbc.machine_intake.megarac_boot_media_attach {
   PowerOffForStale,
   PowerOffNotNeeded,
   megarac_detach_admission,

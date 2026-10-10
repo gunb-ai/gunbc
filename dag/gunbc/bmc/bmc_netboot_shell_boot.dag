@@ -1,4 +1,4 @@
-module gunbc.bmc_netboot_shell_boot
+module gunbc.bmc.bmc_netboot_shell_boot
 
 import std.types { NonEmptyStr, String, List }
 import extdeps.uri { uri_wire, Uri, Https }
@@ -14,7 +14,7 @@ import extdeps.firmware.uefi_shell {
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.busybox { busybox_tftpd_over_udpsvd_command }
-import gunbc.bmc_netboot_serve {
+import gunbc.bmc.bmc_netboot_serve {
   BmcNetbootServePlan,
   srv4_bmc_netboot_serve_plan,
   bmc_netboot_seed_datasource,

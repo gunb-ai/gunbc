@@ -1,4 +1,4 @@
-module gunbc.fleet_capacity_panel
+module gunbc.fleet.fleet_capacity_panel
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.markup { Fragment }
@@ -7,9 +7,9 @@ import gunbc.site.markup { txt, el_class }
 import extdeps.languages.css.values { css_ch, css_length_wire }
 import product.host_identity { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, provider_kind_label }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, host_width_binding_label }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.fleet_capacity_control {
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, host_width_binding_label }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.fleet.fleet_capacity_control {
   capacity_controlled_hosts, capacity_controlled_providers,
   host_withdrawal_for, provider_withdrawal_for,
   withdrawal_cause_label, withdrawal_cause_detail,
@@ -18,17 +18,17 @@ import gunbc.fleet_capacity_control {
 
 // THE FLEET CAPACITY PANEL ON THE DAILY WORKSPACE.
 //
-// It reads gunbc.fleet_capacity_control -- the SAME roster the dispatch gate reads -- rather than
+// It reads gunbc.fleet.fleet_capacity_control -- the SAME roster the dispatch gate reads -- rather than
 // a display copy. That is the whole difference between a control and a cockpit: a panel with its
 // own roster drifts from the thing it claims to steer, and the drift is invisible because both
 // sides look internally consistent.
-// Daily-workspace panel over declared fleet capacity. Reads gunbc.fleet_capacity_control directly
+// Daily-workspace panel over declared fleet capacity. Reads gunbc.fleet.fleet_capacity_control directly
 // so the panel and the dispatch gate cannot disagree.
 
 // EVERY NUMBER HERE IS DECLARED, NOT OBSERVED, AND THE PANEL SAYS SO IN THE RENDERED OUTPUT.
 //
 // This is not caution, it is the difference between two facts that look identical on a screen.
-// gunbc.runner_slot_allocation states plainly that srv3 and srv4's committed width of 6 is a
+// gunbc.runner.runner_slot_allocation states plainly that srv3 and srv4's committed width of 6 is a
 // PROVISIONING TARGET -- two slots that do not exist yet -- while srv1 and srv2's 5 matches live.
 // A panel rendering "6 slots" beside "5 slots" with no qualifier invites the reader to conclude the
 // fleet is running 22, and a capacity decision made on that number would be wrong on the only axis

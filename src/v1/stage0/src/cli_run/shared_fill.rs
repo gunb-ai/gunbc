@@ -330,7 +330,7 @@ pub(crate) fn render_shared_fill_unattributed_text_mirror(
     )
 }
 
-/// Mirror of `gunbc.witness_row_cost` `shared_fill_disposition` composed with its tag. Three
+/// Mirror of `gunbc.witness.witness_row_cost` `shared_fill_disposition` composed with its tag. Three
 /// states because three remedies: preparation cost no witness can be pared to recover, a fill
 /// one module owns and loses with itself, and a fill that outlives the removal of any single
 /// consumer.

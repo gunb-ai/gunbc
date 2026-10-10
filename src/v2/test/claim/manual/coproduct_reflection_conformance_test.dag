@@ -1,4 +1,4 @@
-module v2.test.manual.coproduct_reflection_conformance
+module v2.test.claim.manual.coproduct_reflection_conformance_test
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 

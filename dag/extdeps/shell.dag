@@ -51,7 +51,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
 // rather than accepting it -- so the producing stage's status is captured directly and the rows
 // travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
-data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN [C7 producer-status-pipeline] (an extdeps shell transport cannot declare a producer-then-consumer argv pair whose realization reports the PRODUCING stage's exit status; dash has no pipefail) lands and these operations declare that argv pair in place of an sh -c program.")
+data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks.githooks_pre_push_emit precedent. DISSOLVES WHEN [C7 producer-status-pipeline] (an extdeps shell transport cannot declare a producer-then-consumer argv pair whose realization reports the PRODUCING stage's exit status; dash has no pipefail) lands and these operations declare that argv pair in place of an sh -c program.")
 
 service shell.Find {
   operation ListDirs {
@@ -165,8 +165,8 @@ service shell.Env {
 // shell is -- unlike `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of
 // POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware
 // shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional
-// either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet_intent's srv1-4
-// ComputeHost, and gunbc.ci_fleet's own CI/falsifier runner, both carry an `OperatingSystemSurface
+// either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet.fleet_intent's srv1-4
+// ComputeHost, and gunbc.ci.ci_fleet's own CI/falsifier runner, both carry an `OperatingSystemSurface
 // { distro_or_product: none, ... }` -- no distro or package-set authority anywhere in this fleet,
 // our own runner included (crisp-wren-896 finding, PR #8590; the modeling gap is named at
 // std.os.types operating_system_surface_package_authority_gap_note). This operation's assumption

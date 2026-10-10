@@ -1,4 +1,4 @@
-module tools.fabric_control_plane_live_probe
+module gunbc.instruments.fabric_control_plane_live_probe
 
 import product.fabric.provider_route {
   CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
@@ -25,7 +25,7 @@ import std.measure {
 }
 import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.envelope { unstated_envelope }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import std.durable_compare_and_set {
@@ -53,7 +53,7 @@ import product.fabric.selection {
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.budget {
@@ -62,9 +62,9 @@ import product.fabric.budget {
 }
 import product.fabric.execution { ReservationRef, LeaseIdentity }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
-import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction, capacity_admission_wire }
-import gunbc.fabric_floor_dispatch { floor_demand }
-import gunbc.fabric_control_plane {
+import gunbc.fabric.fabric_executor_class { ExecutorSanction, fleet_cell_sanction, capacity_admission_wire }
+import gunbc.fabric.fabric_floor_dispatch { floor_demand }
+import gunbc.fabric.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
   PermitNamesAnotherUseForCell,
   StoreUnavailable, AttemptRefused, BudgetRefused,
@@ -84,7 +84,7 @@ import gunbc.durable_cas_file_store {
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set,
 }
-import gunbc.fabric_required_build_cell {
+import gunbc.fabric.fabric_required_build_cell {
   RequiredBuildCellObservation, RequiredBuildCellObserved, ReservationPayloadWorkMismatch,
   RequiredBuildCellLifetimeVerdict, RequiredBuildCellObservationRefused,
   RequiredBuildCellLifetimeSampleDecode, RequiredBuildCellLifetimeSampleDecoded, RequiredBuildCellLifetimeSampleUndecodable,
@@ -103,19 +103,19 @@ import gunbc.fabric_required_build_cell {
   FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape,
   DirectoryModeStanding, DirectoryModeUnobserved, fci1_directory_mode_unobserved,
 }
-import gunbc.fabric_cell_acquire {
+import gunbc.fabric.fabric_cell_acquire {
   fabric_cell_probe_wet,
   FabricCellBoundaryReading, BoundaryValuesRead, BoundaryReadRefused,
   fabric_cell_probe_reading_wet, fabric_cell_probe_reading_probe,
   fabric_cell_probe_reading_boundaries,
 }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.fabric_cell_observation_admission {
   FabricCellObservationDecision, FabricCellObservationAdmitted, FabricCellObservationDenied,
   FabricCellObservationNotApplicable, fabric_cell_observation_outcome,
   fabric_cell_observed_population_host, fabric_cell_observed_population_members,
   admit_fabric_cell_probe,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellResourceBoundaryAddress, fabric_cell_resource_address_equal,
   FabricCellMember,
   fabric_cell_id_for_slot,
@@ -123,7 +123,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_base_dir, fabric_cell_root_path, fabric_cell_attempt_root_path,
   fabric_cell_observation_refusal_identity,
 }
-import gunbc.fabric_witness_run {
+import gunbc.fabric.fabric_witness_run {
   RequiredBuildWorkBinding, RequiredBuildWorkBound, RequiredBuildWorkRefused, RequiredBuildCoordinateMissing,
   ExactGitSource, GitCommitTreeVerified, GitCommitTreeMismatch,
   required_witnesses_build_work, verify_git_commit_tree,
@@ -131,13 +131,13 @@ import gunbc.fabric_witness_run {
 import extdeps.git.object_store { git_sha1_object_id }
 import std.optional { Present, Absent }
 import gunbc.ownership { Owned, Ensured }
-import tools.fabric_ci_evidence {
+import gunbc.instruments.fabric_ci_evidence {
   FabricCiEvidenceDecode, FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable,
   fabric_ci_evidence_wire, decode_fabric_ci_evidence_wire, fabric_ci_write_wire,
   fabric_ci_shell_crossing_coordinates_hash,
 }
-import gunbc.host_effect { LocalShell }
-import gunbc.host_effect_realize { srv3_observe_path_owner }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { srv3_observe_path_owner }
 import extdeps.posix.path_ownership { PathOwnershipObservation, PathOwnerObserved, PathOwnerUnobserved, posix_owner_spec_equal }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -147,7 +147,7 @@ import gunbc.systemctl_show_read {
 }
 import extdeps.systemd { ControlGroup }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
-import gunbc.host_operation_exec {
+import gunbc.host.host_operation_exec {
   HostOperation, HostOperationOutcome, HostOperationObserved, HostOperationRefused,
   CgroupListChildren, CgroupReadInterfaceFile, CgroupPathIsDirectory,
   host_operation_exec_local,
@@ -1766,9 +1766,9 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
 // the broker carries the market's choice all the way into the store.
 fn cp_probe_located() -> ProviderPathStanding {
   ProviderPathLocated {
-    operator: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
-    jurisdiction: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
-    evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_path_evidence"),
+    operator: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    jurisdiction: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_region"),
+    evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_path_evidence"),
   }
 }
 
@@ -1777,10 +1777,10 @@ fn cp_probe_located() -> ProviderPathStanding {
 // no path it needs excused, and an empty enrollment list refuses more rather than less.
 fn cp_probe_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
-    authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
+    authority: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-posture-r1")),
     permitted_jurisdictions: PermittedJurisdictionsEnumerated {
-      first: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+      first: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_region"),
       further: [],
     },
     jurisdiction_drop_enrollments: [],
@@ -1797,9 +1797,9 @@ fn cp_probe_sanctions() -> List<RouteScopeSanction> {
       RouteScopeSanction {
         route: probe_route(),
         posture: cp_probe_posture(),
-        customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
-        data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
-        requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
+        customer_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+        data_handling_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+        requires_agreement: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
       },
   ]
 }
@@ -1807,7 +1807,7 @@ fn cp_probe_sanctions() -> List<RouteScopeSanction> {
 fn cp_probe_facts() -> ProviderRouteFacts {
   ProviderRouteFacts {
       route: probe_route(),
-      contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_contract_terms"),
+      contract_terms: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_contract_terms"),
       data_paths: ProviderDataPathClosure {
         execution: cp_probe_located(),
         durable_storage: cp_probe_located(),
@@ -1818,11 +1818,11 @@ fn cp_probe_facts() -> ProviderRouteFacts {
         support_access: cp_probe_located(),
         administrative_access: cp_probe_located(),
         spill: ProviderPathAbsent {
-          evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_spill"),
+          evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_no_spill"),
         },
       },
       downstream: NoDownstreamProviders {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_downstream"),
+        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_no_downstream"),
       },
       observed_at: "2026-08-27T00:00:00Z",
       facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-facts-r1")),
@@ -1839,17 +1839,17 @@ fn cp_probe_scope(work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScop
   ProviderUseScope {
       demand: cp_probe_demand_id(key: "demand-floor-1"),
       work: work,
-      customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
-      data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
-      agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
+      customer_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+      data_handling_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+      agreement: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
       prohibited_use_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_prohibited_use_cleared"),
+        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_prohibited_use_cleared"),
       },
       sanctions_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_sanctions_cleared"),
+        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_sanctions_cleared"),
       },
       export_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_export_cleared"),
+        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_export_cleared"),
       },
   }
 }
@@ -1881,7 +1881,7 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
     sanctions: cp_probe_sanctions(),
     active: cp_probe_posture(),
     scope: cp_probe_scope(work: work),
-    decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
+    decision_receipt: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
     exercises: [],
     readiness: ExerciseOfRoute { route: probe_route(), work: work },
     at: 0,
@@ -2169,8 +2169,8 @@ data probe_export_cleared: NonEmptyStr = "probe-export-cleared"
 // so an offer and a sanction agree by declaration identity and not by matching strings.
 fn probe_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
-    service: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_service"),
-    region: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+    provider: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    service: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_service"),
+    region: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_region"),
   }
 }

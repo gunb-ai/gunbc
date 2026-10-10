@@ -1,7 +1,7 @@
-module v2.test.emit.produced_decl_support_preserved
+module v2.test.claim.emit.produced_decl_support_preserved_test
 
 import std.types { List }
-import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.compilers.target_model {
   FixedToken,

@@ -1,10 +1,10 @@
-module tools.dag_compile_clean_scope
+module gunbc.instruments.dag_compile_clean_scope
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
-import tools.dag_compile_clean_shard_roster {
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.instruments.dag_compile_clean_partition { compile_clean_partition_boundary }
+import gunbc.instruments.dag_compile_clean_shard_roster {
   compile_clean_shard_entry_paths,
   compile_clean_shard_entry_paths_from,
   CompileCleanShardEntryPathsBuilt,

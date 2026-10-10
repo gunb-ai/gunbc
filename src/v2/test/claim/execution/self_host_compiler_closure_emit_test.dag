@@ -1,4 +1,4 @@
-module v2.test.execution.self_host_compiler_closure_emit
+module v2.test.claim.execution.self_host_compiler_closure_emit_test
 
 import v2.test.fixture.compiler_closure_scope_receipt {
   scoped_closure_excluded_module_path_holds,

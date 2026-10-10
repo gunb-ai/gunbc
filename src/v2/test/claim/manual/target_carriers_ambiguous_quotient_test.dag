@@ -1,4 +1,4 @@
-module v2.test.manual.target_carriers_ambiguous_quotient
+module v2.test.claim.manual.target_carriers_ambiguous_quotient_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

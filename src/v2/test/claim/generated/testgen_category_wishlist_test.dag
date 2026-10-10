@@ -1,4 +1,4 @@
-module v2.test.generated.testgen_category_wishlist
+module v2.test.claim.generated.testgen_category_wishlist_test
 
 import std.types { List }
 import v2.lens.testgen {
@@ -46,7 +46,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.test.manual.connective_anchors { stub_empty_conj }
+import v2.test.claim.manual.connective_anchors { stub_empty_conj }
 
 type TestgenOracleBasis
   = StructuralConstructionWitness

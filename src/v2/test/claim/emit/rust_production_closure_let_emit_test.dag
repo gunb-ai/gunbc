@@ -1,4 +1,4 @@
-module v2.test.emit.rust_production_closure_let_emit
+module v2.test.claim.emit.rust_production_closure_let_emit_test
 
 import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.rust {

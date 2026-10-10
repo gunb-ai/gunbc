@@ -11,11 +11,11 @@ import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentStep, ArtifactStep, Dependency, TailnetDoorServeUnit, TailscaleServeMapping,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_path, deployment_tailnet_door_steps,
 }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
-import gunbc.roadmap_serve { roadmap_serve_handle_door }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
+import gunbc.roadmap.roadmap_serve { roadmap_serve_handle_door }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.readiness { Ready, Pending, Refused }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import extdeps.http.client { http_client_get_unix_socket_argv }
 import std.measure { second }
 import gunbc.live_deploy.readiness {

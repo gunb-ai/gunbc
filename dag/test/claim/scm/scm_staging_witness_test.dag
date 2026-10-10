@@ -1,4 +1,4 @@
-module test.claim.scm_staging_witness
+module test.claim.scm.scm_staging_witness_test
 
 // THE CONTROLS FOR THE CANDIDATE SELECTION, BUILT TO THE FAILURES RATHER THAN TO THE HAPPY PATH.
 //

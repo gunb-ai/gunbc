@@ -66,7 +66,7 @@ fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
 }
 
 // retained_foreign and its emit ref are GONE: their one caller (the node-http serve smoke in
-// tools.emit_host_transport) routes through typed process-lifecycle ops
+// gunbc.instruments.emit_host_transport) routes through typed process-lifecycle ops
 // (extdeps.posix.process StartDetached/Reap, http.Client.Probe, posix.Signal.TerminateProcess)
 // as of the process-lifecycle dissolution, so the foreign-executor bridge had zero callers left.
 // The v2 bash emit backend (v2.workflow.bash_emit bash_emit_program) remains the dissolve target

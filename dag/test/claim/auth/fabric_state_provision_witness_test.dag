@@ -1,7 +1,7 @@
 module test.claim.auth.fabric_state_provision_witness_test
 
 import std.types { Bool, String }
-import gunbc.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable, fabric_state_provision_token_variable }
+import gunbc.fabric.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable, fabric_state_provision_token_variable }
 import gunbc.auth.approved_secret_grants { secret_grants_intent, secret_grant_token_variable }
 import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row, fleet_accessor_grant }
 import gunbc.auth.approval_decision_store { request_revision_of }

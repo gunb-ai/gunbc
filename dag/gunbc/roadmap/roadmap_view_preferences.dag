@@ -1,4 +1,4 @@
-module gunbc.roadmap_view_preferences
+module gunbc.roadmap.roadmap_view_preferences
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
 import extdeps.google.issue_tracker { IssueResultsSortKey, IssueSortStatus, IssueSortPriority, issue_results_columns, issue_results_sort_key_wire }

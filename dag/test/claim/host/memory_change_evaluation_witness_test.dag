@@ -1,4 +1,4 @@
-module test.claim.memory_change_evaluation_witness
+module test.claim.host.memory_change_evaluation_witness_test
 
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
@@ -10,26 +10,26 @@ import std.dissolution { dissolution_status, DissolutionPending, DissolutionFire
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   memory_module_label,
   MemoryConfiguration, MemoryChangeProposal, MemoryPlanAction, PositionedMemoryModule, MemoryDeliveryVariant,
   MemoryOperatingObligation, MemoryTrainingFailureScreen, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport, MemoryTraining, MemoryBoot,
   AdditionalMemoryRequirement, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
   memory_operating_obligations,
 }
-import gunbc.memory_observation {
+import gunbc.host.memory_observation {
   MemoryEvaluationEvidence, MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, ConfigurationQualificationReceipt,
   memory_collector_refusal, memory_capture_covers_population,
 }
-import gunbc.memory_configuration_evaluation {
+import gunbc.host.memory_configuration_evaluation {
   MemoryConfigurationAssessment, memory_obligation_result, memory_empty_facts, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
   evaluate_memory_configuration, memory_placement_from_roles, MemoryPopulationRoleUnresolved,
 }
-import gunbc.memory_change_evaluation {
+import gunbc.host.memory_change_evaluation {
   MemoryChangeAssessment, ProductionMemoryPurchase, QualificationMemoryPurchase,
   evaluate_memory_change, memory_change_admission_refusal, memory_configuration_admission_refusal,
 }
-import gunbc.mtcollins_memory_change {
+import gunbc.host.mtcollins_memory_change {
   mtcollins_training_mixture_finding, mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_memory_variants, mtcollins_memory_evidence_from_capture,
   mtcollins_training_collector, mtcollins_ads_part,
 }
@@ -38,8 +38,8 @@ import product.build_fulfillment {
   LineRefused, LineResolved, CompatibilityUnread, SupplyMissing, MemoryProposalNotAdmitted, NewPurchase, CashRefused, CashNoPurchaseLines, CeilingDerived, CeilingRefused, CeilingLineRefused,
   resolve_build, derive_bom, incremental_cash_now, memory_screened_rows,
 }
-import gunbc.memory_change_report { explain_memory_change }
-import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
+import gunbc.host.memory_change_report { explain_memory_change }
+import gunbc.host.mtcollins_memory_placement { mtcollins_memory_position }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
   dimm_figure_connector_label_prefix, one_dpc_diagram_legend, additional_two_dpc_diagram_legend,
 }
@@ -50,7 +50,7 @@ import extdeps.memory.micron { mta36ads2g72pz_2g1a1_catalog }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, File }
 import std.measure { money_amount_micro, MoneyOnce, byte_size, watt, Bandwidth }
-import gunbc.host_memory_qualification {
+import gunbc.host.host_memory_qualification {
   PartSampleQualificationRequired, PlatformTrainingFailure, InferredFromSequencePosition, HostMemoryStanding, ClassSupportedByBoard, PartQualificationUnobserved,
   TrainingOutcomeUnobserved, BootOutcomeUnobserved, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem,
 }
@@ -127,7 +127,7 @@ fn memory_test_recipe(fixture_roles: List<MtCollinsChannelPopulationRole>, confi
 // and its bound purpose/assessment come from resolve_build, not a fixture copy.
 fn memory_test_candidate(build: BuildResolution) -> BuildCandidate {
   BuildCandidate {
-    identity: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "memory_test_candidate"),
+    identity: decl_ref(module_path: "test.claim.host.memory_change_evaluation_witness_test", decl_name: "memory_test_candidate"),
     display_label: "qualification projection control",
     memory_capacity: byte_size(count: 1), wall_power: watt(count: 1), memory_bandwidth: Bandwidth { count: 1 },
     resolutions: build, cash: CashNoPurchaseLines,
@@ -192,7 +192,7 @@ test fn w_changed_firmware_rechecks_applicability() -> Bool {
     PopulationRolesResolved { roles: fixture_roles } => {
       let original = mtcollins_witnessed_configuration(roles: fixture_roles)
       let p = original.platform
-      let changed = MemoryConfiguration { platform: gunbc.memory_configuration.MemoryPlatform {
+      let changed = MemoryConfiguration { platform: gunbc.host.memory_configuration.MemoryPlatform {
         host: p.host, board: p.board, board_part: p.board_part, processor: p.processor, firmware: "different firmware", settings: p.settings }, population: original.population }
       let a = memory_test_assess(fixture_roles: fixture_roles, configuration: changed)
       !memory_test_package_violates(a: a) && memory_test_has_unknown(a: a, obligation: MemoryPackageMixture)
@@ -390,7 +390,7 @@ test fn w_unmodelled_required_obligation_is_executed_as_unresolved() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
-      let requirement = AdditionalMemoryRequirement { authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_unmodelled_required_obligation_is_executed_as_unresolved") }
+      let requirement = AdditionalMemoryRequirement { authority: decl_ref(module_path: "test.claim.host.memory_change_evaluation_witness_test", decl_name: "w_unmodelled_required_obligation_is_executed_as_unresolved") }
       let a = evaluate_memory_configuration(configuration: memory_test_uniform(fixture_roles: fixture_roles), evidence: memory_test_evidence(fixture_roles: fixture_roles), additional: [requirement])
       memory_test_has_unknown(a: a, obligation: requirement)
     }
@@ -780,7 +780,7 @@ test fn w_coverage_identity_bijection_admits_control() -> Bool {
 test fn w_coverage_duplicate_requirement_and_unrelated_result_refuse() -> Bool {
   let required = concat(memory_operating_obligations, [MemoryPackageMixture])
   let evaluated = concat(memory_operating_obligations, [AdditionalMemoryRequirement {
-    authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_duplicate_requirement_and_unrelated_result_refuse"),
+    authority: decl_ref(module_path: "test.claim.host.memory_change_evaluation_witness_test", decl_name: "w_coverage_duplicate_requirement_and_unrelated_result_refuse"),
   }])
   !memory_test_coverage_admits(required: required, evaluated: evaluated)
 }
@@ -794,6 +794,6 @@ test fn w_coverage_same_count_missing_identity_refuses() -> Bool {
 test fn w_coverage_extra_result_identity_refuses() -> Bool {
   !memory_test_coverage_admits(required: memory_operating_obligations,
     evaluated: concat(memory_operating_obligations, [AdditionalMemoryRequirement {
-      authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_extra_result_identity_refuses"),
+      authority: decl_ref(module_path: "test.claim.host.memory_change_evaluation_witness_test", decl_name: "w_coverage_extra_result_identity_refuses"),
     }]))
 }

@@ -1,8 +1,8 @@
-module test.claim.roadmap_authority
+module test.claim.roadmap.roadmap_authority_test
 
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.types { NonEmptyStr, String }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
   declared_roadmap_edges,
   active_roadmap_nodes_for_accepted,
@@ -36,12 +36,12 @@ import gunbc.roadmap_authority {
   FrontierSetsProjectionRefused,
 }
 import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
-import gunbc.roadmap_spawner {
+import gunbc.roadmap.roadmap_spawner {
   roadmap_rendered_ghost_count,
   roadmap_ghost_node_red_probe_count,
   roadmap_altered_copy_red_probe_count,
 }
-import gunbc.v1_deletion_plan {
+import gunbc.v1.v1_deletion_plan {
   V1FinishLine,
   CompilerFixedPoint,
   InterpreterDeleted,
@@ -51,7 +51,7 @@ import gunbc.v1_deletion_plan {
   v1_finish_line_key,
   v1_finish_lines_accepted_count,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
   NotAgentWork,
@@ -64,14 +64,14 @@ import gunbc.roadmap_execution_contract {
   execution_capability_label,
   PathsUnrestricted, PublicWorktreeLayout,
 }
-import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
-import gunbc.roadmap_spawner { doc_all_nodes }
-import gunbc.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
+import gunbc.roadmap.roadmap_document { RoadmapDocument }
+import gunbc.roadmap.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
+import gunbc.roadmap.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapNodeId,
@@ -110,7 +110,7 @@ import gunbc.roadmap_model {
   NotDispatchable,
   ManualAcceptance,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   RoadmapItem,
   Signoff,
   TicketLine,
@@ -130,7 +130,7 @@ import gunbc.roadmap_status {
   signoff_is_present,
 }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
-import gunbc.roadmap_spawner { readiness_graph, node_readiness_in_graph }
+import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph }
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
@@ -348,7 +348,7 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
   all(nodes() |> filter(n => match line_ticket(item: n.line) { Present { value: _ } => true  Absent => false }), n => active_node_admissible(n: n))
 }
 
-data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
+data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap.roadmap_altitude_witness_test renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   match live_accepted_node_ids() {
@@ -642,7 +642,7 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap.roadmap_receipt_continuity_live_witness_test (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap.roadmap_receipt_continuity_acceptance_test plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
 
 fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   match roadmap_acceptance_event_history_load() {
@@ -758,7 +758,7 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived beside the forecast controls, and its trigger
 // is the condition under which a derived distribution exists to make the claim about again.
 
-// Dated status notes belong on a ticket's updates thread (gunbc.roadmap_authority updated), so the
+// Dated status notes belong on a ticket's updates thread (gunbc.roadmap.roadmap_authority updated), so the
 // thread is not what this claims is absent; what must never appear is execution state written into
 // the ticket's standing fields.
 test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
@@ -826,7 +826,7 @@ test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() 
 test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
   let j = observation_scoped_run_seed_growth_justification()
   j.owning_dissolution_lane == "v1-hand-queue-drain"
-    && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
+    && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
     && string_contains(s: j.reason, pattern: "where the old runner starts a program")
     && string_contains(s: j.trigger, pattern: "described operation")
     && string_contains(s: j.trigger, pattern: "hollow out")
@@ -894,7 +894,7 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance.dag"
               && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
@@ -929,7 +929,7 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
 // no superseded or awaiting-sign-off row survives), and serializing ~200 rows to find those facts
 // cost the markdown emitter's whole fold per run. The markers' spelling is the emitter's own
 // subject (test.claim.roadmap_emit_test); the clauses here are the same per-row predicates the
-// emitter renders them from (gunbc.roadmap_emit node_is_superseded, signoff_suffix_inlines).
+// emitter renders them from (gunbc.roadmap.roadmap_emit node_is_superseded, signoff_suffix_inlines).
 fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
   match i {
     TextInline { text } => string_contains(s: text, pattern: pattern)

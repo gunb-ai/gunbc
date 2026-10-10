@@ -1,12 +1,12 @@
-module test.claim.jade_first_contact_model_witness
+module test.claim.machine_intake.jade_first_contact_model_witness_test
 
 import std.types { Bool, List, String }
 import std.nat { Nat }
 import std.measure { ClockBasis, ObservationInstant, ProcessMonotonic, SharedMonotonic, WallClock, nanosecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
-import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
-import gunbc.machine_intake_bmc_firmware_family_discriminator {
+import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
   FamilyAmbiguous,
   FamilyDiscriminated,
   FamilyIndeterminate,
@@ -16,7 +16,7 @@ import gunbc.machine_intake_bmc_firmware_family_discriminator {
   megarac_oem_key,
   openbmc_oem_key,
 }
-import gunbc.machine_intake_factory_segment_lease {
+import gunbc.machine_intake.factory_segment_lease {
   LeaseDeadlineIncomparable,
   LeaseOverranDeadline,
   LeaseWithinDeadline,
@@ -35,8 +35,8 @@ import gunbc.machine_intake_factory_segment_lease {
 import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
 import std.roster_frontier { DeclSubject, PathSubject, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
 import std.keyed_roster { KeyedRosterBuildDuplicateKey, KeyedRosterBuilt }
-import gunbc.machine_intake_jade_first_contact_frontier { jade_first_contact_frontier_rows }
-import gunbc.machine_intake_mtjade1_factory_network {
+import gunbc.machine_intake.jade_first_contact_frontier { jade_first_contact_frontier_rows }
+import gunbc.machine_intake.mtjade1_factory_network {
   BmcNetworkObservedDhcpLease,
   BmcNetworkUnobserved,
   DocumentStatesStatic,
@@ -291,9 +291,9 @@ test fn w_first_contact_frontier_is_keyed_scoped_and_unbound() -> Bool {
       jade_first_contact_frontier_rows,
       row => match row.subject {
         DeclSubject { ref: r } =>
-          (r.module_path as String) == "gunbc.machine_intake_bmc_firmware_family_discriminator"
-            || (r.module_path as String) == "gunbc.machine_intake_factory_segment_lease"
-            || (r.module_path as String) == "gunbc.machine_intake_mtjade1_factory_network"
+          (r.module_path as String) == "gunbc.machine_intake.bmc_firmware_family_discriminator"
+            || (r.module_path as String) == "gunbc.machine_intake.factory_segment_lease"
+            || (r.module_path as String) == "gunbc.machine_intake.mtjade1_factory_network"
         PathSubject { path: _ } => false
       },
     )

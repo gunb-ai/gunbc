@@ -1,4 +1,4 @@
-module test.claim.spark_snapshot_verify_wrapper_local_wet
+module test.claim.spark.spark_snapshot_verify_wrapper_local_wet_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }

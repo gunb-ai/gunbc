@@ -1,16 +1,16 @@
-module gunbc.fabric_cell_subject
+module gunbc.fabric.fabric_cell_subject
 
 import std.types { String, Bool }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
 data fabric_cell_subject_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE EXISTS AT THIS GRAIN SO THAT ONE TOTAL MATCH CAN SERVE BOTH FAMILIES WITHOUT A CYCLE.
-// The slot-scoped family (gunbc.fabric_cell_converge) and the host-scoped one
-// (gunbc.fabric_cell_host_root) must answer ownership from the SAME function, or adding a subject
+// The slot-scoped family (gunbc.fabric.fabric_cell_converge) and the host-scoped one
+// (gunbc.fabric.fabric_cell_host_root) must answer ownership from the SAME function, or adding a subject
 // kind fails to compile in one of them and silently inherits a default in the other. Putting the
 // subject in either family would make the other import it and the first import it back, which
 // DESIGN section 3's acyclicity law forbids -- so the shared fact lives upstream of both and

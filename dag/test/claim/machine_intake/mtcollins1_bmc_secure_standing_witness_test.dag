@@ -1,16 +1,16 @@
-module test.claim.machine_intake_mtcollins1_bmc_secure_standing_witness_test
+module test.claim.machine_intake.mtcollins1_bmc_secure_standing_witness_test
 
-import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.ipmi_channel { ipmi_controller_channel_census }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.deployment_risk { TestRisk }
-import gunbc.machine_intake_phase { machine_qualification_policy }
-import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
-import gunbc.machine_intake_bmc_secure {
+import gunbc.machine_intake.phase { machine_qualification_policy }
+import gunbc.machine_intake.subject { UnitKeyBound, UnitKeyRefused }
+import gunbc.machine_intake.bmc_secure {
   BmcSecured,
   BmcSecureRefused,
   CredentialAccepted,
@@ -21,7 +21,7 @@ import gunbc.machine_intake_bmc_secure {
   derive_bmc_secure,
   observed_bmc_credential_rotation,
 }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_bmc_secure_standing,
   mtcollins1_bootstrap_at,
   mtcollins1_channel_census,

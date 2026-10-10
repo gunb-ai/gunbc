@@ -1,4 +1,4 @@
-module test.claim.fleet_revision_acceptance_witness
+module test.claim.fleet.fleet_revision_acceptance_witness_test
 
 import std.types { String, NonEmptyStr, Bool }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
@@ -7,7 +7,7 @@ import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
-import gunbc.fleet_revision_acceptance {
+import gunbc.fleet.fleet_revision_acceptance {
   RequiredCiContractIdentity,
   required_ci_contract,
   RequiredCiSucceeded,

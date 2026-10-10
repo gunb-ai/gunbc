@@ -31,7 +31,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CAUSE-SWAP CONTROL for the Verdict projection in v2.std.verdict. Its sibling — the control
-// over the fault-detection conjunct in tools.self_host_curated_seed_linked_harness — is
+// over the fault-detection conjunct in gunbc.instruments.self_host_curated_seed_linked_harness — is
 // deliberately NOT here: an operator ruling re-sequenced that repair into the wet-execution
 // transaction that gives it an executing consumer, so it lands there or not at all. This control
 // enforces one rule: an evidence standing may establish a proposition only when EVERY execution

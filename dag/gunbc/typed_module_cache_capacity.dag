@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { int_min, int_max }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
   HostBudgetDeclaredUnverified,
@@ -37,7 +37,7 @@ import gunbc.host_budget_source {
 // observed; 3 MiB is the interim declared denominator until measured space lands) and the
 // floor/ceiling the seed already enforces. The refusal arm is not a default: an unreadable budget
 // yields CapEntryRefused, never the ceiling. That distinction is the whole receipt of
-// gunbc.host_budget_source no_fallback_arm_note -- the previous unwrap_or(CEIL) turned an unknown
+// gunbc.host.host_budget_source no_fallback_arm_note -- the previous unwrap_or(CEIL) turned an unknown
 // budget into the most permissive cap available and OOM-killed the witness corpus twice.
 
 data typed_module_bytes_per_entry_estimate: ByteSize = byte_size(count: 3145728)

@@ -10,7 +10,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // bounded microVM shakedown on srv1.
 // ============================================================================================
 //
-// WHAT THE FLEET-UNIFORM ROW ESTABLISHED. `gunbc.runner_slot_allocation` derives every host's
+// WHAT THE FLEET-UNIFORM ROW ESTABLISHED. `gunbc.runner.runner_slot_allocation` derives every host's
 // memory-admitted width as envelope / ONE slot size, and `runner_slice_cap` as slots x that size, so
 // the sum of per-slot ceilings could not exceed the slice cap: oversubscription had no
 // representation (StructurallyGuaranteed on that class, by the module's own note).
@@ -20,7 +20,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // -- and `host_memory_admitted_width` charges that slot first on srv1 before dividing the remainder
 // by the fleet row (`memory_admitted_width_of_envelope`). The conservation property therefore now
 // rests on that fold charging the right slot the right size, which is checked by
-// test.claim.runner_slot_allocation_witness rather than unwritable by construction: the class drops
+// test.claim.runner.runner_slot_allocation_witness_test rather than unwritable by construction: the class drops
 // one rung, on a population of one slot, and this row says so.
 //
 // WHY A DECLARED CHANGE RATHER THAN MOVING THE FLEET ROW. Raising the fleet row to 28 GiB lowers
@@ -38,7 +38,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
   identity: "microvm_shakedown_slot_row_above_fleet_row" as NonEmptyStr,
 
-  subject: "the fleet-uniform slot row (gunbc.runner_slot_desired gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
+  subject: "the fleet-uniform slot row (gunbc.runner.runner_slot_desired gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
 
   declared: "2026-09-21",
 
@@ -48,10 +48,10 @@ data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged {
-      replacement: "gunbc.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness_test",
+      replacement: "gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness_test",
     },
     population: [
-      "gunbc.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
+      "gunbc.runner.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
     ],
     restoration_trigger: "EITHER the shakedown slot leaves fabric_execution_slot_identities with its cell retired through the modeled teardown, OR the fleet row moves to the shakedown ceiling under an operator ruling cited on that change, so gunbc_runner_slot_desired_for has no differing arm and is deleted. A second per-slot arm satisfies neither",
   },

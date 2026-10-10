@@ -10,7 +10,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.docker.cli { DockerCreateSpec }
 import extdeps.docker.container_inspect { ContainerInspect }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
@@ -19,24 +19,24 @@ import gunbc.fleet_bootstrap_principal_session {
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
   SshTarget, portable_remote_words,
   FleetSshExecutionContext, fleet_ssh_execution_context_of,
 }
-import gunbc.fleet_ssh_credential_verify {
+import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
   fleet_ssh_credential_verification_refusal_reason,
 }
-import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
+import gunbc.fleet.fleet_multi_principal_probe { probe_agent_credential_verification }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, spark_managed_grant_sudoers_command }
 import gunbc.spark.managed_grant_reconcile {
   SparkManagedGrantStanding, GrantHeld, GrantNotHeld, GrantStandingUnobserved,
   spark_managed_grant_standing_from_outcome,
 }
 import gunbc.spark.grant_privileged_operation { spark_grant_probe_outcome }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyPlan, SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,
@@ -46,7 +46,7 @@ import gunbc.spark.pair_serving_apply {
   spark_pair_leg_outcome_of, spark_pair_leg_reported_exit, spark_pair_leg_script_stdout,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_all_unit_renders, glm_native_ranked_hosts,

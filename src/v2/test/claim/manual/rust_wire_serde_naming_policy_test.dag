@@ -1,4 +1,4 @@
-module v2.test.manual.rust_wire_serde_naming_policy_test
+module v2.test.claim.manual.rust_wire_serde_naming_policy_test
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly

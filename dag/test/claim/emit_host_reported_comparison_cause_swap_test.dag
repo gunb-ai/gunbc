@@ -20,7 +20,7 @@ module test.claim.emit_host_reported_comparison_cause_swap_test
 // class-B migration, landing separately. What is established here is that the two causes are now
 // SEPARATELY COMPUTABLE, which is the precondition that was missing.
 
-import tools.emit_host_transport {
+import gunbc.instruments.emit_host_transport {
   emit_host_reported_octets_match,
   emit_host_smoke_holds
 }

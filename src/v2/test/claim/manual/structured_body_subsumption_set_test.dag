@@ -1,4 +1,4 @@
-module v2.test.manual.structured_body_subsumption_set
+module v2.test.claim.manual.structured_body_subsumption_set_test
 
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node {

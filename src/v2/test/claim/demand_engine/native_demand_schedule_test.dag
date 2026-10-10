@@ -1,4 +1,4 @@
-module v2.test.demand_engine.native_demand_schedule
+module v2.test.claim.demand_engine.native_demand_schedule_test
 
 import v2.std.algebra { length }
 import v2.std.demand_engine {

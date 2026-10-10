@@ -1,4 +1,4 @@
-module test.claim.fleet_intent_storage
+module test.claim.fleet.fleet_intent_storage_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

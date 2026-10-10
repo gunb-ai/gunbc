@@ -1,4 +1,4 @@
-module gunbc.machine_intake_host_capture_envelope
+module gunbc.machine_intake.host_capture_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -18,11 +18,11 @@ import std.measure {
 import std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
+import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
-// independently -- the parser as literals in gunbc.machine_intake_mtcollins1_boot_run, the emitter as
+// independently -- the parser as literals in gunbc.machine_intake.mtcollins1_boot_run, the emitter as
 // a program that was never committed at all -- so a renamed section or a changed separator would
 // have left a capture the verdict could not read, reported as a hardware refusal. Every token below
 // is consumed by a renderer AND by a parser; neither side authors a spelling of its own.
@@ -107,7 +107,7 @@ data host_capture_workload_chunk_dir: String = "/dev/shm/gunbc"
 // THE WORKLOAD SHAPE IS A PARAMETER, NOT A ROW OF THIS MODULE. This module owns the grammar of the
 // workload stage; HOW MUCH memory a given boot exercises is a fact about the machine state being
 // qualified, and it is chosen by the authority that already selects that state's expectation
-// (gunbc.machine_intake_mtcollins1_boot_milestone). A single hard-coded footprint here wrote four
+// (gunbc.machine_intake.mtcollins1_boot_milestone). A single hard-coded footprint here wrote four
 // 16 GiB chunks into a one-socket boot with 16 GiB installed (run 35808203121: `dd: error writing
 // /dev/shm/gunbc/chunk0: No space left on device`).
 //
@@ -156,7 +156,7 @@ fn host_capture_workload_total_bytes(workload: HostCaptureWorkloadShape) -> Byte
 // THE PREFLIGHT REFUSES; IT NEVER SHRINKS (DESIGN §5). The guard is SHELL because it must run on the
 // host before any write -- once dd has run the tmpfs is already full -- and it is covered by
 // host_capture_program_shell_emit_dissolution_trigger below with the rest of the program. It is not
-// the authority for the fit: gunbc.machine_intake_mtcollins1_boot_run workload_footprint_judge
+// the authority for the fit: gunbc.machine_intake.mtcollins1_boot_run workload_footprint_judge
 // re-derives it over ByteSize from the capacities printed here and refuses whenever they do not hold
 // the declared total, whatever this guard printed. Before a single byte is written the stage
 // prints the declared total and the two capacities that bound it -- MemAvailable and the free space
@@ -250,7 +250,7 @@ fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMar
 // THE CAPTURE PROGRAM IS SHELL TEXT BUILT BY CONCATENATION, and that carrier half is declared rather
 // than left implicit: what it runs and how it is framed are modeled (the roster and the envelope
 // tokens above, read by the parser too), but the program that sequences them is a string.
-data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake_host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt, and the workload stage's capacity preflight: df/MemAvailable reads, the fits/refused guard that must run on the host before any dd, and the chunk writes and hash passes), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN [C6 posix-sh-target] (v2.workflow.bash_emit serializes the bash grammar only; there are no POSIX sh / dash dialect rows, and this program runs under /bin/sh on the census image) lands and a stage roster renders as v2.extdeps.languages.bash_build nodes through that dialect -- every construct used here, including exec > console 2>&1, is otherwise already expressible, at which point these renderers become one emitted program derived from the same roster rows.")
+data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake.host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt, and the workload stage's capacity preflight: df/MemAvailable reads, the fits/refused guard that must run on the host before any dd, and the chunk writes and hash passes), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN [C6 posix-sh-target] (v2.workflow.bash_emit serializes the bash grammar only; there are no POSIX sh / dash dialect rows, and this program runs under /bin/sh on the census image) lands and a stage roster renders as v2.extdeps.languages.bash_build nodes through that dialect -- every construct used here, including exec > console 2>&1, is otherwise already expressible, at which point these renderers become one emitted program derived from the same roster rows.")
 
 fn host_capture_stage_program(stage: HostCaptureStage) -> String {
   let name = stage.name as String
@@ -531,8 +531,8 @@ fn host_capture_terminated_lines(capture: String) -> List<String> {
 // THE LINE TERMINATOR IS THE CHANNEL'S, AND IT IS FRAMED BY THE CHANNEL'S AUTHORITY. The boot
 // capture is an SOL transcript: a serial tty whose output discipline maps every NL the program
 // prints to CR NL, so the bytes read "----EXIT nproc: 0\r\n". Lines are framed by
-// gunbc.machine_intake_terminal_transcript terminal_transcript_lines -- the same function
-// gunbc.machine_intake_pre_os_observer frames the same channel with. Every reader in this module
+// gunbc.machine_intake.terminal_transcript terminal_transcript_lines -- the same function
+// gunbc.machine_intake.pre_os_observer frames the same channel with. Every reader in this module
 // consumes lines produced there (section bodies are joins of framed lines), so no reader ever sees
 // the CR and none carries its own trim: a per-reader trim would be a second authority for the
 // channel's framing, and the reader it missed would refuse a clean section (mtcollins1_boot run

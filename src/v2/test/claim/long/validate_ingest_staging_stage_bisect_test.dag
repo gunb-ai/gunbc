@@ -1,4 +1,4 @@
-module v2.test.long.validate_ingest_staging_stage_bisect
+module v2.test.claim.long.validate_ingest_staging_stage_bisect_test
 
 import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -46,8 +46,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
-data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
-data bisect_add_module_truncated_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
+data bisect_add_module_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data bisect_add_module_truncated_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
 fn bisect_through_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model()
   tokenize(
@@ -241,8 +241,8 @@ test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
     && ((bisect_parse_module_add_parse_accepts() == false) == false)
 }
 
-data bisect_unbound_reference_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: Lossless }
-data bisect_unbound_reference_no_binding_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add() -> Int { zzz }", fidelity: Lossless }
+data bisect_unbound_reference_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: Lossless }
+data bisect_unbound_reference_no_binding_source: Medium<String> = Medium { carried: "module v2.test.fixture.program_assembly.pa_ingest_peer\n\nfn add() -> Int { zzz }", fidelity: Lossless }
 // Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme
 // binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is
 // grammar-carried and therefore canonical, so resolve accepted ANY body reference - including

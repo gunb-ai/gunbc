@@ -1,4 +1,4 @@
-module gunbc.fleet_physical_inventory
+module gunbc.fleet.fleet_physical_inventory
 
 import std.types { NonEmptyStr, String, List, Int }
 import std.measure { RackUnit, rack_unit, measure_add }
@@ -28,9 +28,9 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
+import gunbc.fleet.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
 import product.inventory {
@@ -49,7 +49,7 @@ import product.inventory {
   inventory_lot_allocator_initial,
   mint_inventory_lot_identity,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   srv1_memory_population,
   srv2_memory_population,
   srv3_memory_population,
@@ -92,7 +92,7 @@ data operator_switch_shelf_units: RackUnit = rack_unit(1)
 
 // THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
 // They declared "srv1" through "srv6" as HostIdentity, byte-for-byte the values
-// gunbc.fleet_host_identity already declares as operator_host_srv1 through operator_host_srv6.
+// gunbc.fleet.fleet_host_identity already declares as operator_host_srv1 through operator_host_srv6.
 // Two names, one concept, one set of values -- the section 3 nicknaming violation, and the reason
 // nothing ever caught it is that the two agreed EXACTLY. Any check anyone thought to write would
 // have compared them and passed. A fork of VALUES rather than of behaviour is invisible to
@@ -238,7 +238,7 @@ data srv1_measured_wireless_note: String = "srv1 fleet controller measured Wirel
 // modeled as a separate PhysicalAsset row". It is now exactly that: two cooler assets citing the
 // vendor catalog declaration, bound to their hosts through HostContainsComponent — the same
 // containment arm every other host component uses. product.cooling_qualification consumes these
-// rows to reach a catalog verdict, and gunbc.bmc_fan_converge requires that verdict before any
+// rows to reach a catalog verdict, and gunbc.bmc.bmc_fan_converge requires that verdict before any
 // host may claim a thermally qualified fan configuration.
 
 data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
@@ -419,7 +419,7 @@ data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
   dimm_reconcile_verdict(expectation: srv4_dimm_expectation, observation: srv4_dimm_observation),
 ]
 
-// THE PROCESSOR HALF IS UNOBSERVED ON EVERY HOST. gunbc.fleet_intent's
+// THE PROCESSOR HALF IS UNOBSERVED ON EVERY HOST. gunbc.fleet.fleet_intent's
 // fleet_intent_cpu already cites altra_max_m12830_catalog as the fleet
 // processor, and every other in-tree consumer agrees with it, but that is a
 // modeled intent rather than a per-host reading of what is in the socket. The
@@ -432,7 +432,7 @@ data fleet_processor_expectations: List<HostProcessorExpectation> = [
   HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
 ]
 
-data fleet_processor_observation_absent_cause: NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
+data fleet_processor_observation_absent_cause: NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
 
 data fleet_processor_observations: List<HostProcessorObservation> = [
   ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },

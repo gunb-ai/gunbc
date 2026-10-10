@@ -1,8 +1,8 @@
-module gunbc.hetzner_cloud_guest
+module gunbc.fleet.hetzner_cloud_guest
 
 import std.decl_ref { DeclarationRef }
 import extdeps.cloud.hetzner { HetznerCloudServerCatalogRow, hetzner_cloud_nested_virtualization_available, hetzner_cloud_metadata_instance_id_url }
-import gunbc.fleet_host_backing { GuestEntitlement }
+import gunbc.fleet.fleet_host_backing { GuestEntitlement }
 
 // Hetzner Cloud's adapter onto the generic guest entitlement. Every figure is read off the cited
 // catalog row it is handed, and nested virtualization off the cited product fact, so the entitlement

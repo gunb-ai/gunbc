@@ -1,9 +1,9 @@
-module test.claim.roadmap_publish_witness_test
+module test.claim.roadmap.roadmap_publish_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List, HttpStatus }
 import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
 import extdeps.github.github { GitHubUser, UserType, User }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RemoteBranch,
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,

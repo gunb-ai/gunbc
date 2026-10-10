@@ -27,7 +27,7 @@ This plan came out of one planning conversation that started from the memory aud
 
 ### 2.1 The memory question
 
-The memory composition audit of the self-host step (`GUNBC_MEMORY_COMPOSITION=1`, the seed's readout; receipt at `7792ce6f013` in the instrument's PR) separated the seed's resident set into whole-tree structures (the token pool, the resolve index and name census, the parsed heads of every module) and a closure-scale working set (closure ASTs, resolution and typecheck environments, emission buffers) that the instrument does not release and so does not measure. The step is judged against the fleet slot's memory envelope (`gunbc.runner_slot_desired`), and the whole-tree share grows with the repository. gunb-ai/gunbc#13674 (release the token pool before resolution) lowers the seed's resident set but leaves the whole-tree index in place.
+The memory composition audit of the self-host step (`GUNBC_MEMORY_COMPOSITION=1`, the seed's readout; receipt at `7792ce6f013` in the instrument's PR) separated the seed's resident set into whole-tree structures (the token pool, the resolve index and name census, the parsed heads of every module) and a closure-scale working set (closure ASTs, resolution and typecheck environments, emission buffers) that the instrument does not release and so does not measure. The step is judged against the fleet slot's memory envelope (`gunbc.runner.runner_slot_desired`), and the whole-tree share grows with the repository. gunb-ai/gunbc#13674 (release the token pool before resolution) lowers the seed's resident set but leaves the whole-tree index in place.
 
 The question was why the step that emits only the v2 compiler reads the whole repository at all.
 
@@ -157,7 +157,7 @@ Changing v1's resolver; the July design's markdown and Rust write-back; non-`.da
 - Record R1–R11 and the decision table in a typed carrier (`gunbc.source_layout_rulings`; DESIGN §4c); add the `gunbc.plan_governance` row (governed by `v2-compiler-architecture`, role `CompilerStageAuthority`) and regenerate banners.
 - Amend DESIGN §3 through `gunbc.design_document`: the storage rule is §3's single authority for the name⇄path mapping. Acyclicity stays the import graph's only structural law; the rule fixes where a file is stored, not which way imports point.
 - Add the generic layout and exact-read types, and `gunbc.source_layout` declaring the **target** layout.
-- Build the deterministic move/rename generator (extending `tools.source_reference_repoint`, run from the pre-sweep tree). It refuses the whole sweep on any collision — two sources to one target, a target that exists and is not moving away, case-fold equal targets, or a new module name already declared — and on any occurrence it cannot classify. It distinguishes typed module references from real file paths; a `.dag`-looking string is not automatically a module reference.
+- Build the deterministic move/rename generator (extending `gunbc.instruments.source_reference_repoint`, run from the pre-sweep tree). It refuses the whole sweep on any collision — two sources to one target, a target that exists and is not moving away, case-fold equal targets, or a new module name already declared — and on any occurrence it cannot classify. It distinguishes typed module references from real file paths; a `.dag`-looking string is not automatically a module reference.
 - Measure the R11 population: the closures of every compile route being cut over.
 
 ### C1 — Generated repository sweep
@@ -198,7 +198,7 @@ One generated commit, re-runnable after merging main:
 
 - **Conflicts.** The sweep touches the repository broadly; conflicts are resolved by re-running C1 after merging main, not by hand.
 - **Strings outside the generator's classification** refuse the sweep rather than going stale.
-- **Seed edits** (path constants, the seed mirrors) are admitted under `gunbc.v1_maintenance_standing` `v1_seed_standing`; nothing else in v1 changes.
+- **Seed edits** (path constants, the seed mirrors) are admitted under `gunbc.v1.v1_maintenance_standing` `v1_seed_standing`; nothing else in v1 changes.
 - **Outside consumers.** gunbc-private imports gunbc modules through its composed root and breaks on the renames; census it and land its repoint alongside. Census other external references (roadmap rows, saved links).
 - **R11's size** may be most of the tree; that is the ruling, not a reason to narrow it.
 
@@ -217,7 +217,7 @@ One generated commit, re-runnable after merging main:
 
 For each file with `module M` at path `P`, let `R = path(M)`:
 
-- **A — same folder as R:** rename the file to R. This includes the numbered stage files (`src/v2/compiler/00_compile.dag` → `src/v2/compiler/compile.dag`).
+- **A — same folder as R:** rename the file to R. This includes the numbered stage files (`src/v2/compiler/compile.dag` → `src/v2/compiler/compile.dag`).
 - **B — R's folder lies below P's:** move the file down to R.
 - **C — P's folder lies below R's:** the folder carries structure, so rename the module to include it (R6): `gunbc.x` at `dag/gunbc/host/x.dag` → `gunbc.host.x`. Exception: `x/x.dag`, where the folder only repeats the module's own name → move the file up to R.
 - **D — different branch:** decided by group. The largest groups and the proposed outcome:
@@ -226,14 +226,14 @@ For each file with `module M` at path `P`, let `R = path(M)`:
 | --- | --- |
 | `v2.test.manual` @ `src/v2/test/claim/manual/` | rename to `v2.test.claim.manual.*` |
 | `tools` @ `dag/gunbc/instruments/` | rename to `gunbc.instruments.*` (R10) |
-| `v2.test.long` @ `src/v2/test/claim/long/` | rename to `v2.test.claim.long.*` |
-| `v2.test.execution` @ `src/v2/test/claim/execution/` | rename to `v2.test.claim.execution.*` |
-| `v2.test.emit` @ `src/v2/test/claim/emit/` | rename to `v2.test.claim.emit.*` |
-| `product.printed_chassis` @ `dag/gunbc/product/printed_chassis/` | move to `dag/product/printed_chassis/` |
-| `product` @ `dag/gunbc/product/` | move to `dag/product/` |
+| `v2.test.claim.long` @ `src/v2/test/claim/long/` | rename to `v2.test.claim.long.*` |
+| `v2.test.claim.execution` @ `src/v2/test/claim/execution/` | rename to `v2.test.claim.execution.*` |
+| `v2.test.claim.emit` @ `src/v2/test/claim/emit/` | rename to `v2.test.claim.emit.*` |
+| `product.printed_chassis` @ `dag/product/printed_chassis/` | move to `dag/product/printed_chassis/` |
+| `product` @ `dag/product/` | move to `dag/product/` |
 | `test.claim` @ `src/v2/test/claim/parse/` | rename to `v2.test.claim.parse.*` |
 
-Smaller groups follow the same reading; for example `gunbc.test.*` and `dag.test.*` modules under `dag/test/` are renamed to `test.*`, joining their `test.claim.*` siblings. The C0 generator computes the complete table; collisions refuse the whole sweep (C0). Anything not covered by A–C or by a confirmed group outcome stops the sweep for a decision; it is never guessed.
+Smaller groups follow the same reading; for example `test.*` and `test.*` modules under `dag/test/` are renamed to `test.*`, joining their `test.claim.*` siblings. The C0 generator computes the complete table; collisions refuse the whole sweep (C0). Anything not covered by A–C or by a confirmed group outcome stops the sweep for a decision; it is never guessed.
 
 ## Dissolution trigger (DESIGN §6)
 

@@ -1,12 +1,12 @@
-module test.claim.roadmap_closing_contract_execution_witness_test
+module test.claim.roadmap.roadmap_closing_contract_execution_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.shell
-import gunbc.roadmap_validation_oracle { ValidationOracleRef }
-import gunbc.roadmap_closing_contract_authoring {
+import gunbc.roadmap.roadmap_validation_oracle { ValidationOracleRef }
+import gunbc.roadmap.roadmap_closing_contract_authoring {
   ClosingContractWitnessRun,
   ClosingContractWitnessPassed,
   ClosingContractWitnessResolveRefused,
@@ -21,14 +21,14 @@ import gunbc.roadmap_closing_contract_authoring {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE BEHAVIORAL DISCRIMINATION CONTROLS for the execution arm of the closing-contract authoring
-// oracle (gunbc.roadmap_closing_contract_authoring, module-head note owns the production failure
+// oracle (gunbc.roadmap.roadmap_closing_contract_authoring, module-head note owns the production failure
 // that motivated it: a witness that could not resolve 21 invented imports passed a textual oracle
 // on a live dispatch). Every claim below executes a REAL child claim-run of a PLANTED witness --
 // the fixtures are written into a mktemp source root under target/ at run time, never committed,
 // because a committed witness with unresolvable imports would fail every whole-root resolve it was
 // swept into (compile-clean, discovery batching), while a mktemp root reaches nothing but the one
 // child run this file spawns. WET: every fn here drives shell.Mktemp, Filesystem.Write,
-// gunbc.WitnessBin.Run and shell.Remove -- enrolled as a wet row in gunbc.ci_layer_roots beside the
+// gunbc.WitnessBin.Run and shell.Remove -- enrolled as a wet row in gunbc.ci.ci_layer_roots beside the
 // other exit-status witnesses; the hermetic envelope refuses these effects by construction and the
 // refusal is correct (a mocked Run would let the discrimination claims pass against a fabricated
 // exit status, which is precisely the defect they exist to detect).
@@ -57,7 +57,7 @@ test fn planted_failing_holds() -> Bool {
 data planted_unresolvable_fixture: String = "module test.planted.closing_contract_unresolvable_fixture
 
 import std.types { Bool }
-import gunbc.ci_gate { HostLoad, gate_verdict }
+import gunbc.ci.ci_gate { HostLoad, gate_verdict }
 
 test fn planted_unresolvable_holds() -> Bool {
   true

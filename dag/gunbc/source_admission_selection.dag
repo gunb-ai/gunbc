@@ -1,5 +1,5 @@
 module gunbc.source_admission_selection
-// Compile-clean's source-transition selection, independent of tools.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
+// Compile-clean's source-transition selection, independent of gunbc.instruments.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.algebra { FreeSemigroup }
@@ -23,7 +23,7 @@ import extdeps.git.object_store {
   GitSha1ObjectId,
   git_object_id_eq,
 }
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureTrigger,
   P2aStructuralCandidateProducer7515,
 }
@@ -129,7 +129,7 @@ type SourceTransitionRefusalCause
   | NotMergeTree
   | TransitionMechanismIdentityUnobservable
 
-// TWO INDEPENDENT SELECTIONS, joined only at the compile-clean verdict. SemanticEntrySelection (tools.dag_compile_clean_scope) walks the import-closure relation. SourceAdmissionSelection walks the source-transition relation: head active-source rows whose selected identity, path, or content digest differ from an exact base AnnotationCorpusAdmitted receipt, compared through the same primary-precedence view MultiEntryIndex uses (build_module_index_primary_precedence), never raw git paths. IncrementalSources is legitimate only when the base carries that receipt, both sides share a Computed mechanism identity, both manifests are ManifestObserved, and the evaluated tree is the one that would merge. EntireHeadCorpusAffected is the exact dependency result of a known mechanism-identity change, not an absorbing fallback. SourceTransitionRefused never selects files. B remains rejected: admission is not fused into index construction.
+// TWO INDEPENDENT SELECTIONS, joined only at the compile-clean verdict. SemanticEntrySelection (gunbc.instruments.dag_compile_clean_scope) walks the import-closure relation. SourceAdmissionSelection walks the source-transition relation: head active-source rows whose selected identity, path, or content digest differ from an exact base AnnotationCorpusAdmitted receipt, compared through the same primary-precedence view MultiEntryIndex uses (build_module_index_primary_precedence), never raw git paths. IncrementalSources is legitimate only when the base carries that receipt, both sides share a Computed mechanism identity, both manifests are ManifestObserved, and the evaluated tree is the one that would merge. EntireHeadCorpusAffected is the exact dependency result of a known mechanism-identity change, not an absorbing fallback. SourceTransitionRefused never selects files. B remains rejected: admission is not fused into index construction.
 // The live compile-clean MultiEntryIndex (witness_layer_roots: dag then src/v2) had 0 shadowed modules and 0 path collisions when this axis was specified, so the higher-precedence-delete-exposes-lower-precedence RED is a synthetic two-root fixture for an uninhabited law, not a specimen drawn from the corpus. The inverse control (deleting a shadowed loser is a no-op on the active map though git shows a delete) is the spurious-work direction.
 type SourceAdmissionSelection
   = IncrementalSources { changed: FreeSemigroup<ActiveSourceIdentity> }

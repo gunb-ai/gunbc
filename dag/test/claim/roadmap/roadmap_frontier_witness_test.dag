@@ -1,6 +1,6 @@
-module test.claim.roadmap_frontier_witness
+module test.claim.roadmap.roadmap_frontier_witness_test
 
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
   PrsMerged,
@@ -9,17 +9,17 @@ import gunbc.roadmap_model {
   AdmittedRoot,
 }
 import std.types { NonEmptyStr }
-import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
-import gunbc.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
+import gunbc.roadmap.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap.roadmap_spawner { spawn_frontier, next_spawnable }
+import gunbc.roadmap.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
 import gunbc.site.document { site_header }
-import gunbc.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
-import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges }
-import gunbc.roadmap_authority { authored_merged_prs }
+import gunbc.roadmap.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
+import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap.roadmap_spawner { doc_all_nodes, doc_all_edges }
+import gunbc.roadmap.roadmap_authority { authored_merged_prs }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_daily_page, fx_ready_task_ids }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

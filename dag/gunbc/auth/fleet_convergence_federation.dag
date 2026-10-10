@@ -6,7 +6,7 @@ import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_re
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_workflow_claim_pins }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
-import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
+import gunbc.gcp.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 
 // ── fleet-cloud-convergence IS REACHABLE FROM A FLEET-CONVERGE WORKFLOW_DISPATCH ON REVIEWED MAIN ──
 // The account holds secret access a pull request must never reach (the R2 write-token accessor among
@@ -24,7 +24,7 @@ import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 //
 // PINNED CONSUMERS (the jobs of fleet-converge.yml that authenticate as this account): `fleet-converge`
 // and `rlm-launch-deployment-receipt`, both workflow_dispatch. They reach it through
-// gunbc.fleet_host_key_enrollment probe_identity_secret_access_requirement, which names this provider.
+// gunbc.fleet.fleet_host_key_enrollment probe_identity_secret_access_requirement, which names this provider.
 // The service account and its secret grants already exist; this federation adds only the way in, so it
 // carries no secret grants and the converge creates nothing but the pool, provider and binding.
 data fleet_convergence_wif_pool_id: NonEmptyStr = "github-fleet-convergence"

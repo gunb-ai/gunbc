@@ -1,4 +1,4 @@
-module gunbc.fleet_ssh_locus
+module gunbc.fleet.fleet_ssh_locus
 // A FLEET SSH CREDENTIAL LOCUS. Renamed out of `gunbc.spark.serving_credential_locus` because nothing
 // in it was ever about Spark: it admits an attempt identity, finds the agent socket, materializes an
 // attempt-owned public selector, verifies it against `fleet_automation_ssh_key` -- a FLEET credential
@@ -20,7 +20,7 @@ module gunbc.fleet_ssh_locus
 
 import std.types { String, Bool, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
   FleetSshCredentialBinding,
@@ -31,8 +31,8 @@ import gunbc.fleet_known_hosts_anchor {
   known_hosts_materialization_receipt,
   fleet_ssh_credential_locus_label,
 }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
-import gunbc.fleet_ssh_credential_verify {
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
@@ -42,8 +42,8 @@ import gunbc.fleet_ssh_credential_verify {
   verify_fleet_ssh_agent_credential,
   fleet_ssh_credential_verification_refusal_reason,
 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import extdeps.shell
 import std.algebra { trim }
 

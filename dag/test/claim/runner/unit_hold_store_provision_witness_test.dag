@@ -1,11 +1,11 @@
-module test.claim.unit_hold_store_provision_witness
+module test.claim.runner.unit_hold_store_provision_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
-import gunbc.fleet_converge_plan { host_wide_grant_apply_lines }
+import gunbc.fleet.fleet_converge_plan { host_wide_grant_apply_lines }
 import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_converge_command }
-import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
-import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
-import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import product.host_identity { HostIdentity }
 
 // The full-host apply script is the route that executes: host_wide_grant_apply_lines renders every
@@ -18,7 +18,7 @@ fn apply_lines_mention_store(host: NonEmptyStr) -> Bool {
 // THE STORE ROOT IS CONVERGED ON EVERY STORE HOST, OWNED BY THAT HOST'S JOB USER: the apply script
 // carries exactly the converge command of the job-user-owned EnsureOwnedDirectory, so dropping the
 // row, retargeting the path or changing the owner reddens here. The store hosts are the ones the
-// managed rows' hold decisions name (gunbc.managed_host_unit_hold unit_hold_store_hosts); an empty
+// managed rows' hold decisions name (gunbc.host.managed_host_unit_hold unit_hold_store_hosts); an empty
 // set would make the claim vacuous, so it is required to be inhabited.
 fn store_root_is_converged_on(host: NonEmptyStr) -> Bool {
   match runner_host_spec_for(host: host as HostIdentity) {

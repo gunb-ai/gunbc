@@ -1,8 +1,8 @@
-module test.claim.floor_discovery_hand_rust_equivalence_witness
+module test.claim.floor.floor_discovery_hand_rust_equivalence_witness_test
 
 import std.dissolution { dissolution_description }
 
-import gunbc.floor_discovery_scaffold {
+import gunbc.floor.floor_discovery_scaffold {
   floor_discovery_hand_rust_scaffold,
   floor_discovery_dissolve_trigger,
   floor_discovery_producer_entry,
@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation
 // controls. Producer authority is exercised here; Rust bridge cross-checks
 // (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in
-// gunbc.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in
+// gunbc.floor.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in
 // cli_run.rs on the same fixture spellings.
 
 test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
@@ -123,7 +123,7 @@ fn fixture_live_tree_trailing_comment_content() -> String {
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
     entry: "dag/gunbc/floor/floor_discovery_scaffold.dag",
-    module: "gunbc.floor_discovery_scaffold",
+    module: "gunbc.floor.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture",
     initializer: OwnedBoolWitnessClaimInit {
       witness_entry: fixture_witness_entry,
@@ -135,7 +135,7 @@ fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
 fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
     entry: "dag/gunbc/floor/floor_discovery_scaffold.dag",
-    module: "gunbc.floor_discovery_scaffold",
+    module: "gunbc.floor.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture_empty",
     initializer: OwnedBoolWitnessClaimInit {
       witness_entry: "",

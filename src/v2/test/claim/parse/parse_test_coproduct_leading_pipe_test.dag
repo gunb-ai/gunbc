@@ -1,10 +1,10 @@
-module test.claim.parse_test_coproduct_leading_pipe
+module v2.test.claim.parse.parse_test_coproduct_leading_pipe_test
 
-import test.claim.parse_test_block_headed_operand_class { bc_parse_at }
+import v2.test.claim.parse.parse_test_block_headed_operand_class_test { bc_parse_at }
 import v2.compiler.body_lowering_fold { BodyLoweredTree }
 import v2.compiler.normalize { normalize_node }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
@@ -15,11 +15,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
 // lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
 // opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`) -- and their
-// lowering by normalize. Gated by the v2.test.parse census (gunbc#13372, phase 3), which moved this
-// module out of v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.
+// lowering by normalize. Gated by the v2.test.claim.parse census (gunbc#13372, phase 3), which moved this
+// module out of v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse_test.
 //
 // THE REAL ROUTE: leading_pipe_single_line_coproduct_parses_holds parses a WHOLE MODULE through the
-// prepared grammar (v2.test.parse.supplied_token_stream_support supplied_stream_parse), its stream
+// prepared grammar (v2.test.claim.parse.supplied_token_stream_support supplied_stream_parse), its stream
 // pinned to the real tokenizer by cps_fidelity_1; the refusing controls run the same route and pin
 // that each row admits only the seed's spelling.
 //
@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // per-claim eval-step budget at that grain; they are the population of gunbc.rung_drop
 // coproduct_fragment_normalize_new_witness_eval_step_cost. The four claims that lower a fn declaration
 // exceed the floor's CPU enrolment margin even at fragment grain, which no drop lowers; they stay ungated,
-// in their original form, in v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse, a stated frontier
+// in their original form, in v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse_test, a stated frontier
 // (gunbc.recurring_failure_mode fn_fragment_lowering_exceeds_the_enrolment_margin).
 
 // The declaration fragment, parsed at its production and lowered.
@@ -93,7 +93,7 @@ test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool 
 // enforces the per-claim ceiling on this branch and they breach it here. Supplying the token
 // stream keeps parse in the subject, which matters for the rows whose subject IS parsing, and
 // each specimen owes a cp_fidelity_* claim that the stream IS what the real tokenizer emits
-// (v2.test.parse.supplied_token_stream_support).
+// (v2.test.claim.parse.supplied_token_stream_support).
 fn cp_parses(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true

@@ -8,10 +8,10 @@ module gunbc.extdeps_scope_frontier
 // declared scope, admitted by execution), scope_machinery_exempt_paths (the citation vocabulary
 // itself plus synthetic mock corpora — the v2.lens.mandatory_tag region-1 exemption semantics), or
 // a row of the FROZEN legacy manifest (legacy_extdeps_scope_frontier_manifest_path). The live-cover
-// witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag — wet,
-// discovery-excluded per the gunbc.ci_layer_roots wet-integration posture with a documented local
+// witness (dag/test/claim/external_model_scope_live_cover_witness.dag — wet,
+// discovery-excluded per the gunbc.ci.ci_layer_roots wet-integration posture with a documented local
 // recipe; its pure decision fns live HERE and their hermetic RED controls stay discovery-enrolled
-// in dag/test/claim/external_model_scope_witness_test.dag) walks dag/extdeps live, parses the
+// in dag/test/claim/external_model_scope_witness.dag) walks dag/extdeps live, parses the
 // manifest, and refuses any file in none of the three. GRAIN HONESTY (codex review 46258 — the
 // enforcement grain must be stated, not implied): the per-PR MERGE-GATED half is the hermetic one —
 // every rostered path resolves on disk (roster_paths_resolve_on_disk over all three rosters via the
@@ -19,7 +19,7 @@ module gunbc.extdeps_scope_frontier
 // rosters stay disjoint, carrier files byte-declare the scope, and every pure decision fn keeps its
 // discriminating RED control. The disk-to-roster direction — a NEW dag/extdeps file enrolled in
 // none of the three — and the manifest freeze are ALSO per-PR merge-gated, at diff grain:
-// tools.extdeps_scope_placement_gate (a wet cheap-floor gate added per codex review 46281; its
+// gunbc.instruments.extdeps_scope_placement_gate (a wet cheap-floor gate added per codex review 46281; its
 // pattern source, the publication placement gate, was later deleted by operator ruling in #7591 —
 // this gate is independent of it) reads TWO bases, one per question: it refuses any dag/extdeps
 // .dag file added by THIS CHANGE (origin/main...HEAD) outside carriers-union-machinery
@@ -40,7 +40,7 @@ data legacy_manifest_shape_note: String = "The legacy population lives OUTSIDE t
 
 // The git anchor that makes the manifest's freeze mechanical: the origin/main commit whose tree
 // contains every manifest row. Any file first added AFTER this commit can never be a manifest row
-// (tools.extdeps_scope_placement_gate and the live-cover witness diff freeze..HEAD and refuse the
+// (gunbc.instruments.extdeps_scope_placement_gate and the live-cover witness diff freeze..HEAD and refuse the
 // intersection); it must adopt a scope or be genuinely machinery. This anchor never advances while
 // the manifest lives — advancing it would re-open the smuggling channel the freeze closes; it
 // deletes with the manifest on region promotion. ONE recorded re-anchor, in the gate-landing change
@@ -111,7 +111,7 @@ fn manifest_freeze_holds(manifest: List<String>, observation: DiffAddedObservati
 // after migration). Closed: the placement gate also observes
 // git.Core.DiffUnified0(origin/main...HEAD) and refuses any line the change itself ADDS to the
 // manifest (manifest_line_observation; the ONE verdict surface over the observation is
-// tools.extdeps_scope_placement_gate.manifest_remove_only_exit — no parallel Bool predicate exists,
+// gunbc.instruments.extdeps_scope_placement_gate.manifest_remove_only_exit — no parallel Bool predicate exists,
 // per codex review 46387). The one admitted arm is ManifestIntroduced — the file absent at the
 // merge base (the unified diff's /dev/null old-side), which is exactly the PR that first lands the
 // manifest and is unforgeable afterward: once the manifest exists on origin/main, a
@@ -189,12 +189,12 @@ fn manifest_line_observation(diff_text: String) -> ManifestLineObservation {
 
 // The per-PR merge-gated disk-to-roster direction (codex review 46281: the new-file invariant must
 // not wait for the wet lane). scope_placement_refused_paths is the pure decision kernel of
-// tools.extdeps_scope_placement_gate: given the paths a diff reports as ADDED, every such
+// gunbc.instruments.extdeps_scope_placement_gate: given the paths a diff reports as ADDED, every such
 // dag/extdeps .dag file must be a member of scope_carrier_paths or scope_machinery_exempt_paths —
 // the frozen manifest is not a landing state for a new file, so it is not consulted for admission
 // (only for the freeze check, manifest_freeze_holds). THE BASE THIS KERNEL IS FED IS THE MERGE BASE
 // origin/main...HEAD, not the freeze anchor (corrected in the gunbc#7644 follow-up; see
-// tools.extdeps_scope_placement_gate scope_placement_base_split_note for the full rationale and the
+// gunbc.instruments.extdeps_scope_placement_gate scope_placement_base_split_note for the full rationale and the
 // declared coverage narrowing). An earlier revision of this note claimed 'only paths the PR itself
 // adds are judged' while the gate fed the kernel the freeze-base population, so the sentence was
 // true of the INTENT and false of the MECHANISM — the exact defect that let one unrostered file
@@ -249,8 +249,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/standards/nic_attachment.dag",
   "dag/extdeps/standards/ocp_nic_2_0.dag",
   "dag/extdeps/standards/ocp_nic_3_0.dag",
-  "dag/extdeps/node/node.dag",
-  "dag/extdeps/typescript/typescript.dag",
+  "dag/extdeps/node.dag",
+  "dag/extdeps/typescript.dag",
   "dag/extdeps/llm/anthropic_messages_api.dag",
   "dag/extdeps/llm/anthropic_messages_api_contracts.dag",
   "dag/extdeps/bazel/bazel.dag",
@@ -335,7 +335,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",
-  "dag/extdeps/needrestart/needrestart.dag",
+  "dag/extdeps/needrestart.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
@@ -542,7 +542,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/colo/vastnet.dag",
   "dag/extdeps/cpu_attachment/lotes_azifa072.dag",
   "dag/extdeps/energy/nj_electricity.dag",
-  "dag/extdeps/ethtool/ethtool.dag",
+  "dag/extdeps/ethtool.dag",
   "dag/extdeps/github/commits.dag",
   "dag/extdeps/git/plumbing.dag",
   "dag/extdeps/languages/bash/invocation.dag",
@@ -620,7 +620,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/llm/openai_compat_sse.dag",
   "dag/extdeps/http/header_dump.dag",
   "dag/extdeps/auth/jwt.dag",
-  "dag/extdeps/uuid/uuid.dag",
+  "dag/extdeps/uuid.dag",
   "dag/extdeps/time/rfc3339.dag",
   "dag/extdeps/languages/json/emit.dag",
   "dag/extdeps/process/posix_exit.dag",
@@ -639,7 +639,7 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
   "dag/extdeps/cron/mock_corpus.dag",
-  "dag/extdeps/diagnostic_mock_corpus.dag",
+  "dag/extdeps/diagnostic/mock_corpus.dag",
   "dag/extdeps/ebay/mock_corpus.dag",
   "dag/extdeps/filesystem/mock_corpus.dag",
   "dag/extdeps/github/mock_corpus.dag",
@@ -647,7 +647,7 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/linux/mock_corpus.dag",
   "dag/extdeps/llm/mock_corpus.dag",
   "dag/extdeps/sec/mock_corpus.dag",
-  "dag/extdeps/shell_mock_corpus.dag",
+  "dag/extdeps/shell/mock_corpus.dag",
   "dag/extdeps/ssh/mock_corpus.dag",
   "dag/extdeps/tcgplayer/mock_corpus.dag",
   "dag/extdeps/test/mock_corpus.dag",

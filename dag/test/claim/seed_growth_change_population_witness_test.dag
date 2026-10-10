@@ -6,7 +6,7 @@ import gunbc.rust_item_host_observation {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { List }
-import tools.seed_growth_change_population {
+import gunbc.instruments.seed_growth_change_population {
   RosterCoverageVerdict, RosterCoverageComplete, RosterCoverageRefused,
   roster_coverage_verdict, coverage_refusal_reason
 }

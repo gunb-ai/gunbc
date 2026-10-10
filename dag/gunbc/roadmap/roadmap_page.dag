@@ -1,16 +1,16 @@
-module gunbc.roadmap_page
-import gunbc.roadmap_issue_query { IssueQueryRow, issue_query_row_wire, issue_query_separator }
+module gunbc.roadmap.roadmap_page
+import gunbc.roadmap.roadmap_issue_query { IssueQueryRow, issue_query_row_wire, issue_query_separator }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
+import gunbc.roadmap.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.site.status { status_badge, status_tone }
-import gunbc.roadmap_surface_style { workspace_issue_columns }
-import gunbc.roadmap_presentation { issue_status_sort_rank }
-import gunbc.roadmap_issue_status {
+import gunbc.roadmap.roadmap_surface_style { workspace_issue_columns }
+import gunbc.roadmap.roadmap_presentation { issue_status_sort_rank }
+import gunbc.roadmap.roadmap_issue_status {
   DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
   DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
 }
-import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
+import gunbc.roadmap.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
 import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
 
@@ -21,14 +21,14 @@ import gunbc.site.document { SiteStyles, site_document }
 
 import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigned_avatar }
-import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
-import gunbc.roadmap_issue_command { IssueFormContext }
+import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
-import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
@@ -42,7 +42,7 @@ import gunbc.principal_projection {
   fabric_workflow_principal, fabric_display_alias,
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
-import gunbc.roadmap_component { standing_chip_class }
+import gunbc.roadmap.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
@@ -52,18 +52,18 @@ import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
-import gunbc.roadmap_style { roadmap_styles, roadmap_css, round_fill_delay_var, round_fill_duration_var }
-import gunbc.fleet_capacity_panel { fleet_capacity_panel }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_style { roadmap_styles, roadmap_css, round_fill_delay_var, round_fill_duration_var }
+import gunbc.fleet.fleet_capacity_panel { fleet_capacity_panel }
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
   roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
-import gunbc.roadmap_status { line_ticket, AuthoredLine }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
-import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_status { line_ticket, AuthoredLine }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.fleet.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
+import gunbc.roadmap.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
+import gunbc.roadmap.roadmap_authority {
   roadmap_acceptance_event_history_load,
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
@@ -76,7 +76,7 @@ import gunbc.roadmap_authority {
   closing_contract_family_claim, ticket_headline_of,
 }
 
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, ReadinessGraph }
+import gunbc.roadmap.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, ReadinessGraph }
 import gunbc.roadmap.roadmap_hierarchy_view {
   IssueHierarchyView, issue_hierarchy_view, hierarchy_nodes,
   NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable,
@@ -85,17 +85,17 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
   node_status_is_closed, node_chain_refusal_text,
 }
-import gunbc.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
-import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
+import gunbc.roadmap.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
+import gunbc.roadmap.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
+import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
 import gunbc.site.controls { sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
-import gunbc.roadmap_belt { spawn_mode_label }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_belt { spawn_mode_label }
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
   launch_host_unobserved_static_render, launch_cause_label,
   launch_identity_instance_text, launch_identity_revision_hex,
 }
-import gunbc.roadmap_presentation {
+import gunbc.roadmap.roadmap_presentation {
   WorkRowView, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
@@ -129,7 +129,7 @@ import gunbc.roadmap_presentation {
   UnmetPrerequisitesAssessed, UnmetPrerequisitesNotAssessed, row_unmet_prerequisites,
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
 import gunbc.site.element.build_meter { failure_event_words }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
@@ -138,7 +138,7 @@ import gunbc.site.element.field_list {
   FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
   FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
 }
-import gunbc.roadmap_workflow_command { attempt_key_short_form }
+import gunbc.roadmap.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
   issue_results_sort_key_wire, issue_results_sort_numeric,
   IssueActionAssign, issue_action_wire,
@@ -150,11 +150,11 @@ import extdeps.google.issue_tracker {
   issue_results_column_kind_wire,
   avatar_initials_of, issue_avatar_standing_wire, AvatarStanding, AvatarAbsent,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
   workflow_segment_detail_bounded,
 }
-import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
+import gunbc.v1.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
 fn roadmap_page_max_depth() -> Int { 12 }
 
@@ -252,7 +252,7 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 
 // The header carries one link per SERVED page a human navigates between, so splitting the fleet
 // panels off the workspace does not make them unreachable. The link set is authored here rather
-// than derived from gunbc.roadmap_serve's route table on purpose and the reason is a layering one:
+// than derived from gunbc.roadmap.roadmap_serve's route table on purpose and the reason is a layering one:
 // that table is the transport's routing authority and includes assets, JSON reads and POST verbs
 // that are not navigation destinations, so deriving from it would need a second predicate saying
 // which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
@@ -261,7 +261,7 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
 // work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to
-// gunbc.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old
+// gunbc.roadmap.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old
 // renderer independently re-decided open/review/done/superseded beside the seam). The key set is
 // unchanged, so the altitude machinery and the styling grain consume the same four words.
 
@@ -270,7 +270,7 @@ fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
 }
 
 // The lead is the row's at-a-glance face: the seam's row_headline (the ticket's typed headline; for
-// legacy lines the named lead residue inside gunbc.roadmap_presentation). A row whose LEAD is
+// legacy lines the named lead residue inside gunbc.roadmap.roadmap_presentation). A row whose LEAD is
 // itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line
 // does not, so the reader pays the full text anyway. The bound is authoring residue, not a
 // structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over
@@ -433,14 +433,14 @@ fn view_supporting_facts(view: WorkRowView) -> List<Fragment> {
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 
 // The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or
-// review row as the PROJECTION of gunbc.roadmap_launch_admission for cause Operator (RLM-1): an
+// review row as the PROJECTION of gunbc.roadmap.roadmap_launch_admission for cause Operator (RLM-1): an
 // admitted row renders the operable button; a refused row renders the same button disabled,
 // carrying data-launch = the refusal's wire label and title = its reason -- the words POST
 // /dispatch would answer, because both read one decision. Done and superseded rows hide it. The
 // manual out-of-order dispatch the page used to preserve for blocked and unsized rows is gone with
 // the AvailableAsOverride arm: spawn_frontier.ready no longer governs one surface while the route
 // governs another. The button carries data-node = the node id. Its client behavior is a MODELED
-// TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
+// TsProgram (gunbc.roadmap.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
 // (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a
 // hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's
 // root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>'
@@ -526,7 +526,7 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
 // execution button renders here — but assigning TO THE FABRIC ENDPOINT is the execution entry
 // point now (owner: "the workflow should be figuring out for us which model to use"): the assign
 // route records the Claimed event and then drives the SAME launch admission the /dispatch route
-// answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
+// answers (see gunbc.roadmap.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
 // typed vocabulary when fabric cannot start.
 fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String = "", command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
   issue_assign_form_nodes(node_id: view.node_id, profiles: view.profiles, viewer: viewer, recents: recents, expected_revision: expected_revision, current_assignee: current_assignee, command_context: command_context)
@@ -908,7 +908,7 @@ data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass 
 // 2026-09-21): render_task_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no
 // RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact
 // they paint (bar fill, title, signal, count, second line, dispatch action, supporting facts,
-// disclosure body, inspection evidence) arrives already decided by gunbc.roadmap_presentation;
+// disclosure body, inspection evidence) arrives already decided by gunbc.roadmap.roadmap_presentation;
 // what remains here is serialization: markdown-inline expansion, class assembly, element nesting.
 // The tree structure (children, depth fuel) stays outside the row renderer because parent/child is
 // a graph fact about the PAGE, not a presentation fact about one row.
@@ -951,7 +951,7 @@ fn activity_evidence_row_node(row: ActivityEvidenceRow) -> Fragment {
 // strip under its own label — it never fills the bar and never implies a live worker), then raw
 // detail (round strip, throughput, evidence rows, bounded refusal payload), then the ticket body
 // and supporting facts, then dependency links. Two realizations, ONE deciding module
-// (gunbc.roadmap_presentation's task_bar_view_of); the parity obligation holds on the bar's
+// (gunbc.roadmap.roadmap_presentation's task_bar_view_of); the parity obligation holds on the bar's
 // decided slots (signal/count/subline ride the wire as bar_signal/bar_count/summary).
 
 fn taskbar_stage_fill(obligations: List<WorkflowSegment>, live: Bool) -> List<Fragment> {
@@ -1229,7 +1229,7 @@ fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
 
 // THE STANDING CHIP: the node's live standing from the event log, beside the lifecycle chip. Absent
 // when the log has nothing for this node; the standing's own key is the class so each state reads
-// through the palette's neutral roles (gunbc.roadmap_style standing_chip_rules).
+// through the palette's neutral roles (gunbc.roadmap.roadmap_style standing_chip_rules).
 fn standing_chip_nodes(view: WorkRowView) -> List<Fragment> {
   match view.standing {
     Absent => []
@@ -1280,7 +1280,7 @@ fn node_work_row_view(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>,
 }
 
 // THE TREE'S GRAPH, indexed once per rendered group: the row graph every row's readiness reads
-// (gunbc.roadmap_presentation row_graph) and each node's primary children (gunbc.roadmap_model
+// (gunbc.roadmap.roadmap_presentation row_graph) and each node's primary children (gunbc.roadmap.roadmap_model
 // roadmap_primary_children_index). Asked per row of the raw lists, the children filter alone made
 // the tree nodes x nodes.
 type PageTree {
@@ -1342,7 +1342,7 @@ fn element_markup(e: SectionElement, merged: List<Int>, launch: LaunchRowContext
   }
 }
 
-// Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away.
+// Page altitude from the attention law (composition slice 3; gunbc.roadmap.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away.
 fn altitude_section(cls: String, title_nodes: List<Fragment>, statuses: List<String>, body: List<Fragment>) -> Fragment {
   if count(statuses) == 0 {
     el_class("section", cls, concat(title_nodes, body))
@@ -1758,7 +1758,7 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
 // Work tab; the visual contract's detail anatomy — header id + title, a field panel, tabs —
 // docs/plans/buganizer-visual-contract.md). ONE page function over the decided row view and link
 // panel: serialize-only, the same contract render_task_row keeps. The Status field renders the
-// four-fact present-tense explanation decided by gunbc.roadmap_presentation (the four facts stay
+// four-fact present-tense explanation decided by gunbc.roadmap.roadmap_presentation (the four facts stay
 // separate on the row; the sentence is derived, never stored); the head line reads the decided
 // bar view beside it. The Work tab also receives the node's attempt history (the caller's order,
 // newest first) and lists every attempt — execution history lives here exclusively, never stacked
@@ -1820,7 +1820,7 @@ fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment
 }
 
 // AN ATTEMPT'S FAILURE EVENTS, each its own row anchored by its workflow obligation identity
-// (gunbc.roadmap_issue_location issue_work_event_anchor), so the compact work summary's link opens
+// (gunbc.roadmap.roadmap_issue_location issue_work_event_anchor), so the compact work summary's link opens
 // the Work tab at the event it names. The rows are the producer's list
 // (gunbc.roadmap.roadmap_build_meter attempt_failure_events), worded by the element's one wording.
 fn issue_attempt_failure_nodes(events: List<FailureEvent>) -> List<Fragment> {
@@ -2184,9 +2184,9 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, profi
   ])
 }
 
-// THE NEW-ISSUE COMPOSER: the form behind POST /issues (gunbc.roadmap_serve
+// THE NEW-ISSUE COMPOSER: the form behind POST /issues (gunbc.roadmap.roadmap_serve
 // serve_issue_create_response_over). Every field is required -- a task is created READY-SHAPED or
-// refused -- and the field names are the ones gunbc.roadmap_task_form reads. Without a session the
+// refused -- and the field names are the ones gunbc.roadmap.roadmap_task_form reads. Without a session the
 // submit is disabled, exactly as the comment composer is.
 fn issue_create_field_node(name: String, label: String, long: Bool) -> Fragment {
   el_class("label", "issue-create-field", [
@@ -2612,7 +2612,7 @@ fn issue_rail_count_rows(label: String, n: Int) -> List<FieldRow> {
 }
 
 // WHAT IS PREVENTING THIS ISSUE FROM PROCEEDING, as far as its prerequisites go. The count is the
-// row's own unmet prerequisites (gunbc.roadmap_presentation row_unmet_prerequisites, the
+// row's own unmet prerequisites (gunbc.roadmap.roadmap_presentation row_unmet_prerequisites, the
 // readiness predicate's blockers), never the size of the Blocked by relation: that relation lists
 // every declared prerequisite, satisfied or not, on the Dependencies tab. Where the row's
 // position was decided without assessing readiness the rail says only how many prerequisites are
@@ -2814,7 +2814,7 @@ fn live_work_family_decls() -> List<WorkFamilyDecl> {
 }
 
 // The family members are read off the document being rendered: a closing-contract task is the one row
-// whose parent is Closes { target } (gunbc.roadmap_authority closing_contract_task_for mints it, and
+// whose parent is Closes { target } (gunbc.roadmap.roadmap_authority closing_contract_task_for mints it, and
 // nothing else declares that parent), and its subject is the gated row's own headline. The projected
 // authority carries exactly the tasks closing_contract_task_pairs_for_accepted derives, in the same
 // order, beside the rows they gate -- so the served page sees the same members, and a page rendered for
@@ -2864,7 +2864,7 @@ fn observed_row_view(rn: RoadmapNode, obs: RowObservations) -> WorkRowView {
 // A RELATED NODE'S STATUS is its own row's status when the plan carries a row for it. The row is
 // looked up among the PLAN rows (the graph's own index), because readiness -- and so the status --
 // is defined over that graph. A declared node the plan omits has no row, but its lifecycle is still
-// established (gunbc.roadmap_presentation omitted_node_lifecycle): an accepted or superseded one is
+// established (gunbc.roadmap.roadmap_presentation omitted_node_lifecycle): an accepted or superseded one is
 // shown with the same status a closed plan row gets and counts as closed. Only an omitted node
 // whose lifecycle is not closed is unavailable -- nothing decides what an open node outside the
 // plan should be shown as -- and the reason says why the plan omits it.
@@ -3080,7 +3080,7 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
 }
 
 // Which renders can offer a launch (RLM-1). The SERVED pages receive the host standing the serve
-// handler observed through gunbc.roadmap_belt_actuate belt_launch_host_standing, so their rows
+// handler observed through gunbc.roadmap.roadmap_belt_actuate belt_launch_host_standing, so their rows
 // project the same admission the route answers. Every other entry -- the static site, the
 // surface-observation probe, a page rendered for a document fixture -- passes
 // launch_host_unobserved_static_render, and every row refuses at the instance gate: there is no
@@ -3162,7 +3162,7 @@ fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, 
 
 }
 
-// The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it. profiles is the read-once auth profile roster the tick passes down (gunbc.roadmap_served_observation); every non-belt entry passes the empty roster.
+// The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it. profiles is the read-once auth profile roster the tick passes down (gunbc.roadmap.roadmap_served_observation); every non-belt entry passes the empty roster.
 fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,
@@ -3182,10 +3182,10 @@ fn roadmap_daily_workspace_page_for_projection_observed(
       memberships: memberships)
 }
 
-// THE STALE-AWARE ENTRY: the tick's observing authority (gunbc.roadmap_served_observation) reads
+// THE STALE-AWARE ENTRY: the tick's observing authority (gunbc.roadmap.roadmap_served_observation) reads
 // each attempt's recorded launch identity and compares its revision against the deployed-tree head
 // the launch host standing observed, passing the stale node ids decided by
-// gunbc.roadmap_presentation.stale_attempt_nodes. A stale attempt keeps every typed fact — its
+// gunbc.roadmap.roadmap_presentation.stale_attempt_nodes. A stale attempt keeps every typed fact — its
 // activity arm, its evidence, its disclosure — and renders them dimmed (the node-attempt-stale
 // class): evidence for a superseded question stays reachable and stops shouting. Every other entry
 // supplies the empty set, so a static or plan-fixture render dims nothing it cannot compare.

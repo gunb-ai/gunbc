@@ -1,9 +1,9 @@
-module test.claim.fleet_capacity_panel_witness_test
+module test.claim.fleet.fleet_capacity_panel_witness_test
 
 import std.types { Bool, String, List }
 import extdeps.languages.html { EmitOk, EmitRejected, HtmlEmitResult, try_serialize_html_source }
-import gunbc.roadmap_page { roadmap_fleet_page }
-import gunbc.fleet_capacity_panel {
+import gunbc.roadmap.roadmap_page { roadmap_fleet_page }
+import gunbc.fleet.fleet_capacity_panel {
   fleet_capacity_summary_line,
   fleet_committed_slot_total,
   fleet_committed_slot_total_ignoring_withdrawals,
@@ -11,12 +11,12 @@ import gunbc.fleet_capacity_panel {
   fleet_capacity_withdrawn_line_over,
   FleetCommittedSlotTotal,
 }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THE SUBJECT FOLLOWED THE PANEL TO /fleet.
 //

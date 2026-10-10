@@ -1,6 +1,6 @@
-module test.claim.roadmap_dispatch_actuator
+module test.claim.roadmap.roadmap_dispatch_actuator_witness_test
 
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
@@ -14,7 +14,7 @@ import std.types { GitRef }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.measure { byte_size_count }
 import std.disposition { Scaffold, Terminal }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
   PrsMerged,
@@ -22,11 +22,11 @@ import gunbc.roadmap_model {
   SectionElement, Group, SectionGroup,
   NodeParent, AdmittedRoot, RoadmapNodeIdentity,
 }
-import gunbc.roadmap_status { DerivableLine, Unsigned, TicketLine, TicketFields }
+import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned, TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_lineage { lineage_walk, lineage_is_rooted }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -59,7 +59,7 @@ import extdeps.llm.cli {
   ReasoningMedium,
   reasoning_effort_label,
 }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_audit_unit_command,
   dispatch_supervisor_unit_command,
   dispatch_attempt_audit_events_path_for_instance,
@@ -181,7 +181,7 @@ import gunbc.dispatch_pipe_pane_emit {
   PipeEmitRefused,
   dispatch_event_pipe_emission,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,

@@ -20,12 +20,12 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, Files
 import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
-import gunbc.srv1_dashboard_bind { srv1_dashboard_listen_host }
+import gunbc.roadmap.srv1_dashboard_bind { srv1_dashboard_listen_host }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
-import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly,
   admit_cas_attempt_for_derived_payload,
@@ -130,7 +130,7 @@ fn read_approval_keyring() -> ApprovalKeyringRead {
 // redeems them, authority is the one this store brokers for: operator consent to a fleet
 // convergence step. A capability minted for another authority fails here on audience or
 // authority before any decision is read.
-data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap_serve"
+data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap.roadmap_serve"
 data approval_capability_audience: NonEmptyStr = "gunbc.auth.approval_broker"
 data approval_capability_authority: NonEmptyStr = "gunbc.auth.scoped_authorization"
 
@@ -142,7 +142,7 @@ data approval_capability_expectation: CapabilityExpectation = CapabilityExpectat
 }
 
 // THE OPERATOR IS ONE TAILNET LOGIN, and it is the row the fleet already owns:
-// gunbc.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
+// gunbc.fleet.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
 // live tailnet (`tailscale status` on srv1, 2026-09-16) reports the same login. A second literal
 // here would be a second authority on who a tap may be (review 66990).
 data approval_operator_login: NonEmptyStr = fleet_operator_email
@@ -161,7 +161,7 @@ type IdentityTrustStanding
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
 // (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
-// gunbc.srv1_dashboard_bind srv1_dashboard_listen_host (srv1_live_dashboard_instance.listen_host) is the one fact
+// gunbc.roadmap.srv1_dashboard_bind srv1_dashboard_listen_host (srv1_live_dashboard_instance.listen_host) is the one fact
 // live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
@@ -656,7 +656,7 @@ fn redeem_trusted_over_store(
 // match; otherwise the decision is somebody else's and the grant is refused. A pending or absent
 // slot yields the request's own AuthorizationPending, so a workflow polling the store sees the
 // same value it would have declared by hand, and the srv3 source-declared grant
-// (gunbc.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
+// (gunbc.srv3.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
 // dissolves into this fold.
 type GrantDerivation<Subject>
   = GrantDerived { authorization: ScopedAuthorization<Subject> }

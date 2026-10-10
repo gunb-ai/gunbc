@@ -42,7 +42,7 @@ import gunbc.network_boot_delivery {
   site_pxe_edge_standing
 }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_architecture_code }
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
 // THE SITE DISCOVERY EDGE for the first onboarding segment, UEFI ARM64 only. It consumes
 // gunbc.network_boot_delivery site_pxe_edge_standing and adds the three things that function
@@ -55,7 +55,7 @@ import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_h
 // DISCOVERY STANDING IS AN OBSERVED OFFER, NOT A CONFIGURED DAEMON. A mode (native DHCP,
 // ProxyDHCP, relay) answers only when an offer carrying the boot filename was seen reaching
 // the client on this segment. An offer with no boot filename is the mtcollins1 segment today
-// (gunbc.machine_intake_mtcollins1_netboot_client_observation: address, gateway, DNS, no option
+// (gunbc.machine_intake.mtcollins1_netboot_client_observation: address, gateway, DNS, no option
 // 67), and it establishes nothing.
 type SiteDhcpOfferObservation
   = BootOfferObserved { mode: SiteBootstrapDiscovery, offered_filename: NonEmptyStr, observation: DeclarationRef, observed_at: EpochMs }
@@ -299,7 +299,7 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
   )
 }
 
-// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
+// CONSUMER (§3c): gunbc.fleet.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
 // daemon's config once its gate opens (see the frontier row below for what that waits on). It renders the SAME roster admission gates on: its known-machine
 // tags are the roster's MACs and its boot line is the roster's derived transport. tftp_directory is
 // the serving host's filesystem path for dnsmasq's tftp-root, a host fact beside the roster's TFTP
@@ -324,7 +324,7 @@ data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text:
 data site_uefi_arm64_pxe_edge_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
-    reason: "gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this config, but its converge gate is closed by construction (site_pxe_edge_chainloader_pin is SitePxeEdgeChainloaderUnpinned), so no dispatch has written it to srv4",
+    reason: "gunbc.fleet.site_pxe_edge_converge site_pxe_edge_config_file renders this config, but its converge gate is closed by construction (site_pxe_edge_chainloader_pin is SitePxeEdgeChainloaderUnpinned), so no dispatch has written it to srv4",
     dissolution: unbound_dissolution(
       description: "dissolves when the iPXE arm64 chainloader pin is grounded (a digested build pinned as SitePxeEdgeChainloaderPinned and present in the TFTP root) and a site_pxe_edge_converge dispatch writes this rendering to srv4 and reads it back; the converge code existing does not fire this"
     )

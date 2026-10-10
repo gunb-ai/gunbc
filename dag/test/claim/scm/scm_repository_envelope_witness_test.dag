@@ -1,4 +1,4 @@
-module test.claim.scm_repository_envelope_witness
+module test.claim.scm.scm_repository_envelope_witness_test
 
 // The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
 // an empty initialized repository with NO root, several commits over ONE shared node population, and
@@ -1755,7 +1755,7 @@ test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() ->
 // THE OTHER HALF OF A PAIR, AND THE SPLIT IS THE CLAIM.
 //
 // Its sibling is an_unreachable_authored_source_is_not_part_of_the_semantic_closure in
-// test.claim.scm_commit_closure_witness. Both are written against a store shaped the same way -- one
+// test.claim.scm.scm_commit_closure_witness_test. Both are written against a store shaped the same way -- one
 // program root, one authored source that no commit reaches -- and they must answer OPPOSITELY:
 //
 //   semantic closure encode   the source is ABSENT, because nothing reaches it from a root
@@ -2314,7 +2314,7 @@ fn scm_env_partial_snapshot_repository() -> RepositoryEnvelope {
 
 // THE MISSING OBJECT IS AN AUTHORED SOURCE, NOT A SEMANTIC NODE, and that is the point rather than a
 // detail. This specimen is the encoder half of one story whose other half lives in
-// test.claim.scm_checkout_verb_witness: the same snapshot, decoded from THIS document, refusing for
+// test.claim.scm.scm_checkout_verb_witness_test: the same snapshot, decoded from THIS document, refusing for
 // THIS source, and recovering when THIS text is supplied. An absent semantic node would have been a
 // legitimate absent requirement and the wrong subject -- the two halves would have described
 // different missing objects and the chain would not have joined.

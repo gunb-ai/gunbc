@@ -1,4 +1,4 @@
-module v2.test.compile_door_ledger_ownership
+module v2.test.claim.compile_door_ledger_ownership_test
 
 import v2.workflow.compile_door_cause_ownership {
   cause_ownership_lookup, known_frontier_causes, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned
@@ -14,7 +14,7 @@ import v2.std.algebra { any, filter, length }
 // UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays
 // honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed =
 // false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram
-// witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION.
+// witness in v2.test.claim.long.compile_door_ledger_test, which pins the counts; this pins the ATTRIBUTION.
 
 fn lane_ok_this_lane(cause: Symbol) -> Bool {
   match cause_ownership_lookup(cause: cause) {

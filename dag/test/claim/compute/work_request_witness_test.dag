@@ -26,7 +26,7 @@ import gunbc.compute.attempt_lifecycle {
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom }
 import std.cache_identity { compute_work_artifact_kind }
 import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }

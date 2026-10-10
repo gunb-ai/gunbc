@@ -1,7 +1,7 @@
-module gunbc.fabric_storage_address
+module gunbc.fabric.fabric_storage_address
 
 import std.types { String, NonEmptyStr }
-import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }
 
 data fabric_storage_route_prefix: String = "/fabric-storage"
 

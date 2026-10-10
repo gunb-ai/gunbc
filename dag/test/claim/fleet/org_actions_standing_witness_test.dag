@@ -1,4 +1,4 @@
-module test.claim.org_actions_standing_witness
+module test.claim.fleet.org_actions_standing_witness_test
 
 import std.types { Bool, Int, NonEmptyStr, List }
 import gunbc.fleet.org_actions_standing {

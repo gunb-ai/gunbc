@@ -1,4 +1,4 @@
-module v2.test.long.infer_transform_binary_infix_witness
+module v2.test.claim.long.infer_transform_binary_infix_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers {

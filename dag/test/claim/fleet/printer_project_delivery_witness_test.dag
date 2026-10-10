@@ -20,7 +20,7 @@ import gunbc.fleet.printer_project_delivery {
   PayloadIdentificationRefusedResidueRemains, identification_refusal,
 }
 import extdeps.tools.curl { curl_ftps_upload_command }
-import gunbc.fleet_asset_identity { printer_01 }
+import gunbc.fleet.fleet_asset_identity { printer_01 }
 import gunbc.auth.netrc_binding {
   NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
   netrc_write_refusal,

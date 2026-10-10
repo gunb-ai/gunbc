@@ -1,4 +1,4 @@
-module v2.test.tokenize.lex_mode_stack
+module v2.test.claim.tokenize.lex_mode_stack_test
 
 import v2.std.text { String }
 import v2.std.algebra { fold_list }

@@ -14,11 +14,11 @@ data rest_response_coproduct_decoded_type_blind: RecurringFailureMode = Recurrin
 
     "The mechanism was the v1 interpreter's response mapping (`v1_interpreter.rs` `map_response_to_value_json`), which decoded every JSON value through the type-blind `json_to_value` although the operation node carried the fully resolved output type. The declared `std.serialization` `CoproductWireContract` rows that name each coproduct's wire spelling were read by the Rust emitter only, and never by the interpreter.",
 
-    "HARM: section 5 silent wrongness at the language layer. THE SPECIMEN, measured live: `gunbc.fleet_revision_acceptance` `accept_required_ci_merge_group_runs` matched `run.status` with `Completed => ... _ => false`. On the merge-queue landing a8d4fdeb its merge_group run 34853888826 concluded success, and fleet-desired run 34859333101 refused it as RequiredCiMergeGroupRunUnconcluded. The route refused every real landing, which is why the push-on-main required run could not be cut once the merge queue was on.",
+    "HARM: section 5 silent wrongness at the language layer. THE SPECIMEN, measured live: `gunbc.fleet.fleet_revision_acceptance` `accept_required_ci_merge_group_runs` matched `run.status` with `Completed => ... _ => false`. On the merge-queue landing a8d4fdeb its merge_group run 34853888826 concluded success, and fleet-desired run 34859333101 refused it as RequiredCiMergeGroupRunUnconcluded. The route refused every real landing, which is why the push-on-main required run could not be cut once the merge queue was on.",
 
     "A local probe, calling `github.WorkflowRuns.ListForRef` for that revision and matching the conclusion, returned `PatternMatchFailure \{ value: \"success\" \}`.",
 
-    "THE WITNESS THAT DID NOT SEE IT, stated because it is the lesson: every row of `test.claim.fleet_desired_merge_queue_admission_witness_test` handed the fold a CONSTRUCTED `WorkflowRun`, so all of them stayed green while the wet route refused every real landing. They discriminated on the fold and not on the path that mattered -- the decode between the wire and the fold.",
+    "THE WITNESS THAT DID NOT SEE IT, stated because it is the lesson: every row of `test.claim.fleet.fleet_desired_merge_queue_admission_witness_test` handed the fold a CONSTRUCTED `WorkflowRun`, so all of them stayed green while the wet route refused every real landing. They discriminated on the fold and not on the path that mattered -- the decode between the wire and the fold.",
 
     "THE REPAIR: the interpreter decodes a REST response by its declared output type (`decode_json_by_declared_type`). A nullary coproduct is spelled through the one declared authority: a `CoproductWireContract` row keyed by declaration identity, else the declaring module's `wire_contract` encoding, in the precedence the emitter applies, read with the emitter's own readers (`is_coproduct_wire_contract_row`, `coproduct_decl_ref_decl_name`, `coproduct_wire_contract_encoding`, `naming_policy_node`) and spelled by its `to_snake` / `to_screaming_snake`.",
 
@@ -44,10 +44,10 @@ data rest_response_coproduct_decoded_type_blind: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.fleet_revision_acceptance", decl_name: "accept_required_ci_merge_group_runs", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_revision_acceptance", decl_name: "accept_required_ci_merge_group_runs", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.github.workflow_runs_contracts", decl_name: "workflow_run_status_wire_contract", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "an_unknown_spelling_refuses_at_the_located_field", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.fleet_desired_merge_queue_admission_witness_test", decl_name: "the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet.fleet_desired_merge_queue_admission_witness_test", decl_name: "the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision", field: WholeDeclaration },
   ],
 }

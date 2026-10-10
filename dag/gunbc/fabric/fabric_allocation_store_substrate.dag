@@ -1,8 +1,8 @@
-module gunbc.fabric_allocation_store_substrate
+module gunbc.fabric.fabric_allocation_store_substrate
 
 import std.types { String, Bool, NonEmptyStr }
-import gunbc.fabric_control_plane { fabric_control_plane_store_root }
-import gunbc.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
+import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.posix.path_ownership { posix_owner_spec_equal }
 import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence }
@@ -11,7 +11,7 @@ import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence }
 // reservation. The CAS realization explicitly refuses a missing root and never removes one.
 //
 // OWNER DERIVATION, bounded to the writer population that exists today. The only live non-test
-// reservation caller is tools.fabric_control_plane_live_probe, whose instrument requires EUID 0;
+// reservation caller is gunbc.instruments.fabric_control_plane_live_probe, whose instrument requires EUID 0;
 // no persistent executor exists yet. Root ownership therefore describes the present production
 // writer rather than guessing the future executor principal. Re-derive this standing when a
 // non-root production reservation caller is modeled (expected at FCI-3). EnsureOwnedDirectory is
@@ -47,7 +47,7 @@ fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
     namespace_owner: CellSubstrateRootOwned,
     namespace_mode: "0700" as NonEmptyStr,
     writer_standing: AllocationStoreRootWriterOnly {
-      live_caller: "tools.fabric_control_plane_live_probe under EUID 0" as NonEmptyStr,
+      live_caller: "gunbc.instruments.fabric_control_plane_live_probe under EUID 0" as NonEmptyStr,
       rederive_trigger: "a non-root production reservation caller is modeled" as NonEmptyStr,
     },
   }

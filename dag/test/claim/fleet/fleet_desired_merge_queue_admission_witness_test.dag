@@ -1,4 +1,4 @@
-module test.claim.fleet_desired_merge_queue_admission_witness_test
+module test.claim.fleet.fleet_desired_merge_queue_admission_witness_test
 
 import std.types { String, Bool, Int, List, CommitSha, NonEmptyStr }
 import std.contract_identity { ContractEpoch }
@@ -11,7 +11,7 @@ import extdeps.github.push_event { PushRefUpdate, push_ref_update_from_event_jso
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
-import gunbc.fleet_revision_acceptance {
+import gunbc.fleet.fleet_revision_acceptance {
   RequiredCiAdmission, RequiredCiAdmitted, RequiredCiRefused,
   RequiredCiMergeGroupRunAbsent, RequiredCiMergeGroupRunsTruncated, RequiredCiMergeGroupRunUnconcluded,
   RequiredCiMergeGroupRunsNotSuccess, RequiredCiContradictoryRuns, CiContractEpochMismatch,
@@ -19,11 +19,11 @@ import gunbc.fleet_revision_acceptance {
   DefaultBranchAdmitted, DefaultBranchRefused, BranchRefIsNotTheDefaultBranch, BranchRepositoryNotThisRepository,
   accept_required_ci_merge_group_runs, observe_default_branch_push, required_ci_refusal_message,
 }
-import gunbc.fleet_desired_admission {
+import gunbc.fleet.fleet_desired_admission {
   FleetDesiredRevisionAccepted, FleetDesiredRevisionRefused,
   fleet_desired_accepted_from_push,
 }
-import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.fleet.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
@@ -327,7 +327,7 @@ test fn a_push_payload_without_after_refuses_naming_the_member() -> Bool {
 
 // THE EMITTED TRIGGER AND ROUTING. The push route exists in the workflow only if the emission says
 // so, and it is now the ONLY route: the workflow_run trigger and its decide step were deleted with
-// the push-on-main required run (gunbc.witness_floor_workflow witness_floor_triggers), which is the
+// the push-on-main required run (gunbc.witness.witness_floor_workflow witness_floor_triggers), which is the
 // event that route keyed on. The two NOT-contains are the discriminating RED for that deletion --
 // restoring either the trigger or the entry reds this row -- and `actions: read` stays because the
 // push route reads the forge for the revision's merge_group runs.

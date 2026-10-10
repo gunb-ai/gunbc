@@ -9,7 +9,7 @@ import gunbc.auth.managed_host_boot_federation {
 }
 
 // THE PROVISIONER IS ITS OWN MODULE, NOT PART OF THE FEDERATION'S FACTS. The workflow emission
-// (gunbc.fleet_converge_workflow) reads the admitted federation's provider resource, service account
+// (gunbc.fleet.fleet_converge_workflow) reads the admitted federation's provider resource, service account
 // and environment; it has no business depending on the out-of-band provisioning protocol, whose
 // closure (gunbc.auth.heal_publisher_provision) would otherwise sit inside the workflow's closure.
 // It takes only an admitted gunbc.auth.managed_host_boot_federation ManagedHostBootFederation, so an

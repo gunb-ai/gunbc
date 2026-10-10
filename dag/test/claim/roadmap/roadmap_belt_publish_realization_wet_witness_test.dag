@@ -5,7 +5,7 @@ module test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test
 // the head's population as a map; a map has no file-versus-directory topology and no pathspec
 // parsing, so they cannot expose an ordering or quoting defect in the realization. This claim builds
 // a base tree in a throwaway git repository, commits it, runs the SAME realizer production runs
-// (gunbc.roadmap_belt_actuate belt_publish_realize) over the plan belt_publish_plan derives, stages
+// (gunbc.roadmap.roadmap_belt_actuate belt_publish_realize) over the plan belt_publish_plan derives, stages
 // the result, and requires the tracked path population and every file's bytes to equal the head's.
 // The base/head pair covers add, modify, delete, rename (delete + bind), a delete below a nested
 // directory, directory -> file, file -> directory, and a tracked file literally named `:(glob)src*`
@@ -20,8 +20,8 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, AuthoredSourceText, scm_object_identity, authored_source_object }
 import gunbc.scm.checkout { RecoveredSourceFile }
-import gunbc.roadmap_dispatch_actuator { host_exec_argv }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_publish_realize, belt_publish_plan, belt_publish_binds, belt_publish_deletes,
   belt_exec, belt_path_parent_dir, ExecOk, ExecFailed, ExecRefused,
   ScmCandidateCaptured, ScmCaptureRefused, ScmCapturePoisoned,

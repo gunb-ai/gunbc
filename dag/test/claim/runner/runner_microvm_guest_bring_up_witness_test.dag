@@ -1,27 +1,27 @@
 module test.claim.runner.runner_microvm_guest_bring_up_witness_test
 
-import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv2 }
-import gunbc.runner_microvm { gunbc_runner_guest_image }
-import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
+import gunbc.runner.runner_microvm_lifecycle {
   AttemptIdentity, GuestBringUpReading, GuestConsoleRead, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted,
   guest_bring_up_from_console, bring_up_phase_label,
   UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
 }
-import gunbc.runner_microvm_lifecycle_realize { attempt_console_binding_of, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted }
-import gunbc.runner_guest_image { guest_observation_line, GuestBooted, RunnerStarted, RunnerExited }
+import gunbc.runner.runner_microvm_lifecycle_realize { attempt_console_binding_of, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted }
+import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted, RunnerStarted, RunnerExited }
 import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CONSOLES BELOW ARE BUILT BY THE GUEST'S OWN EMITTERS, not typed out, so a change to the
-// guest's line format moves these claims with it (gunbc.runner_guest_image guest_observation_line, and
+// guest's line format moves these claims with it (gunbc.runner.runner_guest_image guest_observation_line, and
 // upstream's listener line for RunnerListening). The host-side prefix journalctl adds is prepended to
 // every line, as the real read carries it.
 fn journal(lines: List<String>) -> String {

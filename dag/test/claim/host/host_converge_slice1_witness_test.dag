@@ -1,16 +1,16 @@
-module test.claim.host_converge_slice1_witness
+module test.claim.host.host_converge_slice1_witness_test
 
 import std.types { Bool, NonEmptyStr, List, String }
-import gunbc.host_effect { LocalShell }
-import gunbc.runner_host_deploy { runner_index_seq }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.runner.runner_host_deploy { runner_index_seq }
 import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
-import gunbc.host_converge { ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_unit_live_read {
+import gunbc.host.host_converge { ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
 }
-import gunbc.fleet_show_effective_read {
+import gunbc.fleet.fleet_show_effective_read {
   runner_unit_live_read_row_from_stdout,
   runner_unit_memory_live_read_from_stdout,
   per_slot_memory_cap_verdict_from_unit_read,
@@ -26,7 +26,7 @@ import gunbc.systemctl_list_units {
   systemctl_list_units_active_services,
   systemctl_list_units_line_as_unit,
 }
-import gunbc.host_converge_slice1 {
+import gunbc.host.host_converge_slice1 {
   host_converge_slice1_probe_unit,
   host_converge_slice1_knob_name,
   host_converge_slice1_srv1_per_slot_memory_max_knob,
@@ -47,8 +47,8 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1UnitTasksConverged,
   HostConvergeSlice1TasksConverged,
 }
-import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
-import gunbc.runner_slot_allocation {
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
@@ -204,7 +204,7 @@ test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
 // witness_convergence_suppresses_memory_max_set_property_apply WAS HERE. It asserted a
 // `data ...: Bool = true` and nothing else, so it passed by reading its own subject's literal
 // while the converge apply arm stayed wired. Deleted with the flag; the hold is now the absence
-// of the arm (gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason).
+// of the arm (gunbc.host.host_effect_realize converge_in_process_apply_withdrawn_reason).
 
 // --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
 // repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
@@ -251,7 +251,7 @@ test fn witness_tasks_verdict_desired_count_converges_and_offbyone_drifts() -> B
 
 // THE VERDICT IS READ BY A MATCH OVER ITS OWN TYPE, NOT COMPARED TO A BARE `Absent`. `Absent` names
 // two constructors here -- the Optional arm this claim matches on one line up, and
-// gunbc.host_converge ConvergeVerdict's arm, which this module never imported -- and an `==` operand
+// gunbc.host.host_converge ConvergeVerdict's arm, which this module never imported -- and an `==` operand
 // carries no expected type to choose between them. Executed: the subject returns the verdict arm
 // for "" and the comparison was false, so the claim could not go green whatever the subject did.
 // A match on a ConvergeVerdict scrutinee is typed by the scrutinee, enumerates the other two arms,

@@ -4,8 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import gunbc.fleet_asset_identity { printer_01, printer_02 }
-import gunbc.fleet_printer_access {
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.fleet_printer_access {
   PrinterAccessCodeLocus,
   PrinterAccessCodeDesiredLocusFound,
   PrinterAccessCodeLocusUnknown,

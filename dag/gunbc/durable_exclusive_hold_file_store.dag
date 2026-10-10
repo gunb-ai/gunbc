@@ -16,7 +16,7 @@ module gunbc.durable_exclusive_hold_file_store
 // module and knows nothing of holders; it is consumed through its public mint
 // and write, the same way any other CAS consumer reaches it.
 //
-// THE BYTES ARE THE ONES gunbc.fabric_control_plane WROTE BEFORE THIS MODULE
+// THE BYTES ARE THE ONES gunbc.fabric.fabric_control_plane WROTE BEFORE THIS MODULE
 // EXISTED -- "held|" followed by the owner, "free|" followed by the release
 // reference -- because slots already on disk under /var/lib/gunbc/fabric were
 // written in that spelling and must decode unchanged. A compatibility witness
@@ -521,7 +521,7 @@ fn file_hold_recovery_assess_retained(
 
 fn file_hold_recovery_assess(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef) -> FileHoldRecoveryAssessment
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
   ]
 {
   file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepAllGenerations)

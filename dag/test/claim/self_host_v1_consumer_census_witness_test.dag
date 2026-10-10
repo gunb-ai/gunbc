@@ -9,7 +9,7 @@ import gunbc.rust_item_host_observation {
   RustFileChangeInput, RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused,
   observe_rust_references
 }
-import gunbc.v1_consumer_census {
+import gunbc.v1.v1_consumer_census {
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
@@ -27,9 +27,9 @@ import gunbc.v1_consumer_census {
   v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
-import tools.v1_consumer_discovery { v1_discovery_keys_at_name }
+import gunbc.instruments.v1_consumer_discovery { v1_discovery_keys_at_name }
 import std.decl_ref { declaration_ref_display_key }
-import gunbc.stage0_partition_package_graph { stage0_host_shell_package_name }
+import gunbc.stage0.stage0_partition_package_graph { stage0_host_shell_package_name }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
@@ -53,7 +53,7 @@ data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "000
 //
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
 //
-// It does NOT measure the repository. The live roster in gunbc.v1_consumer_census is a hand sweep
+// It does NOT measure the repository. The live roster in gunbc.v1.v1_consumer_census is a hand sweep
 // over seven per-medium producers, and no assertion here would move if a new v1 consumer were
 // authored tomorrow. Saying that first is the point: a green witness beside a census is exactly the
 // artifact a reader mistakes for 'the census is verified'.
@@ -465,10 +465,10 @@ test fn discovery_projects_the_module_path_from_the_declaring_root() -> Bool {
       rel_path: "src/v2/workflow/rust_crate_partition.dag"
     ) == "v2.workflow.rust_crate_partition"
   && v1cd_module_path_from(
-      qualified_name: "gunbc.witness_floor_workflow.build_lane_run_step",
+      qualified_name: "gunbc.witness.witness_floor_workflow.build_lane_run_step",
       name: "build_lane_run_step",
       rel_path: "dag/gunbc/witness/witness_floor_workflow.dag"
-    ) == "gunbc.witness_floor_workflow"
+    ) == "gunbc.witness.witness_floor_workflow"
   && v1cd_module_path_from(
       qualified_name: "workflow.rust_crate_partition.stage0_partition_crate_rows",
       name: "stage0_partition_crate_rows",
@@ -532,7 +532,7 @@ test fn discovery_fold_executes_over_a_real_declaration_node() -> Bool {
 // because they cannot see what it was for. Asking the fold for that declaration by name is the
 // cheapest possible statement of it, and the positive control is on the same table: the signatures
 // are non-empty, so this cannot pass by the table having quietly become empty.
-data signature_table_name: String = "gunbc.v1_consumer_census.v1_literal_signatures"
+data signature_table_name: String = "gunbc.v1.v1_consumer_census.v1_literal_signatures"
 
 test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
   count(v1_literal_signatures()) > 0

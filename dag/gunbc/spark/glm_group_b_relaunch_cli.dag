@@ -27,7 +27,7 @@ import extdeps.nvidia.nccl {
 }
 import extdeps.vllm.log_lines { VllmNumberReading, VllmNumberRead, VllmNumberNotThisLineClass, VllmNumberUnreadable }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_openssh_trust_policy_of, FleetOpenSshTrustPolicy,
@@ -82,7 +82,7 @@ import gunbc.spark.serving_relaunch_transaction {
 // extdeps.docker.container_inspect, extdeps.nvidia.nccl and extdeps.vllm.log_lines was fed by a
 // supplied value; this is the executing route that reads all three off a live rank.
 //
-// NEITHER IS REGISTERED AS A CI JOB, AND THAT IS DELIBERATE. gunbc.witness_floor_workflow's job
+// NEITHER IS REGISTERED AS A CI JOB, AND THAT IS DELIBERATE. gunbc.witness.witness_floor_workflow's job
 // roster is closed to growth without operator sign-off, and a route that SSHes into four serving
 // hosts is not a thing to run on every pull request. Both are invoked by hand:
 //

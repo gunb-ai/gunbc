@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // reason is measuring another wall, so the class is asserted, not merely a nonzero exit.
 //
 // dag/test/probe/ is under the "/test/" whole-tree strict-resolve exclusion
-// (gunbc.ci_layer_roots whole_tree_strict_resolve_exclusion_substrings), so the floor's own
+// (gunbc.ci.ci_layer_roots whole_tree_strict_resolve_exclusion_substrings), so the floor's own
 // resolve never sees these modules as members of the accepted corpus; they reach the compiler
 // only through this witness, which is the boundary DESIGN 4b names for a compiler's regression
 // probes.
@@ -117,7 +117,7 @@ test fn a_bare_string_cannot_be_walked_out_of_the_boundary_and_a_value_cannot_be
 // halves are enrolled: the literal form is the refusing control that shows the wall is reachable
 // one term away, and the zero at the FilePath form is the tripwire that flips when the exemption
 // closes.
-data durable_write_literal_control_source: String = "module probe_durable_write_literal\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.auth.access_token_source { AccessTokenSource }\nimport gunbc.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }\nfn write_the_literal(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {\n  commit_object_to_origin(permit: \"dag/test/fixture/fabric_m0_origin_readback/other_object.txt\", key: \"probe/never\" as NonEmptyStr, token_source: token_source)\n}\n"
+data durable_write_literal_control_source: String = "module probe_durable_write_literal\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.auth.access_token_source { AccessTokenSource }\nimport gunbc.fabric.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }\nfn write_the_literal(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {\n  commit_object_to_origin(permit: \"dag/test/fixture/fabric_m0_origin_readback/other_object.txt\", key: \"probe/never\" as NonEmptyStr, token_source: token_source)\n}\n"
 
 test fn the_durable_write_refuses_a_bare_string_literal_where_the_permit_is_declared() -> Bool {
   blocking_count_for_class_and_subject(c: census_of(source: durable_write_literal_control_source), wanted: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'permit'") >= 1

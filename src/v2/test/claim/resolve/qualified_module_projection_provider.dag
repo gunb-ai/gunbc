@@ -1,4 +1,4 @@
-module v2.test.resolve.qualified_module_projection_provider
+module v2.test.claim.resolve.qualified_module_projection_provider
 
 type ProviderType = String
 

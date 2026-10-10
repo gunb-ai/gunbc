@@ -6,7 +6,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
 // OPERATOR-RULED (2026-10-10): every one of the eight procured DGX Sparks is sold, Group B (srv9-srv12)
 // included. The scoped cut removed srv9-srv12 from everything that can reach real hardware: the
-// operator host roster, the host-key enrolment roster, the endpoint list of gunbc.fleet_intent_network, the
+// operator host roster, the host-key enrolment roster, the endpoint list of gunbc.fleet.fleet_intent_network, the
 // router bindings and observed reservations of gunbc.spark.dgx_procurement (so no reserved identity
 // remains), the wireless-link desired rows, and the administrator credential roster that
 // spark_converge_target_selection resolves against. gunbc.spark.dgx_procurement dgx_spark_disposed_units

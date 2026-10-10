@@ -1,4 +1,4 @@
-module gunbc.test.claim.normalize_retention_contract_probe_test
+module test.claim.normalize_retention_contract_probe_test
 
 import std.types { List }
 import v2.std.text { String }
@@ -6,7 +6,7 @@ import v2.std.node { Symbol }
 import v2.std.algebra { fold_list }
 import std.content_hash { compare_content_hash, ContentHashEqual }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, module_unavailable_diagnostic }
-import gunbc.tools.frontier_ingestion_probe {
+import gunbc.instruments.frontier_ingestion_probe {
   FrontendStage,
   MemberObservation,
   LexRefused,
@@ -44,7 +44,7 @@ import gunbc.tools.frontier_ingestion_probe {
 // property of the specimen rather than of the frontier. The per-member live population is a
 // revision-scoped OBSERVATION recorded in
 // docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md and reproducible from
-// gunbc.tools.frontier_ingestion_probe, deliberately NOT a test module for exactly this reason.
+// gunbc.instruments.frontier_ingestion_probe, deliberately NOT a test module for exactly this reason.
 // Every classifier and roster symbol is imported from that one authority rather than restated, so
 // the thing under test and the thing used for measurement cannot drift apart.
 

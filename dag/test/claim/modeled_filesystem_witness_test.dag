@@ -1,6 +1,6 @@
 module test.claim.modeled_filesystem_witness_test
 
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
@@ -25,7 +25,7 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, FileHoldAcquired, FileHoldOccupied,
 }
-import gunbc.managed_host_unit_hold { boot_run_owner }
+import gunbc.host.managed_host_unit_hold { boot_run_owner }
 import gunbc.filesystem_model {
   ModeledFilesystem, ModeledFile, filesystem_bindings, filesystem_operation,
 }

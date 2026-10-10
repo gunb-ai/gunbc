@@ -89,10 +89,10 @@ test fn the_region_is_exactly_the_two_endpoint_projections() -> Bool {
   let region = endpoint_authority_cut_region()
   list_length(items: region) == 2
     && fold(region, init: false, f: fn(acc, r) {
-         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"))
+         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"))
        })
     && fold(region, init: false, f: fn(acc, r) {
-         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "spark_endpoint_for_binding"))
+         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "spark_endpoint_for_binding"))
        })
 }
 
@@ -116,10 +116,10 @@ fn evidence_named(rows: List<EvidenceDisposition>, name: String) -> Bool {
 test fn all_four_evidence_declarations_are_dispositioned() -> Bool {
   let rows = endpoint_authority_cut_evidence()
   list_length(items: rows) == 4
-    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names")
-    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint")
-    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes")
-    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty")
+    && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness_test spark_probe_targets_are_modeled_addresses_not_names")
+    && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness_test undecided_spark_slot_projects_no_endpoint")
+    && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness_test probe_endpoint_agrees_with_the_projection_it_consumes")
+    && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness_test spark_endpoint_or_empty")
 }
 
 // The real registry, not a synthetic one: one exact cut and one remeasurement obligation, coherent.
@@ -181,22 +181,22 @@ test fn the_evidence_partition_is_pinned_by_variant_and_by_name() -> Bool {
     && count_evidence(rows: rows, p: is_retire_evidence) == 2
     && evidence_named_with(
          rows: rows,
-         name: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names",
+         name: "test.claim.host.host_reach_identity_probe_witness_test spark_probe_targets_are_modeled_addresses_not_names",
          p: is_replace_evidence,
        )
     && evidence_named_with(
          rows: rows,
-         name: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint",
+         name: "test.claim.host.host_reach_identity_probe_witness_test undecided_spark_slot_projects_no_endpoint",
          p: is_replace_evidence,
        )
     && evidence_named_with(
          rows: rows,
-         name: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty",
+         name: "test.claim.host.host_reach_identity_probe_witness_test spark_endpoint_or_empty",
          p: is_retire_evidence,
        )
     && evidence_named_with(
          rows: rows,
-         name: "test.claim.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes",
+         name: "test.claim.host.host_reach_identity_probe_witness_test probe_endpoint_agrees_with_the_projection_it_consumes",
          p: is_retire_evidence,
        )
 }

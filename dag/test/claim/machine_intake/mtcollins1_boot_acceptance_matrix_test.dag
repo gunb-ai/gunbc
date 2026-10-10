@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
 import std.algebra { list_snoc_item }
@@ -20,7 +20,7 @@ import gunbc.process_environment_model { ModeledVariable }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
-import gunbc.machine_intake_mtcollins1_boot_dry_realization {
+import gunbc.machine_intake.mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
   mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
   worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
@@ -29,30 +29,30 @@ import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
   DispatchWorkerKilled,
 }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
 }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
-import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
-import gunbc.runner_browser_toolchain {
+import gunbc.runner.runner_browser_toolchain {
   RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
   BrowserToolchainReady, BrowserToolchainUnresolved,
   BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission,
   TreeAdmission, TreeAdmitted, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
-import gunbc.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12423, operator ruling 2026-09-27). Every case runs THE
-// REAL ENTRY -- gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_on_srv1_resolving_toolchain, which the
+// REAL ENTRY -- gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_on_srv1_resolving_toolchain, which the
 // wet entry mtcollins1_boot_wet_on_srv1 is a single call into, unchanged -- over
-// a dry realization of its whole effect demand (gunbc.machine_intake_mtcollins1_boot_dry_realization):
+// a dry realization of its whole effect demand (gunbc.machine_intake.mtcollins1_boot_dry_realization):
 // the one BMC model, its virtual-media subsystem, the worker's filesystem, processes, environment and
 // clocks, the SSH agent and srv2. Nothing in the orchestrator is replaced. Each case asserts the ROUTE
 // the dispatcher logged -- which effects, in what order, under which hold -- and the typed outcome.
@@ -702,7 +702,7 @@ test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() ->
 }
 
 // ─── TIME ─────────────────────────────────────────────────────────────────────────────────────────
-// The media readiness wait is bounded by the WALL clock (gunbc.machine_intake_megarac_media_attach
+// The media readiness wait is bounded by the WALL clock (gunbc.machine_intake.megarac_media_attach
 // megarac_await_readiness over extdeps.clock clock_unix_millis_read). In this scenario the attach's
 // readiness looks run from t=16 to t=35 of virtual time, so a jump at t=20 lands inside the wait.
 fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1BootWorld {
@@ -857,7 +857,7 @@ test fn a_foreign_presented_image_is_not_stopped() -> Bool {
 }
 
 // A NAMED RECEIPT THAT REFUSES READS NOTHING FROM THE CONTROLLER AND WRITES NOTHING: admission
-// (gunbc.host_boot_attempt_admission) runs under the unit hold and before the SDR/SEL baseline, so a
+// (gunbc.host.host_boot_attempt_admission) runs under the unit hold and before the SDR/SEL baseline, so a
 // receipt path outside artifacts/receipts/ refuses before any BMC read or power action.
 fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> MtCollins1BootWorld {
   MtCollins1BootWorld {

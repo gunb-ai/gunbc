@@ -8,10 +8,10 @@ import std.realization_measurement { time_measure_list_total }
 import v2.std.algebra { skip }
 import std.optional { Present, Absent }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
-import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
-import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
+import gunbc.machine_intake.oob_boot_handoff { PoweredOn, PowerCycled }
+import gunbc.machine_intake.ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
 import extdeps.ampere.smpro_register { smpro_bootstage_reg }
-import gunbc.managed_host_boot_phase_timing {
+import gunbc.host.managed_host_boot_phase_timing {
   BootPhaseTiming, BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
   PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
   PhaseHandoff,

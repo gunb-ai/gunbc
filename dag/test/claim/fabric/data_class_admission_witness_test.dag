@@ -20,7 +20,7 @@ import product.data_class {
   admit_data_effect, durable_origin_sink, log_channel_sink, build_output_category, personal_identity_category,
   classified_map, classified_category, redact, public_fabric_map, public_fabric_posture, data_handling_map,
 }
-import gunbc.fabric_m0_origin_commit {
+import gunbc.fabric.fabric_m0_origin_commit {
   job_output_bytes, fabric_durable_origin_route, origin_write_permit_standing,
   PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherOperation,
 }

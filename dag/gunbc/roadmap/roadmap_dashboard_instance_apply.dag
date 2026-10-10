@@ -1,4 +1,4 @@
-module gunbc.roadmap_dashboard_instance_apply
+module gunbc.roadmap.roadmap_dashboard_instance_apply
 
 import std.algebra { trim }
 
@@ -48,7 +48,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
   typed_argv_exec_over_ssh,
 }
-import gunbc.roadmap_dashboard_instance_observe {
+import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   dashboard_exec_ok,
   dashboard_exec_refused,
@@ -67,7 +67,7 @@ import gunbc.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
   DashboardLocalProvision,
@@ -118,7 +118,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly,
   DashboardActuating,
 }
-import gunbc.dashboard_provider_readiness { dashboard_provider_device_login_command }
+import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -157,7 +157,7 @@ import gunbc.owned_directory {
 
 // DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program
 // literals while the SAME programs are already realized once, with identity probes and Ensure
-// policies, in gunbc.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork.
+// policies, in gunbc.roadmap.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork.
 // It is marked rather than substituted because the substitution is not mechanical: the sites split
 // across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the
 // instance) and only the target host has an environment to resolve against, while the
@@ -556,7 +556,7 @@ fn dashboard_read_instance_health(
 
 // Health readback identifies the served document POSITIONALLY, never by scanning it: the body must
 // parse as one JSON value and START with the emitter's own schema+instance_id prefix
-// (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this
+// (gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this
 // replaces accepted the fragment from any nested value, so a foreign or stale server answering the
 // polled port — or a document merely mentioning the instance id — could report a converged apply
 // that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two
@@ -1322,7 +1322,7 @@ fn dashboard_source_preflight_decision(
   }
 }
 
-// THE SERVE BINARY LEFT THIS ROSTER BECAUSE IT STOPPED BEING A PRECONDITION. This list is what must ALREADY EXIST on the target for provisioning to be possible — git to clone, mkdir and mv and cp to place things, the provider executable to preflight auth. The serve binary used to qualify because instances borrowed production's, which was installed by a different mechanism and always present.\n\nMaking it instance-owned turned it into an OUTPUT of the very plan this preflight gates, and the two facts together are a deadlock: preflight refuses because the binary is absent, and the only thing that installs it is the apply preflight is refusing to admit. Observed exactly that way on srv2 — a refusal naming a path that nothing but the blocked apply could ever create.\n\nThe distinction the roster now holds is precondition versus deliverable, and it is worth stating because the deadlock is invisible while every path happens to pre-exist. dirname and chmod join for the same reason the binary leaves: the install step runs them, so they are genuinely required beforehand. Whether the binary landed is answered AFTER apply by the readback, which is where an output belongs.\n\nTMUX IS NOT A BASE PRECONDITION OF THIS APPLY. Dashboard service launch used to put `/usr/bin/tmux` on this list because this module started the serve process in a session. That path is deleted. The host still needs tmux for a different subject: dispatch-worker sessions in gunbc.roadmap_dispatch_actuator, admitted as TmuxSessionCapability / TmuxPipeShellCapability. Those executables join this roster only through dashboard_instance_dispatch_platform_executables, so a reader cannot mistake a leftover launch-path row for evidence that this apply still launches via tmux.
+// THE SERVE BINARY LEFT THIS ROSTER BECAUSE IT STOPPED BEING A PRECONDITION. This list is what must ALREADY EXIST on the target for provisioning to be possible — git to clone, mkdir and mv and cp to place things, the provider executable to preflight auth. The serve binary used to qualify because instances borrowed production's, which was installed by a different mechanism and always present.\n\nMaking it instance-owned turned it into an OUTPUT of the very plan this preflight gates, and the two facts together are a deadlock: preflight refuses because the binary is absent, and the only thing that installs it is the apply preflight is refusing to admit. Observed exactly that way on srv2 — a refusal naming a path that nothing but the blocked apply could ever create.\n\nThe distinction the roster now holds is precondition versus deliverable, and it is worth stating because the deadlock is invisible while every path happens to pre-exist. dirname and chmod join for the same reason the binary leaves: the install step runs them, so they are genuinely required beforehand. Whether the binary landed is answered AFTER apply by the readback, which is where an output belongs.\n\nTMUX IS NOT A BASE PRECONDITION OF THIS APPLY. Dashboard service launch used to put `/usr/bin/tmux` on this list because this module started the serve process in a session. That path is deleted. The host still needs tmux for a different subject: dispatch-worker sessions in gunbc.roadmap.roadmap_dispatch_actuator, admitted as TmuxSessionCapability / TmuxPipeShellCapability. Those executables join this roster only through dashboard_instance_dispatch_platform_executables, so a reader cannot mistake a leftover launch-path row for evidence that this apply still launches via tmux.
 fn dashboard_required_target_executables(
   instance: HostDashboardInstance,
 ) -> List<FilePath> {
@@ -2180,7 +2180,7 @@ fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
 // could not be created by anything, which is why git and path observations on that page refused
 // against a source root and an attempts root that no code was able to bring into existence. This
 // module used to observe a tmux socket as dashboard service identity on the same page; that
-// observation is gone with the launch path. Dispatch-worker tmux is gunbc.roadmap_dispatch_actuator,
+// observation is gone with the launch path. Dispatch-worker tmux is gunbc.roadmap.roadmap_dispatch_actuator,
 // not this apply.\n\nThat is the coverage-by-illusion shape one level up from a
 // witness: the mechanism was real, general, and complete, and it was simply never bound to the
 // second instance. An instance row declared without an actuation entry reads exactly like one that

@@ -1,4 +1,4 @@
-module test.claim.scm_render_witness
+module test.claim.scm.scm_render_witness_test
 
 // THE CLAIM THIS FILE EXISTS FOR: the SCM read verbs' PRESENTATION is a value with no destination in
 // it, and adding that value did not fork the presentation of status text.

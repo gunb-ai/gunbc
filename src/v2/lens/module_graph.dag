@@ -139,7 +139,7 @@ fn reference_derived_import_resolution_facts_live(
 }
 
 // THE UNION IS NATIVE NOW; the name is retained because gunbc.stage0_partition_closure and
-// gunbc.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
+// gunbc.repo.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
 // quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item
 // accumulator - taking it from an OOM at 396s to 173.6-177.6s. The remaining cost was never the host
 // fact production those notes blamed. Per term in one process on the live corpus:

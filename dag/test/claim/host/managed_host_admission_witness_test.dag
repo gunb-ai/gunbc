@@ -1,9 +1,9 @@
-module test.claim.managed_host_admission_witness
+module test.claim.host.managed_host_admission_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop {
   AuthoredProse,
@@ -14,7 +14,7 @@ import gunbc.rung_drop {
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
-import gunbc.managed_host {
+import gunbc.host.managed_host {
   AdmissionHoldDecided,
   AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
@@ -34,8 +34,8 @@ import gunbc.managed_host {
   ManagedHostFound,
   ManagedHostFoundUnderDeclaredDrop,
 }
-import gunbc.machine_intake_mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.host_reset_subject_roster {
+import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
+import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
 import gunbc.auth.managed_host_boot_federation {

@@ -1,4 +1,4 @@
-module v2.test.manual.fold_call_closure_emit
+module v2.test.claim.manual.fold_call_closure_emit_test
 
 import std.types { List }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }

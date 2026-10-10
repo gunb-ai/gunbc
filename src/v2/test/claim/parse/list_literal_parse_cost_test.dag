@@ -1,4 +1,4 @@
-module v2.test.parse.list_literal_parse_cost
+module v2.test.claim.parse.list_literal_parse_cost_test
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
@@ -7,7 +7,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

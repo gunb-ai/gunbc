@@ -1,4 +1,4 @@
-module gunbc.roadmap_dispatch_actuator
+module gunbc.roadmap.roadmap_dispatch_actuator
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
@@ -18,14 +18,14 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeId,
   NotDispatchable,
   Dispatchable,
   node_sizing_derivation,
 }
-import gunbc.roadmap_spawner { dispatch_brief_template }
-import gunbc.roadmap_status { node_title }
+import gunbc.roadmap.roadmap_spawner { dispatch_brief_template }
+import gunbc.roadmap.roadmap_status { node_title }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
@@ -186,8 +186,8 @@ import gunbc.worker_lifecycle {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.host.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
@@ -196,7 +196,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
   DispatchHostEnvironment,
   GitWorkspaceCapability,
@@ -211,19 +211,19 @@ import gunbc.roadmap_execution_contract {
   execution_capability_label,
   execution_contract_validation_summary,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   exact_verification_receipt_basename,
   current_verification_selection_basename,
   verification_directory_segment,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
 import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path, cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
-import gunbc.roadmap_dispatch_destination {
+import gunbc.roadmap.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
   DispatchDestinationMissing,
@@ -314,7 +314,7 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProvi
 
 // THE MODEL IS A REQUIRED FIELD OF THIS ARM, and that is the whole wall for the second spawn route.
 // review 62268 found the first cut of this change threaded a model into the argv rows but not into
-// this carrier, so gunbc.roadmap_belt_actuate belt_resolved_spawn_plan -- the OTHER caller of
+// this carrier, so gunbc.roadmap.roadmap_belt_actuate belt_resolved_spawn_plan -- the OTHER caller of
 // dispatch_spawn_commands_for_resolved_instance -- had no model to supply; CI agreed, refusing at
 // belt_resolved_spawn_plan with `missing required argument model`. Passing
 // ProviderAccountDefaultModel there to make it compile would have been the absorbing fallback
@@ -744,7 +744,7 @@ fn worker_turn_selection_of(inventory: ProviderInventory, kind: ProviderKind, si
 // THE CURSOR DRAW takes the attempt's credential snapshot first (shared rule above): the status probe
 // reads that snapshot and keeps it, and the spawn loads the same snapshot and removes it before exec. A
 // refused draw discards the snapshot it took, as the Claude draw does; after selection the belt owns
-// the discard (gunbc.roadmap_belt_actuate belt_snapshot_owned_outcome).
+// the discard (gunbc.roadmap.roadmap_belt_actuate belt_snapshot_owned_outcome).
 fn cursor_selection_observed(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1164,7 +1164,7 @@ fn dispatch_attempt_state_path_for_instance(
 // THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
 // conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it
 // carries a DECLARED SCHEMA -- turn.started, item.*, turn.completed, turn.failed, error -- that
-// gunbc.roadmap_provider_events reads through jq with fromjson. Pointing the worker's progress
+// gunbc.roadmap.roadmap_provider_events reads through jq with fromjson. Pointing the worker's progress
 // output at it (`[file] write ...`, `✓ ... done in 48 seconds`) made jq exit 5 on the first line
 // and the whole attempt's agent evidence refuse as unreadable.
 //
@@ -1662,7 +1662,7 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
 // so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
 // and its record carries the exit; the belt reads a collected reviewer from that record
-// (gunbc.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
+// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
 // hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
 // this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
 // parameter is optional.
@@ -1723,7 +1723,7 @@ fn gunbc_harness_review_argv(
 // THE REVIEWER'S ATTEMPT IDENTITY IS MINTED HERE, as the worker's and auditor's are, with the
 // criterion key appended: fourteen reviewer lanes share one node id and attempt key, and each
 // lane's identity must stay distinct. Every piece is a safe path segment by construction, which the
-// fleet ssh context's safe-segment law (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity)
+// fleet ssh context's safe-segment law (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_attempt_identity)
 // demands of the attempt identity it consumes as a path segment -- the pre-fix reviewer built it
 // from the absolute verdict path and every lane's seat bind refused before any ssh leg.
 // THE BELT LAYER RUNS THE RESOLVED PROGRAM, not the spelling: the instance toolchain declares where
@@ -2722,7 +2722,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // write line for each one.
 //
 // It is not a deploy member either, and that distinction is the whole design point. The receipts
-// directory (gunbc.host_layout instance_receipts_dir) IS bootstrapped at apply time because there
+// directory (gunbc.host.host_layout instance_receipts_dir) IS bootstrapped at apply time because there
 // is exactly one per instance; a publication directory belongs to an ATTEMPT, which is minted at
 // runtime long after any apply, so a deploy member could only ever create directories that do not
 // exist yet. The attempt's own prepare step is the earliest moment the path is known.
@@ -2833,7 +2833,7 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
 // not express or had to fabricate. MemoryMax is the enforceable cgroup bound `gunbc run` requires
 // before it will size its typed-module cache -- without it the worker refuses, which is exactly the
-// failure this container replaces. It is the session's PLACEMENT GRANT (gunbc.roadmap_session_placement),
+// failure this container replaces. It is the session's PLACEMENT GRANT (gunbc.roadmap.roadmap_session_placement),
 // applied through the same grant-to-unit fold the compute provider uses
 // (gunbc.compute.unit_bounds compute_grant_unit_properties), so the memory the ledger counts and the
 // memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
@@ -4095,7 +4095,7 @@ fn git_for_each_ref_dispatch_argv_for_instance(
 // UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields
 // UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a
 // process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives
-// HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts
+// HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap.roadmap_belt lifts
 // the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never
 // imports ObservationVerdict.
 
@@ -4240,8 +4240,8 @@ type AttemptUnitObservation
   | AttemptUnitUnreadable { reason: String }
 
 // THE READ IS A DIRECT SERVICE CALL, NOT A ROUTED HOST OPERATION, and the reason is the import
-// graph rather than preference. gunbc.systemctl_show_read routes through gunbc.host_operation_exec,
-// which depends on gunbc.host_effect, which reaches this module through
+// graph rather than preference. gunbc.systemctl_show_read routes through gunbc.host.host_operation_exec,
+// which depends on gunbc.host.host_effect, which reaches this module through
 // live_deploy.candidate -> roadmap_belt -> roadmap_belt_actuate. Importing the routed read here is
 // a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
@@ -4293,7 +4293,7 @@ fn attempt_unit_substate_has_exited(substate: String) -> Bool {
 //
 // A COLLECTED UNIT WITH NO RECORD IS NOT A WORKER THAT NEVER RAN (bold-bee-114, 2026-10-06, condition
 // 1). Dispatch's own start receipt separates the two: the G5 placement record is written immediately
-// before every worker unit is started (gunbc.roadmap_belt_actuate belt_session_container_create), so
+// before every worker unit is started (gunbc.roadmap.roadmap_belt_actuate belt_session_container_create), so
 // an attempt with a placement record and no exit record had a unit that ended without its hook
 // writing -- a failed hook, which is reported as indeterminate and located, never as absence
 // (condition 2). Only an attempt with NO placement record answers absent: it never had a unit,

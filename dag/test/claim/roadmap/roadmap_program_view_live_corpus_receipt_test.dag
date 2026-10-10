@@ -1,12 +1,12 @@
-module test.claim.roadmap_program_view_live_corpus_receipt
+module test.claim.roadmap.roadmap_program_view_live_corpus_receipt_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_program_view {
+import gunbc.roadmap.roadmap_program_view {
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, v1_program_view,
   v1_convergence_fronts,
 }
-import gunbc.v1_deletion_plan { v1_exit_finish_lines }
-import gunbc.roadmap_authority {
+import gunbc.v1.v1_deletion_plan { v1_exit_finish_lines }
+import gunbc.roadmap.roadmap_authority {
   roadmap_acceptance_event_history_load,
   declared_roadmap_nodes,
   projected_roadmap_dependency_edges_projection,
@@ -22,13 +22,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822; oracle corrected per
 // operator REQUEST_CHANGES): ONE receipt proving the live roadmap authority closure
 // (declared_roadmap_nodes, projected_roadmap_dependency_edges_projection,
-// roadmap_acceptance_receipts) projects through gunbc.roadmap_program_view without unresolved
+// roadmap_acceptance_receipts) projects through gunbc.roadmap.roadmap_program_view without unresolved
 // references — ProgramViewDerived, not tree-copied population literals. View cardinality is joined
 // to the program spec authorities (v1_exit_finish_lines, v1_convergence_fronts), not numbers copied
 // from today's tree. This is evidentiary integration wiring, not ordinary business logic; it rides
-// the falsifier substrate long lane (gunbc.ci_layer_roots falsifier_substrate_long_lane_rows),
+// the falsifier substrate long lane (gunbc.ci.ci_layer_roots falsifier_substrate_long_lane_rows),
 // excluded from per-PR discovery. Business algebra stays on planted fixtures in
-// test.claim.roadmap_program_view_witness.
+// test.claim.roadmap.roadmap_program_view_witness_test.
 
 test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool {
   match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {

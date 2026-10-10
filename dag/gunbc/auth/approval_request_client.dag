@@ -15,8 +15,8 @@ import gunbc.auth.approval_decision_store {
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission,
 }
-import gunbc.fleet_posix_accounts { fleet_operator_email }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.auth.approval_writer_authority {
   approval_writer_authority, approval_writer_process, ApprovalServingProcess, RoadmapProcess, BrokerProcess,
 }

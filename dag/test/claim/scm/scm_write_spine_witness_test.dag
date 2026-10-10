@@ -1,4 +1,4 @@
-module test.claim.scm_write_spine_witness
+module test.claim.scm.scm_write_spine_witness_test
 
 // CONTROLS FOR THE TWO AUTHORING VERBS, WRITTEN TO WHAT THEIR FAILURES LOOK LIKE.
 //

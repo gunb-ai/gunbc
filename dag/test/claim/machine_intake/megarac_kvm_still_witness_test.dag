@@ -8,8 +8,8 @@ import std.optional { Present, Absent }
 import v2.std.algebra { any }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
-import gunbc.runner_browser_toolchain { BrowserToolchainUnresolved }
-import gunbc.machine_intake_megarac_kvm_still {
+import gunbc.runner.runner_browser_toolchain { BrowserToolchainUnresolved }
+import gunbc.machine_intake.megarac_kvm_still {
   KvmJournalEvent, KvmJournalStill, KvmJournalAcquisitionFailed, KvmJournalConnectionLost, KvmJournalUnparsed,
   KvmNotConnected, KvmCanvasUnreadable, KvmConnectionChangedDuringAcquisition, KvmSeatBusy,
   KvmObserverStanding, KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverPending,
@@ -26,10 +26,10 @@ import gunbc.machine_intake_megarac_kvm_still {
   megarac_kvm_observer_start,
   KvmJournalWord, kvm_journal_event_words,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
-import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach }
 import gunbc.owned_process {
   OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedUnreadable, OwnedUnparseable, OwnedForeign, owned_process_standing_of,
 }
@@ -205,7 +205,7 @@ test fn a_still_is_retained_only_when_hash_bound() -> Bool {
 // mtcollins1: an unbound credential, an unbound directory and an unresolved toolchain each refuse before
 // any process starts, a carrier admitted for another MegaRAC operation (virtual media) refuses, and a
 // trigger on an observer that never started is refused. A controller the viewer was never read on is
-// refused earlier, at the admission (test.claim.megarac_managed_host_witness).
+// refused earlier, at the admission (test.claim.host.megarac_managed_host_witness_test).
 fn admitted(operation: MegaRacOperation) -> AdmittedMegaRacHost? {
   match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: operation) {
     MegaRacHostAdmitted { host: h } => Present { value: h }

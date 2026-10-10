@@ -1,4 +1,4 @@
-module v2.test.long.pick_ingested_probe
+module v2.test.claim.execution.long.pick_ingested_probe_test
 
 fn pick_probe_deep_unwrap(node: Node) -> Node {
   match parse_production_captured_child_optional(node: node) {
@@ -145,7 +145,7 @@ fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) ->
 // only in an arm index, and each ran the whole source-to-resolved pipeline in its own
 // frame to get there. The resolved module is bound once and both arms are asserted
 // against it; neither assertion changed. pick_probe_resolved_else_arm_has_magnitude_child_holds
-// is deleted with a receipt in the gunbc.witness_deferral_freeze shrink log, and its
+// is deleted with a receipt in the gunbc.witness.witness_deferral_freeze shrink log, and its
 // roster row goes in this change, since a frozen row naming an absent witness is a
 // StaleFrozenPathDeferral refusal.
 test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {

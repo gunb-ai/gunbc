@@ -1,4 +1,4 @@
-module v2.test.generated.language_behavior_equivalence
+module v2.test.claim.generated.language_behavior_equivalence_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -76,7 +76,7 @@ import v2.std.verification {
   test_claim_input,
   manual_claim_anchor
 }
-import v2.test.manual.connective_anchors {
+import v2.test.claim.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj,
   stub_empty_transform

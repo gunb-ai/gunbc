@@ -1,15 +1,15 @@
-module test.claim.runner_microvm_host_ready_witness
+module test.claim.runner.runner_microvm_host_ready_witness_test
 
 import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
-import gunbc.runner_host_grants { runner_host_privileged_operations }
-import gunbc.runner_host_deploy { fleet_runner_host_deploys }
+import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
 import std.types { String, Bool, List }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.virtualization.firecracker {
   firecracker_release_aarch64, firecracker_release_download_url, firecracker_release_tarball_filename,
   firecracker_release_binary_path_in_tarball, firecracker_release_aarch64_tarball_sha256, firecracker_version_line,
 }
-import gunbc.runner_microvm_host_ready {
+import gunbc.runner.runner_microvm_host_ready {
   FootprintInstrumentStanding,
   KvmDeviceStanding, KvmDeviceWritable, KvmDevicePresentNotWritable, KvmDeviceAbsent,
   FirecrackerBinaryStanding, FirecrackerInstalled, FirecrackerVersionMismatch, FirecrackerBinaryAbsent,
@@ -24,7 +24,7 @@ import gunbc.runner_microvm_host_ready {
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
 }
 import extdeps.systemd.systemctl { SystemdReportsMemoryPeak, SystemdTooOldForMemoryPeak, SystemdVersionUnreadable, systemd_memory_peak_support }
-import gunbc.runner_microvm_footprint_probe {
+import gunbc.runner.runner_microvm_footprint_probe {
   GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
   InstrumentStanding, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
 }

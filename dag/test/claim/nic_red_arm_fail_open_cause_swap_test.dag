@@ -2,7 +2,7 @@ module test.claim.nic_red_arm_fail_open_cause_swap_test
 
 // THE FAIL-OPEN RED ARM, PINNED.
 //
-// tools.namespace_import_closure_behavioral_transport asserted `red_arm == false`. That is satisfied
+// gunbc.instruments.namespace_import_closure_behavioral_transport asserted `red_arm == false`. That is satisfied
 // by the subject genuinely refusing to build AND by the harness never running -- and because it is
 // the RED arm, the harness failure made it PASS. The control that exists to detect vacuity was
 // vacuous exactly when the bench was broken.
@@ -16,7 +16,7 @@ import v2.std.subject_evidence {
   EvidenceSubjectCompleted,
   EvidenceSubjectUnreached
 }
-import tools.namespace_import_closure_behavioral_transport {
+import gunbc.instruments.namespace_import_closure_behavioral_transport {
   NicCrateBuilds,
   NicCrateDoesNotBuild,
   NicEmitRunDidNotSucceed,

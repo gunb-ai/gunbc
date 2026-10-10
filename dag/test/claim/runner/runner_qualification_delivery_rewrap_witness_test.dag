@@ -1,4 +1,4 @@
-module test.claim.runner_qualification_delivery_rewrap_witness
+module test.claim.runner.runner_qualification_delivery_rewrap_witness_test
 
 import std.types { String, Bool, Int }
 import extdeps.filesystem.filesystem_io

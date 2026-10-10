@@ -1,6 +1,6 @@
 module gunbc.type_declaration_use_census_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // (the nominal-type plan's M0, gunbc#13093). Same shape and owner as
 // gunbc.required_lane_resolution_census_seed_growth.
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The census is a v2 instrument: every
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The census is a v2 instrument: every
 // decision -- the per-module folds, the receipt, the fixture join, the out-of-gate filter and the
 // standing -- is a .dag fold (gunbc.instruments.type_declaration_use_census and
 // gunbc.instruments.type_declaration_use_census_reading). The host Rust performs only what no fold can:

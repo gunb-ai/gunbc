@@ -5,7 +5,7 @@ import gunbc.os_install { HostAutoinstall }
 import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
-import gunbc.fleet_intent { ComputeHost }
+import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 
@@ -54,7 +54,7 @@ type GeneratedArtifact
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
 // CargoToolchain: cargo itself reads the file, discovered from the invocation's directory, before
-// any target is built (gunbc.cargo_config_emit).
+// any target is built (gunbc.repo.cargo_config_emit).
 // CrossLanguageClientTest: a client written in another language reads the file as its test oracle
 // for bytes this tree defines (gunbc.auth.approval_device_redemption_fixtures, read by the iOS
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
@@ -149,12 +149,12 @@ fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRep
 // join is the only place that knows the root renders without a prefix.
 
 // THE ROW IS KEYED BY HOST IDENTITY, NOT BY THE DEPLOY ROW, AND THAT IS AN ACYCLICITY FACT RATHER
-// THAN A PREFERENCE. gunbc.runner_host_deploy reaches this module transitively
+// THAN A PREFERENCE. gunbc.runner.runner_host_deploy reaches this module transitively
 // (runner_host_deploy -> runner_slot_allocation -> ci_failure_class -> merge_admission ->
 // commit_workflow -> generated_artifact), so importing the deploy roster here closes the one
 // structural law the import graph has (DESIGN section 3) and the compiler refuses it. The identity
 // is the same key the deploy dispatch already resolves on, so nothing is lost: the registry names
-// the population from the enrollment authority (gunbc.fleet_intent, which is also what decides
+// the population from the enrollment authority (gunbc.fleet.fleet_intent, which is also what decides
 // whether a host takes fleet work at all), and gunbc.generated_artifact_emit -- which sits above
 // both -- resolves the identity to its deploy row and REFUSES by name for a host that has none.
 //
@@ -369,9 +369,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // projection of one .dag declaration -- the `expected_*` function gunbc.generated_artifact_emit
 // artifact_generate_unadorned dispatches to -- and that declaration is where a v1 reference inside
 // the artifact is AUTHORED: a `target/release/gunbc` argv in witnesses.yml is a literal in
-// gunbc.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
+// gunbc.witness.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
 // git hooks and the committed stage0 mirrors are not four consumer media with no declaration
-// identity (gunbc.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
+// identity (gunbc.v1.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
 // CommittedGeneratedMirror): each is the .dag medium seen through a producer, and a consumer census
 // that keys the .dag population at declaration grain already holds their rows. What that reduction
 // needs to be SOUND is exactly this map plus the join below: an artifact whose producer is not a
@@ -389,34 +389,34 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
 // consumer is test.claim.generated_artifact_producer_coverage_witness_test on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
-// consumer is gunbc.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
 // every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
-// gives the census a per-medium joined_media state (PR #10939, tools.v1_consumer_discovery); it is
+// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery); it is
 // not authored here because the census on main carries no such state yet, and adding one beside
 // that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
-    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
-    FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
-    FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
-    MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
-    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
+    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
+    FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
+    FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
+    MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
+    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instruments.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
-    BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
+    BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.fleet.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
-    CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
-    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "expected_roadmap_md")
+    CargoConfigArtifact => decl_ref(module_path: "gunbc.repo.cargo_config_emit", decl_name: "expected_cargo_config_toml")
+    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority", decl_name: "expected_roadmap_md")
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
     DesignRungDropsArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_rung_drops_md")
     ContributorOnboardingArtifact => decl_ref(module_path: "gunbc.contributor_onboarding_path", decl_name: "expected_contributor_onboarding_md")
-    GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
-    GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
+    GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
+    GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
     GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
-    RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
+    RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
     WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
     ApprovalDeviceVectorsArtifact => decl_ref(module_path: "gunbc.auth.approval_device_redemption_fixtures", decl_name: "approval_device_vectors_json")
@@ -424,19 +424,19 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
-    Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
-    Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
-    Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
-    Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
-    Stage0LinkedPartitionCratesArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_linked_partition_crates_txt")
-    SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
-    V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
+    Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
+    Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
+    Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
+    Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
+    Stage0LinkedPartitionCratesArtifact => decl_ref(module_path: "gunbc.stage0.stage0_executable_assembly_emit", decl_name: "expected_stage0_linked_partition_crates_txt")
+    SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
+    V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
     EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
     ReleaseLocusSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.release_locus_seed_constants_emit", decl_name: "expected_release_locus_seed_constants_generated_rs")
     FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
-    Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
+    Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
-    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner_host_grants", decl_name: "runner_host_sudoers_content")
+    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
     PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
   }
 }

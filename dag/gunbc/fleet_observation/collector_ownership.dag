@@ -1,4 +1,4 @@
-module gunbc.fleet_observation_collector_ownership
+module gunbc.fleet_observation.collector_ownership
 
 import std.types { Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
@@ -16,8 +16,8 @@ import std.temporal_effect {
 // WHO IS ALLOWED TO READ AND RECORD AN EXCLUSIVE ENDPOINT, and on what evidence. The subject is an
 // ENROLLED MACHINE's collector, whose lifetime is the machine's -- not an attempt's and not a
 // session's. This module owns the ownership question only; the bytes are
-// gunbc.fleet_observation_capture_chunk and the published fact is
-// gunbc.fleet_observation_observation_envelope.
+// gunbc.fleet_observation.capture_chunk and the published fact is
+// gunbc.fleet_observation.observation_envelope.
 //
 // THE RECEIPT THAT SHAPED IT (Mt. Collins unit 1, 2026-09-11/12): two stale SOL capture processes
 // were left competing for the one session the controller allows, so the capture believed to be

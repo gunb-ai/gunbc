@@ -1,6 +1,6 @@
 module v2.workflow.floor_diff_observe
 
-import gunbc.ci_diff_policy {
+import gunbc.ci.ci_diff_policy {
   DiffMode,
   DiffPolicy,
   DiffMergeBase,
@@ -477,7 +477,7 @@ fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
 // listing (`git.Inspect.ListTreePathsAtRevision`) BEFORE any show: a path the listing does not
 // carry is empty names by construction and is never shown; a show that then fails is
 // unreadable, with no empty-names arm left to absorb it. The same construction lives in
-// `tools.pr_containment_instrument` `base_file_reading`; this row asks a different question
+// `gunbc.instruments.pr_containment_instrument` `base_file_reading`; this row asks a different question
 // (declaration names, not line text) of the same two git facts.
 //
 // THIS CENSUS IS PATH-KEYED AND RENAME-BLIND. Git lists and shows one path at one revision.

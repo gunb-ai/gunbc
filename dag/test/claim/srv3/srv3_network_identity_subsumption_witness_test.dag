@@ -1,4 +1,4 @@
-module test.claim.srv3_network_identity_subsumption
+module test.claim.srv3.srv3_network_identity_subsumption_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

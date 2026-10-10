@@ -1,25 +1,25 @@
-module gunbc.machine_intake_pre_os_capture_replay
+module gunbc.machine_intake.pre_os_capture_replay
 
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
-import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
+import gunbc.host.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import std.types { Bool, List, NonEmptyStr, String }
-import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
+import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import std.nat { Nat }
-import gunbc.machine_intake_sol_collector_observation { SolCollectorObservation }
+import gunbc.machine_intake.sol_collector_observation { SolCollectorObservation }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused }
-import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
-import gunbc.memory_observation {
+import gunbc.host.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
+import gunbc.host.memory_observation {
   MemoryCaptureCycles, memory_cycle_coverage_refusal, memory_inventory_in_capture, read_verified_memory_capture,
 }
 import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_first_own_image_boot }
-import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_capture_path, mtcollins_3ds_capture_sha256, mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
-import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
-import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement, pre_os_firmware_boot_selection }
-import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
-import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
+import gunbc.host.mtcollins_3ds_memory_change { mtcollins_3ds_capture_path, mtcollins_3ds_capture_sha256, mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
+import gunbc.machine_intake.pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
+import gunbc.machine_intake.pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement, pre_os_firmware_boot_selection }
+import gunbc.machine_intake.sel_stimulus_listener { sel_snapshot_summary }
+import gunbc.machine_intake.pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
 
 type PreOsHostArchiveAssessment {
   milestones: PreOsMilestones

@@ -1,8 +1,8 @@
-module test.claim.roadmap_verify_witness_test
+module test.claim.roadmap.roadmap_verify_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContractUnspecified,
   ExecutionContract,
@@ -19,7 +19,7 @@ import gunbc.roadmap_execution_contract {
   not_agent_work_execution,
   OperatorExclusiveMode,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardProvisionTransport,
   DashboardLocalProvision,
@@ -27,7 +27,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_lab_dashboard_instance,
 }
-import gunbc.roadmap_verify {
+import gunbc.roadmap.roadmap_verify {
   VerificationOutcome,
   VerificationUnbound,
   VerificationNotAgentWork,
@@ -77,8 +77,8 @@ test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
 }
 
 // THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it.
-// gunbc.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap_verify read an empty
-// validation list as unbound; gunbc.roadmap_dispatch_environment refused it. Empty contracts are
+// gunbc.roadmap.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap.roadmap_verify read an empty
+// validation list as unbound; gunbc.roadmap.roadmap_dispatch_environment refused it. Empty contracts are
 // constructible, so the disagreement was reachable — a node bound to one would leave the acceptance
 // frontier while remaining unverifiable and undispatchable.\n\nThe empty contract is the
 // discriminating input, and the closure keeps it distinct from the unspecified one because their

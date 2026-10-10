@@ -1,6 +1,6 @@
-module gunbc.namespace_structural_observations_contract
+module gunbc.namespace.namespace_structural_observations_contract
 
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureCapability,
   SameFileEarlierNeighbourVisible,
@@ -8,7 +8,7 @@ import gunbc.namespace_reference_derived_closure_admission {
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
 }
-import gunbc.namespace_reference_derived_closure_contract {
+import gunbc.namespace.namespace_reference_derived_closure_contract {
   closure_missing_capabilities,
 }
 import std.reference_binding_observation {
@@ -24,7 +24,7 @@ import std.types { Bool, Int, List, String }
 //
 // WHAT IT ASKS. Four in-file visibility rules, each established only by ASSESSING a typed
 // production observation through the one authority that already owns that judgement
-// (gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation):
+// (gunbc.namespace.namespace_reference_derived_closure_admission assess_reference_binding_observation):
 // an earlier neighbour in the same file is in view; a declaration in the other branch of a
 // decision is not; a declaration written further down is not; and two same-spelled declarations
 // at genuinely different positions both survive rather than merging. The set difference is
@@ -32,7 +32,7 @@ import std.types { Bool, Int, List, String }
 // cannot answer none/one/many a second way and cannot drift from the parent's dominance rule.
 //
 // WHY THE SUBJECT IS CARRIED BESIDE THE ADMISSION, and this is the half the retracted interim
-// lacked (gunbc.roadmap_authority namespace_structural_observations_execution_contract_note): an
+// lacked (gunbc.roadmap.roadmap_authority namespace_structural_observations_execution_contract_note): an
 // admission alone says a rule held SOMEWHERE. The row asks for ONE ORDINARY COMPILED FILE, so
 // every admission must carry the module path THE COMPILE ITSELF DECLARED -- read out of the
 // parsed source by the producer, never echoed from the caller's request -- and all four must name

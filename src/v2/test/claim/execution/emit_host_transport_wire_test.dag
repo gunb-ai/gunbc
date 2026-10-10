@@ -1,4 +1,4 @@
-module v2.test.execution.emit_host_transport_wire
+module v2.test.claim.execution.emit_host_transport_wire_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.communication.medium { Lossless, Medium }

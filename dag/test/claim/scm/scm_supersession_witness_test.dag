@@ -1,4 +1,4 @@
-module test.claim.scm_supersession_witness
+module test.claim.scm.scm_supersession_witness_test
 
 // THE DESTRUCTIVE OPERATION, DRIVEN END TO END, WITH EVERY REFUSAL REACHED.
 //
@@ -66,7 +66,7 @@ fn sup_slot() -> HeadSlot {
 
 fn sup_authority() -> DeclarationRef {
   decl_ref(
-    module_path: "test.claim.scm_supersession_witness",
+    module_path: "test.claim.scm.scm_supersession_witness_test",
     decl_name: "sup_evidence",
   )
 }

@@ -1,4 +1,4 @@
-module test.claim.parse_test_parse_token_first_empty_semantics
+module v2.test.claim.parse.parse_test_parse_token_first_empty_semantics_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

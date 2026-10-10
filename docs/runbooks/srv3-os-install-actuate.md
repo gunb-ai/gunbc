@@ -2,14 +2,14 @@
 
 Operator-gated procedure to actuate the solve-driven NBD-proxy virtual-media install on srv3.
 **Scope:** actuator prep + this runbook only — **NOT** srv3 OS install solved until seeded-ISO unattended boot is proven by execution.
-Modeled seed-delivery gap (`gunbc.srv3_os_install_actuate_scope`) stays fail-closed on the **legacy solver plan**
+Modeled seed-delivery gap (`gunbc.srv3.srv3_os_install_actuate_scope`) stays fail-closed on the **legacy solver plan**
 (`gunbc.os_install.srv3_os_install_plan`, NoCloudNet); actuator prep binds **seeded delivery**
 (`srv3_seeded_os_install_plan` + on-ISO `NoCloudLocal`) and the seeded ISO path authority. Unattended install is still
 **NOT proven by execution** until boot-once + SOL receipt + OS-up witness green.
-The **seeded-ISO pivot** (`gunbc.srv3_seeded_install_media`) embeds autoinstall user-data on media with GRUB `autoinstall ds=nocloud` (fully remote/CLI, no KVM). SOL console capture (`gunbc.srv3_sol_console_capture`) provides CLI observability during install.
-Model authority: `gunbc.srv3_install_media_fetch`, `gunbc.srv3_seeded_install_media`, `gunbc.srv3_os_install_actuator_toolchain_ensure`, `gunbc.srv3_sol_console_capture`, `gunbc.srv3_os_install_actuate`,
-`gunbc.srv3_bmc_credential_resolve`, `gunbc.srv3_os_install_actuate_workflow`, `gunbc.os_install_actuator_selection`, `gunbc.srv3_os_install_actuate_scope`,
-`gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan`, `gunbc.srv3_boot_once_cd`.
+The **seeded-ISO pivot** (`gunbc.srv3.srv3_seeded_install_media`) embeds autoinstall user-data on media with GRUB `autoinstall ds=nocloud` (fully remote/CLI, no KVM). SOL console capture (`gunbc.srv3_sol_console_capture`) provides CLI observability during install.
+Model authority: `gunbc.srv3.srv3_install_media_fetch`, `gunbc.srv3.srv3_seeded_install_media`, `gunbc.srv3.srv3_os_install_actuator_toolchain_ensure`, `gunbc.srv3_sol_console_capture`, `gunbc.srv3.srv3_os_install_actuate`,
+`gunbc.srv3.srv3_bmc_credential_resolve`, `gunbc.srv3.srv3_os_install_actuate_workflow`, `gunbc.os_install_actuator_selection`, `gunbc.srv3.srv3_os_install_actuate_scope`,
+`gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan`, `gunbc.srv3.srv3_boot_once_cd`.
 
 **Precondition:** BMC Redfish reachable at **192.168.1.192** (HTTP 200). nbd-proxy ws-upgrade dry-run
 confirmed **Present** on `/vm/0/0` (see [srv3 nbd-proxy ws-upgrade dry-run](srv3-nbd-proxy-ws-upgrade-dry-run.md)).
@@ -27,8 +27,8 @@ what was deleted.
    sha256 from [cdimage SHA256SUMS](https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS)). Do not hand-fetch;
    the fetch receipt is the prereq read-back.
 2. **Seeded ISO remaster before serve** — step 0b builds and publishes the seeded image from
-   `gunbc.srv3_seeded_install_media_artifact` `srv3_seeded_install_media_input` (via
-   `gunbc.seeded_install_media_publish` `publish_seeded_image`). The image is named by the sha256 of its built bytes
+   `gunbc.srv3.srv3_seeded_install_media_artifact` `srv3_seeded_install_media_input` (via
+   `gunbc.provisioning.seeded_install_media_publish` `publish_seeded_image`). The image is named by the sha256 of its built bytes
    (`.../ubuntu-24.04.3-live-server-srv3-seeded-<first 16 hex of that digest>.iso`) and a derivation record beside it
    maps the build inputs to that digest. `srv3_nbd_proxy_serve` resolves the path through that record
    (`srv3_seeded_install_media_resolve`), re-measuring the file first, and **refuses** to serve if the image is not
@@ -111,7 +111,7 @@ which curl websocat nbdkit socat jq sha256sum gunbc
 
 ### BMCweb login — credential resolution (read before live)
 
-**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (on disk); curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
+**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (on disk); curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
 
 Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialActive` state.
 
@@ -138,7 +138,7 @@ should mount the ISO as virtual CD when the NBD handshake completes.
 
 ### Terminal B — boot once from CD + force restart (workflow escalation)
 
-The modeled workflow (`gunbc.srv3_os_install_actuate_workflow`) places **`WorkflowOperatorApproval`** before **`WorkflowBootOnceCd`**. The default entrypoint `srv3_boot_once_cd` is **fail-closed** (`AuthorizationPending`). After explicit operator ack, use the granted entrypoint:
+The modeled workflow (`gunbc.srv3.srv3_os_install_actuate_workflow`) places **`WorkflowOperatorApproval`** before **`WorkflowBootOnceCd`**. The default entrypoint `srv3_boot_once_cd` is **fail-closed** (`AuthorizationPending`). After explicit operator ack, use the granted entrypoint:
 
 The grant behind that entrypoint is a `std.scoped_authorization` `OperatorGrant` and is **scoped, attempt-bound and dated**: it reaches only `/redfish/v1/Systems/system/Boot` with action `redfish.boot-source-override.set`, only for attempt `srv3-os-install-actuate-1`, only for the CD-once + ForceRestart planned action, and only until its `expires_at`. Past that instant the entrypoint refuses with `operator authorization expired at ...`. **That refusal is the signal to land the out-of-band grant channel, not to re-date the constant** — see `srv3_boot_once_cd_source_declared_grant_dissolve_on`. Both entrypoints now read the clock (`std.resources.Clock`) and refuse if it is unreadable.
 
@@ -161,7 +161,7 @@ Host should power-cycle and boot the Ubuntu installer from virtual media.
 
 ## Autoinstall timing and hang declaration
 
-Modeled payload: `fully_automated: true`, hostname `srv3`, OpenSSH enabled. **Fail-closed seed gap (modeled, not solved):** `gunbc.srv3_os_install_actuate_scope` refuses seed delivery on the NbdProxy path — `NoCloudNet` seed at `install.srv3.lan/...` with `fleet_install_server_specs` empty. The stock ISO (`ubuntu-24.04.3-live-server-arm64.iso`) may boot the **interactive** installer if the autoinstall seed is not on-ISO — watch for subiquity waiting on a network seed (hang risk). This PR does not paper the gap.
+Modeled payload: `fully_automated: true`, hostname `srv3`, OpenSSH enabled. **Fail-closed seed gap (modeled, not solved):** `gunbc.srv3.srv3_os_install_actuate_scope` refuses seed delivery on the NbdProxy path — `NoCloudNet` seed at `install.srv3.lan/...` with `fleet_install_server_specs` empty. The stock ISO (`ubuntu-24.04.3-live-server-arm64.iso`) may boot the **interactive** installer if the autoinstall seed is not on-ISO — watch for subiquity waiting on a network seed (hang risk). This PR does not paper the gap.
 
 | Phase | Expected wall-clock (from boot-once) |
 | ----- | ------------------------------------ |
@@ -186,7 +186,7 @@ Router UI: Verizon CR1000A → Network → DHCP lease table. Record MAC, IPv4, a
 
 ## Install debug diagnostic fold
 
-Model authority: `gunbc.srv3_os_install_diagnostic` (`diagnose_srv3_install` over `Srv3InstallDebugObservation`).
+Model authority: `gunbc.srv3.srv3_os_install_diagnostic` (`diagnose_srv3_install` over `Srv3InstallDebugObservation`).
 
 **Executable checklist (run on srv1 actuator host):**
 

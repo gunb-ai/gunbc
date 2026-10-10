@@ -1,4 +1,4 @@
-module v2.test.tokenize.byte_range_octet_unit
+module v2.test.claim.tokenize.byte_range_octet_unit_test
 
 import v2.std.text { String }
 import std.optional { Absent, Present }

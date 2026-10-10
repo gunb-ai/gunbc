@@ -2,10 +2,10 @@ module test.claim.machine_intake.mtcollins1_census_member_readback_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
-import gunbc.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
-import gunbc.fleet_known_hosts_anchor { SshTarget }
-import gunbc.machine_intake_mtcollins1_census_member_readback {
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
   MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
   CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, BootChainControlDidNotDiscriminate,
@@ -24,7 +24,7 @@ import gunbc.host_command_binding {
   Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.machine_intake_mtcollins1_census_medium_readback { RemoteAnswer }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

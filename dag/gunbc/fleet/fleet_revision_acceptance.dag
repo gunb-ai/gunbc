@@ -1,4 +1,4 @@
-module gunbc.fleet_revision_acceptance
+module gunbc.fleet.fleet_revision_acceptance
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
@@ -13,7 +13,7 @@ import std.contract_identity { ContractIdentity, ContractNamingSurface, Contract
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved, RequiredCiEpochUnobservable, RequiredCiEpochUnobserved, required_ci_epoch_unobserved_message }
 import gunbc.repository { gunbc_repository }
-import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -87,14 +87,14 @@ fn required_ci_contract() -> RequiredCiContractIdentity {
 // `fleet_repository_full_name = "gunb-ai/gunbc"` and `fleet_default_branch = "main"` were the
 // sixth and seventh nicknames for facts that already have authorities. gunbc.repository exists
 // precisely because five spellings of this repository's identity had accumulated across the tree,
-// and its own note says the answer to five nicknames is not a sixth. gunbc.repo_identity owns the
+// and its own note says the answer to five nicknames is not a sixth. gunbc.repo.repo_identity owns the
 // default-branch name and has a perturbation oracle that moves every consumer when it changes --
 // a literal here is invisible to that oracle, which is what makes this class stay hidden: every
 // individual literal looks obviously correct.
 //
 // OBSERVED WHILE DOING THIS, and flagged rather than silently resolved: `gunbc_repository` also
 // carries a `default_branch` field, so the default branch appears to have two homes. They agree
-// today. The branch name is read from gunbc.repo_identity here because that module's note claims
+// today. The branch name is read from gunbc.repo.repo_identity here because that module's note claims
 // the authority for branch facts explicitly and carries the perturbation oracle, while
 // Repository.default_branch is part of the upstream API shape this project instantiates. Whether
 // those should be one row is a real question and not this cut's to settle.
@@ -363,7 +363,7 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
 // on the queue's COMPOSED revision before that revision reaches the default branch, and the queue
 // then moves the branch to exactly that revision. So the run that proves RequiredCiSucceeded for R
 // is the merge_group run of the floor on R, and it has concluded by the time the push of R is
-// delivered -- the premise gunbc.fleet_desired_admission_workflow's opening annotation records as
+// delivered -- the premise gunbc.fleet.fleet_desired_admission_workflow's opening annotation records as
 // false for the workflow_run binding above. This is a second PROVIDER of the same proposition, not
 // a new proposition: the carrier, the contract identity and admit_fleet_revision's exact-revision
 // join are unchanged.
@@ -380,7 +380,7 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
 // WHAT IS NOT CHECKED HERE THAT accept_required_ci_workflow_run CHECKS, AND WHAT THAT MEANS.
 // WorkflowRun carries no repository members, so this producer does not repeat the old producer's
 // repository and head-repository checks per run. Its repository warrant is the API request the
-// caller addresses to gunbc.repository's owner/name (gunbc.fleet_desired_admission
+// caller addresses to gunbc.repository's owner/name (gunbc.fleet.fleet_desired_admission
 // admit_fleet_desired_from_push_wet). A bare caller-supplied WorkflowRunList therefore does NOT
 // independently establish provenance -- a list handed to this fold from anywhere else is judged as
 // if it were that read.

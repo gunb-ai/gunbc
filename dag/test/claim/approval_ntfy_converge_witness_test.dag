@@ -16,7 +16,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_converge_command_emit_scaffold,
   OperationPrecondition, NoPrecondition, AccountExistsCheck,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
 
 // THE DEFECT THIS FAMILY WAS BUILT OVER, pinned so it cannot come back. `useradd` exits 9 when the
@@ -52,7 +52,7 @@ test fn witness_directory_ensure_needs_no_precondition() -> Bool {
 // THE MODE THIS CONVERGE ENSURES IS THE ONE THE DEPLOYMENT DECLARES, ASSERTED HERE BECAUSE NOTHING
 // ELSE ASSERTS IT.
 //
-// ntfy_state_dir_mode was an octal literal in this module and gunbc.host_credential_custody_converge
+// ntfy_state_dir_mode was an octal literal in this module and gunbc.fleet.host_credential_custody_converge
 // spelled the same octal for the SAME config directory; the only executing check over either was a
 // row in the custody witness holding the two EQUAL. That row is gone -- both sides now read
 // gunbc.auth.approval_ntfy_deployment approval_ntfy_dir_mode, so there is no second value left to

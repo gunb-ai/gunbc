@@ -1,6 +1,6 @@
 module gunbc.host_speed_calibration_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -14,7 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // classifies the specimen replicates' readings and takes the fastest, refuses on a non-calibrated arm, and reports raw beside
 // calibrated ms), and the unit-test constant TEST_ENROLMENT_THRESHOLDS (the reference factor 1000).
 //
-// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1.v1_maintenance_standing
 // v1_seed_standing admits a change when it serves the v2 self-host program. The required floor is the
 // instrument guarding that program, and without this change its enrolment margin flips same-step
 // claims on runner speed (gunbc#13168), so lanes restructure tiny claims to fit runner noise.

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_arrival_admission
+module gunbc.machine_intake.arrival_admission
 
 import std.types { String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -6,8 +6,8 @@ import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name,
 }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.machine_intake_arrival_subject {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.machine_intake.arrival_subject {
   admit_arrival_subject,
   ArrivalSubjectInPopulation, ArrivalSubjectUnknown,
   ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,

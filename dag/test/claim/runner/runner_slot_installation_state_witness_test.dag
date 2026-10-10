@@ -1,8 +1,8 @@
-module test.claim.runner_slot_installation_state_witness
+module test.claim.runner.runner_slot_installation_state_witness_test
 
 import std.logic { Bool }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_incarnation {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_incarnation {
   RunnerSlotInstallationState,
   RunnerSlotInstallationObservation,
   SlotAbsent,

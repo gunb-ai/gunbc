@@ -23,7 +23,7 @@ import gunbc.cli_invoke {
 // orchestration emitter -- an ArgvCommand builder is the `claim_executor_cli` shape, not that one.
 // THE MEASURED ONE is worth recording because it cost an afternoon and will cost the next author
 // the same: adding the single line `import extdeps.exec.command { ArgvCommand, argv_command }` to
-// `gunbc.cli_invoke`, WITH NO OTHER CHANGE, makes `gunbc.host_effect_realize` fail to resolve --
+// `gunbc.cli_invoke`, WITH NO OTHER CHANGE, makes `gunbc.host.host_effect_realize` fail to resolve --
 // `dag/gunbc/host/host_effect_realize.dag:2779:51: error: no field 'verdict' on type 'U'`, a
 // module this edge does not touch and a lambda whose parameter was inferred before it. Bisected
 // against main at f5bd9b064a with the seed built from that tree: the import alone is necessary and

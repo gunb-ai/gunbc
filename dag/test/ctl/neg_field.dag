@@ -1,4 +1,4 @@
-module ctl.neg_field
+module test.ctl.neg_field
 
 import std.types { String }
 

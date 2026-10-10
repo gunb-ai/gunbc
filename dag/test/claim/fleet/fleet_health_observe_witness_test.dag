@@ -1,8 +1,8 @@
-module test.claim.fleet_health_observe_witness
+module test.claim.fleet.fleet_health_observe_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import product.host_health {
   BmcEventLogContinuityUnestablished,
   BmcEventsObserved,
@@ -26,7 +26,7 @@ import extdeps.bmc.redfish_telemetry {
 }
 import extdeps.bmc.types { RedfishLegacyChassisThermal, RedfishThermalSubsystemSensorCollection }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog, asrock_altrad8ud_redfish_chassis_id }
-import gunbc.fleet_health_observe {
+import gunbc.fleet.fleet_health_observe {
   BmcTelemetryProfile,
   event_window,
   fan_windows,

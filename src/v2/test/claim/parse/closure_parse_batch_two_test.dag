@@ -1,8 +1,8 @@
-module v2.test.parse.closure_parse_batch_two
+module v2.test.claim.parse.closure_parse_batch_two_test
 
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.test.parse.supplied_token_stream_support {
+import v2.test.claim.parse.supplied_token_stream_support {
   supplied_stream_matches_tokenize,
   supplied_parsed_normalize,
   supplied_stream_parse
@@ -15,7 +15,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INPUT IS SUPPLIED; PARSE AND NORMALIZE STILL EXECUTE, over the shared supplied route
-// (v2.test.parse.supplied_token_stream_support). Each specimen's stream owes a cb2_fidelity_* claim
+// (v2.test.claim.parse.supplied_token_stream_support). Each specimen's stream owes a cb2_fidelity_* claim
 // that it IS what the real tokenizer emits for the specimen text, so a stream that drifted from the
 // tokenizer reddens there rather than greening a claim about a stream the compiler never produces.
 fn cb2_parses(o: Outcome<Node>) -> Bool {
@@ -32,7 +32,7 @@ fn cb2_normalizes(o: Outcome<NormalizedTree>) -> Bool {
   }
 }
 
-// Subject: five constructs of the workload closure (//v2/test/parse/expression_bodied_fn_decl_parse:all)
+// Subject: five constructs of the workload closure (//v2/test/claim/parse/expression_bodied_fn_decl_parse_test:all)
 // the native front end refused, each a row of the one dag grammar (v2.extdeps.languages.dag), each
 // admitting only what v1.compiler.parse admits. Every positive claim goes red with its row removed;
 // every refusing claim pins the row's boundary.
@@ -139,7 +139,7 @@ test fn ordinary_declaration_is_kept_once_holds() -> Bool {
 
 // ONE PREPARED INPUT PER SPECIMEN. Each specimen is parsed once and normalized once, by the
 // nullary producers below, which v2.workflow.floor_pure_producer_share warms outside the fold (the
-// same disposition as v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse cps_*).
+// same disposition as v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse_test cps_*).
 // Every claim then inspects the result shape at the interface it discriminates at, instead of
 // each paying a full parse and normalize again (DESIGN section 3, a witness discriminates at one
 // interface). The real path still executes: these producers run the real prepared-grammar parse

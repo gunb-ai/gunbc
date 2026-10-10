@@ -1,4 +1,4 @@
-module test.claim.managed_host_unit_hold_witness
+module test.claim.host.managed_host_unit_hold_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
@@ -12,9 +12,9 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
   FileHoldReleased, FileHoldReleaseLost,
 }
-import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
-import gunbc.managed_host_unit_hold {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.host.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host_unit_hold {
   UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner,
@@ -33,7 +33,7 @@ import gunbc.managed_host_unit_hold {
   UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor,
 }
 import std.optional { Present, Absent }
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -128,7 +128,7 @@ test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool
 }
 
 // RED: A HELD HOST WITH NO DECLARED REASON VARIABLE. The real row under a name
-// gunbc.host_maintenance_hold_reason has no variable for is admitted to the hold and refused for
+// gunbc.host.host_maintenance_hold_reason has no variable for is admitted to the hold and refused for
 // maintenance, naming the host; no variable name is derived from the label.
 // Three rows naming one store host yield that host once (unit_hold_store_hosts_of).
 test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bool {
@@ -258,7 +258,7 @@ data holder_process: ProcessIdentity = ProcessIdentity { boot_id: "73c8153e-0e0e
 // ── The interlock: the boot refuses under an active maintenance hold ──────────────────────────
 // Supplied at the interface (DESIGN §3, a witness discriminates at one interface), and only into the
 // PURE refusal fold: a supplied outcome yields text and never a UnitHoldProof, whose one mint is the
-// live acquire (the forged-carrier refusals are test.claim.managed_host_unit_hold_forged_probe_witness).
+// live acquire (the forged-carrier refusals are test.claim.host.managed_host_unit_hold_forged_probe_witness_test).
 // The store route itself is test.claim.durable_exclusive_hold_file_store_wet_witness.
 
 fn first_generation() -> CasGeneration {

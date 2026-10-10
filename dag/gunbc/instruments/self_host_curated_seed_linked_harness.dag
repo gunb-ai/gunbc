@@ -1,10 +1,10 @@
-module tools.self_host_curated_seed_linked_harness
+module gunbc.instruments.self_host_curated_seed_linked_harness
 
 import std.types { List }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -12,13 +12,13 @@ import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.text { String }
 import gunbc.rust_emitted_edge { rust_module_emit_filename }
-import tools.emitted_crate_harness_manifest {
+import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   harness_manifest_derived,
   WitnessBinTarget,
   SeedLinked
 }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_release_path,
   witness_bin_ensure_built_typed,
@@ -36,7 +36,7 @@ import tools.host_prelude {
 
 // Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated
 // emit->assemble->cargo->witness(fault) spine shared by Band A behavioral transports. The crate
-// manifest is derived from the emitted one (tools.emitted_crate_harness_manifest); this module spells no dependency.
+// manifest is derived from the emitted one (gunbc.instruments.emitted_crate_harness_manifest); this module spells no dependency.
 // Every receipt links the WHOLE EMITTED CLOSURE (cssl_assemble, below) against v1-compiler; a module
 // lane supplies only its witness driver, pass marker, and zero or more supplementary claim-runs.
 // HAND SHIMS ARE GONE, AND THE FIELDS THAT CARRIED THEM WITH THEM. Rows used to overwrite emitted
@@ -50,7 +50,7 @@ import tools.host_prelude {
 // shim now, which is gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module's rung.
 // Empty claim_runs = skip supplementary claim-runs.
 // LANDED: the per-module copy-paste this note names is dissolved by
-// tools.self_host_module_behavioral_transport_roster — one config row per frontier module, one
+// gunbc.instruments.self_host_module_behavioral_transport_roster — one config row per frontier module, one
 // generic compiler_module_behavioral_receipt_for(module_path) dispatch, this kernel unchanged as
 // the sole executor.
 
@@ -96,7 +96,7 @@ import tools.host_prelude {
 // assemble_seed_linked_closure actually writes. A refusal doing its job was read as evidence of a
 // fork. The distinction costs one paragraph here and cost a wrong work item without it.
 
-data cssl_closure_assembly_note: String = "Generic closure assembly: the dep population is the EMITTED-POPULATION MANIFEST the compiler writes into the same out_dir (src/emitted_population.rs), read under the grammar both ends resolve from gunbc.stage0_emitted_population_manifest -- split on the separator, strip the line prefix. Entry module bytes hash-locked. Emit-retain rule: every path the emitter DECLARED it produced must be materialized in out_dir, byte-untouched; a declared path with no file is a typed refusal (RefusedDeclaredMember), and refusal for anything the bytes then say relocates to the cargo verdict. THIS REPLACED THE LAST RUST TEXT-PARSE ON THIS PATH (the prior revision scraped src/lib.rs pub mod lines to recover closure membership), and the swap is a strengthening rather than a rename: lib.rs mod list is rendered FROM the same module file list the writer then writes out, so that check could only agree with itself on the real path and its only reachable red came from a hand-authored lib.rs -- while the manifest declares Cargo.toml, lib.rs, main.rs, every module, every test file and itself, so the declared-versus-materialized question is answerable at the grain that matters. BOOTSTRAP_INLINE_MODS is deleted with it: the manifest never declares NonEmptyVec/NonEmptyBTreeSet because they are inlined structs and not files, so the state that skip tolerated is not representable in the population assembly reads. The seed lib.rs is still NOT consulted: the compiler-seed-re-export arm and its seed_has_pub_mod oracle are deleted (see cssl_is_not_a_seed_admission_path_note), so seed mod-tree membership has one authority, v2.compiler.self_host.stage0_crate_layout, and this harness is not a second reader of it."
+data cssl_closure_assembly_note: String = "Generic closure assembly: the dep population is the EMITTED-POPULATION MANIFEST the compiler writes into the same out_dir (src/emitted_population.rs), read under the grammar both ends resolve from gunbc.stage0.stage0_emitted_population_manifest -- split on the separator, strip the line prefix. Entry module bytes hash-locked. Emit-retain rule: every path the emitter DECLARED it produced must be materialized in out_dir, byte-untouched; a declared path with no file is a typed refusal (RefusedDeclaredMember), and refusal for anything the bytes then say relocates to the cargo verdict. THIS REPLACED THE LAST RUST TEXT-PARSE ON THIS PATH (the prior revision scraped src/lib.rs pub mod lines to recover closure membership), and the swap is a strengthening rather than a rename: lib.rs mod list is rendered FROM the same module file list the writer then writes out, so that check could only agree with itself on the real path and its only reachable red came from a hand-authored lib.rs -- while the manifest declares Cargo.toml, lib.rs, main.rs, every module, every test file and itself, so the declared-versus-materialized question is answerable at the grain that matters. BOOTSTRAP_INLINE_MODS is deleted with it: the manifest never declares NonEmptyVec/NonEmptyBTreeSet because they are inlined structs and not files, so the state that skip tolerated is not representable in the population assembly reads. The seed lib.rs is still NOT consulted: the compiler-seed-re-export arm and its seed_has_pub_mod oracle are deleted (see cssl_is_not_a_seed_admission_path_note), so seed mod-tree membership has one authority, v2.compiler.self_host.stage0_crate_layout, and this harness is not a second reader of it."
 
 fn cssl_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
@@ -230,10 +230,10 @@ fn cssl_fault_run_detected_the_planted_fault(
 // returned the same false as an emitted module that ran and behaved differently from its contract
 // -- a missing artifact read as a behavioral divergence (srv1 validation run, 2026-09-27). The
 // arms now separate the two: CsslSetupRefused names the step that did not produce what the drive
-// needs (a read, a tool binary with its tools.host_prelude WitnessBinRefusalReason, the emit, the
+// needs (a read, a tool binary with its gunbc.instruments.host_prelude WitnessBinRefusalReason, the emit, the
 // assembly, the cargo build, the witness artifact itself, or the cleanup), and only a drive that
 // RAN can answer CsslBehaviorHeld or CsslBehaviorDiverged. This retires this harness's use of the
-// lossy tools.host_prelude witness_bin_ready projection, per that note's dissolve-on.
+// lossy gunbc.instruments.host_prelude witness_bin_ready projection, per that note's dissolve-on.
 type CsslReceiptOutcome
   = CsslBehaviorHeld
   | CsslBehaviorDiverged { observed: String }

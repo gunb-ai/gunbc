@@ -26,14 +26,14 @@ import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
   live_deploy_health_url_over_socket,
 }
-import gunbc.roadmap_static_site { roadmap_site_health_path }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import extdeps.tailscale.serve { ServeRootMount, ServeSetPath }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import gunbc.roadmap_site_surface_expect {
+import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
   roadmap_site_healthz_surface_is_current,
 }
-import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
+import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
 import gunbc.running_release_identity {
   RunningReleaseIdentity,
   RunningReleaseIdentified,
@@ -51,27 +51,27 @@ import gunbc.running_release_identity {
   SurfaceBundleIdentityMalformed,
   observe_running_release_identity,
 }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
+import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_plan_listen_port,
   deployment_tailnet_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.ci_deploy_access {
+import gunbc.ci.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access,
   deploy_access_decision_reason,
 }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffectTransport,
   LocalShell,
   SshShell,
   EmitArtifactThenThinRun,
 }
-import gunbc.host_effect_realize { host_effect_privilege_verdict }
+import gunbc.host.host_effect_realize { host_effect_privilege_verdict }
 import gunbc.systemctl_status_read { systemctl_status_read, unit_status_capture_text }
 import std.access { Deny, Permit }
 import gunbc.typed_argv_exec {
@@ -618,7 +618,7 @@ fn healthz_body_verdict(
 //
 // THIS ROW USED TO NAME FIVE STAGES AND NOW NAMES FOUR, and the missing one is the point: PROBE is
 // no longer ordered by this note because it is no longer ordered by anything. HealthzEffectiveRead
-// became a coproduct (gunbc.roadmap_site_surface_types), so a refused probe carries no body at all
+// became a coproduct (gunbc.roadmap.roadmap_site_surface_types), so a refused probe carries no body at all
 // and the parse stage is unreachable from it — not checked-first, but unreachable. The four above
 // remain ordering-by-discipline inside healthz_body_verdict: they are stages over
 // ONE String, and nothing structural stops a future edit from reordering them, so this note is
@@ -746,7 +746,7 @@ fn capture_unit_diagnosis(
 // live_deploy_poll_service_ready_outcome_after_attempts without materializing
 // the live site (injected one-attempt observation). Until then the once-Ready
 // property is held by
-// test.claim.roadmap_site_surface_readiness
+// test.claim.roadmap.roadmap_site_surface_readiness_witness_test
 // witness_roadmap_site_surface_readiness_materialized_batch_holds via
 // service_ready_once_converges_on_healthy_fixture_for_bundle.
 

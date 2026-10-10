@@ -1,4 +1,4 @@
-module test.claim.managed_host_boot_federation_forged_probe_witness
+module test.claim.auth.managed_host_boot_federation_forged_probe_witness_test
 
 import v2.std.algebra { filter }
 import std.types { String, Bool, Int }

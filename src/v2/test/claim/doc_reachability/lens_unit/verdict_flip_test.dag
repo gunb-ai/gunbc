@@ -1,4 +1,4 @@
-module v2.test.doc_reachability.lens_unit.verdict_flip_test
+module v2.test.claim.doc_reachability.lens_unit.verdict_flip_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

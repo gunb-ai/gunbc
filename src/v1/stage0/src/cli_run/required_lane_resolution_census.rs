@@ -3,12 +3,12 @@
 //! The question the census asks is DESIGN section 3's standing warning read as a measurement:
 //! outside the required gate the substrate still refuses and nothing asks it to, so a
 //! product-layer dependent can stop resolving, stay broken, and let every required lane report
-//! SUCCESS. On 2026-09-20 that was the live state -- `gunbc.site_pxe_edge_converge` did not
+//! SUCCESS. On 2026-09-20 that was the live state -- `gunbc.fleet.site_pxe_edge_converge` did not
 //! resolve on main while all four required lanes were green (gunbc#11607) -- and the question
 //! "which modules can do that" had no instrument. This file answers the three population
 //! queries the `.dag` census (`gunbc.required_lane_resolution_census`) folds over; the census,
 //! not this file, decides which lanes exist and what each one resolves, and it reads that roster
-//! from `gunbc.compiler_gate_workflow` so a job the workflow emits cannot go unclassified.
+//! from `gunbc.witness.compiler_gate_workflow` so a job the workflow emits cannot go unclassified.
 //!
 //! "RESOLVE" MEANS ONE THING HERE: the module's source is in the source set a lane's compile
 //! transaction hands to `compile_to_resolved` under the Strict gate. For the floor that is the

@@ -31,7 +31,7 @@ import extdeps.linux.usb_gadget {
   usb_gadget_setup_ops,
   usb_gadget_teardown_ops,
 }
-import gunbc.bmc_virtual_media {
+import gunbc.bmc.bmc_virtual_media {
   srv4_vm_gadget,
   srv4_vm_gadget_setup_ops,
   srv4_vm_gadget_setup_display,
@@ -399,7 +399,7 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
 
 // The typed tests above prove the honest route works; they do not prove the bypasses are
 // unwritable. Two RED probes compile FOREIGN module sources through the guarantee probe corpus
-// -- the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses: the
+// -- the same harness dag/test/claim/operation_admit_callers_inert_witness.dag uses: the
 // hand-authored prepared value (refused by the sole_constructor seal) and the direct call to the
 // prepared mint (refused by the admit_callers wall). A third control runs the production route
 // itself over both name spellings. The sources are compiled as DATA, not as modules of this

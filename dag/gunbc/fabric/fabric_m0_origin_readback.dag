@@ -1,4 +1,4 @@
-module gunbc.fabric_m0_origin_readback
+module gunbc.fabric.fabric_m0_origin_readback
 
 import std.types { NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
@@ -72,7 +72,7 @@ import extdeps.crypto.hash
 // AND WHAT THE HERMETIC WITNESSES DO NOT SHOW: they exercise this function through a MOCK that
 // replays one constant digest for every path. That establishes the modeled effect route and the
 // verdict algebra above it; it does NOT establish that any real bytes were hashed. Only the hand-run
-// instrument tools.fabric_m0_origin_readback_probe shows the live handler computing over real bytes.
+// instrument gunbc.instruments.fabric_m0_origin_readback_probe shows the live handler computing over real bytes.
 // Three instruments, three propositions, and that instrument's own annotation carries its execution
 // standing -- dated there rather than asserted live here, for the reason the egress paragraph above
 // gives.
@@ -88,7 +88,7 @@ import extdeps.crypto.hash
 // directory, tells the transport to write the object there, and hands THAT path -- and only that
 // path -- to read_origin_staged_file. Its caller names an object KEY and never a path, and the
 // value it receives is OriginFetchOutcome below, whose staged arm carries the OriginReading the
-// read produced. That is the route a confirming readback should take, and gunbc.fabric_m0_commit
+// read produced. That is the route a confirming readback should take, and gunbc.fabric.fabric_m0_commit
 // manifest_read_of_origin_fetch folds it into the manifest observation.
 //
 // WHAT KEEPS THE ENCLOSING CLASS AT MITIGATABLE is that this function is still callable with a
@@ -130,7 +130,7 @@ type OriginReadingOutcome
 // object exists; or nothing usable was obtained -- a refused request, a transport that never
 // answered, a staging directory that could not be made, a digest that could not be taken -- each a
 // located cause. Absent and Unavailable are kept apart because they have opposite remedies
-// downstream: gunbc.fabric_m0_commit reads absence as ManifestNotFound and unavailability as
+// downstream: gunbc.fabric.fabric_m0_commit reads absence as ManifestNotFound and unavailability as
 // ManifestReadUnavailable, and collapsing one into the other is the empty-observation narrow.
 //
 // THE SHAPE LIVES HERE AND THE PRODUCER DOES NOT. This module owns what a confirming reading IS;

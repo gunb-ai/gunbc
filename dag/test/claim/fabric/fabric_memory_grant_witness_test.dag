@@ -1,4 +1,4 @@
-module test.claim.fabric_memory_grant_witness_test
+module test.claim.fabric.fabric_memory_grant_witness_test
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure {
@@ -18,7 +18,7 @@ import product.fabric.memory_grant {
   issue_memory_grant, memory_grant_standing, memory_grant_standing_text,
   memory_grant_required_minimum, memory_grant_bytes,
 }
-import gunbc.fabric_memory_grant_policy {
+import gunbc.fabric.fabric_memory_grant_policy {
   MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy,
   MemoryGrantSizing, SizingResolved, SizingUnrepresentable,
   MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable,
@@ -26,14 +26,14 @@ import gunbc.fabric_memory_grant_policy {
   microvm_memory_grant_size, microvm_memory_grant, gunbc_microvm_memory_grant_policy,
   gunbc_microvm_memory_compatibility_permit, gunbc_microvm_memory_compatibility_default,
 }
-import gunbc.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable, gunbc_runner_microvm_guest_cache_allowance }
+import gunbc.runner.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable, gunbc_runner_microvm_guest_cache_allowance }
 
 // THE SUBJECT IS ONE INTERFACE AND ITS INPUTS ARE SUPPLIED (DESIGN 3). Every claim below but the
 // last three constructs its policy, its requirement and its identities rather than deriving them by
-// running gunbc.floor_demand and gunbc.runner_microvm -- those have their own subjects and their
+// running gunbc.floor.floor_demand and gunbc.runner.runner_microvm -- those have their own subjects and their
 // own discriminating reds, and re-executing them here would buy no coverage at the price of their
 // whole cost. The pairing obligation is discharged by the last three claims, which execute the REAL
-// allowance producer gunbc.runner_microvm gunbc_runner_microvm_guest_cache_allowance (the floor
+// allowance producer gunbc.runner.runner_microvm gunbc_runner_microvm_guest_cache_allowance (the floor
 // cache receipt), assemble the fleet policy through the real binding
 // gunbc_microvm_memory_grant_policy exactly as the wiring item's consumer will, and route it
 // through the real issue fold. Deleting any link of that route makes them fail.
@@ -61,7 +61,7 @@ fn attempt_id() -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
 }
 
 fn policy_ref() -> DeclarationRef {
-  decl_ref(module_path: "test.claim.fabric_memory_grant_witness_test", decl_name: "fixture_policy")
+  decl_ref(module_path: "test.claim.fabric.fabric_memory_grant_witness_test", decl_name: "fixture_policy")
 }
 
 fn gib() -> Int { 1073741824 }
@@ -75,7 +75,7 @@ fn finite(bytes: Int) -> FiniteByteSize {
 fn fixture_permit(default_bytes: Int) -> MemoryCompatibilityPermit {
   MemoryCompatibilityPermit {
     default_grant: byte_size(default_bytes),
-    permitted_by: decl_ref(module_path: "test.claim.fabric_memory_grant_witness_test", decl_name: "fixture_permit"),
+    permitted_by: decl_ref(module_path: "test.claim.fabric.fabric_memory_grant_witness_test", decl_name: "fixture_permit"),
     reason: "fixture permit" as NonEmptyStr,
   }
 }
@@ -350,7 +350,7 @@ test fn a_permit_default_above_the_ceiling_is_refused_by_the_ceiling_law() -> Bo
 // INHABITANCE (DESIGN 3): THE REAL PRODUCERS EMIT THE SHAPE THE CLAIMS ABOVE SUPPLY.
 //
 // The fleet policy is assembled the way its production consumer will assemble it: the allowance is
-// READ from gunbc.runner_microvm's real producer over the real floor cache receipt, the ceiling is
+// READ from gunbc.runner.runner_microvm's real producer over the real floor cache receipt, the ceiling is
 // supplied because its production caller is the wiring item's declared frontier, and the binding is
 // total. An underivable allowance is answered with `none` so every route claim below goes RED on
 // its own arm rather than on a fixture standing in for the refusal.
@@ -363,7 +363,7 @@ fn fleet_policy(ceiling: Int) -> MicroVmMemoryGrantPolicy? {
 }
 
 // The binding's shape is asserted as USABLE rather than as a figure: a claim on the exact allowance
-// would be a transcription of gunbc.floor_demand's receipt, which that module's witnesses already
+// would be a transcription of gunbc.floor.floor_demand's receipt, which that module's witnesses already
 // hold. The permit's default is compared THROUGH byte_size_count against the ByteSize row that owns
 // it, and against the gibibyte it is derived from, never against a re-minted literal.
 test fn the_fleet_policy_binding_emits_a_usable_policy() -> Bool {

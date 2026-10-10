@@ -1,15 +1,15 @@
-module test.claim.host_effect_plan_witness
+module test.claim.host.host_effect_plan_witness_test
 
 import std.logic { Bool }
 import std.algebra { Empty }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect,
   NodeControlPlane, HostOs,
   host_effect_identity_evidence,
   LocalShell,
   Srv3ReceiptEmit,
 }
-import gunbc.host_effect_plan {
+import gunbc.host.host_effect_plan {
   HostEffectPlan, HostEffectPlanContext,
   host_effect_plan_apply,
 }
@@ -24,7 +24,7 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
-import gunbc.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_intent { srv1_host }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -75,7 +75,7 @@ test fn witness_empty_plan_refuses_without_fabricated_effect() -> Bool {
 test fn witness_control_flow_step_refuses_without_fabricated_effect() -> Bool {
   match host_effect_plan_apply(plan: witness_if_control_flow_plan(), ctx: witness_plan_ctx()) {
     NotConverged { reason: why, applied: Absent } =>
-      why == gunbc.host_effect_plan.host_effect_plan_unsupported_step_reason
+      why == gunbc.host.host_effect_plan.host_effect_plan_unsupported_step_reason
     _ => false
   }
 }
@@ -113,7 +113,7 @@ test fn witness_do_retains_actual_intent() -> Bool {
 }
 
 test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool {
-  let effect = gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem }
+  let effect = gunbc.host.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem }
   match host_effect_plan_apply(
     plan: witness_two_do_plan(first: effect, last: Srv3ReceiptEmit { lines: ["must-not-run"] }),
     ctx: witness_plan_ctx(),

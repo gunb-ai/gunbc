@@ -1,5 +1,5 @@
 //! Whole-emitted-closure assembly for curated self-host behavioral receipts.
-//! Authority: tools.self_host_curated_seed_linked_harness (5-arm design).
+//! Authority: gunbc.instruments.self_host_curated_seed_linked_harness (5-arm design).
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
 use sha2::Digest;
@@ -107,12 +107,12 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
 /// syntax standing in for a fact the emitter already writes down. `v1.compiler.emit_rust`
 /// `emit_emitted_population_manifest` renders one line per produced path into
 /// `src/emitted_population.rs` in the same `out_dir`, under one authority
-/// (`gunbc.stage0_emitted_population_manifest`): `line_prefix ++ path`, joined by the separator.
+/// (`gunbc.stage0.stage0_emitted_population_manifest`): `line_prefix ++ path`, joined by the separator.
 /// Reading it is a split and a strip; no Rust grammar on either side, which is why the artifact
 /// is a file of `//` lines.
 ///
 /// A line without the prefix is DROPPED, not guessed at, matching the modeled reader
-/// `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one grammar
+/// `gunbc.stage0.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one grammar
 /// read in both directions (DESIGN section 4), never a second parser.
 fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError> {
     let content = fs::read_to_string(manifest)?;
@@ -314,7 +314,7 @@ mod tests {
         )
         .expect("tree");
         let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        let dag = repo.join("src/v2/compiler/tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         assemble_seed_linked_closure(&out, &dag).expect("assemble");
@@ -354,7 +354,7 @@ mod tests {
         )
         .expect("manifest");
         let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/04_infer.dag");
+        let dag = repo.join("src/v2/compiler/infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
         assemble_seed_linked_closure(&out, &dag).expect("assemble");
@@ -393,7 +393,7 @@ mod tests {
         )
         .expect("manifest");
         let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        let dag = repo.join("src/v2/compiler/tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         assemble_seed_linked_closure(&out, &dag).expect("assemble");
@@ -466,7 +466,7 @@ mod tests {
         )
         .expect("tree");
         let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
+        let dag = repo.join("src/v2/compiler/name_resolve.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
         assemble_seed_linked_closure(&out, &dag).expect("assemble");
@@ -487,7 +487,7 @@ mod tests {
         )
         .expect("tree");
         let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/05_emit.dag");
+        let dag = repo.join("src/v2/compiler/emit.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
         assemble_seed_linked_closure(&out, &dag).expect("assemble");

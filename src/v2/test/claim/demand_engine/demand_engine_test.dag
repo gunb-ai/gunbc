@@ -1,4 +1,4 @@
-module v2.test.demand_engine.demand_engine
+module v2.test.claim.demand_engine.demand_engine_test
 
 import std.types { List }
 import v2.std.algebra { length, list_map, fold_list, contains, filter }

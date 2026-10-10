@@ -1,4 +1,4 @@
-module v2.test.long.ratchet_baseline
+module v2.test.claim.long.ratchet_baseline_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

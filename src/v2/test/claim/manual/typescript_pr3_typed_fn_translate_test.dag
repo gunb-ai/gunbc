@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_pr3_typed_fn_translate
+module v2.test.claim.manual.typescript_pr3_typed_fn_translate_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.compile {

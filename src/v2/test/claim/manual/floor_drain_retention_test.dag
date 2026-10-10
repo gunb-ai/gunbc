@@ -1,4 +1,4 @@
-module v2.test.manual.floor_drain_retention
+module v2.test.claim.manual.floor_drain_retention_test
 
 import std.logic { Bool }
 import std.types { String }

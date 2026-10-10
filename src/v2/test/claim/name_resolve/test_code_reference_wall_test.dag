@@ -1,4 +1,4 @@
-module v2.test.name_resolve.test_code_reference_wall
+module v2.test.claim.name_resolve.test_code_reference_wall_test
 
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }

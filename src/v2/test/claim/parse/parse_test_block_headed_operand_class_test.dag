@@ -1,4 +1,4 @@
-module test.claim.parse_test_block_headed_operand_class
+module v2.test.claim.parse.parse_test_block_headed_operand_class_test
 
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared_seeded }
 import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A BLOCK-HEADED EXPRESSION IS AN OPERAND OF EVERY BINARY OPERATOR CLASS. `match`, `if` and `loop` are
 // primaries of binary_expr (v2.extdeps.languages.dag dag_grammar_primary_expr_core), so a block heads
 // a chain of any operator, as the seed reads it (v1.compiler.parse parse_expr_bp).
-// v2.test.parse.block_expr_as_binary_operand_parse holds `&&` with a `match` and with an `if`, the
+// v2.test.claim.parse.block_expr_as_binary_operand_parse_test holds `&&` with a `match` and with an `if`, the
 // bare forms and their lowered shape (so an `if` heading a chain is held there); these claims hold the
 // remaining operator classes, one each, with a `match` as the LEFT operand. They are what fails if a block-form alternative returns ahead of
 // binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One

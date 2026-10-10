@@ -1,4 +1,4 @@
-module v2.test.manual.branch_infer_if_then_else
+module v2.test.claim.manual.branch_infer_if_then_else_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer {

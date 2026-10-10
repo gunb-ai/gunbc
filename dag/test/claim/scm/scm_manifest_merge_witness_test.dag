@@ -1,4 +1,4 @@
-module test.claim.scm_manifest_merge_witness
+module test.claim.scm.scm_manifest_merge_witness_test
 
 // CONTROLS FOR THE THREE-WAY DECISION, WRITTEN TO THE CASES A FOUR-LINE LAW OVER BARE LOCATORS GETS
 // WRONG. Every wrong implementation here returns a VALID MANIFEST, so a control asserting "a manifest

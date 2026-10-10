@@ -1,7 +1,7 @@
-module gunbc.runner_microvm_attempt_identity
+module gunbc.runner.runner_microvm_attempt_identity
 
 import std.types { String, NonEmptyStr }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 
 // AN ATTEMPT ID IS A PATH SEGMENT, AND A SEGMENT IS NOT AN ARBITRARY STRING.
 //

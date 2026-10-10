@@ -8,7 +8,7 @@ import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.apt {
+import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
 }
@@ -27,25 +27,25 @@ import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
   tailscale_serve_route_member_path,
 }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.fleet_intent_network {
+import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
 }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
   srv1_gunbc_serve_binary,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
@@ -58,7 +58,7 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership: the service is `gunbc
 // serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary +
-// GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host_layout authority the
+// GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host.host_layout authority the
 // belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is
 // never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when
 // belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user;
@@ -475,7 +475,7 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // THE REPO ROOT IS THE BROKER'S OWN AND NOT THE INSTANCE'S, for the same class of reason. It used
 // to be instance.repo_root -- the roadmap's deployed tree -- which is frozen at a release that
 // predates this module, so the unit could not resolve its own entry and systemd restart-looped it
-// (stage-A run, 2026-09-20). gunbc.host_layout srv1_gunbc_approval_broker_root is a root this
+// (stage-A run, 2026-09-20). gunbc.host.host_layout srv1_gunbc_approval_broker_root is a root this
 // deployment populates from the candidate during the dark install, so the broker's tree and the
 // roadmap's move independently -- which is what a separate process at a separate revision means.
 // THE BROKER HAS NO CONSTANT SERVE BINARY, so this field cannot answer for it and says so rather
@@ -559,7 +559,7 @@ fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -
 // became the same statement instead of two that could disagree.
 
 // THE PUBLICATION PRINCIPAL IS A HOST ALLOCATION THIS GRAPH CARRIES, NEVER ONE IT MINTS.
-// name_requirements_authority_note in gunbc.fleet_posix_accounts records the reverted attempt to
+// name_requirements_authority_note in gunbc.fleet.fleet_posix_accounts records the reverted attempt to
 // spell service usernames in the model, and the reason it was reverted is exactly the reason this
 // is a field: once a role is legible in a label, consumers start reading the label as authority.
 // What the model owns is the PRINCIPAL -- FleetAccountPublicationHelper, its login policy and its
@@ -608,7 +608,7 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
 // THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
 // only by the deployment whose instance holds the fabric DB placement (fabric_storage_placed_on). It is
 // deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
-// are owned-directory demands no retract touches (gunbc.fabric_storage_placement fabric_storage_directory_demands).
+// are owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands).
 fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
 }
@@ -685,7 +685,7 @@ fn deployment_belt_discovery_service_unit_name(names: DeploymentNames) -> NonEmp
 // for the host rather than one per instance, and that is correct rather than a shortcut: the
 // principal exists to hold ONE capability -- listing pull requests for this repository -- and two
 // accounts holding the same capability would be two names for one authority. What must not fuse is
-// the SPOOL, and it does not: gunbc.host_layout publication_spool_root derives from the instance
+// the SPOOL, and it does not: gunbc.host.host_layout publication_spool_root derives from the instance
 // root, so a twin's requests and answers live under the twin's own tree.
 //
 // THE ACCOUNT IS CREATED OUT OF BAND AND THIS DEPLOY CANNOT CREATE IT. The deploy principal holds
@@ -735,7 +735,7 @@ fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr
 // spawn `printenv` and `git`, and the sentence that is TRUE is the one that is also sufficient.
 // The withdrawal is therefore lifted for one unit and stands for the other two: the serve unit and
 // the belt unit bind no credential and contain no function that could name one, because
-// gunbc.roadmap_belt_actuate's probe was DELETED rather than merely unbound.
+// gunbc.roadmap.roadmap_belt_actuate's probe was DELETED rather than merely unbound.
 //
 // FILE-BACKED DELIVERY IS NOT MERELY INSUFFICIENT, IT IS UNNECESSARY, and this correction matters
 // more than the row it sits in. The earlier ruling said a file was not ENOUGH, which reads as
@@ -744,11 +744,11 @@ fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr
 // is the principal and the transport was never the defect; under a dedicated principal an
 // environment variable leaks nowhere a file would not. That is why this change adds no file-backed
 // std.credentials.CredentialSource variant, and the absence is a decision rather than an omission
-// (gunbc.roadmap_publication_helper's header carries the second reason, which is that the v1 seed
+// (gunbc.roadmap.roadmap_publication_helper's header carries the second reason, which is that the v1 seed
 // resolves an auth source as an environment variable and nothing else).
 //
 // IT IS STILL ONE FILE FOR THE INSTANCE, and the reason is unchanged: TWO ingress paths reach
-// publication -- the belt tick, and POST /publish/{node_id} through gunbc.roadmap_serve
+// publication -- the belt tick, and POST /publish/{node_id} through gunbc.roadmap.roadmap_serve
 // serve_publish_handler_response_for_instance -> belt_publish_node_for_instance. They now reach it
 // by writing the same request document into the same spool, so they share the helper rather than
 // sharing a token, and fixing one without the other is no longer expressible.
@@ -766,7 +766,7 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
 // rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
 // service-user-owned and the deploy principal is the unprivileged ci-runner
-// (gunbc.fleet_posix_accounts FleetAccountCiRunner),
+// (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner),
 // so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
 // other. That argues for the tree-sync unit, which already has the right principal.
 //
@@ -833,7 +833,7 @@ fn deployment_belt_discovery_service_unit_path(names: DeploymentNames) -> NonEmp
 // removes both, retirement stops the runtime. The converge pass itself is idempotent
 // observe→verdict→apply-on-drift, so a twin's duplicate cadence against the same host is
 // duplicated observation, never duplicated mutation. CONTENT cadence/catch-up facts
-// (OnCalendar, Persistent=true, jitter) derive from the gunbc.fleet_converge_timer
+// (OnCalendar, Persistent=true, jitter) derive from the gunbc.fleet.fleet_converge_timer
 // authority rows; only the NAMES derive here. That module's fixed ctrl-fleet-converge
 // unit-name rows remain the standalone/host-standup authority and are not consumed by
 // this member.
@@ -948,7 +948,7 @@ data srv1_live_unit_naming_debt_dissolution: DissolutionCondition = retires_diss
 // member: a oneshot unit running AS the service user (the tree's owner writes its own tree —
 // ownership by construction, no chown), installed/started by the deploy through the granted
 // install+systemctl channel because the ci-runner principal holds no rsync grant and no write
-// access to the service-user-owned tree (gunbc.fleet_posix_accounts FleetAccountCiRunner). Its
+// access to the service-user-owned tree (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner). Its
 // EnvironmentFile carries
 // the runner checkout path (varies per runner slot), written by the apply at run time. Both files
 // are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm.
@@ -1012,13 +1012,13 @@ type DeploymentSpec {
 // the precondition now; revisit scoped art.path when a cross-host consumer exists.
 
 // THE BELT HAD NO DRIVER, AND THE HOST-LEVEL PATTERN THAT LOOKED LIKE ITS HOME DOES NOT INSTALL
-// ANYTHING. belt_run_once_cli (gunbc.roadmap_belt_actuate) is a complete ProcessExit entrypoint
+// ANYTHING. belt_run_once_cli (gunbc.roadmap.roadmap_belt_actuate) is a complete ProcessExit entrypoint
 // with a fail-closed exit mapping, and nothing invoked it — so a dispatched roadmap item reached
 // Verification and stopped there, which is what the operator observed on the live site.
-// gunbc.roadmap_serve's serve_publish_note already names the consequence from the other side: POST
+// gunbc.roadmap.roadmap_serve's serve_publish_note already names the consequence from the other side: POST
 // /publish/{node_id} 'exists because belt_tick has none'.
 //
-// The obvious home was a host timer beside gunbc.host_hygiene_reaper, and that is the wrong
+// The obvious home was a host timer beside gunbc.host.host_hygiene_reaper, and that is the wrong
 // precedent for a reason worth recording rather than rediscovering: the reaper is modeled, scripted
 // and witnessed, and it is installed by NOBODY. gunbc.host_hygiene_reaper_script has zero consumers
 // and is a declared Scaffold; the only reference to the reaper outside its own module is a residue
@@ -1035,7 +1035,7 @@ type DeploymentSpec {
 // case falls out for free: srv1-lab gets its own timer against its own roots instead of a host
 // singleton that two instances would have to share.
 //
-// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN, AND MAKING IT TRUE IS WHY gunbc.roadmap_belt_actuate
+// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN, AND MAKING IT TRUE IS WHY gunbc.roadmap.roadmap_belt_actuate
 // CHANGED IN THE SAME CHANGE. belt_actuate_workdir was a literal projection of srv1_gunbc_repo_root
 // and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever
 // instance installed it. The first cut of this member papered over that by making membership
@@ -1200,7 +1200,7 @@ fn deployment_directory_demands(spec: DeploymentSpec) -> List<OwnedDirectoryTarg
 // FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13,
 // sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml on-demand
 // plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by
-// gunbc.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the
+// gunbc.fleet.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the
 // reverse of the owned steps and touches no directory.
 fn deployment_steps_apply_order(
   instance: HostDashboardInstance,

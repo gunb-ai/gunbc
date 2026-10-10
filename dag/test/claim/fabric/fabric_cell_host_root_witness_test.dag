@@ -1,10 +1,10 @@
-module test.claim.fabric_cell_host_root_witness
+module test.claim.fabric.fabric_cell_host_root_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import gunbc.fabric_cell_converge {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fabric.fabric_cell_converge {
   fabric_cell_base_dir,
   FabricCellMember,
   FabricCellRootAddress,
@@ -12,17 +12,17 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
 }
 import std.optional { Present, Absent }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.membership_reconcile { membership_removal_count, membership_refusal_count, membership_write_count }
-import gunbc.fabric_cell_subject {
+import gunbc.fabric.fabric_cell_subject {
   FabricCellResourceSubject,
   FabricCellHostScope,
   FabricCellSlotScope,
   fabric_cell_subject_ownership,
   fabric_cell_subject_is_teardown_eligible,
 }
-import gunbc.fabric_cell_host_root {
+import gunbc.fabric.fabric_cell_host_root {
   FabricCellHostMember,
   fabric_cell_host_desired_members,
   fabric_cell_host_reconcile,

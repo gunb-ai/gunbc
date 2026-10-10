@@ -1,4 +1,4 @@
-module v2.test.manual.model_core_anchor
+module v2.test.claim.manual.model_core_anchor_test
 
 import v2.std.algebra { length }
 import v2.std.logic { bool_encoding_fact_node, bool_primitive_facts, bool_primitive_facts_node, bool_width_fact_node }

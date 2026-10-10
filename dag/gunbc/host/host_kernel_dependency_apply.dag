@@ -1,4 +1,4 @@
-module gunbc.host_kernel_dependency_apply
+module gunbc.host.host_kernel_dependency_apply
 
 import std.types { String, NonEmptyStr, Bool, List, CommitSha }
 import std.algebra { trim }
@@ -8,25 +8,25 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import extdeps.systemd.systemctl
-import extdeps.apt
+import extdeps.package_managers.apt
 import extdeps.tools.uname { uname_release_command }
-import gunbc.host_kernel_boot_selection { kernel_maintenance_grub_selects }
+import gunbc.host.host_kernel_boot_selection { kernel_maintenance_grub_selects }
 import product.host_identity { HostIdentity }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.host_effect { LocalShell }
-import gunbc.host_kernel_dependency {
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_kernel_dependency {
   HostKernelDependencyPlan, HostKernelDependencyResolution, HostKernelCapabilitySatisfied,
   HostKernelDependencyPlanned, HostKernelDependencyRefused, InstallKernelAndActivate,
   ActivateInstalledKernel, kernel_provider_selection,
 }
-import gunbc.host_kernel_dependency_observe { host_tun_kernel_dependency_observe, kernel_read_command }
-import gunbc.host_kernel_dependency_wire { kernel_dependency_field, host_kernel_dependency_from_text, host_kernel_dependency_text }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
-import gunbc.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
-import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
-import gunbc.build_cache_instance { runner_slot_instance_name }
-import gunbc.runner_slot_population_census { census_unit_name_is_slot, unit_is_owned_by_host }
-import gunbc.runner_slot_retirement {
+import gunbc.host.host_kernel_dependency_observe { host_tun_kernel_dependency_observe, kernel_read_command }
+import gunbc.host.host_kernel_dependency_wire { kernel_dependency_field, host_kernel_dependency_from_text, host_kernel_dependency_text }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
+import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_slot_population_census { census_unit_name_is_slot, unit_is_owned_by_host }
+import gunbc.runner.runner_slot_retirement {
   observe_slot_cgroup_occupancy, CgroupAbsent, CgroupObservedEmpty,
   CgroupObservedPopulated, CgroupUnobserved, CgroupOccupancy,
 }

@@ -1,4 +1,4 @@
-module v2.test.manual.edit_locus_resolution
+module v2.test.claim.manual.edit_locus_resolution_test
 
 import v2.lens.edit_locus { resolve_edit_locus_from_loci }
 import v2.std.integer { integer_int_type_node }

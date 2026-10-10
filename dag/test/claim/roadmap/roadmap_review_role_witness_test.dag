@@ -17,7 +17,7 @@ import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.decl_ref { decl_ref }
 import std.markdown { MarkdownDocument }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
+import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
 fn approve_text(summary: String) -> String {

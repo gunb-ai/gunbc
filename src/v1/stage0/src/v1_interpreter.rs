@@ -396,7 +396,7 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
 /// inferred node is the `Disj` of `Pick`, so every function returning a coproduct registered
 /// itself as a second declarer of that coproduct's arms. The tier then saw two visible owners --
 /// the real `type Pick` and the phantom `probe` -- and refused a read the author had named
-/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`: both
+/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness.dag`: both
 /// arm controls were RED with the branch and are green without it, in the site's own module and
 /// through an explicit import alike. Reading a declaration off an inferred type is the same
 /// category error in miniature that this whole wall exists to refuse.
@@ -3159,7 +3159,7 @@ fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) 
     Some(hasher.finish())
 }
 
-// 🟡 dissolve-on (narrowed, not discharged): gunbc.roadmap_authority
+// 🟡 dissolve-on (narrowed, not discharged): gunbc.roadmap.roadmap_authority
 // five_minute_ci_gate_program_note — this tier is the generic cross-claim pure memo that note
 // asked for, keyed on fn-node identity + content-hashed args, admission held to a DECLARED
 // roster (`v2.workflow.floor_pure_producer_share`) plus the built-in `prepare_grammar` arm,
@@ -4088,7 +4088,7 @@ mod cross_claim_demand_census_tests {
 // What separates an index from a scan is that the corpus is walked ONCE however many times it is
 // asked, so this reads the fill counter. Restoring the scan removes the accessor named here -- a
 // compile error in `cargo clippy --all-targets`, which IS a required lane
-// (`gunbc.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
+// (`gunbc.repo.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
 // lookup fails the assertion.
 //
 // Rung honesty: the assertion executes under `cargo test`, which no CI step runs as of the
@@ -6371,7 +6371,7 @@ impl PreparedScopeIndexes {
     /// imported by name. Measured on the corpus at the revision this landed against: five such
     /// sites, `std.fidelity` and `v2.extdeps.languages.cpp` reading arms of their OWN
     /// coproducts, and `gunbc.live_deploy.unit_standing`, `v2.test.lens_cost.valuation` and
-    /// `v2.test.manual.infer_ground_add` reading arms they import by name. None of the five
+    /// `v2.test.claim.manual.infer_ground_add` reading arms they import by name. None of the five
     /// means either claimant type, so all five are sites a refusal keyed on this population
     /// must NOT refuse.
     ///
@@ -10967,7 +10967,7 @@ macro_rules! v1_bridge_family_arms {
             // drops both out of that closure by identity. `is_v4_bridge_family` matches the item
             // registry's module name against this literal, so the literal moves the bridge; the
             // family enum, lookup fn and arm macro are generated from the same
-            // `EvalCallBridgeFamilySite.module` in gunbc.v1_interpreter_primitive_surface, and a
+            // `EvalCallBridgeFamilySite.module` in gunbc.v1.v1_interpreter_primitive_surface, and a
             // name disagreeing with the roster fails to compile.
             family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
                 lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
@@ -15748,7 +15748,7 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
 ///
 /// Pure encoding. The judgement was made by
-/// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// `gunbc.namespace.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
 /// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The
 /// three payload vocabularies are nullary coproducts, carried by name.
 fn reference_derived_closure_admission_value(
@@ -16210,7 +16210,7 @@ fn compile_diagnostic_census_value(
     }
 }
 
-/// Projects a host CLAIM SCOPE fixture outcome into the `tools.multi_module_compile_fixture`
+/// Projects a host CLAIM SCOPE fixture outcome into the `gunbc.instruments.multi_module_compile_fixture`
 /// coproduct. Four arms, kept distinct for the reason the compile projection keeps three: a
 /// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
 /// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
@@ -16279,7 +16279,7 @@ fn claim_scope_fixture_value(
     }
 }
 
-/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
+/// Projects a host multi-module fixture outcome into the `gunbc.instruments.multi_module_compile_fixture`
 /// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
 /// the compiler's verdict, and a compile that never ran must never arrive as
 /// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
@@ -17085,7 +17085,7 @@ fn reference_occurrence_binding_census_value(
     }
 }
 
-/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct. Arms stay
+/// Projects a host gate receipt into the `gunbc.ci.ci_gate` `GateReceipt` coproduct. Arms stay
 /// distinct to the substrate as `compile_diagnostic_census_value`'s do: `GateNotRun` must
 /// never arrive as a clean verdict — could-not-measure and passing are different facts with
 /// different owners, and a `Bool` at this seam made them one value.
@@ -21212,7 +21212,7 @@ fn map_response_to_value_json(
 // output field says, so a field declared as a nullary coproduct (`status: WorkflowRunStatus`)
 // carried the wire spelling "completed" into a program that matches on `Completed`. Every such
 // match took its wildcard arm or refused non-exhaustively -- silent wrongness at the language
-// layer, measured live on gunbc.fleet_desired_admission's merge-queue route, which refused every
+// layer, measured live on gunbc.fleet.fleet_desired_admission's merge-queue route, which refused every
 // real landing as RequiredCiMergeGroupRunUnconcluded while its fold witness, fed constructed
 // records, stayed green (gunbc.recurring_failure_mode
 // rest_response_coproduct_decoded_type_blind).
@@ -22282,7 +22282,7 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap_authority
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap.roadmap_authority
 /// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists the workspace under workspace_dir and skips
@@ -22709,7 +22709,7 @@ fn run_cached_process_spec(
 /// the absorbing fallback hermetic-tool-provisioning-design (deleted) §1 names).
 ///
 /// HAND-RUST GATE explicit deferral (review 44883): seed retained, not a new resolver
-/// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap_authority,
+/// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap.roadmap_authority,
 /// hermetic-tool-provisioning-design (plan doc deleted 2026-08-28) P2 — "one resolver",
 /// handback: delete `resolve_host_tool_program` and the bash ladder). This PR repairs only the
 /// fail-open terminal arm; no parallel key, no census growth. Delete the whole function when
@@ -25190,7 +25190,7 @@ macro_rules! v1_builtin_dispatch {
 //
 // WHY THIS EXISTS AND WHY IT IS HERE RATHER THAN AT THE FLOOR. `v2.workflow.required_floor`
 // classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
-// `ClaimPreemptionReachability`, and `gunbc.v1_interpreter_opaque_host_call` already grounds
+// `ClaimPreemptionReachability`, and `gunbc.v1.v1_interpreter_opaque_host_call` already grounds
 // which operations are unpollable. But the seed had no way to say which arm a claim actually
 // REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
 // discarded everywhere else -- the two populations the model distinguishes arrived at the floor
@@ -25201,7 +25201,7 @@ macro_rules! v1_builtin_dispatch {
 // IT RECORDS, IT DOES NOT DECIDE. Nothing here compares a cost or blocks a claim: the floor
 // reads this to REPORT which population a crossing belongs to, and blocking behaviour is
 // unchanged. The roster is NOT duplicated in Rust -- the floor reads
-// `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
+// `gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
 // it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
 // arming an empty one (an empty roster would report every crossing as pollable, which is the
 // reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
@@ -25276,7 +25276,7 @@ pub enum OpaqueHostCallReach {
 
 /// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
 /// AUTHORED SPELLING, which is the BARE dispatch key and is what
-/// `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
+/// `gunbc.v1.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
 /// the `free_call.*` arm identity, which is the join's INPUT and never its output.
 fn note_opaque_host_call_reach(name: &str) {
     BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
@@ -25287,9 +25287,9 @@ fn note_opaque_host_call_reach(name: &str) {
             return;
         };
         // THE SURFACE PUBLISHES `authored_spelling`, WHICH IS THE BARE DISPATCH KEY, AND THIS
-        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1_interpreter_opaque_host_call`
+        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1.v1_interpreter_opaque_host_call`
         // `opaque_host_call_surface` projects `roster_arms_for_identity(..) |> map(a =>
-        // a.authored_spelling)`, and `gunbc.v1_interpreter_primitive_surface` carries
+        // a.authored_spelling)`, and `gunbc.v1.v1_interpreter_primitive_surface` carries
         // `authored_spelling: "compile_dag_rust_emit_check"` beside
         // `identity: "free_call.compile_dag_rust_emit_check"`. This built the identity form and
         // compared it to a list of spellings, so the two vocabularies never intersected and no
@@ -27216,7 +27216,7 @@ mod file_effect_trace_tests {
     /// THE EXPECTED STRINGS ARE ASSERTED TOO, so the three agree over one input: if the .dag
     /// moves, this reds; if the mirror moves, this reds; and neither can pass by the other's
     /// construction. The operand is asserted separately in every case, because that is the half
-    /// the retired raw line carried and the half whose loss gunbc.roadmap_dispatch_actuator
+    /// the retired raw line carried and the half whose loss gunbc.roadmap.roadmap_dispatch_actuator
     /// records as the srv1 2026-08-19 publication incident.
     fn oracle_context() -> super::InterpContext {
         let root = crate::cli_run::workspace_root();

@@ -1,4 +1,4 @@
-module v2.test.manual.map_lookup_miss_witness_violates
+module v2.test.claim.manual.map_lookup_miss_witness_violates_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type LookupKey {

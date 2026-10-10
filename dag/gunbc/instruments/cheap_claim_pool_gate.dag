@@ -1,7 +1,7 @@
-module tools.cheap_claim_pool_gate
+module gunbc.instruments.cheap_claim_pool_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.cheap_gate_pool { run_cheap_claim_pool }
+import gunbc.instruments.cheap_gate_pool { run_cheap_claim_pool }
 
 fn run_cheap_claim_pool_gate_body() -> ProcessExit {
   return if run_cheap_claim_pool() {

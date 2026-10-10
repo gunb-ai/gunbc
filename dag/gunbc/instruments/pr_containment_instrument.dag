@@ -1,4 +1,4 @@
-module tools.pr_containment_instrument
+module gunbc.instruments.pr_containment_instrument
 
 import std.types { Bool, FilePath, GitRef, Int, List, Map, NonEmptyStr, String }
 import std.algebra { trim }
@@ -812,7 +812,7 @@ fn roster_with_member(acc: RosterRead, element: JsonValue) -> RosterRead {
 //
 // THE REPORT IS THE PRODUCT. There is no verdict line, no count of duplicates presented as a
 // finding, and no exit status that depends on what was found -- the exit status reports whether the
-// INSTRUMENT ran, exactly as tools.emission_entry_instrument's does, because any other mapping makes
+// INSTRUMENT ran, exactly as gunbc.instruments.emission_entry_instrument's does, because any other mapping makes
 // a broken instrument indistinguishable from a clean population.
 // THE COUNTED REMAINDER. Every disposition is counted, including the one the threshold excluded
 // from the candidate set, so a reader learns the SIZE of what they are not being pointed at rather

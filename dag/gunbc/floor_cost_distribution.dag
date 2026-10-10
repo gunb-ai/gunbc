@@ -8,13 +8,13 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 //
 // DESIGN section 6: name the instrument, never transcribe its output -- and if a measurement is
 // worth re-deriving it is worth an entry point. The first version of that memo named
-// `gunbc.witness_floor_workflow`, which produces the RAW ROWS and performs none of the analysis
+// `gunbc.witness.witness_floor_workflow`, which produces the RAW ROWS and performs none of the analysis
 // below; the ten-run intersection, the band histogram, the counterfactual replay and the inflation
 // percentiles existed only as prose plus numbers. Review 58983 refused it on exactly that ground
 // and was right to: a reader could check the arithmetic of nothing.
 //
 // EVERY FUNCTION HERE IS PURE AND TAKES ITS ROWS AS AN ARGUMENT. Reading the artifacts off disk is
-// a separate fact and lives in `tools.floor_cost_distribution_instrument`, which is the §3 split
+// a separate fact and lives in `gunbc.instruments.floor_cost_distribution_instrument`, which is the §3 split
 // between the interface (what the analysis IS) and the realization (where the bytes come from).
 // The consequence that matters for evidence: every derivation below is witnessable on a hand-built
 // fixture with no run artifacts present, which is what
@@ -1918,7 +1918,7 @@ fn crossing_population_identities(rows: List<CrossingPopulationRow>) -> List<Str
 // ONE IDENTITY ON BOTH SIDES OF THE LINE: THE JOIN THAT ASKS WHETHER THE INTERRUPT ARM IS ALSO
 // MEASURING THE HOST.
 //
-// THE OBSERVATION THAT COMMISSIONED IT. `v2.test.execution.emit_host_complement_equals_eval` was
+// THE OBSERVATION THAT COMMISSIONED IT. `v2.test.claim.execution.emit_host_complement_equals_eval_test` was
 // observed on two runs of ONE branch landing in two DIFFERENT dispositions: completed and
 // reclassified on cost once, and preempted before any verdict the other time. A census keyed on
 // DISPOSITION splits that row across two buckets and reports one witness as two problems, so the

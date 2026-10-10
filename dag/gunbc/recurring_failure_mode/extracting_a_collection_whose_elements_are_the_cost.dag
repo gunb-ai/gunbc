@@ -12,7 +12,7 @@ data extracting_a_collection_whose_elements_are_the_cost: RecurringFailureMode =
 
     "THE TELL, and it is available before the extraction is written: ask what the collection's elements ARE. If they are function calls or record literals with bodies, the list cannot be forced more cheaply than its elements, and no projection of it can be cheap. If they are scalars -- ids, names, edges -- the projection is genuinely cheaper than whatever encloses them. The distinction is between projecting a collection OF the expensive thing and projecting the cheap FIELDS of the expensive thing; only the second changes what is forced.",
 
-    "SPECIMEN, measured on the required floor across two runs, gunbc#12011. test.claim.workflow_dispatch_input_witness fleet_converge_workflow_has_build_job_needs_release_bins reads seven job ids and their needs edges. Reading them off gunbc.fleet_converge_workflow fleet_converge_workflow: 521845 eval steps against a 72300 budget. The suspected cost was `on`, whose DispatchInput descriptions run to thousands of characters each, so the seven jobs were lifted into their own declaration and the claim was pointed at it. Reading the roster: 521510 eval steps. 335 steps, 0.06%. The jobs are seven function calls that build every step body, so the roster forced exactly what the workflow did.",
+    "SPECIMEN, measured on the required floor across two runs, gunbc#12011. test.claim.workflow_dispatch_input_witness fleet_converge_workflow_has_build_job_needs_release_bins reads seven job ids and their needs edges. Reading them off gunbc.fleet.fleet_converge_workflow fleet_converge_workflow: 521845 eval steps against a 72300 budget. The suspected cost was `on`, whose DispatchInput descriptions run to thousands of characters each, so the seven jobs were lifted into their own declaration and the claim was pointed at it. Reading the roster: 521510 eval steps. 335 steps, 0.06%. The jobs are seven function calls that build every step body, so the roster forced exactly what the workflow did.",
 
     "WHY THE WRONG SUSPECT WAS PLAUSIBLE: the `on` field really is enormous in CHARACTERS -- a single description string runs to thousands -- and character size is the property a reader can see. Eval steps are not charged per character of a literal string; they are charged per node constructed, and seven jobs of many steps each construct far more nodes than a handful of long strings. The class is therefore not carelessness but a reading of cost from the wrong dimension of the source.",
 
@@ -28,8 +28,8 @@ data extracting_a_collection_whose_elements_are_the_cost: RecurringFailureMode =
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_jobs", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_jobs", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "new_witness_over_budget_first_remedy", field: WholeDeclaration },
   ],
 }

@@ -1,4 +1,4 @@
-module test.claim.host_budget_source_witness
+module test.claim.host.host_budget_source_witness_test
 
 import std.logic { Bool }
 import std.types { String, List }
@@ -21,7 +21,7 @@ import extdeps.linux.procfs {
   procfs_paths_read_by_this_repository,
   procfs_path_literal,
 }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   HostBudgetSource,
   BudgetSourceCgroupMemoryHigh,
   BudgetSourceCgroupMemoryMax,
@@ -57,7 +57,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 
 // WHY THESE CALLS SAY string_contains RATHER THAN contains, and it is a receipt rather than a style
 // choice. Deriving the declared_high expectation from its authority row required importing
-// gunbc.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so
+// gunbc.runner.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so
 // widening the import closure pulled v2.std.algebra into it, and that module's contains(xs, item,
 // eq) over FreeMonoid captured the bare name these lines were using for the STRING
 // contains(haystack, needle). Four calls on lines unrelated to the change refused with 'no
@@ -67,7 +67,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 // THE COST SHAPE IS THE POINT: an import added for one declaration silently re-resolved a bare name
 // used by different declarations in the same module, and nothing local to those lines changed.
 // string_contains is the unambiguous builtin and does not collide, so the calls are pinned to it.
-// The gunbc.runner_slot_allocation import that first widened the closure is gone with the arm it
+// The gunbc.runner.runner_slot_allocation import that first widened the closure is gone with the arm it
 // fed, and the pinning deliberately stays: the hazard is the import closure, not that one import,
 // so unpinning would only re-arm it for whoever widens the closure next. The general hazard is the
 // same one std.decl_ref decl_ref_constructor_authority_note records for duplicated constructors --
@@ -82,7 +82,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 // under test is not an oracle (2026-08-01 ruling).
 //
 // The arm went away for a different reason than this note: capping a host-shared reading at one
-// fleet's declared slot line was a substitution, not a bound (gunbc.host_budget_source
+// fleet's declared slot line was a substitution, not a bound (gunbc.host.host_budget_source
 // host_budget_source_seed_mirror_disposition). The lesson survives the arm, which is why this row
 // does — a fixture derived from the tree under test is inert whatever it is measuring.
 

@@ -1,4 +1,4 @@
-module test.claim.srv3_path_ownership_witness
+module test.claim.srv3.srv3_path_ownership_witness_test
 
 import std.logic { Bool }
 import std.types { String }

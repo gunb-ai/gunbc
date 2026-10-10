@@ -9,10 +9,10 @@ import gunbc.live_deploy.member_identity {
   directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
-import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
-import gunbc.runner_host_grants { runner_host_privileged_operations }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
+import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.executor_privileged_operation { ReadDirectoryIdentity, ListDirectoryEntries }
 import extdeps.access.posix { file_mode_octal }
 import std.optional { Present, Absent }
@@ -20,7 +20,7 @@ import gunbc.owned_directory {
   OwnedDirectoryTarget, owned_directory_path, owned_directory_mode, owned_directory_owner, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused,
   owned_directory_observe, owned_directory_parent, owned_directory_basename, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
 }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }

@@ -15,7 +15,7 @@ enum Protocol {
     /// gunbc.auth.approval_device_wire approval_device_push_protocol.
     static let pushProtocol = "gunbc.approval-device-push.v1"
     /// gunbc.auth.approval_device_wire approval_device_audience.
-    static let audience = "gunbc.roadmap_serve/device-redemption"
+    static let audience = "gunbc.roadmap.roadmap_serve/device-redemption"
 
     /// framed_field: "<n>:<field>," where n is the field's length in Unicode code points
     /// (string_length in .dag = String.unicodeScalars.count here), the comma part of the frame.

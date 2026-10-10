@@ -1,8 +1,8 @@
-module gunbc.roadmap_site_surface_types
+module gunbc.roadmap.roadmap_site_surface_types
 
 import std.types { String, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // A HEALTHZ READ IS A COPRODUCT AND ALWAYS WAS -- this declaration now says so.
 //
@@ -103,4 +103,4 @@ type LiveRoadmapSiteSurfaceBundle {
 // the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or
 // rendering producers.
 
-data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"
+data roadmap_site_surface_subject: String = "gunbc.roadmap.roadmap_static_site/live-tree"

@@ -1,4 +1,4 @@
-module v2.test.emit.closure_emit_arrow_body_refusal
+module v2.test.claim.emit.closure_emit_arrow_body_refusal_test
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }

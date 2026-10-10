@@ -9,7 +9,7 @@ import std.types { NonEmptyStr }
 import std.realization_reconcile { reconciliation_converged, Converged, NotConverged }
 import test.claim.live_deploy.apply { fixture_converged_mutation }
 import gunbc.live_deploy.apply { tailnet_door_cutover_reconciliation, live_deploy_tailnet_door_cutover_gate, tailnet_door_cutover_door_standing }
-import gunbc.fabric_storage_client { FabricStorageBindingUnplaced }
+import gunbc.fabric.fabric_storage_client { FabricStorageBindingUnplaced }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.emit { tailscale_serve_mapping_apply_steps, deployment_serve_route_script }
 import gunbc.live_deploy.readiness { live_deploy_proxied_health_url }
@@ -17,10 +17,10 @@ import gunbc.live_deploy.tailnet_door_cutover_host { serve_route_observation_of_
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import test.claim.live_deploy.readiness { witness_expected_surface_identity }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import gunbc.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host_effect { LocalShell }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
-import gunbc.roadmap_static_site { roadmap_site_health_path }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, ServeRootMount, tailscale_serve_backend_of_proxy_target, tailscale_serve_proxy_url }
 import gunbc.live_deploy.tailnet_door_cutover {
   ServeRouteObservation, ServeRouteTargets, ServeRouteUnreadable,

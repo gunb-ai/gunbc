@@ -1,11 +1,11 @@
-module gunbc.fleet_host_backing
+module gunbc.fleet.fleet_host_backing
 
 import std.types { Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
@@ -17,7 +17,7 @@ import gunbc.provider_acquisition { ProviderResourceAcquisition }
 // underneath it. What the running guest actually exposes is an observation, carried downstream of
 // adoption, never authored here.
 //
-// This module enumerates no provider. A provider's adapter (gunbc.hetzner_cloud_guest) builds a
+// This module enumerates no provider. A provider's adapter (gunbc.fleet.hetzner_cloud_guest) builds a
 // GuestEntitlement from that provider's cited catalog row, so adding a provider is a new adapter
 // beside the others and never a new arm here.
 
@@ -33,7 +33,7 @@ type GuestEntitlement {
 
 // THE EXACT PROVIDER RESOURCE. An operation is bound to a provider's resource identifier, never to
 // the display name the provider shows, because a display name can be edited, reused or duplicated.
-// The binding IS the acquisition (gunbc.provider_acquisition): the identifier, the account it is held
+// The binding IS the acquisition (gunbc.fleet.provider_acquisition): the identifier, the account it is held
 // under and the credential that drives it arrive together, so no consumer pairs one server's id
 // with another account's credential. A host enrolled before its acquisition is recorded carries that
 // as a typed obligation naming what would ground it (DESIGN section 4d), so adoption refuses on it

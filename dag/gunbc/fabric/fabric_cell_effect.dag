@@ -1,4 +1,4 @@
-module gunbc.fabric_cell_effect
+module gunbc.fabric.fabric_cell_effect
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -12,10 +12,10 @@ import extdeps.systemd.unit_file {
   slice_cpu_quota,
   slice_cpu_quota_unbounded,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired_for, identity_is_workspace_execution_member }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_desired_for, identity_is_workspace_execution_member }
 import gunbc.change_realization { address_continuity, classify_change, HostResourceSubject, ChangeRealized, InPlaceUpdate }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,
@@ -25,7 +25,7 @@ import gunbc.membership_reconcile {
   MemberRosterDuplicateKeyRefused,
   TeardownRefusalCause,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellMember,
   FabricCellResourceAddress,
   FabricCellRootAddress,
@@ -43,8 +43,8 @@ import gunbc.fabric_cell_converge {
 data fabric_cell_effect_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THIS FAMILY CAN ACTUALLY DO TO A HOST, AS A CLOSED SUM. Before this module the fabric cell
-// family emitted NO effects at all -- gunbc.fabric_cell_converge has no membership_effects and no
-// EffectsOrRefusal, and both gunbc.runner_lifecycle and gunbc.fleet_converge_plan record in their
+// family emitted NO effects at all -- gunbc.fabric.fabric_cell_converge has no membership_effects and no
+// EffectsOrRefusal, and both gunbc.runner.runner_lifecycle and gunbc.fleet.fleet_converge_plan record in their
 // own words that its host-effect realization is absent. So this is the family's first realization
 // surface, and it is closed rather than open because an effect nobody enumerated is an effect
 // nobody reviewed.
@@ -136,7 +136,7 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
 // representation of an artifact nothing constructs.
 // THE DIRECTIVES ARE PER SLOT, for the reason fabric_cell_converge's digest is: the shakedown slot's
-// 28 GiB row (gunbc.runner_slot_allocation gunbc_runner_slot_desired_for) renders as ITS slice's
+// 28 GiB row (gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for) renders as ITS slice's
 // MemoryMax, MemoryHigh and MemorySwapMax, and every other cell keeps the fleet row's. The quota
 // stays a parameter because it is the one member whose observed identity is compared separately.
 fn fabric_cell_slice_desired_directives_for_slot(slot: RunnerSlotIdentity, quota: RunnerSlotCpuQuota) -> List<SystemdSliceDirective> {

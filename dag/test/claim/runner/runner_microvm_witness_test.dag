@@ -1,6 +1,6 @@
-module test.claim.runner_microvm_witness_test
+module test.claim.runner.runner_microvm_witness_test
 
-import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.measure { ByteSize }
@@ -11,12 +11,12 @@ import product.fabric.isolation {
   current_runner_slot_profile,
 }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
-import gunbc.runner_unit { RunnerUnitLifecycleIntent }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_microvm_attempt { MicroVmAttemptAccepted, microvm_attempt }
+import gunbc.runner.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_microvm_attempt { MicroVmAttemptAccepted, microvm_attempt }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned,
   CellSettled, CellAttemptInFlight, CellQuarantinedAt, HostStoreUnreadable, cell_incarnation_admission,
   InFlightAttempt,
@@ -28,7 +28,7 @@ import extdeps.virtualization.firecracker {
   FirecrackerDrive,
   firecracker_config_has_single_root,
 }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   RealizationReserve,
   ReserveDeclared,
   ReserveUnmodeled,
@@ -106,9 +106,9 @@ import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, Con
 import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import extdeps.storage.types { Ephemeral }
-import gunbc.runner_guest_image { runner_guest_agent_unit }
+import gunbc.runner.runner_guest_image { runner_guest_agent_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import gunbc.floor_demand {
+import gunbc.floor.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
   round_up_to_gibibyte_grain,
   gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
@@ -116,8 +116,8 @@ import gunbc.floor_demand {
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_cores_per_slot }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 
 
 // THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.
@@ -432,12 +432,12 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
 // claimed.
 //
 // SO IT NOW NAMES THE GUEST IMAGE'S OWN PIN. The fleet's host-slot path still installs 2.336.0 and
-// gunbc.runner_microvm states why that divergence stands; asserting the two are equal would make
+// gunbc.runner.runner_microvm states why that divergence stands; asserting the two are equal would make
 // this test red for a condition the model deliberately holds.
 //
 // AND IT STILL CANNOT SEE THE CLASS THAT BIT US. No comparison between two declarations can catch a
 // model that disagrees with a RUNNING artifact -- that needs an observation, and
-// gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator that performs it. The
+// gunbc.runner.runner_microvm_boot_probe's boot_probe_verdict is the comparator that performs it. The
 // Mt. Collins path never invoked it, which is the actual gap.
 test fn guest_image_runner_is_the_cited_release_row() -> Bool {
   gunbc_runner_guest_image.runner.version == actions_runner_release_2_337_0.version
@@ -739,11 +739,11 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
 // all three figures -- the floor's stated demand, the derived cache allowance and the cell's
 // remainder -- and its stated trigger was the cell row or the demand receipt moving so the sum fits.
 //
-// WHAT MOVED, cited as 4b(4) requires: the DEMAND RECEIPT, not the cell row. gunbc.floor_demand's
+// WHAT MOVED, cited as 4b(4) requires: the DEMAND RECEIPT, not the cell row. gunbc.floor.floor_demand's
 // standing moved from gunbc_floor_memory_stat_receipt_2026_09_21 to _2026_09_23 (required-floor run
 // 35815214135), a run on a base carrying gunbc#12081 (one corpus read for both prepares) and gunbc#12088
 // (the diff observer no longer resolves the whole CI spec), whose peak reads uncensored. The cell
-// row (gunbc.runner_slot_allocation, 26 GiB) and the declared realization allowance are unchanged;
+// row (gunbc.runner.runner_slot_allocation, 26 GiB) and the declared realization allowance are unchanged;
 // nothing was deleted to make the sum fit. The figures are not copied here: this claim DERIVES them
 // through the same folds the refusal carried, and asserts the shape is the remainder's.
 //
@@ -968,12 +968,12 @@ fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements 
 }
 
 // A WORK SHAPED LIKE THE FLOOR'S -- eight threads, a 25 GiB memory minimum -- SUPPLIED rather than
-// read from gunbc.fabric_witness_run, because the production Work states memory only once the
-// memory.stat receipt stands (gunbc.floor_demand) and these controls are about the fold's
+// read from gunbc.fabric.fabric_witness_run, because the production Work states memory only once the
+// memory.stat receipt stands (gunbc.floor.floor_demand) and these controls are about the fold's
 // arms, not about that standing. The production route is judged by
 // the_production_shape_answers_according_to_the_floor_demand_standing.
 // THE FLOOR'S STORAGE DEMAND AS A SUPPLIED REQUIREMENT: two gibibytes, the figure
-// gunbc.floor_demand states today, so these controls judge the fold's arms and not the demand's
+// gunbc.floor.floor_demand states today, so these controls judge the fold's arms and not the demand's
 // representability (which floor_demand_witness_test judges).
 fn fixture_storage() -> StorageRequirement {
   StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 2)), persistence: Ephemeral }
@@ -1107,7 +1107,7 @@ test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_
 }
 
 // A WORK THAT STATES NO MEMORY IS REFUSED, WHICH IS WHAT MAKES STATING THE FLOOR'S DEMAND
-// LOAD-BEARING: the envelope field gunbc.fabric_witness_run filled on 2026-09-19 is the one this
+// LOAD-BEARING: the envelope field gunbc.fabric.fabric_witness_run filled on 2026-09-19 is the one this
 // arm reads, so removing it takes the production shape to this refusal rather than to a guest
 // sized against nothing.
 test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool {
@@ -1234,7 +1234,7 @@ test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool 
 }
 
 // THE FLOOR'S OWN STORAGE DEMAND FITS THE GRANT, stated as a control rather than assumed: the
-// measured components in gunbc.floor_demand round to 2 GiB against a 4 GiB workspace.
+// measured components in gunbc.floor.floor_demand round to 2 GiB against a 4 GiB workspace.
 test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool {
   match floor_storage_demand() {
     StorageDemandUnrepresentable { cause: _ } => false

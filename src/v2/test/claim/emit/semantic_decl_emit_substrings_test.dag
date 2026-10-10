@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_emit_substrings_test
+module v2.test.claim.emit.semantic_decl_emit_substrings_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }

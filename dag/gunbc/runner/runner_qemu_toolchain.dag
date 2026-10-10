@@ -1,4 +1,4 @@
-module gunbc.runner_qemu_toolchain
+module gunbc.runner.runner_qemu_toolchain
 
 import std.types { Bool, List, NonEmptyStr, FilePath }
 import std.algebra { list_append, trim }
@@ -13,7 +13,7 @@ import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, aavmf_202
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
 import extdeps.posix.test_utility { test_exists_command }
-import gunbc.verified_archive_install {
+import gunbc.host.verified_archive_install {
   ArchiveSha256, StagedArchive, ExtractDebData, ArchivePlacement, archive_placements_text,
   stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
@@ -24,7 +24,7 @@ import gunbc.command_runner { run_shell_command_capture, process_outcome_admitte
 // user's home there, never a managed host a booted image may later describe (managed-host cut 4b).
 // First placed (eager-owl-205, 2026-10-01; the srv1 receipt of run 36813288438 read qemu=absent and
 // aavmf=unreadable). Every archive is a .deb from the Ubuntu ports archive, verified against the
-// Packages index SHA256 through gunbc.verified_archive_install and only then unpacked with
+// Packages index SHA256 through gunbc.host.verified_archive_install and only then unpacked with
 // `dpkg-deb -x` into one root: no maintainer script runs, the dpkg database is untouched, and NOTHING
 // is pulled in that is not named below -- never a Recommends (qemu-system-arm's closure with them
 // is 366 packages), and not even a Depends unless the host's own ldd reading says the binary needs it.
@@ -39,7 +39,7 @@ import gunbc.command_runner { run_shell_command_capture, process_outcome_admitte
 // may hold paths into. The install directory is the CALLER's: it names which consumer's tree this is
 // on the executor, and an existing tree stays where its consumers hold paths into it. Archives are kept under <base>/archives at their pool paths, re-verified
 // before reuse, and the tree is built in a staging directory under the base and published by one
-// `mv -T`, which only ever fills an absent path (the gunbc.runner_browser_toolchain discipline).
+// `mv -T`, which only ever fills an absent path (the gunbc.runner.runner_browser_toolchain discipline).
 
 type QemuToolchainLocation {
   base: NonEmptyStr
@@ -110,7 +110,7 @@ fn qemu_toolchain_cleared_command(root: String, command: ArgvCommand) -> ArgvCom
 }
 
 // ---------------------------------------------------------------------------------------------
-// PLACEMENT, through the shared staging procedure of gunbc.verified_archive_install
+// PLACEMENT, through the shared staging procedure of gunbc.host.verified_archive_install
 // ---------------------------------------------------------------------------------------------
 
 // A .deb is kept at its pool path under the archives directory and its data member is unpacked at the

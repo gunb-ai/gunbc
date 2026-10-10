@@ -1,8 +1,8 @@
-module test.claim.ci_floor_measurement
+module test.claim.ci.ci_floor_measurement_test
 
 import std.logic { Bool }
 import std.measure { byte_size_count }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   gunbc_ci_runner_slot_memory_max_live,
   gunbc_ci_runner_slot_memory_high_live,
   gunbc_ci_runner_slot_ram_speed_ceiling,

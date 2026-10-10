@@ -1,4 +1,4 @@
-module v2.test.self_host.ref_transport_coverage
+module v2.test.claim.self_host.ref_transport_coverage_test
 
 import std.content_hash { Fnv1a64, Fnv1a64Structural }
 import v2.compiler.self_host.compiler_closure_emit_driver {

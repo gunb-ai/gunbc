@@ -14,8 +14,8 @@ import extdeps.git.worktree_enumeration {
   GitWorktreeSetObservation, GitWorktreeSetObserved, GitWorktreeSetReadRefused, GitWorktreeSetUndecodable,
   git_worktree_set_observation_of,
 }
-import gunbc.host_layout { instance_receipts_dir }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_namespace, roadmap_event_snapshot_path_owned,
   carrier_exec, CarrierExecOk, CarrierExecFailed,
@@ -308,7 +308,7 @@ fn snapshot_census_prior_of_read(namespace: String, success: Bool, content: Stri
 }
 
 // Per-instance by construction, in the directory the service principal owns
-// (gunbc.roadmap_belt_actuate belt_tick_receipt_path_for_instance records why that directory).
+// (gunbc.roadmap.roadmap_belt_actuate belt_tick_receipt_path_for_instance records why that directory).
 fn roadmap_snapshot_census_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
   join([instance_receipts_dir(instance_root: instance.instance_root as String), "/roadmap-event-snapshot-census.json"], "")
 }

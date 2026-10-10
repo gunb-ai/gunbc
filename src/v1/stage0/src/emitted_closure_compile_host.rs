@@ -45,13 +45,13 @@
 //! population is a separate construction with a separate argument.
 //!
 //! A WARNING IS AN ERROR HERE, AND THE INVOCATION SAYS SO ITSELF. `run_cargo` sets RUSTFLAGS to
-//! the repository's own denial row (`gunbc.repo_self_build` `repo_self_warning_denial_rustflags`)
+//! the repository's own denial row (`gunbc.repo.repo_self_build` `repo_self_warning_denial_rustflags`)
 //! on every spawn, so the verdict is the same on a workstation and on a runner. It used to
 //! inherit: CI's toolchain step defaults RUSTFLAGS to `-D warnings` and a workstation exports
 //! none, so the emitted compiler crate compiled clean locally and refused with status 101 in
 //! CI — and the required v2-native lane's receipt could not say which environment its
 //! "compiled" was true of. The lane now records the flags, the argv and rustc's identity on its
-//! receipt (`gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`) and admission compares
+//! receipt (`gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`) and admission compares
 //! the flags against that same row.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
@@ -114,7 +114,7 @@ const MUTATION_ITEM: &str =
     "\npub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"the phase's own discriminating red\";\n";
 
 /// The `.dag` entry paths whose emitted closure a required phase compiles, read live from
-/// `gunbc.ci_layer_roots` `required_emit_compile_entries`.
+/// `gunbc.ci.ci_layer_roots` `required_emit_compile_entries`.
 ///
 /// A `List<String>` as the emission roster is: the axis is WHICH ENTRIES, so a second entry is a
 /// row, never a second host reader.
@@ -1023,7 +1023,7 @@ pub(crate) struct ProbeCargoInvocation {
     pub rustc_identity: String,
 }
 
-/// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
+/// Mirror of `gunbc.repo.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
 /// `["-D", "warnings"]` joined by a space, the form cargo tokenises RUSTFLAGS in. A seed mirror
 /// like every other literal this host carries — the `.dag` row is the authority the required
 /// v2-native lane's admission compares the receipt against, so a drift here reds that lane by
@@ -2548,7 +2548,7 @@ pub fn run_required_emit_compile(
     let entries = required_emit_compile_entries();
     if entries.is_empty() {
         return Err(
-            "gunbc.ci_layer_roots required_emit_compile_entries is empty — the phase has no subject"
+            "gunbc.ci.ci_layer_roots required_emit_compile_entries is empty — the phase has no subject"
                 .to_string(),
         );
     }

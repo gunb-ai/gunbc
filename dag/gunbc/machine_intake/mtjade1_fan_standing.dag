@@ -1,14 +1,14 @@
-module gunbc.machine_intake_mtjade1_fan_standing
+module gunbc.machine_intake.mtjade1_fan_standing
 
 import std.types { NonEmptyStr }
 
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
-import gunbc.machine_intake_bmc_first_contact_standing {
+import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyObserved,
   FamilyUnobserved,
 }
-import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
+import gunbc.machine_intake.mtjade1_access_observation { mtjade1_firmware_family_standing }
 import product.acoustic_ceiling { SiteDutyCeiling }
 import product.fan_policy_standing {
   FanDutyConvergeRoute,
@@ -16,11 +16,11 @@ import product.fan_policy_standing {
   HostPostState,
   HostPoweredOnPrePost,
 }
-import gunbc.fleet_acoustic_intent { operator_residence_duty_ceiling }
-import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
+import gunbc.fleet.fleet_acoustic_intent { operator_residence_duty_ceiling }
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // COVERAGE STATE FOR THIS MODULE IS NOT HERE. Which consumer each standing waits on and what
-// retires it is carried by gunbc.machine_intake_mtjade1_coverage_frontier
+// retires it is carried by gunbc.machine_intake.mtjade1_coverage_frontier
 // mtjade1_fan_standing_frontier_rows as typed std.roster_frontier rows, because a "NAMED CONSUMER
 // / TRIGGER" note is unreadable to every Accepted program (DESIGN §4c, review 67984).
 //
@@ -46,7 +46,7 @@ import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // THE RESIDENCE CEILING IS FLEET INTENT AND IS CONSUMED, NOT RESTATED. What is local is the ACT
 // that evidences it. An earlier revision declared ResidenceAcousticIntent with a JadeSite and a
-// tolerated/not-tolerated pair; that is the same policy gunbc.fleet_acoustic_intent states for the
+// tolerated/not-tolerated pair; that is the same policy gunbc.fleet.fleet_acoustic_intent states for the
 // whole site, and a second spelling of it would have let one machine's notion of "tolerable" drift
 // from the fleet's. The ceiling field here is the fleet row, carried so the receipt cannot be read
 // without the bound it is evidence for.
@@ -94,7 +94,7 @@ data mtjade1_first_post_fan_capture: FirstPostFanCapture = AwaitingFirstPostWith
 // GSG 1P-image note, not a pid_control JSON -- which is why that family's shared route is UNBOUND
 // and carries what would bind it.
 //
-// ONLY THE UNOBSERVED ARM IS LOCAL. The two family arms are gunbc.fleet_fan_converge_routes rows,
+// ONLY THE UNOBSERVED ARM IS LOCAL. The two family arms are gunbc.fleet.fleet_fan_converge_routes rows,
 // shared with every other host of the same family; what is Jade's own is that its BMC family is
 // not yet observed, so no realizer can be selected at all. That is a fact about this unit's intake
 // and not about either upstream, so it stays a wrapper here rather than widening the product type.

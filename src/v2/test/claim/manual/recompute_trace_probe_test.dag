@@ -1,4 +1,4 @@
-module v2.test.manual.recompute_trace_probe
+module v2.test.claim.manual.recompute_trace_probe_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

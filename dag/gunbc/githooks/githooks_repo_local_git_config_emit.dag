@@ -1,11 +1,11 @@
-module gunbc.githooks_repo_local_git_config_emit
+module gunbc.githooks.githooks_repo_local_git_config_emit
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.exec.command { shell_command_render }
-import gunbc.repo_local_git_config {
+import gunbc.repo.repo_local_git_config {
   RepoLocalGitConfigBinding,
   desired_repo_local_git_config_bindings,
   reconcile_install_command,
@@ -16,7 +16,7 @@ data githooks_repo_local_git_config_emit_note: String = "Self-healing carrier fo
 data githooks_repo_local_git_config_emit_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.githooks_repo_local_git_config_emit",
+    module_path: "gunbc.githooks.githooks_repo_local_git_config_emit",
     decl_name: "emit_repo_local_git_config_converge_shell",
     field: WholeDeclaration
   }
@@ -51,7 +51,7 @@ fn emit_repo_local_git_config_converge_shell() -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger), "\n")),
     concat(
-      "# Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).\n",
+      "# Idempotent repository-local Git integration bindings (gunbc.repo.repo_local_git_config).\n",
       fold(
         desired_repo_local_git_config_bindings(),
         init: "",

@@ -1,4 +1,4 @@
-module v2.test.emit.rust_fold_call_closure_emit
+module v2.test.claim.emit.rust_fold_call_closure_emit_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -7,7 +7,7 @@ import v2.extdeps.languages.rust_test {
   rust_fold_call_swapped_source_text,
   rust_fold_call_target_model_staging
 }
-import v2.test.emit.fold_call_closure_fixture {
+import v2.test.claim.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_arrow_with_closure
 }

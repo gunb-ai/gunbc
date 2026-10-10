@@ -1,4 +1,4 @@
-module test.claim.scm_commit_closure_witness
+module test.claim.scm.scm_commit_closure_witness_test
 
 // THE ONE CLAIM THESE WITNESSES EXIST FOR: an incomplete closure can NAME WHAT IT IS MISSING, and
 // the name it gives is the content address of the actual absent object -- so it says what to fetch.
@@ -1239,7 +1239,7 @@ test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool 
 
 // CONTROL 2, THE SAME QUESTION ASKED OF THE OTHER UNREACHABLE KIND, AND HALF OF A PAIR.
 //
-// Its sibling lives in test.claim.scm_repository_envelope_witness and asserts that this same source
+// Its sibling lives in test.claim.scm.scm_repository_envelope_witness_test and asserts that this same source
 // SURVIVES the repository round trip with its exact content arm and derived identity. The two are
 // deliberately not one Boolean: they have different owners and either can fail while the other holds
 // -- an encoder that dropped every source would satisfy this one, and a closure that carried the

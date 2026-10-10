@@ -8,10 +8,10 @@ import product.fabric.isolation {
   PrivateUserNamespace, PrivateNetworkNamespace, AttemptScopedSecrets, DefaultDenyEgress,
   unsatisfied_isolation_guarantees,
 }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
-import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
-import gunbc.host_control_route { ControlledHost, ProviderApiControlRoute, BmcControlRoute }
-import gunbc.provider_guest_adoption { ProviderGuestAdoption, GuestAdopted, GuestAdoptionRefused, GuestAdoptionRefusal }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
+import gunbc.host.host_control_route { ControlledHost, ProviderApiControlRoute, BmcControlRoute }
+import gunbc.host.provider_guest_adoption { ProviderGuestAdoption, GuestAdopted, GuestAdoptionRefused, GuestAdoptionRefusal }
 import gunbc.runner.runner_isolation_admission {
   SandboxOffer, DedicatedKernelSandboxProvider, RunnerWorkProvenance, runner_work_isolation_requirement,
   offer_profile,
@@ -21,7 +21,7 @@ import gunbc.runner.runner_isolation_admission {
 // forbids nested virtualization), so the guest itself is the boundary: the provider's hypervisor
 // sits beneath the job's kernel, and a rebuild from the provider's image before every job is what
 // makes the guest fresh. The guest is never released between jobs -- release is an acquisition
-// decision (gunbc.provider_acquisition), and the provider may not refill it.
+// decision (gunbc.fleet.provider_acquisition), and the provider may not refill it.
 //
 // THE OFFER IS DERIVED PER INCARNATION, NEVER AUTHORED PER HOST. A guest that was not rebuilt for this
 // attempt has earned nothing, whatever its class could do: the class is capable of a dedicated

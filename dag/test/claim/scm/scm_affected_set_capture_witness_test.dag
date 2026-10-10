@@ -51,7 +51,7 @@ import gunbc.scm.repository_load {
   rows_by_digest, shard_objects_agree_with_roster,
   load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused, RepositoryDocumentRefused,
 }
-import gunbc.roadmap_belt_actuate { belt_scm_rebound_identities }
+import gunbc.roadmap.roadmap_belt_actuate { belt_scm_rebound_identities }
 import gunbc.scm.worktree_inventory { WorktreeChange, WorktreeBind }
 import gunbc.scm.write_spine {
   commit_staged, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,

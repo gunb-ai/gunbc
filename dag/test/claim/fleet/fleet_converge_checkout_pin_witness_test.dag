@@ -10,7 +10,7 @@ import gunbc.action_use_admission {
   checkout_action, checkout_ref_admitted, checkout_ref_entry,
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmission, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
 }
-import gunbc.fleet_converge_workflow { fleet_converge_checkout_ref }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_checkout_ref }
 
 // THE SUBJECT IS gunbc.action_use_admission admit_workflow_checkout_refs, at its own interface: each
 // claim SUPPLIES an Expression or a one-step workflow. The real path is not re-walked here -- every

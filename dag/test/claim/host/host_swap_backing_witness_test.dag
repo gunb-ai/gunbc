@@ -1,4 +1,4 @@
-module test.claim.host_swap_backing
+module test.claim.host.host_swap_backing_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,7 +119,7 @@ test fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
 // units arrived and are live on the operator LAN with ARP-confirmed MACs and static reservations
 // (gunbc.spark.dgx_procurement dgx_spark_arrival_standing derives arrival from the observed
 // reservation rows), and they carry distinct measured SSH host keys
-// (gunbc.host_reach_identity_probe). They are real hosts nobody has measured swap on yet, which is
+// (gunbc.host.host_reach_identity_probe). They are real hosts nobody has measured swap on yet, which is
 // exactly what this witness should say about them. Their inventory chassis rows are named
 // "placeholder" because a desktop appliance has no RACKMOUNT CHASSIS asset -- that is rack furniture
 // modelling, not a claim that the machine is absent, and reading it as one is the inference this

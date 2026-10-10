@@ -1,4 +1,4 @@
-module test.claim.megarac_operation_surface_witness
+module test.claim.bmc.megarac_operation_surface_witness_test
 
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -29,7 +29,7 @@ import extdeps.ampere.oem_sel {
   ampere_oem_sel_producer_layout,
   ampere_oem_sel_record_match,
 }
-import gunbc.machine_intake_sol_collector_observation {
+import gunbc.machine_intake.sol_collector_observation {
   CollectorTerminatedExitZeroStdinEof,
   SolCollectorDidNotEstablishCoverage,
   SolCollectorSessionAcknowledged,
@@ -45,7 +45,7 @@ import gunbc.machine_intake_sol_collector_observation {
   SolSessionNeverAcknowledged,
   sol_host_fact_from_collector,
 }
-import gunbc.machine_intake_megarac_pre_os_channel {
+import gunbc.machine_intake.megarac_pre_os_channel {
   megarac_sol_collector_terminate_deadline,
   megarac_sol_host_payload_positive_control,
 }

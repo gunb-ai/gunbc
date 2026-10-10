@@ -1,15 +1,15 @@
-module gunbc.fleet_shell_transport_observation
+module gunbc.fleet.fleet_shell_transport_observation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_reach { srv3_reach_is_realizable }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_reach { srv3_reach_is_realizable }
 
 data fleet_shell_transport_authority_disposition: ConstructionMechanism = SingleAuthority
 
-// SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a
+// SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet.fleet_reach answers whether packets can route to a
 // host; this module answers whether an SSH session from the executing environment can authenticate
 // and run a command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or
 // Permission-denied transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or
@@ -147,7 +147,7 @@ fn srv3_network_reach_realizable() -> Bool {
 data fleet_shell_transport_observed_producer_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

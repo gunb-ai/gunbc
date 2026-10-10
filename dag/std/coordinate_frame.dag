@@ -38,7 +38,7 @@ import std.types { Bool }
 // check remaining as the serialization / external-input boundary a static guarantee cannot reach.
 //
 // IDENTITY IS MINTED AND DECLARATION-OWNED, never derived from a name, a path, or the frame's
-// contents, following the ruling recorded for `gunbc.host_resource` `HostResourceIdentity`: a
+// contents, following the ruling recorded for `gunbc.host.host_resource` `HostResourceIdentity`: a
 // content-derived key makes two coincidentally-identical frames one frame, the heuristic DESIGN 4
 // rules unnecessary in a closed system. A frame's human-facing name is a display fact belonging on
 // whatever registers frames; it is deliberately absent here so it cannot be mistaken for identity.
@@ -47,7 +47,7 @@ type CoordinateFrameIdentity {
 }
 
 // THIRD INSTANCE OF ONE SHAPE, recorded rather than abstracted. `std.occurrence_identity` mints
-// SOURCE-occurrence identities, `gunbc.host_resource` mints host-resource identities
+// SOURCE-occurrence identities, `gunbc.host.host_resource` mints host-resource identities
 // (HostResourceIdentity), and this mints coordinate-frame identities; all three are "a minted Int
 // occurrence in a subject-specific space". The subject-parameterized carrier that would unify them
 // is a registered trigger on the fleet-reconcile (membership-diff reconcile spine) lane, and stays

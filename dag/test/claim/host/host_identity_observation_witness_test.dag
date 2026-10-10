@@ -1,4 +1,4 @@
-module test.claim.host_identity_observation_witness
+module test.claim.host.host_identity_observation_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

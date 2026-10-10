@@ -3,12 +3,12 @@ module test.claim.workspace_gateway_refresh_witness_test
 import std.types { Bool, String, NonEmptyStr }
 import extdeps.shell
 import extdeps.shell.exec { process_observation }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.workspace_gateway { workspace_fleet_gateway }
 import gunbc.workspace_gateway_admission { workspace_gateway_subject, workspace_gateway_evidence }
 import gunbc.workspace_gateway_store { workspace_publish_gateway_evidence, workspace_publish_gateway_refusal, workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 
 // Synthetic SSH observations exercise the actual durable publication/read path, not live access.
 fn gateway_refresh_cycle(store: FabricStorageBinding) -> Bool {

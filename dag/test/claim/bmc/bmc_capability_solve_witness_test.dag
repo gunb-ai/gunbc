@@ -1,4 +1,4 @@
-module test.claim.bmc_capability_solve
+module test.claim.bmc.bmc_capability_solve_witness_test
 
 import extdeps.bmc.capability {
   BmcFirmwareCapabilityRow,

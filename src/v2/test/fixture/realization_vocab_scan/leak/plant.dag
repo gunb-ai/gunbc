@@ -1,4 +1,4 @@
-module v2.test.fixture.realization_vocab_scan.leak_plant
+module v2.test.fixture.realization_vocab_scan.leak.plant
 import v2.extdeps.languages.bash_build { bash_build_word_lit }
 import v2.std.node { Node }
 

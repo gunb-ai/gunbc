@@ -1,4 +1,4 @@
-module gunbc.host_memory_qualification
+module gunbc.host.host_memory_qualification
 
 import extdeps.board_authority { BoardAuthorityRef }
 import std.types { Bool, EpochMs, List, NonEmptyStr }
@@ -9,7 +9,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority, asrock_
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.ampere { ampere_altra_avl_authority, ampere_altra_avl_current_issue }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
 import extdeps.memory.training {
   LrdimmDataBufferMrep,

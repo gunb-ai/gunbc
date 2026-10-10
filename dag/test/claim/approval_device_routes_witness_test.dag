@@ -21,7 +21,7 @@ import gunbc.auth.approval_device_crypto_realization {
   P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
   device_crypto_admission, approval_device_crypto_realization,
 }
-import gunbc.roadmap_serve { roadmap_mounts_during_cutover }
+import gunbc.roadmap.roadmap_serve { roadmap_mounts_during_cutover }
 import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler }
 
 // THE ROUTE FOLDS AT A SUPPLIED INSTANT, on the arms that decide before any store or verifier is

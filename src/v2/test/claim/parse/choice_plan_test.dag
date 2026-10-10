@@ -1,4 +1,4 @@
-module v2.test.parse.choice_plan
+module v2.test.claim.parse.choice_plan_test
 
 import std.types { List }
 import v2.std.live_tree { LiveTreeDisposition }

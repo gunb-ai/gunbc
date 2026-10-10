@@ -12,11 +12,11 @@ import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_emit_real_gramm
 // not help those six, because it does not lift the wall clock.
 //
 // WHAT STILL EXECUTES ON THE FLOOR, so the loss is stated against what remains:
-//   - the real path itself, once: v2.test.execution.dag_grammar_backward_round_trip
+//   - the real path itself, once: v2.test.claim.execution.dag_grammar_backward_round_trip_test
 //     a_data_declaration_round_trips_holds (under its own declared eval-step drop);
 //   - the missing-production red over the real grammar, and its positive control, in that module;
 //   - each construct's discriminating content at its own interface, under budget, in
-//     v2.test.execution.dag_emit_interface: string escapes, int, float and caret spelling; a quoted
+//     v2.test.claim.execution.dag_emit_interface_test: string escapes, int, float and caret spelling; a quoted
 //     key emitted quoted, a bare key bare, and an escaped key escaped, selected by production stamp.
 // WHAT IS LOST is the required floor's evidence that each REAL production below round-trips through
 // the real parser.

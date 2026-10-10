@@ -1,4 +1,4 @@
-module v2.test.git_import_authority
+module v2.test.claim.git_import_authority_test
 
 import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
@@ -54,7 +54,7 @@ test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool {
 // module imports.
 fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
   GitUseRow {
-    consumer: decl_ref(module_path: "v2.test.git_import_authority", decl_name: "bootstrap_control_row"),
+    consumer: decl_ref(module_path: "v2.test.claim.git_import_authority_test", decl_name: "bootstrap_control_row"),
     surface: ParsedDagGitDependency { imported_module: "extdeps.git" as NonEmptyStr },
     classification: classification,
     bridge_disposition: "Import with explicit Git provenance and identity mapping." as NonEmptyStr,
@@ -64,7 +64,7 @@ fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
 
 test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool {
   let population = ParsedGitImportsAvailable { expected_source_paths: ["src/v2/test/claim/git_import_authority_test.dag"], modules: [ParsedGitModuleImports {
-    source_path: "src/v2/test/claim/git_import_authority_test.dag", module_name: "v2.test.git_import_authority", imports: ["extdeps.git"]
+    source_path: "src/v2/test/claim/git_import_authority_test.dag", module_name: "v2.test.claim.git_import_authority_test", imports: ["extdeps.git"]
   }] }
   git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: ClassifiedGitUse {
     role: GitBootstrapImport, authorization: NamedBootstrapImportAdapter

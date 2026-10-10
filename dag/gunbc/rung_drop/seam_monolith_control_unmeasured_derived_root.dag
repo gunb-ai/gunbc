@@ -6,7 +6,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-13 (direction vivid-bee-814, on gunbc#11265 review 65400). Whole-root compile
 // admission became a join on the ROOT's own measured row (gunbc.whole_corpus_compile_admission). The
-// cross-shard seam probe's MONOLITH CONTROL, M in tools.dag_compile_clean_seam_transport, compiles a
+// cross-shard seam probe's MONOLITH CONTROL, M in gunbc.instruments.dag_compile_clean_seam_transport, compiles a
 // relocated copy of the whole dag tree with one seam module mutated, as a whole root. Under a
 // population-blind 16 GiB constant it executed on any host whose budget cleared that figure. It now
 // always refuses as an unmeasured root -- correctly: a mutated copy of the whole tree has no stable
@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // is a separate inert-instrument class, routed by the direction, and it is not declared here.
 
 data seam_monolith_control_unmeasured_derived_root_population: List<String> = [
-  "tools.dag_compile_clean_seam_transport run_cross_shard_seam_probe monolith control M (the stage-less cross_shard_seam_compile_args whole-root compile of the mutated dag copy)",
+  "gunbc.instruments.dag_compile_clean_seam_transport run_cross_shard_seam_probe monolith control M (the stage-less cross_shard_seam_compile_args whole-root compile of the mutated dag copy)",
 ]
 
 data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {

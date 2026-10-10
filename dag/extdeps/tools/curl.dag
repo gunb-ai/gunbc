@@ -15,7 +15,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_curl }
+import extdeps.package_managers.apt { apt_bin_dir, package_curl }
 import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -98,7 +98,7 @@ fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
 }
 
-// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host_effect_realize
+// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host.host_effect_realize
 // Srv3BmcwebSessionLogin): POST the JSON login body FROM A FILE (--data @file) and write the
 // response to a file. The credential never reaches argv: the body path does, the password bytes
 // stay in the file the caller's materialization bracket owns (the same bracket/argv split
@@ -226,7 +226,7 @@ fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
 // THE STATUS IS STILL REPORTED, ON STDOUT, so the caller can tell 404 from 403 without parsing
 // stderr prose: -w '%{http_code}' prints the three digits after the transfer, and prints 000 when
 // no HTTP status was ever received (connect failure, timeout), which is how a caller separates
-// "the store answered" from "nothing answered" -- the distinction gunbc.fabric_m0_commit's
+// "the store answered" from "nothing answered" -- the distinction gunbc.fabric.fabric_m0_commit's
 // CommitTransportOutcome exists to keep.
 //
 // THE CONDITIONAL WRITE IS A PARAMETER, NOT A DEFAULT. If-None-Match: * turns the PUT into

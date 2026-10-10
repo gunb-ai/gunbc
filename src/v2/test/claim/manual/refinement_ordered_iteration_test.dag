@@ -1,4 +1,4 @@
-module v2.test.manual.refinement_ordered_iteration
+module v2.test.claim.manual.refinement_ordered_iteration_test
 
 import std.types { List }
 import v2.std.refinement {

@@ -25,7 +25,7 @@ data fabric_object_identity_is_a_structural_locator: RecurringFailureMode = Recu
     DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_ref_of", field: WholeDeclaration },
     DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_verified", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fabric_storage_file_store", decl_name: "fabric_storage_file_get", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fabric.fabric_storage_file_store", decl_name: "fabric_storage_file_get", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.sha256_fips_witness_test", decl_name: "sha256_of_the_empty_message_is_the_published_value", field: WholeDeclaration },
   ],
 }

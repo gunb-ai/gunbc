@@ -1,4 +1,4 @@
-module v2.test.manual.loop_demand_driven_eval
+module v2.test.claim.manual.loop_demand_driven_eval_test
 import std.types { List }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }

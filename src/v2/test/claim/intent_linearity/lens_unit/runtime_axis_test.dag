@@ -1,4 +1,4 @@
-module v2.test.intent_linearity.lens_unit.runtime_axis
+module v2.test.claim.intent_linearity.lens_unit.runtime_axis_test
 
 import std.types { List }
 import v2.lens.complexity_lowering { cost_is_lowerable }

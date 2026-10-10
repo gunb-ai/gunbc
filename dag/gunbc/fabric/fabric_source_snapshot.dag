@@ -1,9 +1,9 @@
-module gunbc.fabric_source_snapshot
+module gunbc.fabric.fabric_source_snapshot
 
 // CAPTURING SOURCE INTO THE FABRIC OBJECT STORE, AND MATERIALIZING IT SOMEWHERE ELSE.
 //
 // std.fabric_storage already owns immutable content-addressed objects, and
-// gunbc.fabric_storage_file_store already realizes them over a directory. product.fabric.work
+// gunbc.fabric.fabric_storage_file_store already realizes them over a directory. product.fabric.work
 // already rules that a Work consumes a SOURCE MANIFEST rather than a tree digest, and that a Git
 // tree id is one BINDING-LEVEL realization of that manifest and not the fabric's source type. What
 // no module did was JOIN those two facts: nothing put a source tree into that store, and nothing
@@ -104,7 +104,7 @@ import std.fabric_storage {
   fabric_object_ref_wire,
   fabric_storage_fault_wire,
 }
-import gunbc.fabric_storage_file_store {
+import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot,
   fabric_storage_file_get,
   fabric_storage_file_put,
@@ -113,7 +113,7 @@ import std.algebra { trim }
 
 // WHAT THIS DOES AND DOES NOT REPLACE, AND THE SECOND ROUTE IT WOULD OTHERWISE BE.
 //
-// gunbc.roadmap_dispatch_actuator materializes source for a dispatched attempt with
+// gunbc.roadmap.roadmap_dispatch_actuator materializes source for a dispatched attempt with
 // `git worktree add`, twice: once for the MUTABLE ATTEMPT TREE the agent edits, and once for the
 // DETACHED VERIFICATION CHECKOUT at an exact head. Those are two different facts wearing one verb,
 // and this module's disposition for them is different.
@@ -135,7 +135,7 @@ import std.algebra { trim }
 // host -- the git binding stops being able to serve it at all, and this route is what replaces it.
 data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl(
   ref: decl_ref(
-    module_path: "gunbc.roadmap_dispatch_actuator",
+    module_path: "gunbc.roadmap.roadmap_dispatch_actuator",
     decl_name: "dispatch_verification_checkout_path_for_instance",
   ),
   reason: "the detached verification checkout asks this module's question and answers it with git worktree add; both answers stand, and the git one is retained deliberately because its executor shares the caller's object store",
@@ -217,7 +217,7 @@ fn admit_relative_source_path(text: String) -> RelativePathAdmission {
 // membership test someone has to remember to perform; with arms, the mismatch is a match arm.
 //
 // THE ROOT NAMES ARE CARRIED RATHER THAN FIXED, because the prefix a snapshot is materialized under
-// is the caller's to choose -- gunbc.roadmap_execution_contract PinnedPublicPlusLocalRoot takes the
+// is the caller's to choose -- gunbc.roadmap.roadmap_execution_contract PinnedPublicPlusLocalRoot takes the
 // same prefix as a parameter, and hard-coding one here would fork that decision.
 type SourceComposition
   = PublicOnlyComposition { public_root: NonEmptyStr }
@@ -231,10 +231,10 @@ type SourceComposition
 fn source_composition_wire(composition: SourceComposition) -> NonEmptyStr {
   match composition {
     PublicOnlyComposition { public_root: p } =>
-      join(["gunbc.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
+      join(["gunbc.fabric.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
     PublicAndPrivateComposition { public_root: p, private_root: q } =>
       join([
-        "gunbc.fabric_source_snapshot.composition.v1;public=",
+        "gunbc.fabric.fabric_source_snapshot.composition.v1;public=",
         p as String,
         ";private=",
         q as String,
@@ -252,7 +252,7 @@ fn source_composition_roots(composition: SourceComposition) -> List<NonEmptyStr>
 
 // A PATH IS INSIDE THE COMPOSITION ONLY UNDER A DECLARED ROOT'S BOUNDARY. The trailing separator is
 // the whole point: "publicity/x" must not pass as being under "public", and a bare prefix test
-// admits it. The same boundary rule gunbc.roadmap_execution_contract allowed_prefix_boundary
+// admits it. The same boundary rule gunbc.roadmap.roadmap_execution_contract allowed_prefix_boundary
 // applies to an edit scope applies here to a snapshot's contents, for the same reason.
 fn snapshot_root_boundary(root: NonEmptyStr) -> String {
   join([root as String, "/"], "")
@@ -679,7 +679,7 @@ type ProviderRootAdmission
 // or a longer walk; those are the four attempts this row exists to stop repeating.
 data caller_named_allocation_base_frontier: FrontierRow = frontier_row_decl(
   ref: decl_ref(
-    module_path: "gunbc.fabric_source_snapshot",
+    module_path: "gunbc.fabric.fabric_source_snapshot",
     decl_name: "provider_base_layouts",
   ),
   reason: "the provider owns one fixed base because admitting an arbitrary caller-named one is unreachable with path-addressed primitives: the grandparent, the symlinked component, the realpath-to-walk window and the bind-mount root are four defeats of the same check-then-use shape",

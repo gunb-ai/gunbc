@@ -72,7 +72,7 @@ data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" 
 data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-submission-mac-key"
 
 // THE PUBLISHER TOKEN IS THE NTFY SERVER'S, DELIVERED FROM SECRET MANAGER by the custody roster
-// (gunbc.host_credential_custody_converge ApprovalNtfyPublisherToken): root:gunbc-ntfy 0640 in a
+// (gunbc.fleet.host_credential_custody_converge ApprovalNtfyPublisherToken): root:gunbc-ntfy 0640 in a
 // root:gunbc-ntfy 0750 directory, so the roadmap unit's user reads it only once
 // gunbc.auth.approval_keyring_converge admits that user to the group. An unreadable token is a
 // typed refusal below, never a fabricated publish.
@@ -202,7 +202,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 // exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
 // endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
 // here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
-// gunbc.fleet_tailnet tailnet_base_url_from and is not restated at either site.
+// gunbc.fleet.fleet_tailnet tailnet_base_url_from and is not restated at either site.
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
   join([base as String, approval_broker_confirm_path_prefix as String, capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
@@ -405,7 +405,7 @@ fn file_and_notify(
   }
 }
 
-// THE ORDER BEHIND POST /approvals, held by the handler (gunbc.roadmap_serve
+// THE ORDER BEHIND POST /approvals, held by the handler (gunbc.roadmap.roadmap_serve
 // approval_submit_response): parse the envelope, then read the submission key and admit, and only
 // past admission read the capability key and the publisher token, write, and publish -- so an
 // unreadable body costs no host read, a refused filer costs one key read and no write, and the

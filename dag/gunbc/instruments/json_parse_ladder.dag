@@ -1,4 +1,4 @@
-module tools.json_parse_ladder
+module gunbc.instruments.json_parse_ladder
 
 import std.types { String, Int, List }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }

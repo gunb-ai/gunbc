@@ -1,4 +1,4 @@
-module gunbc.host_memory_observation
+module gunbc.host.host_memory_observation
 
 import std.measure {
   ByteSize, byte_size, measure_scale_fraction_floor, kibibyte_to_byte_size, kibibyte_count,
@@ -10,25 +10,25 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.optional { Present }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, host_capture_section_reading, host_capture_run_identity_value,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
 }
-import gunbc.machine_intake_host_resource_observation {
+import gunbc.machine_intake.host_resource_observation {
   HostMemoryReading, ResourceUnread, observe_memory,
 }
 
 // WHAT A HOST HAS, READ FROM THE HOST -- SEPARATED FROM WHAT CI DOES WITH IT. Every declaration
-// here came from gunbc.ci_floor_measurement and the extraction is the whole
+// here came from gunbc.ci.ci_floor_measurement and the extraction is the whole
 // change: these are per-host kernel observations and operator allowances that depend on nothing
 // about a runner slot, while the rows they sat beside (the cgroup caps, the floor peak receipts)
-// derive from gunbc.runner_slot_desired gunbc_runner_slot_desired. Co-locating the two made
-// gunbc.ci_floor_measurement import the slot authority, which in turn made these facts unreachable
-// FROM that authority -- the cycle named in gunbc.runner_slot_allocation
+// derive from gunbc.runner.runner_slot_desired gunbc_runner_slot_desired. Co-locating the two made
+// gunbc.ci.ci_floor_measurement import the slot authority, which in turn made these facts unreachable
+// FROM that authority -- the cycle named in gunbc.runner.runner_slot_allocation
 // runner_memory_envelope_bytes_of as its dissolve-on: "the usable-RAM and fixed-overhead facts
-// become reachable from this module without a cycle -- today they sit in gunbc.ci_floor_measurement
-// and gunbc.ci_runner_placement, both of which import this one".
+// become reachable from this module without a cycle -- today they sit in gunbc.ci.ci_floor_measurement
+// and gunbc.ci.ci_runner_placement, both of which import this one".
 //
 // THE CONSEQUENCE THE CYCLE PAID FOR, which is why this is a correctness repair rather than tidying:
 // host_runner_memory_envelope_bytes could not derive, so it carried one authored literal per host
@@ -46,12 +46,12 @@ import gunbc.machine_intake_host_resource_observation {
 // a change nobody had decided. The `provenance` string on gunbc_ci_managed_host_fixed_overhead cited
 // this row's own module by name and follows the row, which is self-citation and correct.
 //
-// THE TWO DeclarationRef BIND TARGETS ARE BACK AT gunbc.ci_floor_measurement. A proximity rewrite
+// THE TWO DeclarationRef BIND TARGETS ARE BACK AT gunbc.ci.ci_floor_measurement. A proximity rewrite
 // over citations had moved them here with everything else, and the reasoning offered afterwards --
 // that a quiescent /proc/meminfo read belongs beside the rows it grounds -- was the author's
 // judgement rather than a decision the corpus had taken. The corpus had already taken one: the
 // citation debt rows that exempt those successors from refusing (declaration_index.rs
-// PRE_EXISTING_CITATION_DEBT, FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci_floor_measurement
+// PRE_EXISTING_CITATION_DEBT, FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci.ci_floor_measurement
 // as their home, and the required floor reported six declaration findings the moment the bind
 // targets disagreed with them -- three citations that no longer resolved, three debt rows gone
 // stale. Where a successor lands is those rows' question. A bind target is not a citation and a
@@ -79,13 +79,13 @@ type HostFixedOverhead
 // never be reported as measured. UNMEASURED stays the fail-closed floor.
 //
 // Why per-host rather than one fleet number: srv1 and srv2 carry hand-built deployments this corpus
-// never modeled (the session dashboard instances of gunbc.build_cache_instance among them), so
+// never modeled (the session dashboard instances of gunbc.build_cache.build_cache_instance among them), so
 // their allowance is a real operator judgement about unmodeled residents. srv3 and srv4 were stood
 // up through the modeled path and have an observation. One number could only have been the maximum
 // of the two, which silently taxes the managed hosts for the legacy ones' mess — 10.4 GiB per host
 // of memory the budget refused to spend because two other machines are untidy.
 
-data gunbc_ci_host_memavailable_observation_note: String = "THE OBSERVATION THAT BOUNDS THE MANAGED-HOST OVERHEAD, and it is a found receipt rather than a fresh probe — worth saying plainly because it changes what the bound is allowed to claim. Before the srv3 cap converge (gunbc.runner_slot_allocation, 2026-07-21) srv3's slots were uncapped, so v1_compiler::memory_governor had no cgroup memory.high to arm against and fell back to /proc/meminfo MemAvailable, printing the host-level figure into every floor job's log. Seventeen such arm-time lines survive from 2026-07-16 across srv3-02/05/08, spanning 104.8 to 119.4 GiB; srv1 and srv2 on the same day printed only their 15 GiB cgroup budget, so the series is srv3 and nothing else.\n\nTHE DIRECTION OF THE BOUND IS THE WHOLE POINT. MemAvailable counts free memory plus reclaimable page cache and slab, so what it EXCLUDES is non-reclaimable anonymous RSS — services, daemons, and whatever runner work was resident at that instant. The MAXIMUM observation therefore corresponds to the QUIETEST moment seen, and host_total - max(MemAvailable) is an UPPER bound on fixed service overhead: at that instant everything non-reclaimable on the box, including any concurrent job, fit inside it. A smaller true overhead is consistent with this receipt; a larger one is not.\n\nWHAT IT IS NOT: a dedicated measurement. Nobody read /proc/meminfo on a quiescent srv3, and this row must not be cited as though someone had. It is admissible because it is an upper bound and the budget spends against it conservatively — the bound refuses to justify more slots than it can carry, which is the direction a fail-closed budget wants. The dissolution trigger is an ordinary quiescent read, which is also a prerequisite of the systemd-oomd verification that gunbc.oomd_install still lacks, so one reach closes both."
+data gunbc_ci_host_memavailable_observation_note: String = "THE OBSERVATION THAT BOUNDS THE MANAGED-HOST OVERHEAD, and it is a found receipt rather than a fresh probe — worth saying plainly because it changes what the bound is allowed to claim. Before the srv3 cap converge (gunbc.runner.runner_slot_allocation, 2026-07-21) srv3's slots were uncapped, so v1_compiler::memory_governor had no cgroup memory.high to arm against and fell back to /proc/meminfo MemAvailable, printing the host-level figure into every floor job's log. Seventeen such arm-time lines survive from 2026-07-16 across srv3-02/05/08, spanning 104.8 to 119.4 GiB; srv1 and srv2 on the same day printed only their 15 GiB cgroup budget, so the series is srv3 and nothing else.\n\nTHE DIRECTION OF THE BOUND IS THE WHOLE POINT. MemAvailable counts free memory plus reclaimable page cache and slab, so what it EXCLUDES is non-reclaimable anonymous RSS — services, daemons, and whatever runner work was resident at that instant. The MAXIMUM observation therefore corresponds to the QUIETEST moment seen, and host_total - max(MemAvailable) is an UPPER bound on fixed service overhead: at that instant everything non-reclaimable on the box, including any concurrent job, fit inside it. A smaller true overhead is consistent with this receipt; a larger one is not.\n\nWHAT IT IS NOT: a dedicated measurement. Nobody read /proc/meminfo on a quiescent srv3, and this row must not be cited as though someone had. It is admissible because it is an upper bound and the budget spends against it conservatively — the bound refuses to justify more slots than it can carry, which is the direction a fail-closed budget wants. The dissolution trigger is an ordinary quiescent read, which is also a prerequisite of the systemd-oomd verification that gunbc.oomd_install still lacks, so one reach closes both."
 
 type HostMemAvailableObservation {
   host: HostIdentity
@@ -109,12 +109,12 @@ fn host_overhead_upper_bound(obs: HostMemAvailableObservation) -> ByteSize {
 
 data gunbc_ci_managed_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured {
   bytes: host_overhead_upper_bound(obs: gunbc_ci_srv3_memavailable_high_water),
-  provenance: "gunbc.host_memory_observation gunbc_ci_srv3_memavailable_high_water: MemTotal-shaped host_total minus the 2026-07-16 arm-time MemAvailable high-water on srv3-08 (run 29537878075), an upper bound on non-reclaimable host residency — see gunbc_ci_host_memavailable_observation_note for why the maximum observation is the conservative end",
+  provenance: "gunbc.host.host_memory_observation gunbc_ci_srv3_memavailable_high_water: MemTotal-shaped host_total minus the 2026-07-16 arm-time MemAvailable high-water on srv3-08 (run 29537878075), an upper bound on non-reclaimable host residency — see gunbc_ci_host_memavailable_observation_note for why the maximum observation is the conservative end",
 }
 
 data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadAllowance {
   bytes: byte_size(17179869184),
-  reason: "srv1 and srv2 carry hand-built deployments the corpus does not model — the session dashboard instance (gunbc.build_cache_instance session_cache_instance, srv1 and srv2 only), its sccache server, and the residue of the pre-subsumption install path. 16 GiB is the operator's standing allowance for those unmodeled residents (ruling 2026-08-05), carried forward unchanged from the fleet-wide row it replaces so this change moves no number on these two hosts. It is an ALLOWANCE and not a measurement: no observation produced it, and the same MemAvailable receipt that bounds srv3 does not exist for srv1/srv2 because their slots were already capped when the governor stopped reading meminfo. Dissolves when those deployments are modeled — at which point their residents become budget rows and the allowance becomes whatever is left over, if anything.",
+  reason: "srv1 and srv2 carry hand-built deployments the corpus does not model — the session dashboard instance (gunbc.build_cache.build_cache_instance session_cache_instance, srv1 and srv2 only), its sccache server, and the residue of the pre-subsumption install path. 16 GiB is the operator's standing allowance for those unmodeled residents (ruling 2026-08-05), carried forward unchanged from the fleet-wide row it replaces so this change moves no number on these two hosts. It is an ALLOWANCE and not a measurement: no observation produced it, and the same MemAvailable receipt that bounds srv3 does not exist for srv1/srv2 because their slots were already capped when the governor stopped reading meminfo. Dissolves when those deployments are modeled — at which point their residents become budget rows and the allowance becomes whatever is left over, if anything.",
 }
 
 // THE UNKNOWN ARM REFUSES, and the first draft of this function did not — it ended in a bare else
@@ -127,7 +127,7 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 // the next day.
 //
 // So an unclassified host derives HostFixedOverheadUnmeasured, which host_fixed_overhead_bytes
-// cannot turn into a number and gunbc.ci_runner_placement refuses on. Adding srv5 therefore fails
+// cannot turn into a number and gunbc.ci.ci_runner_placement refuses on. Adding srv5 therefore fails
 // closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment
 // wall's own shape, applied to the budget's inputs instead of its installer.
 
@@ -169,14 +169,14 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 // alone.
 //
 // WHERE THE DEBT ROWS LIVE FOLLOWED THESE DECLARATIONS; WHAT THEY CITE DID NOT (2026-09-21). Both
-// scaffolds were extracted from gunbc.ci_floor_measurement into this module, and the two
+// scaffolds were extracted from gunbc.ci.ci_floor_measurement into this module, and the two
 // PRE_EXISTING_CITATION_DEBT rows that excuse their citations were left keyed to the old home. A
 // debt row's identity is the citation SITE -- who cites, and what is cited -- so moving the citing
 // declaration without moving the key left the rows matching nothing (stale) and these two citations
 // unexcused (absent): four findings, one move.
 //
 // ONLY THE CITING HALF OF THAT KEY MOVED, DELIBERATELY. The cited module stays
-// gunbc.ci_floor_measurement because where the successor lands is still undecided --
+// gunbc.ci.ci_floor_measurement because where the successor lands is still undecided --
 // v2.test.lens_disposition_redundancy.disposition_redundancy_test
 // redundancy_region_budget_per_service_overhead_locator records an earlier attempt to repoint the
 // cited half here on proximity grounds, which broke six declaration findings and was withdrawn as
@@ -192,7 +192,7 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_floor_measurement",
+    module_path: "gunbc.ci.ci_floor_measurement",
     decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
     field: WholeDeclaration
   }
@@ -201,7 +201,7 @@ data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
 data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_floor_measurement",
+    module_path: "gunbc.ci.ci_floor_measurement",
     decl_name: "gunbc_ci_legacy_host_modeled_residents",
     field: WholeDeclaration
   }
@@ -279,12 +279,12 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   }
 }
 
-// THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci_budget_tree and
-// gunbc.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off
+// THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci.ci_budget_tree and
+// gunbc.fleet.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off
 // nominal DIMM capacity, which is the duplication DESIGN 2 forbids and exactly the shape that lets
 // two budget models drift apart again — the defect the migration existed to close.
 //
-// It does NOT absorb gunbc.ci_runner_placement host_usable_ram_or_refusal, which folds the same
+// It does NOT absorb gunbc.ci.ci_runner_placement host_usable_ram_or_refusal, which folds the same
 // coproduct to a different answer on purpose. That one is LOUD: an unmeasured host yields a typed,
 // located refusal that becomes PlanUnsound. This one is a total ceiling for budget arithmetic,
 // where zero is the fail-closed reading because an unknown ceiling admits nothing. Same input, two
@@ -301,9 +301,9 @@ fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
 
 
 // THE OOMD ACTUATION FLOOR IS A HOST-MEMORY FACT AND WAS LIVING IN THE BUDGET THAT SPENDS IT.
-// Extracted from gunbc.fleet_host_budget for the same reason as the rows above: it is a pure
+// Extracted from gunbc.fleet.fleet_host_budget for the same reason as the rows above: it is a pure
 // fraction of a host's own RAM, it depends on nothing about a runner slot or a budget tree, and
-// leaving it there kept it unreachable from gunbc.runner_slot_allocation -- which needs it,
+// leaving it there kept it unreachable from gunbc.runner.runner_slot_allocation -- which needs it,
 // because a runner-memory envelope that does not subtract it is an envelope that has silently
 // spent the headroom systemd-oomd requires in order to act at all.
 data gunbc_fleet_oomd_floor_basis: String = "oomd_actuation_floor is a DERIVED lower bound on free host memory: systemd-oomd needs free headroom to evict a runaway cgroup BEFORE the kernel OOM-killer/livelock fires (the srv2-reboot vector). Basis: a fixed fraction of host RAM (1/16 = ~6.25%) as the minimum free-memory swing oomd needs to actuate; on a 125GiB host this is ~7.8GiB. This is the floor BELOW which a HeadroomSet policy is unsound (it leaves oomd no room to act). Derived, not a literal: scales with host. dissolve-on a measured oomd MemoryPressureLimit + swap-free actuation window once systemd-oomd is live (operator fix-manifest item 8)."
@@ -315,7 +315,7 @@ fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
 // ── the census route: a host capture's meminfo section becomes this host's measured usable RAM ──
 
 // THE READ IS A CAPTURED RECEIPT, NOT A NUMBER COPIED OUT OF ONE. A boot that runs the capture
-// envelope (gunbc.machine_intake_host_capture_envelope, whose stage list carries a meminfo section)
+// envelope (gunbc.machine_intake.host_capture_envelope, whose stage list carries a meminfo section)
 // prints MemTotal and MemAvailable between that section's ARGV and EXIT lines. This reader is the
 // only route from those bytes to HostUsableRamMeasured, so a host enrolled from a census boot
 // (mtcollins1 first) gets its row by naming its receipt, with no figure hand-copied beside it, and
@@ -324,7 +324,7 @@ fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
 // WHAT IT REFUSES, EACH FOR ITS OWN REASON. A section that is absent, still pending or malformed
 // is not a read; a section that exited nonzero printed something other than the kernel's answer;
 // a complete, zero-exit section that does not parse as MemTotal/MemAvailable is the meminfo parse's
-// own refusal (gunbc.machine_intake_host_resource_observation observe_memory), carried unchanged.
+// own refusal (gunbc.machine_intake.host_resource_observation observe_memory), carried unchanged.
 // A firmware-trained DIMM total is not an input this function accepts at all: it is nominal
 // capacity, which fleet_host_memory_nominal_vs_usable_note keeps out of HostUsableRam.
 //
@@ -359,7 +359,7 @@ fn census_meminfo_reading(envelope: BoundHostCaptureEnvelope) -> ObservationAtte
 fn census_receipt_provenance(envelope: BoundHostCaptureEnvelope, what: String) -> NonEmptyStr {
   join([
     envelope.machine as String, " ", what, ", read from the meminfo section of host capture run ",
-    host_capture_run_identity_value(run: envelope.run), " (gunbc.host_memory_observation census_meminfo_reading)",
+    host_capture_run_identity_value(run: envelope.run), " (gunbc.host.host_memory_observation census_meminfo_reading)",
   ], "") as NonEmptyStr
 }
 

@@ -32,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // UnitLog reads the raw journal, unfiltered. Filtering for a specific marker line
-// (gunbc.host_hygiene_liveness_observe's "Listening for Jobs" scan) and computing
+// (gunbc.host.host_hygiene_liveness_observe's "Listening for Jobs" scan) and computing
 // freshness are pure .dag folds over stdout, not a second grep/tail spliced into the
 // argv — the piped `journalctl -u X | grep -F ... | tail -1` shell body this operation
 // replaces did in one hand-written string what the typed model now does as two named,

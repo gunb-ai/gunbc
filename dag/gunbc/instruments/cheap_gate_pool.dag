@@ -1,9 +1,9 @@
-module tools.cheap_gate_pool
+module gunbc.instruments.cheap_gate_pool
 
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import tools.host_prelude { ClaimRun, run_gunbc_claims }
-import tools.extdeps_external_authority_transport { extdeps_external_authority_claims }
+import gunbc.instruments.host_prelude { ClaimRun, run_gunbc_claims }
+import gunbc.instruments.extdeps_external_authority_transport { extdeps_external_authority_claims }
 
 // ONE pooled claim_batch child for the whole cheap batch (CI floor endgame D1, 2026-07-23; the
 // cold-child class, attribution doc section 9/9.2): after #7122's per-gate pooling, batch 0 still

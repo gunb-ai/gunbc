@@ -1,4 +1,4 @@
-module gunbc.memory_per_vcpu_convention
+module gunbc.runner.memory_per_vcpu_convention
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }

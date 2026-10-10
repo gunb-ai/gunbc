@@ -3,7 +3,7 @@ module test.claim.approval_keyring_converge_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import v2.std.algebra { list_head, HeadFound }
-import gunbc.fleet_posix_accounts { fleet_usermod_binary_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix, approval_store_receipt_mac_key_payload_sha256_prefix }
 import gunbc.auth.approval_keyring_converge {
@@ -13,7 +13,7 @@ import gunbc.auth.approval_keyring_converge {
   keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
   ntfy_group_admit_argv, roadmap_unit_restart_argv,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

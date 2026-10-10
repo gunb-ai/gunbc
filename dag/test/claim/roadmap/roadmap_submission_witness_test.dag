@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_submission_witness_test
 
-import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
 // SLICE 2, docs/plans/harness-work-lifecycle.md rule 7: the handoff lifecycle at the real
 // execution boundary, on planted inputs. Each claim names the state it refutes: a terminal worker
@@ -34,12 +34,12 @@ import gunbc.roadmap.roadmap_submission {
   HandoffPublicationStanding, PublicationReceiptOwed, PublicationReceiptBound, PublicationReceiptRefused,
   candidate_handoff_state,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderRunning, ProviderCompleted, ProviderBudgetSpent,
 }
-import gunbc.roadmap_publication_helper { publication_helper_publish_if_unpublished }
-import gunbc.roadmap_publish_observe { CredentialSourceAbsent }
-import gunbc.roadmap_publish { PublicationOutcome, PublicationBound }
+import gunbc.roadmap.roadmap_publication_helper { publication_helper_publish_if_unpublished }
+import gunbc.roadmap.roadmap_publish_observe { CredentialSourceAbsent }
+import gunbc.roadmap.roadmap_publish { PublicationOutcome, PublicationBound }
 import gunbc.scm.worktree_inventory { worktree_inventory_parse }
 import gunbc.roadmap.roadmap_fanin {
   FaninOutcome, FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused, fanin_integrate_candidate,
@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_project {
   ProjectMembership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
   node_project_membership, project_key_for_node, project_member_ids,
 }
-import gunbc.roadmap_model { RoadmapEdge, RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapEdge, RoadmapNodeId }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
@@ -368,7 +368,7 @@ test fn an_already_bound_publication_is_answered_as_observed_never_re_actuated()
   }
   match publication_helper_publish_if_unpublished(
     credential: CredentialSourceAbsent { reason: "no token" },
-    subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
+    subject: gunbc.roadmap.roadmap_publish.RoadmapPublicationSubject {
       node_id: "n1",
       attempt_key: "abc",
       repository: gunbc_repository,

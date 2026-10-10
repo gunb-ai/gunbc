@@ -184,8 +184,8 @@ fn family_crate_bound_subject(module_path: String) -> Bool {
 test fn witness_local_receipts_seed_post_flip_monitor() -> Bool {
   parity_routing_admitted(family: "meet_join", observations: meet_join_local_observations())
     && parity_routing_admitted(family: "complement", observations: complement_local_observations())
-    && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
-    && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_complement_equals_eval")
+    && family_crate_bound_subject(module_path: "v2.test.claim.execution.emit_host_meet_join_equals_eval_test")
+    && family_crate_bound_subject(module_path: "v2.test.claim.execution.emit_host_complement_equals_eval_test")
 }
 
 test fn witness_post_flip_red_window_latches_revert() -> Bool {

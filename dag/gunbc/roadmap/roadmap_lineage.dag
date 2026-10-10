@@ -2,11 +2,11 @@ module gunbc.roadmap.roadmap_lineage
 
 import std.types { String, Int, Bool, List }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import gunbc.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
 
 // THE ONE PARENT WALK. Every consumer that asks where a node sits -- the alignment chain, the
 // readiness predicate, the derived closing-contract minting, the page's project tree -- reads the
-// parent field each row declares (gunbc.roadmap_model NodeParent) through this walk, so no two
+// parent field each row declares (gunbc.roadmap.roadmap_model NodeParent) through this walk, so no two
 // surfaces can disagree about a node's lineage. The walk is over a caller-supplied node list: the
 // declared authority for production, a planted fixture for a witness.
 //

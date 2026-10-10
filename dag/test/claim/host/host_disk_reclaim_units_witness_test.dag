@@ -1,9 +1,9 @@
-module test.claim.host_disk_reclaim_units_witness_test
+module test.claim.host.host_disk_reclaim_units_witness_test
 
 import std.types { Bool }
 import std.measure { second_count }
-import gunbc.host_disk_reclaim { reclaim_per_repo_timeout }
-import gunbc.host_disk_reclaim_units {
+import gunbc.host.host_disk_reclaim { reclaim_per_repo_timeout }
+import gunbc.host.host_disk_reclaim_units {
   reclaim_service_unit_text,
   reclaim_timer_unit_text,
   reclaim_service_start_timeout,
@@ -43,7 +43,7 @@ test fn the_derived_timeout_reaches_the_rendered_unit() -> Bool {
 //
 // The incumbent unit sources /etc/default/ctrl-runner-reclaim, whose variables include one that
 // disables the repack outright and one that moves the fragmentation gate. Those gates are data
-// rows in gunbc.host_disk_reclaim; a unit letting a file override them has two authorities for
+// rows in gunbc.host.host_disk_reclaim; a unit letting a file override them has two authorities for
 // one policy and no observation revealing which one a host obeys. Re-adding the directive is a
 // one-line edit that looks like a fidelity improvement, which is why it needs a standing witness
 // rather than only the annotation explaining it.

@@ -36,7 +36,7 @@ import gunbc.codex_app_server_press {
   parse_account_trip_session,
   AccountTripDigestStructural,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_provider_executable }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_provider_executable }
 import gunbc.codex_harness_credential {
   codex_worker_turn_custody_host,
   codex_worker_turn_codex_home,
@@ -53,7 +53,7 @@ import gunbc.cursor_harness_credential {
 }
 
 // THE CODEX AND CURSOR OFFERS ARE JUDGED ON THE CREDENTIAL THE SPAWN BINDS, the way the Claude draw
-// is (gunbc.roadmap_dispatch_actuator claude_observed_standing_for_instance). Before this, both offers
+// is (gunbc.roadmap.roadmap_dispatch_actuator claude_observed_standing_for_instance). Before this, both offers
 // carried the declared inventory's unobserved standing, so creating the secrets and converging their
 // custody could not change selection: a declared row admits no draw. Each observation here runs on
 // the custody host against the custody credential and nothing ambient, so a login someone made by hand
@@ -143,7 +143,7 @@ fn cursor_standing_from_status(reading: CursorStatusReading) -> ProviderStanding
 }
 
 // The status probe reads the attempt's credential snapshot and keeps it for the spawn
-// (PosixShKeepFile); the snapshot is taken by the caller (gunbc.roadmap_dispatch_actuator).
+// (PosixShKeepFile); the snapshot is taken by the caller (gunbc.roadmap.roadmap_dispatch_actuator).
 fn cursor_observed_standing_from_snapshot(snapshot: NonEmptyStr) -> ProviderStanding {
   match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
     PosixShellNameRefused { spelling } =>

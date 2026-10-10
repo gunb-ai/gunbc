@@ -1,10 +1,10 @@
-module test.claim.machine_intake_subject_witness_test
+module test.claim.machine_intake.machine_intake_subject_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { content_hash_of_value }
 import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   BmcFru,
   BoardSerialAbsent,

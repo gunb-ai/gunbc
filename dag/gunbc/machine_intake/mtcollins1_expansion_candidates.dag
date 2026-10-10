@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_expansion_candidates
+module gunbc.machine_intake.mtcollins1_expansion_candidates
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
@@ -10,10 +10,10 @@ import extdeps.network.mcx4621a_acab { mcx4621a_acab_attachment }
 import extdeps.network.dell_0r887v { dell_0r887v_attachment }
 import extdeps.network.ibm_01ft753 { Ibm01ft753, ibm_01ft753 }
 import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
-import gunbc.machine_intake_mtcollins1_expansion_attachment { AttachmentVerdict, attachment_against_evidence }
-import gunbc.machine_intake_mtcollins1_expansion_observation { expansion_evidence_for_unit }
-import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
-import gunbc.machine_intake_mtcollins1_connectx4lx_observation { connectx4lx_host_observation, Connectx4LxHostObservation }
+import gunbc.machine_intake.mtcollins1_expansion_attachment { AttachmentVerdict, attachment_against_evidence }
+import gunbc.machine_intake.mtcollins1_expansion_observation { expansion_evidence_for_unit }
+import gunbc.machine_intake.mtcollins1_dimm_connector_observation { observed_unit }
+import gunbc.machine_intake.mtcollins1_connectx4lx_observation { connectx4lx_host_observation, Connectx4LxHostObservation }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications { mt_collins_1u_ocp_slot }
 
 // Procurement and relayed listing aliases are this workflow's facts, not an

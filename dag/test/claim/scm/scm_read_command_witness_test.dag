@@ -1,4 +1,4 @@
-module test.claim.scm_read_command_witness
+module test.claim.scm.scm_read_command_witness_test
 
 // THE READ-COMMAND COMPOSITION, AND THE ONE DISTINCTION IT EXISTS TO HOLD.
 //

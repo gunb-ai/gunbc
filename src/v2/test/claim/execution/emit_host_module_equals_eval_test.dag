@@ -1,4 +1,4 @@
-module v2.test.execution.emit_host_module_equals_eval
+module v2.test.claim.execution.emit_host_module_equals_eval_test
 
 import std.types { List }
 import v2.compiler.emit_host { run_test_claim_module_emit_vs_eval }
@@ -12,7 +12,7 @@ import v2.extdeps.languages.rust {
 import v2.extdeps.languages.rust_test {
   rust_add_target_model_staging
 }
-import v2.test.execution.emit_host_add_equals_eval {
+import v2.test.claim.execution.emit_host_add_equals_eval_test {
   emit_eval_call_primitive_five,
   emit_eval_call_primitive_six,
   emit_eval_subject,

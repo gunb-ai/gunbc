@@ -1,4 +1,4 @@
-module v2.test.emit.rust_variant_construct_emit
+module v2.test.claim.emit.rust_variant_construct_emit_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }

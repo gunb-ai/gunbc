@@ -1,4 +1,4 @@
-module gunbc.workspace_guest_image
+module gunbc.runner.workspace_guest_image
 
 import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 
@@ -19,7 +19,7 @@ import extdeps.posix.test_utility { test_executable_command }
 import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
-import gunbc.microvm_guest_artifacts {
+import gunbc.runner.microvm_guest_artifacts {
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
   runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
   ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,

@@ -1,4 +1,4 @@
-module v2.test.long.string_head_linear_witness
+module v2.test.claim.long.string_head_linear_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

@@ -1,4 +1,4 @@
-module v2.test.emit.int_literal_form_unwired_located
+module v2.test.claim.emit.int_literal_form_unwired_located_test
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }

@@ -1,4 +1,4 @@
-module v2.test.manual.parse_mechanism_probe
+module v2.test.claim.manual.parse_mechanism_probe
 
 
 data pmp_anchor: Symbol = ^pmp_anchor

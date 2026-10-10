@@ -1,4 +1,4 @@
-module gunbc.machine_intake_bmc_secure
+module gunbc.machine_intake.bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import v2.std.algebra { filter }
@@ -42,7 +42,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialResolvedVersionMismatch,
 }
 import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
   IpmiSetUserPassword,
@@ -85,9 +85,9 @@ import extdeps.bmc.ipmi_channel {
 import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_secret }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
-import gunbc.machine_intake_phase {
+import gunbc.machine_intake.phase {
   Arrival,
   BmcAccess,
   BmcSecure,
@@ -98,7 +98,7 @@ import gunbc.machine_intake_phase {
   QualificationRefusalOwner,
   machine_qualification_policy_digest,
 }
-import gunbc.machine_intake_receipt {
+import gunbc.machine_intake.receipt {
   EvidenceRef,
   IntakeProducerIdentity,
   IntakeReceiptEnvelope,
@@ -127,10 +127,10 @@ import gunbc.machine_intake_receipt {
 // actuator owns the observation, and the fold below owns what a set of
 // readbacks may and may not conclude. Its route to a consumer is
 // bmc_secure_phase_receipt, whose envelope is read by
-// gunbc.machine_intake_disposition.derive_fleet_admission exactly as every
+// gunbc.machine_intake.disposition.derive_fleet_admission exactly as every
 // other phase's is; there is no second admission path for credentials.
 //
-// WHY THE VOCABULARY IS NOT gunbc.bmc_onboarding's. That module is quarantined
+// WHY THE VOCABULARY IS NOT gunbc.bmc.bmc_onboarding's. That module is quarantined
 // legacy (machine-intake ruling 2026-08-29, answer (b)): its
 // FactoryDefault -> CredentialsRotated progression ADVANCES ITSELF with pure
 // functions and consumes no readback at all, so it cannot refuse. This is the
@@ -165,7 +165,7 @@ fn credential_probe_evidence(outcome: CredentialProbeOutcome) -> EvidenceRef? {
 //
 // The location is a SecretRef because gunbc.secret_provision already owns where
 // this fleet's secrets live (fleet_secret_ref); a fresh `secret_name: NonEmptyStr`
-// beside it — which is what gunbc.bmc_onboarding's plan carries — is the second
+// beside it — which is what gunbc.bmc.bmc_onboarding's plan carries — is the second
 // name for one concept DESIGN §3 forbids.
 type ManagedCredentialReference {
   account: NonEmptyStr
@@ -188,7 +188,7 @@ type ManagedCredentialReference {
 // keeps off the ladder — an external fact, observed at a declared frontier and
 // never fabricated here. The frontier is the effectful rotation actuator that
 // produces BmcCredentialRotationObservation; it does not exist yet, and it is
-// the same producer the machine-intake ruling gates on the gunbc.bmc_onboarding
+// the same producer the machine-intake ruling gates on the gunbc.bmc.bmc_onboarding
 // split.
 type CredentialRotationApplication
   = RotationApplied { reference: ManagedCredentialReference, applied_at: EpochMs, evidence: EvidenceRef }
@@ -253,7 +253,7 @@ type PublishedCredentialAccountObservation
 // caller honest about where the readbacks came from, and this module does not
 // claim it does. What it does hold is that the readings are carried together with
 // the attempt they were taken for, so a rotation observed on one unit can never
-// be presented as another's — the same join gunbc.machine_intake_access
+// be presented as another's — the same join gunbc.machine_intake.access
 // performs before the delivery solver runs.
 //
 // previous_credential_epoch is the epoch this unit stood at BEFORE the attempt:
@@ -352,7 +352,7 @@ type BmcSecureRefusalCause
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
-// other evidence). gunbc.machine_intake_disposition routes a UnitHardware
+// other evidence). gunbc.machine_intake.disposition routes a UnitHardware
 // refusal to ReturnWindow, which starts a return clock against the seller; a
 // credential the operator has not rotated, an unreachable account service and a
 // readback we could not take are not defects of the unit. Because the receipt's
@@ -863,7 +863,7 @@ fn unmatched_published_probe_cause(
 // RUNG: mechanically preventable. Ceiling is enrolled one-arm mutants on the
 // merge path (DESIGN §4b(4)): a deletion of a guarding arm that reddens exactly
 // the named witness. Next-rung trigger: that mutation capability for
-// test.claim.machine_intake_bmc_secure_witness_test on required CI, not a
+// test.claim.machine_intake.machine_intake_bmc_secure_witness_test on required CI, not a
 // scratch-tree one-shot. Named-cause witnesses in that module are the enrolled
 // evidence this PR keeps executing. Do not cite an un-enrolled local run.
 fn adjudicate_published_census_join(
@@ -1202,7 +1202,7 @@ type ObservedReading sole_constructor {
 
 fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_probe"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_probe"),
   ]
 {
   ObservedReading { evidence: evidence, observed_at: observed_at }
@@ -1232,7 +1232,7 @@ type ObservedPublishedAccount sole_constructor {
 
 fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
   ]
 {
   ObservedPublishedAccount { kind: kind, evidence: evidence, observed_at: observed_at }
@@ -1285,8 +1285,8 @@ fn observed_bmc_account_state(
   controller_clock: ControllerClockReading?,
 ) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "observation_with_controller_clock"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "observation_with_controller_clock"),
   ]
 {
   BmcAccountStateObservation {
@@ -1331,10 +1331,10 @@ fn observed_published_account_at_join(account: ObservedPublishedAccount) -> Publ
 
 fn observation_with_controller_clock(base: BmcAccountStateObservation, controller_clock: ControllerClockReading?) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "bmc_account_state_observation_same"),
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "apply_with_diverged_controller_clock"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "bmc_account_state_observation_same"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "apply_with_diverged_controller_clock"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
   ]
 {
   observed_bmc_account_state(
@@ -1790,7 +1790,7 @@ fn fetched_generation_reference(fetched: ManagedCredentialGenerationFetched) -> 
 // Two writes, each over its own admitted route: the managed account set to the fetched managed
 // generation, and the published account retired by setting it to a fetched break-glass generation the
 // fleet owns (the user-2 retirement mtcollins1 executed on 2026-09-13). Each admission is COMPUTED here
-// by gunbc.machine_intake_bmc_rotation_route admit_rotation_apply from the route standing, the
+// by gunbc.machine_intake.bmc_rotation_route admit_rotation_apply from the route standing, the
 // controller and build being written and the operator's approval; an admission is never received.
 // Every arm other than RotationApplyAdmitted refuses before any write is planned, which is what
 // is that module's rotation_route_consumption_frontier consumer in code; the frontier stands until this
@@ -1937,7 +1937,7 @@ fn published_channels_left_open(observed: BmcAccountStateObservation) -> List<Ip
 // approval for another run refuses. Admitted only to admitted_channel_writes: no facade returns it.
 fn project_managed_administrator_readback(observed: BmcAccountStateObservation) -> ManagedAdministratorReadback?
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "admitted_channel_writes"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "admitted_channel_writes"),
   ]
 {
   match observed.managed_probe {
@@ -2125,7 +2125,7 @@ type BmcAccountApplication sole_constructor {
 
 fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
   ]
 {
   let p = application.plan
@@ -2265,7 +2265,7 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
 // derived from the world. The secret bytes each write uses are materialized through a
 // SecretCredentialFetch that must resolve to exactly the generation the plan carries.
 
-data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_bmc_secure dry realization over gunbc.bmc_model BmcWorld" as NonEmptyStr
+data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.bmc_secure dry realization over gunbc.bmc_model BmcWorld" as NonEmptyStr
 
 // THE DRY REALIZATION'S OBSERVER SCHEDULE, SEALED. An EpochMs is turned into a sealed observer instant
 // only on behalf of the dry read and the dry apply, which are themselves admitted only to the named
@@ -2273,10 +2273,10 @@ data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_bmc_se
 // lists are the only wall between a supplied number and a sealed instant.
 fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_fetched_generation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
@@ -2288,8 +2288,8 @@ fn dry_evidence(text: String) -> EvidenceRef {
 
 fn dry_probe(world: BmcWorld, user: IpmiUserId, password: String, what: String, at: ObserverClockInstant) -> ObservedCredentialProbe
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_published_lan_probes"),
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_published_lan_probes"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
   ]
 {
   let text = join(["dry ipmi probe ", what, " user ", to_string(user as Int), " at ", to_string(observer_instant_millis(instant: at) as Int)], "")
@@ -2308,7 +2308,7 @@ fn dry_published_lan_probes(
   at: ObserverClockInstant,
 ) -> List<ObservedPublishedLanProbe>
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
   ]
 {
   fold(census.members, init: [], f: (acc, m) =>
@@ -2347,12 +2347,12 @@ fn dry_read_bmc_account_state(
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "read_in"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2413,10 +2413,10 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
@@ -2474,5 +2474,5 @@ data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissol
 // THE HELD TRANSITION (operator ruling C, 2026-10-04). Its rung drop is
 // gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash, retired by the same trigger.
 data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
+  description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.host.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
 )

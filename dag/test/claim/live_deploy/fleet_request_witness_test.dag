@@ -1,8 +1,8 @@
 module test.claim.live_deploy.fleet_request_witness_test
 
-import gunbc.fleet_converge_scope { LiveDeploy }
+import gunbc.fleet.fleet_converge_scope { LiveDeploy }
 
-import gunbc.fleet_converge_terminal { FullyApplied, AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, AwaitingCapability }
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
@@ -55,7 +55,7 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployFleetRequestBasisRefused,
   LiveDeployMemberBasis,
 }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
   fleet_converge_request_scope,

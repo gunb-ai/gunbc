@@ -1,4 +1,4 @@
-module v2.test.execution.native_selected_witness_bundle_production
+module v2.test.claim.execution.native_selected_witness_bundle_production
 
 import std.content_hash { as_content_hash_structural, serialize_content_hash }
 import std.selected_witness_bundle { SelectedWitnessPlan, native_witness_bundle_from_plan }
@@ -18,11 +18,11 @@ import v2.compiler.native_selected_bundle_process { NativeSelectedBundleProcessS
 import v2.extdeps.languages.rust_test { rust_logic_selected_bundle_target_model_staging }
 import v2.std.compilers.target_model { runtime_row_from_target }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.test.execution.emit_on_demand_family_crate_witness {
+import v2.test.claim.execution.emit_on_demand_family_crate_witness_test {
   family_crate_alt_members,
   family_crate_members,
 }
-import v2.test.execution.native_selected_witness_bundle {
+import v2.test.claim.execution.native_selected_witness_bundle_test {
   selected_logic_alt_plan,
   selected_logic_bundle_cache_root,
   selected_logic_expected_stdout_octets,

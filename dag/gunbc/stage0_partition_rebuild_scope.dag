@@ -2,11 +2,11 @@ module gunbc.stage0_partition_rebuild_scope
 
 import std.types { String, List, Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.stage0_crate_partition_generated {
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
-import gunbc.stage0_partition_package_graph {
+import gunbc.stage0.stage0_partition_package_graph {
   stage0_host_shell_dependency_names,
   stage0_host_shell_package_name,
   stage0_next_pass_executable_bin_name,
@@ -29,7 +29,7 @@ import gunbc.stage0_partition_package_graph {
 // packages, plus the executable/link package -- never a count, and never a superset.
 //
 // THE PACKAGE GRAPH IS DERIVED, NOT TRANSCRIBED. Every edge read here comes from
-// gunbc.stage0_partition_package_graph stage0_partition_package_dependency_names, which is also
+// gunbc.stage0.stage0_partition_package_graph stage0_partition_package_dependency_names, which is also
 // what v1.compiler.stage0_crates renders each partition crate's Cargo manifest from. One graph,
 // two consumers: the closure cannot disagree with what cargo is handed. A second hand-authored
 // edge roster here would be a parallel authority for the same fact, and one that silently

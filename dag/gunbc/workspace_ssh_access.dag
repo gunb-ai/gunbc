@@ -3,7 +3,7 @@ module gunbc.workspace_ssh_access
 import std.types { String, NonEmptyStr, Timestamp }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.workspace_gateway { WorkspaceGateway }
 import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }

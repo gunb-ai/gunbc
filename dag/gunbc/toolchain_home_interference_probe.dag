@@ -1,12 +1,12 @@
 module gunbc.toolchain_home_interference_probe
 
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   ProbeToolchainHomeInterference,
   RunnerLocalHost,
   LocalShell,
   host_effect_identity_evidence,
 }
-import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.host.host_effect_realize { host_effect_apply }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.realization_reconcile { Converged, NotConverged }
 

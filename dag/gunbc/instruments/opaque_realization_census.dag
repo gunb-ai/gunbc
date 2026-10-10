@@ -1,4 +1,4 @@
-module tools.opaque_realization_census
+module gunbc.instruments.opaque_realization_census
 
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -20,7 +20,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
   witness_bin_refusal_cause,

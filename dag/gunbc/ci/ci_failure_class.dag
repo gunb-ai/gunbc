@@ -1,4 +1,4 @@
-module gunbc.ci_failure_class
+module gunbc.ci.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String, List, Bool }
@@ -31,7 +31,7 @@ import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
 }
-import gunbc.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
+import gunbc.host.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
@@ -112,7 +112,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
       command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String
     )
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
-    ClassWireOnly => "gunbc.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
+    ClassWireOnly => "gunbc.ci.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
   }
 }
 
@@ -171,7 +171,7 @@ fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
 // earlier revision deleted the failed-to-spawn arm from the seed list on surface-local evidence and
 // was retracted, because editing one side of a fork widens divergence instead of closing it.
 // DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node
-// v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION,
+// v1-zero-hand-maintained-rust (gunbc.v1.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION,
 // and it is the fork closure rather than a generic seed deletion: falsifier_failure_mode consumes
 // this module — the seed resolving it and calling classify_failure_reason, the way claim_executor
 // USED TO resolve gunbc.floor_component_receipt through write_floor_component_receipt_at (true
@@ -828,7 +828,7 @@ data merge_freshness_gating_status: MergeGatingStatus = GatingComputedDeferred
 data merge_admission_enforcement_gating_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_failure_class",
+    module_path: "gunbc.ci.ci_failure_class",
     decl_name: "merge_freshness_gating_status",
     field: WholeDeclaration
   }

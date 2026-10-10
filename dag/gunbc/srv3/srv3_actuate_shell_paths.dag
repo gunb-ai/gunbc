@@ -1,4 +1,4 @@
-module gunbc.srv3_actuate_shell_paths
+module gunbc.srv3.srv3_actuate_shell_paths
 
 import std.types { String, NonEmptyStr }
 

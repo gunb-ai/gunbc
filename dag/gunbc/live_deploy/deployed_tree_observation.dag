@@ -7,9 +7,9 @@ import extdeps.git
 import extdeps.git { git_in_trusted_repository_args }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   run_typed_argv_transport,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -85,7 +85,7 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
 
 // THE ROOT-TREE OBJECT IDENTITY (RLM-2 ruling section 4, G7). `HEAD:` is the colon form naming the
 // root tree of HEAD; `HEAD^{tree}` names the same object but `^`, `{` and `}` are outside the
-// portability wall (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed), while `:`
+// portability wall (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed), while `:`
 // is inside it. Same locus, same transport, one more argv -- not a second remote-revision path.
 data deployed_tree_root_tree_ref: String = "HEAD:"
 
@@ -457,7 +457,7 @@ fn observe_deployed_tree_against_revision(
   }
 }
 
-// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet_desired_observe` `fleet_revision_standing`
+// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet.fleet_desired_observe` `fleet_revision_standing`
 // compares revisions and nothing else, so a deployed tree sitting at the admitted commit with edited
 // tracked files reads as CONVERGED there. It is not: its revision agrees while its bytes do not, and
 // the whole point of publishing a tree is the bytes. That state gets its own arm here rather than

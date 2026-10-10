@@ -1,6 +1,6 @@
-module test.claim.roadmap_workflow_progress_witness_test
+module test.claim.roadmap.roadmap_workflow_progress_witness_test
 
-import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -8,17 +8,17 @@ import gunbc.roadmap.roadmap_review_function { review_report_absent, review_plan
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent, ReviewReceiptPresent, CriterionReviewEvidence }
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderCompleted,
   ProviderRunning,
   ProviderAwaitingSeat,
   ProviderFailed,
   ProviderEventsRefused,
 }
-import gunbc.roadmap_workflow_command {
+import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
   review_segment,
   WorkflowAttemptEvidence,
@@ -26,10 +26,10 @@ import gunbc.roadmap_workflow_progress {
   workflow_attempt_progress_json_value,
   receipt_records_admission,
 }
-import gunbc.roadmap_workflow_command { legacy_attempt_supersedable_label }
+import gunbc.roadmap.roadmap_workflow_command { legacy_attempt_supersedable_label }
 import gunbc.harness.harness_throughput { RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap_dispatch_environment {
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,
   EnvironmentRefused,
@@ -48,8 +48,8 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessUnobserved,
 }
-import gunbc.roadmap_component { dispatch_client_js_source }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
   WorkflowSegmentFailed,
   WorkflowSegmentActive,
@@ -66,7 +66,7 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_state_key,
 }
 import gunbc.workflow_reconcile { workflow_reconcile_status_key }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
@@ -79,7 +79,7 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
   VerificationSubjectObservation,
   VerificationSubjectObserved,
@@ -94,7 +94,7 @@ import gunbc.roadmap_verification_receipt {
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
 
 data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
 

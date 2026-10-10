@@ -1,4 +1,4 @@
-module v2.test.name_resolve.arrow_domain_is_first_positional
+module v2.test.claim.name_resolve.arrow_domain_is_first_positional_test
 
 import v2.compiler.resolve { arrow_domain_frame_binders, arrow_domain_has_named_bindings }
 import v2.std.arrow_signature { declared_signature }

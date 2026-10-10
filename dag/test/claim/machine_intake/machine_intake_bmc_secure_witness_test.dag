@@ -1,4 +1,4 @@
-module test.claim.machine_intake_bmc_secure_witness_test
+module test.claim.machine_intake.machine_intake_bmc_secure_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -23,7 +23,7 @@ import extdeps.bmc.ipmi_channel {
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   ComponentIdentity,
   DimmComponent,
@@ -36,7 +36,7 @@ import gunbc.machine_intake_subject {
   qualification_subject_of,
 }
 import gunbc.deployment_risk { ProdRisk, TestRisk }
-import gunbc.machine_intake_phase {
+import gunbc.machine_intake.phase {
   Arrival,
   BmcAccess,
   BmcSecure,
@@ -52,7 +52,7 @@ import gunbc.machine_intake_phase {
   machine_qualification_policy_digest,
   prod_risk_admitting_qualification_policy,
 }
-import gunbc.machine_intake_receipt {
+import gunbc.machine_intake.receipt {
   EvidenceRef,
   IntakeProducerIdentity,
   IntakeReceiptEnvelope,
@@ -67,7 +67,7 @@ import gunbc.machine_intake_receipt {
   intake_receipt_structural_fingerprint,
   validate_intake_receipt_ledger,
 }
-import gunbc.machine_intake_disposition {
+import gunbc.machine_intake.disposition {
   Admitted,
   FleetAdmissible,
   FleetAdmissionStanding,
@@ -82,7 +82,7 @@ import gunbc.machine_intake_disposition {
   derive_disposition,
   derive_fleet_admission,
 }
-import gunbc.machine_intake_bmc_secure {
+import gunbc.machine_intake.bmc_secure {
   AccountManagementUnavailable,
   AccountManagementUnreachable,
   BmcCredentialRotationObservation,
@@ -1286,7 +1286,7 @@ test fn roster_covers_every_refusal_cause() -> Bool {
 }
 
 // NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design §6: an access state is a
-// PartsHold, not a ReturnWindow). gunbc.machine_intake_disposition routes a
+// PartsHold, not a ReturnWindow). gunbc.machine_intake.disposition routes a
 // UnitHardware refusal to a return clock against the seller. Measured over the
 // rostered causes, which is every cause the module declares today; the
 // forcing function that brings a new one here is described above.

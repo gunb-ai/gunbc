@@ -1,6 +1,6 @@
-module test.claim.mtcollins1_census_image
+module test.claim.machine_intake.mtcollins1_census_image_witness_test
 
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -10,8 +10,8 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   seeded_install_media_build_key,
   ubuntu_seeded_install_media_built,
 }
-import gunbc.boot_medium { stock_installer_boot_medium }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.host.boot_medium { stock_installer_boot_medium }
+import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage,
   BoundHostCaptureEnvelope,
   HostCaptureBound,
@@ -30,7 +30,7 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_workload_chunk_paths,
   host_capture_workload_command,
 }
-import gunbc.machine_intake_host_capture_historical_binding {
+import gunbc.machine_intake.host_capture_historical_binding {
   census_historical_stage_bindings,
   census_roster_is_fully_bound,
   census_roster_matches_bindings,
@@ -38,7 +38,7 @@ import gunbc.machine_intake_host_capture_historical_binding {
   roster_matches_bindings,
 }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import gunbc.machine_intake_mtcollins1_census_image {
+import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_capture_program,
   mtcollins1_census_console_device,
   mtcollins1_census_console_tty,

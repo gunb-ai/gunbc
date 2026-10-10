@@ -20,8 +20,8 @@ import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.printer_tool_readiness {printer_mqtt_tool_ready}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,print_inputs_admitted}
-import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
+import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.auth.access_token_source {AccessTokenSource}
 import gunbc.auth.approval_request_client {stored_request_from_authorization,PollStillPending}
 import gunbc.auth.approval_gate {approval_instant_now,approval_expires_at,approval_file_stored_request,ApprovalFiled,ApprovalFilingRefused,approval_standing_read,StandingReadAt,StandingClockUnreadable,approval_gate_from_poll,GateAdmitted,GateRefused,approval_refusal_text}

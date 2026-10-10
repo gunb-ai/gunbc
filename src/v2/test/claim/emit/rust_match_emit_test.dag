@@ -1,6 +1,6 @@
-module v2.test.emit.rust_match_emit
+module v2.test.claim.emit.rust_match_emit_test
 
-import v2.test.complexity_gate.table_fixture_match_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_match_subject_producer {
   table_fixture_match_arrow_with_body,
   table_fixture_match_arrow_with_body_swapped_arms
 }

@@ -1,4 +1,4 @@
-module v2.test.execution.infer_declaration_formation
+module v2.test.claim.execution.infer_declaration_formation_test
 
 import v2.compiler.infer { inferred_facts_resolved_type }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }

@@ -1,10 +1,10 @@
-module test.claim.mtcollins1_expansion_witness_test
+module test.claim.machine_intake.mtcollins1_expansion_witness_test
 
 import std.types { Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { rack_unit }
 import extdeps.publication { SpecificationDocumentDate }
-import gunbc.machine_intake_mtcollins1_expansion_observation {
+import gunbc.machine_intake.mtcollins1_expansion_observation {
   AttachmentPointStanding,
   AttachmentPointOffered,
   AttachmentPointOccupied,
@@ -213,7 +213,7 @@ test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
 // for "a reference that is not observed_unit"; nothing here claims it identifies a host.
 test fn another_unit_gets_no_observation_rather_than_this_one() -> Bool {
   let other_unit: DeclarationRef = DeclarationRef {
-    module_path: "test.claim.mtcollins1_expansion_witness_test",
+    module_path: "test.claim.machine_intake.mtcollins1_expansion_witness_test",
     decl_name: "fixture_apertures",
     field: WholeDeclaration,
   }

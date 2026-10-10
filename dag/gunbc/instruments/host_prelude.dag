@@ -1,17 +1,17 @@
-module tools.host_prelude
+module gunbc.instruments.host_prelude
 
 import extdeps.shell
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.cli_services
 import gunbc.cli_invoke { source_root_transport_argv }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.ci_release_bins { release_bin_is_enrolled }
+import gunbc.ci.ci_release_bins { release_bin_is_enrolled }
 import std.logic { Bool }
 
-data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/gunbc/instruments transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14). This module no longer has a shell path at all: toolchain_provision_shell_exec was its last one, and it is deleted. Its three callers in tools.emit_host_transport now run shell.Exec.Run directly, because they need the script's STDOUT -- the byte count and probe marker they compare in-substrate -- and a helper returning only Bool is exactly the collapse those call sites exist to undo."
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/gunbc/instruments transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14). This module no longer has a shell path at all: toolchain_provision_shell_exec was its last one, and it is deleted. Its three callers in gunbc.instruments.emit_host_transport now run shell.Exec.Run directly, because they need the script's STDOUT -- the byte count and probe marker they compare in-substrate -- and a helper returning only Bool is exactly the collapse those call sites exist to undo."
 
 type WitnessBin {
   var_name: String
@@ -101,7 +101,7 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
 }
 
 // The ONE rendering of a refusal for callers whose own outcome carries its cause as text
-// (tools.emission_entry_instrument EmissionSubjectUnestablished, tools.opaque_realization_census
+// (gunbc.instruments.emission_entry_instrument EmissionSubjectUnestablished, gunbc.instruments.opaque_realization_census
 // OpaqueCensusUnestablished). It names the bin, the path it was looked for at, and the arm, so a
 // reader of that cause can tell an unbuilt binary from a failed build from a zero-byte stub.
 
@@ -119,7 +119,7 @@ fn witness_bin_refusal_cause(bin_name: String, path: String, reason: WitnessBinR
   concat("witness binary ", concat(bin_name, concat(" refused (", concat(witness_bin_refusal_reason_name(reason: reason), concat(") at ", path)))))
 }
 
-// Enrollment wall first (gunbc.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name
+// Enrollment wall first (gunbc.ci.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name
 // refuses as WitnessBinNotEnrolled and never reaches cargo.Build — that is the construction close
 // of the mid-floor cold-monolith absorption the release-bins pack exists to bound (roster
 // dissolve_on for the former ci_floor_required_artifact_names hand list). The presence probe below

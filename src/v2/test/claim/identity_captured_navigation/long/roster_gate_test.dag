@@ -1,4 +1,4 @@
-module v2.test.claim.long.identity_captured_navigation_roster_gate
+module v2.test.claim.identity_captured_navigation.long.roster_gate_test
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -12,11 +12,11 @@ test fn roster_body_lowering_fold_zero_suspects_within_ratchet() -> Bool {
 }
 
 test fn roster_ingest_stage_zero_suspects_within_ratchet() -> Bool {
-  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/03_ingest.dag", refusal_ceiling: 0)
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/ingest.dag", refusal_ceiling: 0)
 }
 
 test fn roster_parse_stage_zero_suspects_within_ratchet() -> Bool {
-  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/02_parse.dag", refusal_ceiling: 0)
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/parse.dag", refusal_ceiling: 0)
 }
 
 test fn roster_accumulator_copy_analyze_zero_suspects_within_ratchet() -> Bool {

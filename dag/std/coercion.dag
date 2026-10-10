@@ -62,7 +62,7 @@ type TypeCheckpoint {
 // reference whose declaration identity the caller could not supply -- never a guess standing in
 // for Unrealized, because a silently-assumed Unrealized is exactly the false negative this
 // decision keeps out of the render path (DESIGN section 5). Named Unrealized rather than
-// Structural because gunbc.ci_failure_class already declares a fielded Structural { reason:
+// Structural because gunbc.ci.ci_failure_class already declares a fielded Structural { reason:
 // String } resolved as an unqualified global name (imports do not bind it), so a second,
 // differently-shaped Structural here would collide corpus-wide.
 //

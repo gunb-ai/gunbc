@@ -11,7 +11,7 @@ import std.measure {
 }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest }
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.runner.runner_job_initiator {
   RunnerEvidenceSource, JobInitiatorProvenance, JobInitiatorObserved, JobInitiatorUnobserved,
   HumanInitiated,

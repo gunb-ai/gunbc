@@ -1,4 +1,4 @@
-module gunbc.machine_intake_staging
+module gunbc.machine_intake.staging
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
 import product.host_identity { HostIdentity }
@@ -23,7 +23,7 @@ import extdeps.bmc.virtual_media { MegaRacShareCifs, MegaRacShareNfs }
 // receipt collector and power-meter integrations a stable home — but that is a REALIZATION
 // MIGRATION, not a workflow change, and the MVP does not block on buying it. Current-state
 // discrepancy the ruling requires be resolved by observation, not prose:
-// gunbc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while
+// gunbc.bmc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while
 // the brief says srv2 is today's staging host. Neither is chosen here;
 // intake_staging_realization_today is StagingUnobserved until the staging-service observation
 // runs and binds whichever host is actually serving artifacts.

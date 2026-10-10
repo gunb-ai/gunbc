@@ -1,6 +1,6 @@
-module gunbc.runner_microvm_cell_readiness_store
+module gunbc.runner.runner_microvm_cell_readiness_store
 
-import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
@@ -24,8 +24,8 @@ import extdeps.languages.json.parse {
   FieldAbsent, FieldRead, FieldMalformed,
 }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
-import gunbc.runner_microvm_attempt_identity {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, HostIdentity }
+import gunbc.runner.runner_microvm_attempt_identity {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   attempt_segment_refusal_text,
 }
@@ -36,7 +36,7 @@ import product.fabric.sanitation {
   SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable,
   UnprovenFact, FactNotObserved, FactObservedFailing,
 }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
   InFlightAttempt, MicroVmWorkload, GitHubRunnerWorkload, WorkspaceWorkload,
   CellReadinessStoreRead, StoreRead, StoreUnreadable,
@@ -47,7 +47,7 @@ import gunbc.runner_microvm_cell_readiness {
 
 data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = SingleAuthority
 
-// THE ON-DISK REALIZATION OF gunbc.runner_microvm_cell_readiness's STORE.
+// THE ON-DISK REALIZATION OF gunbc.runner.runner_microvm_cell_readiness's STORE.
 //
 // That module owns what a record MEANS -- the (cell, generation) unit, the in-flight arm, the
 // monotone write rule, the two withdrawal grains. This module owns the one thing it deliberately
@@ -119,7 +119,7 @@ data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = Si
 // FOR deleting this row. NOT satisfied by a wet claim against the production path, whatever guards it
 // carries.
 data cell_readiness_store_filesystem_receipt_gap: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.runner_microvm_cell_readiness_store reaches the filesystem -- read_cell_readiness_store lists and reads, persist_one_record writes and reads back -- and none of it has executed against a real filesystem, because the only addressable path is the production store root. TRIGGER: the store root carried as a value (the std.artifact_store MaterializationStoreRoot shape), so a receipt can address a directory it owns. SUFFICIENT FOR deleting this row. NOT satisfied by a wet claim against the production path." as NonEmptyStr,
+  description: "gunbc.runner.runner_microvm_cell_readiness_store reaches the filesystem -- read_cell_readiness_store lists and reads, persist_one_record writes and reads back -- and none of it has executed against a real filesystem, because the only addressable path is the production store root. TRIGGER: the store root carried as a value (the std.artifact_store MaterializationStoreRoot shape), so a receipt can address a directory it owns. SUFFICIENT FOR deleting this row. NOT satisfied by a wet claim against the production path." as NonEmptyStr,
 )
 
 data cell_readiness_store_dir: String = cell_readiness_store_location
@@ -129,7 +129,7 @@ data cell_record_suffix: String = ".json"
 // A CELL NAMES ITS OWN FILE, SO A CELL WHOSE NAME IS NOT A FILENAME IS REFUSED RATHER THAN JOINED.
 // The path is derived from the cell id; a separator in that id would address a record outside the
 // store, and "." or ".." would address the directory itself. This is the same refusal
-// gunbc.runner_microvm_attempt attempt_segment makes for an attempt id, for the same reason and at
+// gunbc.runner.runner_microvm_attempt attempt_segment makes for an attempt id, for the same reason and at
 // the same grain: the identity is what every path is derived from, so it is checked where it is
 // turned into one.
 type CellRecordPath
@@ -383,7 +383,7 @@ fn encode_readiness(r: CellReadiness) -> JsonValue {
 }
 
 // THE READINESS CARRIES ITS OWN CELL AND IT IS DECODED AS WRITTEN, NEVER REPAIRED FROM THE KEY.
-// gunbc.runner_microvm_cell_readiness record_incoherence exists precisely to catch a settled record
+// gunbc.runner.runner_microvm_cell_readiness record_incoherence exists precisely to catch a settled record
 // whose readiness names a different cell than its key, and a decoder that substituted the key for
 // the encoded cell would make that check permanently green by construction -- a wall dismantled from
 // underneath by the codec that feeds it (DESIGN 4b: an inert check is worse than an absent one).
@@ -423,7 +423,7 @@ fn decode_quarantined(v: JsonValue, cell: CellId) -> Decoded<CellReadiness> {
 // --- the in-flight attempt codec ---
 
 // THE ATTEMPT IS PERSISTED AS ITS CONSTRUCTOR'S INPUTS AND REBUILT THROUGH THAT CONSTRUCTOR.
-// MicroVmAttempt is sealed and its segment refuses traversal (gunbc.runner_microvm_attempt); a
+// MicroVmAttempt is sealed and its segment refuses traversal (gunbc.runner.runner_microvm_attempt); a
 // decoder that assembled the record directly would be a second constructor and would let a store
 // edited by hand reintroduce `../shared` as an attempt id. So the bytes carry host, slot index and
 // the segment's spelling, and microvm_attempt is asked to accept them exactly as the live path does.
@@ -664,11 +664,11 @@ fn decode_document_step(acc: Decoded<List<CellReadinessRecord>>, body: String) -
 
 // OWNERSHIP IS TWO READINGS AND BOTH ARE REQUIRED. uid 0 alone admits mode 0666, which is a store
 // every tenant may write; a restrictive mode alone admits a directory the runner user owns and may
-// chmod at will. gunbc.runner_microvm_cell_readiness StoreNotRootOwned carries both because the
+// chmod at will. gunbc.runner.runner_microvm_cell_readiness StoreNotRootOwned carries both because the
 // remedy names both, so both are read here rather than folded into one verdict.
 //
 // THE READING ITSELF IS extdeps.tools.stat's, not this module's. It used to be a StoreStatReading
-// declared here -- the same three arms and the same fold that gunbc.runner_attempt_launch had also
+// declared here -- the same three arms and the same fold that gunbc.runner.runner_attempt_launch had also
 // minted for its own stat readback, one concept invented twice in one change (review 69037). The
 // fact's layer is the stat boundary both callers already import from.
 
@@ -919,7 +919,7 @@ fn entry_ownership_refusal(path: String) -> NonEmptyStr?
 
 // THE WRITE IS DECIDED BY THE STORE'S OWN AUTHORITY, TOUCHES ONE CELL'S FILE, AND IS THEN READ BACK.
 //
-// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write decides whether the write may
+// gunbc.runner.runner_microvm_cell_readiness apply_cell_readiness_write decides whether the write may
 // happen at all; this module never re-decides it and never writes past a refusal. What it adds is
 // the half that authority cannot have: the bytes reaching the disk, and an INDEPENDENT reading that
 // they did. A successful Filesystem.Write is the filesystem's claim; the record read back out of the

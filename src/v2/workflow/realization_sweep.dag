@@ -17,7 +17,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_walk_state_zero
 }
 import gunbc.explicit_witness_admission { explicit_witness_admissions }
-import gunbc.ci_layer_roots { falsifier_substrate_long_lane_rows }
+import gunbc.ci.ci_layer_roots { falsifier_substrate_long_lane_rows }
 import v2.compiler.source_authority {
   SourceRef,
   SourceRootIngest

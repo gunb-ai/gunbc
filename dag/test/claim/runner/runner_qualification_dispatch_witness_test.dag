@@ -1,4 +1,4 @@
-module test.claim.runner_qualification_dispatch_witness
+module test.claim.runner.runner_qualification_dispatch_witness_test
 
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
@@ -16,18 +16,18 @@ import extdeps.github.effect { DispatchWorkflow, GitHubOrganizationRef }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
 }
-import gunbc.managed_host { managed_hosts, managed_host_binding }
+import gunbc.host.managed_host { managed_hosts, managed_host_binding }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_for, HostUnitSlot, HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
+import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
 import test.claim.github_app_registry {
   app_credential, other_app_credential, other_installation_credential, a_pull_request_job_credential,
   bot_installation_id, other_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
 }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
-import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, observe_runner_group_restriction }
+import gunbc.runner.runner_group_restriction_observation { MicrovmRunnerGroupStanding, observe_runner_group_restriction }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner.runner_qualification_ref_pin {
@@ -399,7 +399,7 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
 // produce deliveries that agree on slot, credential and runner id; the subject over dispatch A refuses
 // each rather than claiming A's registration for a credential another mint produced. (Rewrapping one
 // delivery's credential with A's dispatch is unconstructable:
-// test.claim.runner_qualification_delivery_rewrap_witness.)
+// test.claim.runner.runner_qualification_delivery_rewrap_witness_test.)
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {

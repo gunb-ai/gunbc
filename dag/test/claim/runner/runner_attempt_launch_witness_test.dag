@@ -1,12 +1,12 @@
-module test.claim.runner_attempt_launch_witness
+module test.claim.runner.runner_attempt_launch_witness_test
 
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
 import gunbc.runner.jit_registration_subject { microvm_registration_subject }
-import gunbc.runner_microvm_attempt { bind_owned_attempt }
+import gunbc.runner.runner_microvm_attempt { bind_owned_attempt }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
-import gunbc.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
+import gunbc.runner.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Absent, Present }
@@ -15,31 +15,31 @@ import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.mkdir { mkdir_binary_path }
-import gunbc.runner_microvm { gunbc_runner_microvm_declared_size, RunnerMicroVmShape, runner_microvm_workspace_grant }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_size, RunnerMicroVmShape, runner_microvm_workspace_grant }
 import extdeps.virtualization.firecracker {
   firecracker_requires_kvm_device, FirecrackerDrive,
 }
-import test.claim.fabric_grant_issuance_witness {
+import test.claim.fabric.fabric_grant_issuance_witness_test {
   issue, subject_work, first_attempt, funded_account, exhausted_account,
   admitted_offer, thread_appropriation, money_request,
 }
 import product.fabric.grant_issue { GrantCommitted, GrantRefused }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.budget { MoneyAccount }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv2 }
-import gunbc.runner_microvm_attempt {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
   runner_microvm_attempt_jail_base,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   runner_slot_tap_device_name,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
 import extdeps.tools.stat { StatFieldRead, StatFieldUnread }
 import extdeps.posix.test_utility { PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
-import gunbc.runner_attempt_launch {
+import gunbc.runner.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
   LaunchRefusedJitCredential, LaunchRefusedPriorResources,
   AttemptGround, GroundClear, GroundOccupied,
@@ -76,8 +76,8 @@ import gunbc.github_effect_perform {
   JitMintPerformance, JitMintReceived, JitMintAppJwtUnsigned, JitMintStepNotSucceeded,
   GenerateJitConfigStep,
 }
-import gunbc.runner_microvm_attempt { runner_microvm_attempt_unit_name }
-import gunbc.runner_microvm { jit_drive_content, jit_drive_utf8_size }
+import gunbc.runner.runner_microvm_attempt { runner_microvm_attempt_unit_name }
+import gunbc.runner.runner_microvm { jit_drive_content, jit_drive_utf8_size }
 import extdeps.github.actions_runner { actions_runner_jitconfig_env_name }
 import std.algebra { Cons, Empty }
 
@@ -470,7 +470,7 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
   }
 }
 
-// THE STAGED BYTES ARE THE GUEST'S CONTRACT (gunbc.runner_microvm jit_drive_content), pinned two
+// THE STAGED BYTES ARE THE GUEST'S CONTRACT (gunbc.runner.runner_microvm jit_drive_content), pinned two
 // ways so neither side can drift alone: equal to the guest-side function, AND independently shaped
 // as that function's documented contract -- one <actions_runner_jitconfig_env_name>=<blob> line, then
 // only newline padding, in whole 512-byte sectors. A host that wrote the bare blob or NUL padding
@@ -730,7 +730,7 @@ test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
 // THE FRONTIER HALF OF THIS CLAIM IS GONE BECAUSE THE FRONTIER IS. workspace_staging_consumer_frontier
 // asserted that its own row still stood, and that row named this file's staging step as its consumer
 // with the trigger "that step executes workspace_create and workspace_format, executes
-// stage_bootstrap_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner_microvm
+// stage_bootstrap_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner.runner_microvm
 // _lifecycle_realize stage_attempt is that step and does exactly those three things, so the row is
 // discharged and deleted in the same change (review 69117: a row whose trigger the author says is met,
 // kept standing, is the roster ceasing to mean what it says). What retires with it is the assertion

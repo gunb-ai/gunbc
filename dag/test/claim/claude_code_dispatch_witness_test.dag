@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.claim_evidence { RecordedFactId }
 import std.measure { basis_point_count }
 import std.optional { Present, Absent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeStreamLine,
   ClaudeCodeRateLimitEventLine,
@@ -21,11 +21,11 @@ import extdeps.llm.claude_code_stream_json {
   claude_code_stream_line,
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired,
 }
-import gunbc.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
+import gunbc.roadmap.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
 import gunbc.claude_code_limit_standing {
   ClaudeCodeStandingReading,
   ClaudeCodeStandingRead,
@@ -84,7 +84,7 @@ import gunbc.dispatch_selection {
 }
 import extdeps.llm.cli_lifecycle { ClaudeCliProvider, CodexCliProvider, CursorCliProvider }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchExecutorRequestDecoded,
   DispatchExecutorRequestUnknown,
   ExecutorDefault,
@@ -356,7 +356,7 @@ test fn an_unreadable_line_refuses_the_whole_trip() -> Bool {
   }
 }
 
-// ── Executor request (gunbc.roadmap_dispatch_actuator) ──────────────────────────────────────────
+// ── Executor request (gunbc.roadmap.roadmap_dispatch_actuator) ──────────────────────────────────────────
 
 test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
   let claude = match decode_dispatch_executor_request(word: "claude") {

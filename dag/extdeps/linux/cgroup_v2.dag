@@ -255,7 +255,7 @@ fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
 // WHICH KERNELS PROVIDE THIS MECHANISM AT ALL, homed here for the same reason and by the same
 // parallel as extdeps.linux.procfs kernel_provides_procfs: whether a kernel family offers cgroup
 // v2 is a fact about cgroup v2, not about any consumer that happens to need it. It first appeared
-// in gunbc.host_budget_source as `kernel_provides_private_memory_limit` -- a consumer-side name
+// in gunbc.host.host_budget_source as `kernel_provides_private_memory_limit` -- a consumer-side name
 // for this fact, which is DESIGN section 3's nickname in the ordinary case and a layer inversion
 // in the strict one: a second name for one concept, homed away from its authority, and it would
 // have forked the moment a second consumer needed the same answer.
@@ -264,7 +264,7 @@ fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
 // Linux kernel and mounts a real unified hierarchy -- and it is the arm most likely to be got
 // wrong by reading the name. Darwin and WindowsNt answer false: neither has cgroups, and neither
 // has any modeled equivalent per-process memory limit, which is the load-bearing consequence for
-// gunbc.host_budget_source -- on those kernels a host-shared reading is the strongest fact
+// gunbc.host.host_budget_source -- on those kernels a host-shared reading is the strongest fact
 // available rather than a substitute for a bound that could have been read.
 fn kernel_provides_cgroup_v2(kernel: KernelFamily) -> Bool {
   match kernel {

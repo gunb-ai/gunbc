@@ -1,4 +1,4 @@
-module v2.test.complexity_gate.table_fixture_add_subject_producer
+module v2.test.claim.complexity_gate.table_fixture_add_subject_producer
 
 import v2.extdeps.languages.dag {
   dag_add_arrow_with_body_fixture,

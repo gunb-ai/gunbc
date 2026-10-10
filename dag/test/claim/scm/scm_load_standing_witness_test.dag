@@ -1,4 +1,4 @@
-module test.claim.scm_load_standing_witness
+module test.claim.scm.scm_load_standing_witness_test
 
 // THE STANDING THAT COULD NOT EXIST, AND NOW HAS A PRODUCER.
 //
@@ -131,7 +131,7 @@ fn ls_permits(standing: LoadStanding) -> Bool {
         schema_identity: "gunbc-scm-commit-closure-v3",
         standing: standing,
         authority: decl_ref(
-          module_path: "test.claim.scm_load_standing_witness",
+          module_path: "test.claim.scm.scm_load_standing_witness_test",
           decl_name: "ls_permits",
         ),
       ),

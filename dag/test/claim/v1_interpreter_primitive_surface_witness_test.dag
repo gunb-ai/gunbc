@@ -1,6 +1,6 @@
 module test.claim.v1_interpreter_primitive_surface_witness_test
 
-import gunbc.v1_interpreter_primitive_surface {
+import gunbc.v1.v1_interpreter_primitive_surface {
   AuthoredInRoster,
   EvalBuiltinInnerSite,
   FreeCall,

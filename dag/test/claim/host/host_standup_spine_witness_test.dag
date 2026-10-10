@@ -1,22 +1,22 @@
-module test.claim.host_standup_spine
+module test.claim.host.host_standup_spine_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition }
-import gunbc.host_standup { GreenPlacePinCoherent, NodeRegistered, ResourcesPresent, RunnerSlotHealthy }
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
-import gunbc.bmc_onboarding { FactoryCredentialActive, RotatedCredentialActive }
-import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
-import gunbc.host_assimilation_program {
+import gunbc.host.host_standup { GreenPlacePinCoherent, NodeRegistered, ResourcesPresent, RunnerSlotHealthy }
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.bmc.bmc_onboarding { FactoryCredentialActive, RotatedCredentialActive }
+import gunbc.ci.ci_fleet { fleet_intent_offers, srv3_offer }
+import gunbc.host.host_assimilation_program {
   assimilation_completion_inputs_for,
   host_standup_default_assimilation_gate_unsatisfied,
   host_standup_p3_fail_closed_blocks_complete,
 }
-import gunbc.fleet_enrollment {
+import gunbc.fleet.fleet_enrollment {
   both_participation_enrollment_participation,
   ci_runner_enrollment_participation,
   inference_serving_enrollment_participation,
 }
-import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
-import gunbc.host_standup {
+import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
+import gunbc.host.host_standup {
   Assimilation,
   AssimilationComplete,
   AssimilationCompleteGate,
@@ -56,8 +56,8 @@ import gunbc.host_standup {
   srv3_host_standup_target,
   srv3_install_mechanism_refuses_rather_than_falling_back,
 }
-import gunbc.host_standup { ProviderGuestAdopted }
-import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
+import gunbc.host.host_standup { ProviderGuestAdopted }
+import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 

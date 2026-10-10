@@ -1,4 +1,4 @@
-module test.claim.approval_capability_issuance_witness_test
+module test.claim.auth.approval_capability_issuance_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

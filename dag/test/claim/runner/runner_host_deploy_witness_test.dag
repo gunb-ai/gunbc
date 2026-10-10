@@ -1,11 +1,11 @@
-module test.claim.runner_host_deploy
+module test.claim.runner.runner_host_deploy_witness_test
 
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.exec.command { shell_command_render }
 import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   gunbc_ci_github_app,
   github_app_runner_org,
@@ -25,15 +25,15 @@ import gunbc.runner_host_deploy {
   runner_command_admission_blind_widen_sketch,
   runner_host_admission_gate_accepts,
 }
-import gunbc.runner_activation {
+import gunbc.runner.runner_activation {
   BuildCacheInstanceReady, HostCompilePoolReady,
   admit_runner_activation, runner_activate_command,
 }
-import gunbc.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance, runner_slot_index_suffix }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance, runner_slot_index_suffix }
+import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
 import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, String }
-import gunbc.fleet_intent { fleet_intent_execution_surface }
+import gunbc.fleet.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
 
 test fn srv4_docker_prereq_cites_official_repo() -> Bool {
@@ -210,7 +210,7 @@ test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
 // enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the
 // refusal still carries no command. What changed is that enrollment alone is no longer sufficient,
 // which is the whole point of the split — so these witnesses now assert the WEAKER half of a
-// stronger wall, and the wall's own controls live in test.claim.runner_activation_wall.
+// stronger wall, and the wall's own controls live in test.claim.runner.runner_activation_wall_test.
 
 // DEFINED LOCALLY RATHER THAN SHARED WITH runner_activation_wall_test, which carries the same fixture
 // and the full reasoning for it. A cross-test-module reference resolves under the floor -- it prepares

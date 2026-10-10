@@ -1,4 +1,4 @@
-module test.claim.runner_microvm_boot_probe_witness
+module test.claim.runner.runner_microvm_boot_probe_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.shell.exec { ProcessObservation, process_observation }
@@ -7,11 +7,11 @@ import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   gunbc_runner_guest_image, gunbc_runner_microvm_declared_size, gunbc_runner_jit_transport,
   GuestNetworkAbsent, runner_microvm_vm_config,
 }
-import gunbc.runner_microvm_boot_probe {
+import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
   BootConsoleLacksRunnerVersion, BootConsoleLacksGuestBooted,
   BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
@@ -19,7 +19,7 @@ import gunbc.runner_microvm_boot_probe {
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
 }
-import gunbc.runner_guest_image { guest_observation_line, GuestBooted }
+import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

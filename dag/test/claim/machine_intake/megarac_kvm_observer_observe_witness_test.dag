@@ -6,8 +6,8 @@ import std.measure { second, millisecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseFailed, OwnedReleaseNotOwned, OwnedRunning, OwnedNotRecorded, OwnedForeign }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
-import gunbc.machine_intake_megarac_kvm_still {
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.megarac_kvm_still {
   KvmObserverRecord, KvmObserverNotStarted, KvmJournalText, KvmInstant,
   KvmRetainedStill, KvmStillHashed, KvmTerminalStill, KvmTerminalStillAnswered, KvmTerminalStillUnanswered,
   KvmTeardownRecorded, KvmSnapshotKept,
@@ -15,8 +15,8 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmSessionReleased, KvmSessionReleaseHttp, KvmSessionReleaseFailed, KvmSessionLoginUnobserved, KvmSessionNoSession, KvmSessionReleaseUnrecognized,
   KvmBrowserClosed, KvmBrowserNotLaunched, KvmBrowserCloseFailed, KvmBrowserCloseUnrecognized, kvm_session_release_of, kvm_browser_close_of,
 }
-import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_paths, mtcollins1_kvm_observer_probe_artifact_glob }
-import gunbc.machine_intake_megarac_kvm_observer_observe {
+import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_paths, mtcollins1_kvm_observer_probe_artifact_glob }
+import gunbc.machine_intake.megarac_kvm_observer_observe {
   KvmProbeVerdict, KvmProbeHeld, KvmProbeFell, kvm_probe_verdict, kvm_probe_receipt_text,
   KvmObserverProbePaths, megarac_kvm_observer_probe_attempt, megarac_kvm_observer_probe_receipt_path, megarac_kvm_observer_probe_artifact_glob, megarac_kvm_observer_dir,
   kvm_probe_seat_parts_gap, kvm_probe_seat_hold_gap, kvm_probe_seat_gap_from_journal,

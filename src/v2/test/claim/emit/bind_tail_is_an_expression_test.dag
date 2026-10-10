@@ -1,4 +1,4 @@
-module v2.test.emit.bind_tail_is_an_expression
+module v2.test.claim.emit.bind_tail_is_an_expression_test
 
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }

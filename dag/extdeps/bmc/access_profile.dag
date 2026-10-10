@@ -52,7 +52,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which
 // attempt an observation belongs to, whether a lookup ran at all, and the binding of
 // profile+observation into one solve input are WORKFLOW standings and live in
-// gunbc.machine_intake_access. Concrete profile rows live in the board and implementation
+// gunbc.machine_intake.access. Concrete profile rows live in the board and implementation
 // modules that cite them, and observations are receipts in the workflow layer (DESIGN §3:
 // observations are never authored inside an upstream module).
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
@@ -221,7 +221,7 @@ fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObserve
 
 // The lookup's answer over the catalog: external facts only. Whether the
 // lookup ran, and which attempt's observation it was run for, are workflow
-// standings (gunbc.machine_intake_access), not arms here.
+// standings (gunbc.machine_intake.access), not arms here.
 type BmcAccessProfileLookup
   = AccessProfileKnown { profile: BmcAccessProfile, provenance: BmcAccessProfileProvenance }
   | AccessProfileBoardNotFactsBound { observed_identity: BmcObservedIdentity, board: BoardAuthorityLookup }

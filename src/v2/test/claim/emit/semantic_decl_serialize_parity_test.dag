@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_serialize_parity
+module v2.test.claim.emit.semantic_decl_serialize_parity_test
 
 import v2.std.collection { empty_map }
 import v2.compiler.emit_semantic_decl { produced_type_binding }

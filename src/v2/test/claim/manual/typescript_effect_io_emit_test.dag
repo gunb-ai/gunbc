@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_effect_io_emit
+module v2.test.claim.manual.typescript_effect_io_emit_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

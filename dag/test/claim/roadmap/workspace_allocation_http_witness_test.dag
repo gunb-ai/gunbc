@@ -1,4 +1,4 @@
-module test.claim.workspace_allocation_http_witness_test
+module test.claim.roadmap.workspace_allocation_http_witness_test
 
 import test.claim.request_authentication_witness_test { witness_mint_session }
 import gunbc.auth.session { SessionMinted, SessionRefused }
@@ -13,7 +13,7 @@ import std.access { Permit, Deny }
 import std.types { String, Bool, NonEmptyStr, Int }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
-import gunbc.workspace_allocation_http { workspace_http_reason }
+import gunbc.roadmap.workspace_allocation_http { workspace_http_reason }
 import extdeps.tailscale.serve { tailscale_serve_route_key_eq, TailscaleServeEndpoint }
 import gunbc.auth.request_authentication {
   AccessPathTailnetUnobserved, TailnetRouteGap, RequestIngress, IngressUnattested, IngressAttestedPeer,
@@ -23,10 +23,10 @@ import gunbc.auth.request_authentication {
 import gunbc.auth.request_authentication { AccessPathTailnetProxy, AccessPathDirectHttps, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved, SessionStandingInvalid }
 import gunbc.auth.session { SessionCookieMalformed }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken }
-import gunbc.roadmap_serve { roadmap_serve_access_path, roadmap_serve_access_path_over, roadmap_serve_route_table_build, RoadmapServeHandler, AllocationCreateHandler, AllocationReleaseHandler }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
-import gunbc.workspace_allocation_routes { workspace_route_create_over, workspace_route_release_over, workspace_create_terms }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced }
+import gunbc.roadmap.roadmap_serve { roadmap_serve_access_path, roadmap_serve_access_path_over, roadmap_serve_route_table_build, RoadmapServeHandler, AllocationCreateHandler, AllocationReleaseHandler }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
+import gunbc.roadmap.workspace_allocation_routes { workspace_route_create_over, workspace_route_release_over, workspace_create_terms }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced }
 import extdeps.http.server { RouteSelection, ServedRouteTableBuilt, ServedRouteTableBuildRefused, serve_select_route, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched }
 
 test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
@@ -91,7 +91,7 @@ test fn allocation_write_requires_an_observed_tailnet_route() -> Bool {
 }
 
 // ── The mounted writes over the serve seam ───────────────────────────────────────────────────────
-// Every claim below builds its access path through the serve seam's fold (gunbc.roadmap_serve
+// Every claim below builds its access path through the serve seam's fold (gunbc.roadmap.roadmap_serve
 // roadmap_serve_access_path_over, or roadmap_serve_access_path on the production instance), with
 // the ingress, the declared route and the serve-status reading SUPPLIED: the status text is the
 // shape `tailscale serve status --json` prints (extdeps.tailscale.serve

@@ -57,7 +57,7 @@ data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.s
 // dissolution-on-climb).
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
-data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
+data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.primary.shadow_module.shadowed_specimen"
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data planted_plain_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_string_specimen"
 data planted_string_list_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_string_list_specimen"

@@ -5,8 +5,8 @@ import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
-import gunbc.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.work_provider_local { compute_layout, compute_unit_properties }
 import gunbc.compute.attempt_lifecycle {
@@ -15,12 +15,12 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
-import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
-import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 
-import gunbc.roadmap_session_placement {
+import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,

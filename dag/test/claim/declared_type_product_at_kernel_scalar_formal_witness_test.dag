@@ -13,7 +13,7 @@ import std.types { String, Bool, Int }
 // gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted: a value of a nominal
 // PRODUCT handed to a formal whose declared type is a kernel scalar, or a where-refinement of one, is
 // Accepted by the seed. The fixture mirrors the specimen that surfaced it without importing it:
-// gunbc.machine_intake_bmc_secure ControllerClockReading (a record carrying `reported_millis:
+// gunbc.machine_intake.bmc_secure ControllerClockReading (a record carrying `reported_millis:
 // EpochMs`) passed where `read_at_millis: EpochMs` is declared. std.types EpochMs is
 // `Int where range(min: 0)`.
 //

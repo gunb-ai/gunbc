@@ -1,13 +1,13 @@
 module test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness_test
 
-import gunbc.fabric_required_build_cell {
+import gunbc.fabric.fabric_required_build_cell {
   AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld, AllocationSlotUnreadable,
   AllocationStoreRestorationRefused,
   AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationSlotAdmitted, AllocationSlotRefusedHeld, AllocationSlotRefusedUnreadable,
   fci1_allocation_slot_admission, fci1_exact_allocation_restoration,
 }
-import tools.fabric_control_plane_live_probe {
+import gunbc.instruments.fabric_control_plane_live_probe {
   Fci1CheckpointAfterCanonicalCommitBeforeTransport,
   Fci1CheckpointAfterReleaseBeforeGrading,
   Fci1CheckpointGenerationHeldTwo,

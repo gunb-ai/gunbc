@@ -1,4 +1,4 @@
-module v2.test.tokenize.lex_match_thunk_claims
+module v2.test.claim.tokenize.lex_match_thunk_claims_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.tokenize { lex_cursor_empty }

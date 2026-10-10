@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_stop_propagation_probe
+module gunbc.runner.runner_microvm_stop_propagation_probe
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -9,7 +9,7 @@ data runner_microvm_stop_propagation_probe_disposition: ConstructionMechanism = 
 
 // THE ONE FACT THE LIFETIME EDGE RESTS ON, PROBED WITHOUT A GUEST.
 //
-// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
+// gunbc.runner.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
 // PartOf=gunbc-microvm-slot@<slot>.service on the transient attempt unit, so that stopping the
 // controller's unit stops the VMM that unit supervises. Until this probe runs, that is a directive
 // this repository believes systemd honours -- the argv witness establishes the property is PASSED,
@@ -58,12 +58,12 @@ data stop_propagation_probe_stand_in_unit: NonEmptyStr = "gunbc-stop-propagation
 // StopJob issues `systemctl stop` on the supervisor, which is the one path PartOf is documented to
 // propagate. MainProcessKilled kills the supervisor's main process instead, standing in for the
 // OOM and crash paths where the unit goes inactive with NO stop job issued -- the paths
-// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property names and may not cover.
+// gunbc.runner.runner_microvm_attempt runner_microvm_attempt_part_of_property names and may not cover.
 // IF THE ANSWER IS THAT BindsTo IS NEEDED, IT DOES NOT TRAVEL ALONE. systemd.unit(5) is explicit
 // that BindsTo= must be combined with After= naming the same unit, or the STOP ORDERING between
 // them is undefined -- a bound unit can be torn down in an order nobody specified, which for this
 // lane means a guest stopped before or after its controller with no guarantee either way. So the
-// edit that adds BindsTo to gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property
+// edit that adds BindsTo to gunbc.runner.runner_microvm_attempt runner_microvm_attempt_part_of_property
 // adds After= naming the slot unit in the SAME edit, and the argv witness then requires all three
 // words rather than the one that was gone looking for. AfterProperty is already in the modeled
 // vocabulary; BindsTo is deliberately NOT added until the probe says it is needed, because a

@@ -256,7 +256,7 @@ fn calibration_specimen_identity(calibration: EvalStepCalibration) -> NonEmptySt
 //
 // ITS REFERENT IS AN ARTIFACT, SO ITS EXECUTING HOME IS AN INSTRUMENT AND NOT A WITNESS, and that is
 // stated rather than glossed: a required claim cannot read its own step count, and the cost artifact
-// exists only after the run that produced it. `tools.floor_cost_distribution_instrument`
+// exists only after the run that produced it. `gunbc.instruments.floor_cost_distribution_instrument`
 // `calibration_specimen_grounding_report` is the executing consumer; the witness below exercises
 // both arms of this classifier on fixture readings. The gap between the two is the honest one --
 // this join is INSTRUMENT-GRADE, run when re-pinning, not a gate that blocks a merge.
@@ -388,7 +388,7 @@ type HostSpeedCalibration =
   | HostSpeedSpecimenMoved { specimen: NonEmptyStr, declared_steps: Int, observed_steps: Int }
   | HostSpeedFactorOutOfRange { specimen: NonEmptyStr, factor_permille: Int, lower_permille: Int, upper_permille: Int }
 
-// THE PLAUSIBLE RANGE, AS POLICY WITH ITS REASON. `tools.floor_cost_distribution_instrument`
+// THE PLAUSIBLE RANGE, AS POLICY WITH ITS REASON. `gunbc.instruments.floor_cost_distribution_instrument`
 // `floor_cost_envelope_report` measures the spread of IDENTICAL work across runners (the envelope
 // `v2.workflow.floor_enrolment_margin` consumes); its worst case over the sample it was taken on was
 // a little over 2.2x. The pin sits near the slow end of the fleet, so a healthy runner's factor

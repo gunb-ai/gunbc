@@ -3,7 +3,7 @@ module test.claim.if_join_pool_binding_witness_test
 import extdeps.filesystem.filesystem_io
 import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import tools.multi_module_compile_fixture {
+import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
   FixtureInstrumentRefused,
@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // whether colliding_module is a member.
 //
 // WHY THE MANIFEST INSTRUMENT AND NOT THE CLI COMMAND THE ROW QUOTES. Both are real; only one
-// executes on the merge path. tools.multi_module_compile_fixture compiles a caller-authored source
+// executes on the merge path. gunbc.instruments.multi_module_compile_fixture compiles a caller-authored source
 // vector with NO module index and NO corpus roots, so the pool is EXACTLY the manifest.
 //
 // THIS PR LANDS THE PRODUCT-CHANNEL REPAIR with this consumer. The collided manifest used to refuse

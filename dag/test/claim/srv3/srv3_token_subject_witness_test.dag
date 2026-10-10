@@ -1,8 +1,8 @@
-module test.claim.srv3_token_subject_witness
+module test.claim.srv3.srv3_token_subject_witness_test
 
 import std.types { String, List }
 import std.logic { Bool }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   Srv3TokenSubject,
   Srv3EffectiveUserId,
   Srv3EffectiveGroupId,

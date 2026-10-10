@@ -1,9 +1,9 @@
-module test.claim.fabric_floor_dispatch_witness
+module test.claim.fabric.fabric_floor_dispatch_witness_test
 
 // THE SUBJECT IS THE JOIN, NOT EITHER HALF OF IT.
 //
 // product.fabric.selection's select_supply was already complete and already witnessed; the floor's
-// demand-side authority in gunbc.fabric_witness_run was already modelled. Neither named the other,
+// demand-side authority in gunbc.fabric.fabric_witness_run was already modelled. Neither named the other,
 // so eleven of that module's thirteen functions had no production consumer and the fold that would
 // have read them had none either.
 //
@@ -25,7 +25,7 @@ import std.measure {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 import product.fabric.supply {
@@ -43,7 +43,7 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse,
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
 }
-import gunbc.fabric_floor_dispatch {
+import gunbc.fabric.fabric_floor_dispatch {
   floor_demand, floor_supply_selection, floor_selection_selected_offer_count,
 }
 

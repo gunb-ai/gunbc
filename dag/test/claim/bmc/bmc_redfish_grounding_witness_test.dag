@@ -1,4 +1,4 @@
-module test.claim.bmc_redfish_grounding
+module test.claim.bmc.bmc_redfish_grounding_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

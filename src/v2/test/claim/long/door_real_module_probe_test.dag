@@ -1,4 +1,4 @@
-module v2.test.long.door_real_module_probe
+module v2.test.claim.long.door_real_module_probe_test
 
 import v2.extdeps.languages.dag { dag_surface_edge }
 

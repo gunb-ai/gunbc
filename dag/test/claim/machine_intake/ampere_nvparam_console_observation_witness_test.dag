@@ -5,10 +5,10 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present }
 import v2.std.algebra { filter }
 import extdeps.ampere.nvparam { NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_in, nvparam_key_index, nvparam_keys }
-import gunbc.machine_intake_ampere_nvparam_console_observation {
+import gunbc.machine_intake.ampere_nvparam_console_observation {
   NvParamConsoleObservation, NvParamSetting, ampere_nvparam_console_observation, ampere_nvparam_console_text,
 }
-import gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation { mtcollins1_run_a_sparse_reference_capture }
+import gunbc.machine_intake.mtcollins1_sixteen_module_restore_observation { mtcollins1_run_a_sparse_reference_capture }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

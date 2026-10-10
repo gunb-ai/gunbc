@@ -1,4 +1,4 @@
-module v2.test.manual.ingest_bridge
+module v2.test.claim.manual.ingest_bridge_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }

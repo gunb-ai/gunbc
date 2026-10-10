@@ -1,4 +1,4 @@
-module v2.test.long.production_qualification_origin_probe_witness
+module v2.test.claim.long.production_qualification_origin_probe_witness_test
 
 import v2.lens.production_qualification_origin_probe {
   derived_production_qualification_mint_sites_live,

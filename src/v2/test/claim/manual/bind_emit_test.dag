@@ -1,10 +1,10 @@
-module v2.test.manual.bind_emit
+module v2.test.claim.manual.bind_emit_test
 
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
   table_fixture_bind_wrong_value_arrow_with_body
 }
-import v2.test.execution.bind_round_trip {
+import v2.test.claim.execution.bind_round_trip_test {
   bind_round_trip_inferred_facts_for,
   bind_inferred_tree
 }

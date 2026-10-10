@@ -1,4 +1,4 @@
-module v2.test.manual.fn_as_value
+module v2.test.claim.manual.fn_as_value_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

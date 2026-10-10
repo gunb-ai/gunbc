@@ -1,7 +1,7 @@
 module gunbc.runner.runner_host_surface
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 
 // THE RUNTIME SURFACE IS DERIVED, NOT DISCOVERED. The invariant this module exists to make
 // constructible: no user-space process, listener, route, executable, writable path, device grant or

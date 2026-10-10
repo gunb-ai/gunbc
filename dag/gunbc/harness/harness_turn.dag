@@ -29,9 +29,9 @@ import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
 }
-import gunbc.fabric_quota { quota_window_start }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
-import gunbc.fabric_storage_client { FabricStorageBinding
+import gunbc.fabric.fabric_quota { quota_window_start }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
@@ -291,7 +291,7 @@ fn harness_context_exhausted(input_tokens: TokenCount, budget: TokenCount) -> Bo
 }
 
 // THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
-// from outside. gunbc.roadmap_provider_events already declares what an attempt's event stream is --
+// from outside. gunbc.roadmap.roadmap_provider_events already declares what an attempt's event stream is --
 // turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed,
 // error, round.usage, the checkpoint announcement turn.alignment_checkpoint_due and the wire-log
 // refusal turn.wire_log_unwritable, read line by line through jq -- and every consumer of agent
@@ -455,7 +455,7 @@ fn harness_event_turn_failed(message: String) -> String {
 // turn; the wire log is recoverable evidence -- its bytes can be reconstructed from durable state,
 // and its absence degrades diagnosis, never the work. Killing the turn on a logging write would
 // trade the work for the receipt, so a refused wire-log write is recorded here with the host's
-// detail and the round proceeds exactly as it would have. The reader (gunbc.roadmap_provider_events)
+// detail and the round proceeds exactly as it would have. The reader (gunbc.roadmap.roadmap_provider_events)
 // admits it as non-terminal with provider state unchanged, following the round.usage arm.
 fn harness_event_wire_log_unwritable(detail: String) -> String {
   serialize_json(v: json_object([

@@ -1,23 +1,23 @@
 module test.claim.runner.workspace_microvm_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import product.host_identity { HostIdentity }
-import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
-import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, in_flight_attempt_same }
-import gunbc.runner_microvm_cell_readiness_store { encode_attempt, decode_attempt, DecodeOk }
+import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
+import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
+import gunbc.runner.runner_microvm_cell_readiness { WorkspaceWorkload, in_flight_attempt_same }
+import gunbc.runner.runner_microvm_cell_readiness_store { encode_attempt, decode_attempt, DecodeOk }
 import gunbc.workspace_gateway { WorkspaceGateway }
 import gunbc.workspace_ssh_access { WorkspaceDirectSsh, WorkspaceGatewaySsh }
-import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations, workspace_connection_text }
-import gunbc.runner_microvm_network { runner_slot_network }
+import gunbc.runner.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations, workspace_connection_text }
+import gunbc.runner.runner_microvm_network { runner_slot_network }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }
-import gunbc.workspace_guest_image { workspace_guest_bootstrap_script }
+import gunbc.runner.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }
+import gunbc.runner.workspace_guest_image { workspace_guest_bootstrap_script }
 import gunbc.workspace_allocation { SmallWorkspace, LargeWorkspace, workspace_memory_grant }
-import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+import gunbc.fabric.fabric_memory_grant_policy { MemoryGrantIssued }
 import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
-import test.claim.workspace_allocation_witness_test { supplied_workspace_request }
+import test.claim.fabric.workspace_allocation_witness_test { supplied_workspace_request }
 
 fn workspace_test_identity() -> AttemptIdentity? {
   match microvm_attempt(slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 }, attempt_id: "workspace-test") {

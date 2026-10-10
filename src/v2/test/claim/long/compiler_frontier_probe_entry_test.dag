@@ -1,4 +1,4 @@
-module v2.test.long.compiler_frontier_probe_entry
+module v2.test.claim.long.compiler_frontier_probe_entry_test
 
 import v2.compiler.self_host.frontier_probe {
   FrontierProbeFixture,
@@ -10,7 +10,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
   ProbeStageEmit
 }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   frontier_probe_entry_module_path,
   frontier_probe_entry_source_ref,
   host_compiler_closure_admission,

@@ -1,4 +1,4 @@
-module v2.test.parse.d5_expression_grammar_parse
+module v2.test.claim.parse.d5_expression_grammar_parse_test
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }

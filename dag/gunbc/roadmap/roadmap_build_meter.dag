@@ -9,11 +9,11 @@ import gunbc.harness.harness_throughput {
 }
 import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
 import v2.std.algebra { filter }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
   WorkflowSegmentRefused, WorkflowSegmentStopped,
@@ -27,10 +27,10 @@ import gunbc.roadmap.roadmap_submission {
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
   HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished, candidate_handoff_state_key,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress, workflow_attempt_id }
-import gunbc.roadmap_workflow_command { attempt_key_short_form }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress, workflow_attempt_id }
+import gunbc.roadmap.roadmap_workflow_command { attempt_key_short_form }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, event_principal_is_fabric }
-import gunbc.roadmap_issue_location { issue_work_path, issue_work_event_path }
+import gunbc.roadmap.roadmap_issue_location { issue_work_path, issue_work_event_path }
 import gunbc.site.element.build_meter {
   BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead, BuildMeterEdit, BuildMeterKind,
   BuildMeterEvidence, BuildMeterTypedOperation, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
@@ -43,11 +43,11 @@ import gunbc.site.element.build_meter {
 
 // THE COMPACT WORK SUMMARY OF AN ISSUE, derived here and only drawn by the BuildMeter element
 // (gunbc.site.element.build_meter). Every field is read from one attempt's progress projection
-// (gunbc.roadmap_workflow_progress WorkflowAttemptProgress) through the authority that owns it:
-// stage kinds and states from gunbc.roadmap_workflow_stage, the changed-path rule from
+// (gunbc.roadmap.roadmap_workflow_progress WorkflowAttemptProgress) through the authority that owns it:
+// stage kinds and states from gunbc.roadmap.roadmap_workflow_stage, the changed-path rule from
 // gunbc.harness.harness_throughput, the handoff state from gunbc.roadmap.roadmap_submission, the
 // failure identity from gunbc.workflow_reconcile, the Work tab destination from
-// gunbc.roadmap_issue_location. Nothing is classified by reading text, and no word is chosen here:
+// gunbc.roadmap.roadmap_issue_location. Nothing is classified by reading text, and no word is chosen here:
 // the element says the words.
 //
 // WHAT A ROUND'S MARKS ARE, TODAY. The ledger records, per round, how many tool calls the model
@@ -348,7 +348,7 @@ fn build_meter_current_segment(segments: List<WorkflowSegment>) -> WorkflowSegme
 
 // THE ONE DERIVATION of the view. It takes the facts of an attempt the meter shows, so a claim
 // about it supplies them directly; build_meter_view below is the same call on a real projection.
-// Staleness is the presentation's revision comparison (gunbc.roadmap_presentation
+// Staleness is the presentation's revision comparison (gunbc.roadmap.roadmap_presentation
 // stale_attempt_nodes), passed in by the caller that made it.
 fn build_meter_view_of(
   node_id: String,

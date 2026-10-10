@@ -6,7 +6,7 @@ import std.measure { gigabyte }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types { QuotedDecimalGigabytes }
 import gunbc.memory_provisioning { EvidenceSupported, EvidenceUnsupported }
-import gunbc.memory_per_vcpu_convention {
+import gunbc.runner.memory_per_vcpu_convention {
   MemoryPerVcpuConvention,
   Unattributed,
   Attributed,

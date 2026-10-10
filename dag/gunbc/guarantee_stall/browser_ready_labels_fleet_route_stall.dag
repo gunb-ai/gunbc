@@ -25,7 +25,7 @@ data browser_ready_labels_fleet_route_stall: GuaranteeStall = GuaranteeStall {
     grounding: "the shared host-effect FleetSsh argv and argv+stdin realization, plus a safe daemon-reload realization",
   },
   population: BoundedPopulation { members: [
-    "gunbc.runner_browser_toolchain::browser_ready_labels_converge_wet over browser_ready_labels_production_target",
+    "gunbc.runner.runner_browser_toolchain::browser_ready_labels_converge_wet over browser_ready_labels_production_target",
   ] },
   next_rung_trigger: climbs_when(capability: "the shared fleet_subsumption route admits FleetSsh argv and argv+stdin, safely realizes reload, and an executing fleet receipt traverses the route."),
 }

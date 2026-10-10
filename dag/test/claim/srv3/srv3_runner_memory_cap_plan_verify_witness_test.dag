@@ -1,4 +1,4 @@
-module test.claim.srv3_runner_memory_cap_plan_verify_witness
+module test.claim.srv3.srv3_runner_memory_cap_plan_verify_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

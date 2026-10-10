@@ -7,7 +7,7 @@ import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic3 }
 import extdeps.standards.ocp_nic_3_0 { Sff }
 
 // The part owns its attachment, independently of Ampere or any other card.
-// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// Consumer: gunbc.machine_intake.mtcollins1_expansion_candidates.candidate_verdicts.
 // The cited NVIDIA manual names the OCP 3.0 card and separately tabulates SFF dimensions.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
   scheme: Https, locator: "docs.nvidia.com/nvidia-connectx-4-lx-ethernet-adapter-cards-for-ocp-3-0-user-manual.pdf",

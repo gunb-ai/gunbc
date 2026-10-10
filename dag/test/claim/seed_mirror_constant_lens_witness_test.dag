@@ -7,9 +7,9 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
 }
-import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.memory_stall_refusal {
+import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.host.memory_stall_refusal {
   memory_stall_major_fault_rate_threshold,
   memory_stall_verdict_window_minimum_wall,
   memory_stall_progress_cpu_share_floor,
@@ -19,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE MECHANISM TWO SEED-MIRROR NOTES NAMED AND NOBODY BUILT. gunbc.typed_module_cache_capacity
-// typed_module_cache_capacity_seed_mirror_note and gunbc.host_budget_source
+// typed_module_cache_capacity_seed_mirror_note and gunbc.host.host_budget_source
 // host_budget_source_seed_mirror_note each asked for 'one lens reading the seed's constants against
 // their cited rows', and each scoped it slightly differently -- neither subset was the union, which
 // is two partial specifications of one mechanism and the section 3 shape in its own right. This
@@ -123,7 +123,7 @@ type SeedMirrorRow {
 
 // THE THREE MEMORY-STALL MIRRORS were marked in the seed by the memory-stall governor landing
 // (2f75219598b, 2026-08-30) with no roster row, so the backward arm has been false since. Each
-// expected value derives from its gunbc.memory_stall_refusal row. authority_symbol is the string
+// expected value derives from its gunbc.host.memory_stall_refusal row. authority_symbol is the string
 // the seed's marker CARRIES: for the first two that string names no declaration (the rows are
 // memory_stall_major_fault_rate_threshold and memory_stall_verdict_window_minimum_wall), a seed
 // citation defect this roster records rather than hides.

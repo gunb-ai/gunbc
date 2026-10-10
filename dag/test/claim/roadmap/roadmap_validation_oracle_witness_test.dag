@@ -1,6 +1,6 @@
-module test.claim.roadmap_validation_oracle_witness_test
+module test.claim.roadmap.roadmap_validation_oracle_witness_test
 
-import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 import extdeps.filesystem.filesystem_io { FilesystemReadSucceeded, FilesystemReadRefused }
@@ -19,14 +19,14 @@ import std.content_hash {
 }
 import extdeps.pin { CrossFamilyIdentityIncomparable }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
-import gunbc.roadmap_workflow_command { WorkflowModeledStateObserved }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap.roadmap_workflow_command { WorkflowModeledStateObserved }
+import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
 import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessExited }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
   RoadmapPublicationSubject,
@@ -34,11 +34,11 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.github { Repository }
 import std.types { CommitSha }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   workflow_segment_kind_key,
   workflow_segment_state_key,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
   VerificationSubjectObserved,
   VerificationReceipt,
@@ -52,9 +52,9 @@ import gunbc.roadmap_verification_receipt {
   SelectionObserved,
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
 import extdeps.version { VersionIdentity }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
@@ -64,7 +64,7 @@ import gunbc.roadmap_execution_contract {
   CargoTestValidation,
   ModeledValidationCommand,
 }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
   OracleFound,
@@ -376,7 +376,7 @@ fn witness_source_importing_test_helpers() -> String {
     "module test.claim.scm_compatibility_shape_witness_test\n",
     "import std.types \{ Bool \}\n",
     "import gunbc.scm_compatibility_shape \{ CompatibilityShape \}\n",
-    "import test.claim.scm_compatibility_git_witness \{ git_rows_hold \}\n",
+    "import test.claim.scm.scm_compatibility_git_witness_test \{ git_rows_hold \}\n",
     "import test.claim.native_scm_interaction_scenario_fixture \{ scenario \}\n",
     "\n",
     "test fn frontier_generator_attribution_holds() -> Bool \{\n",
@@ -417,7 +417,7 @@ test fn oracle_importing_test_helpers_refuses_as_unpinned_dependency() -> Bool {
       match cause {
         ValidationOracleUnpinnedDependency { entry: _, imports } =>
           count(imports) == 2
-            && any(imports, m => m == "test.claim.scm_compatibility_git_witness")
+            && any(imports, m => m == "test.claim.scm.scm_compatibility_git_witness_test")
         _ => false
       }
   }
@@ -442,10 +442,10 @@ test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
   let detail = validation_verdict_detail(verdict: ValidationRefused {
     cause: ValidationOracleUnpinnedDependency {
       entry: oracle_entry_path as String,
-      imports: ["test.claim.scm_compatibility_git_witness"],
+      imports: ["test.claim.scm.scm_compatibility_git_witness_test"],
     },
   })
-  string_contains(s: detail, pattern: "test.claim.scm_compatibility_git_witness")
+  string_contains(s: detail, pattern: "test.claim.scm.scm_compatibility_git_witness_test")
     && string_contains(s: detail, pattern: "partially pinned oracle")
 }
 

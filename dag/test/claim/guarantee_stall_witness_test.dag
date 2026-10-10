@@ -16,7 +16,7 @@ import gunbc.guarantee_stall {
   stall_trigger_admission, every_stall_trigger_is_admitted,
 }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
 import gunbc.guarantee_stall.roster {
   all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,

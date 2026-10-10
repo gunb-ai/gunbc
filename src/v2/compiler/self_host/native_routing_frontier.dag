@@ -117,7 +117,7 @@ fn routed_via_family_crate(
 data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.manual.rust_add_emit_translate",
+      module_path: "v2.test.claim.manual.rust_add_emit_translate_test",
       decl_name: "rust_add_inferred_tree"
     ),
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
@@ -125,7 +125,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.execution.emit_host_field_access_equals_eval",
+      module_path: "v2.test.claim.execution.emit_host_field_access_equals_eval_test",
       decl_name: "emit_field_eval_subgraph_node"
     ),
     entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
@@ -133,7 +133,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   NativeRoutingFrontierRow {
     subject: family_subject(
-      module_path: "v2.test.execution.emit_host_complement_equals_eval",
+      module_path: "v2.test.claim.execution.emit_host_complement_equals_eval_test",
       decl_name: "emit_complement_eval_subject"
     ),
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
@@ -145,7 +145,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   },
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      module_path: "v2.test.claim.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
     ),
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
@@ -153,7 +153,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.complexity_gate.table_fixture_loop_subject_producer",
+      module_path: "v2.test.claim.complexity_gate.table_fixture_loop_subject_producer",
       decl_name: "table_fixture_loop_arrow_with_body"
     ),
     entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
@@ -161,7 +161,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.emit.fold_call_closure_fixture",
+      module_path: "v2.test.claim.emit.fold_call_closure_fixture",
       decl_name: "fold_fixture_param_call_body"
     ),
     entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
@@ -169,7 +169,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   NativeRoutingFrontierRow {
     subject: family_subject(
-      module_path: "v2.test.execution.emit_host_meet_join_equals_eval",
+      module_path: "v2.test.claim.execution.emit_host_meet_join_equals_eval_test",
       decl_name: "meet_join_eval_subject"
     ),
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
@@ -181,7 +181,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   },
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
+      module_path: "v2.test.claim.execution.emit_host_variant_construct_equals_eval_test",
       decl_name: "emit_variant_construct_eval_subgraph_node"
     ),
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
@@ -189,7 +189,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
+      module_path: "v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval_test",
       decl_name: "ingested_classical_not_source"
     ),
     entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",

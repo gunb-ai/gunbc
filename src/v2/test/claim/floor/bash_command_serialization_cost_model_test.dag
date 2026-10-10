@@ -1,4 +1,4 @@
-module v2.test.floor.bash_command_serialization_cost_model
+module v2.test.claim.floor.bash_command_serialization_cost_model_test
 
 import std.types { Bool, String, List }
 import v2.std.node { Node }
@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHY IT LIVES UNDER `v2.test.` AND NOT BESIDE THE OTHER FLOOR WITNESSES. The first cut of this
 // file was `test.claim.floor.bash_command_serialization_cost_model` under `dag/test/claim/floor/`,
 // and IT NEVER EXECUTED. `required_gate_prefixes` does not carry `test.claim.floor.` -- the
-// similar-looking `test.claim.floor_resolve_realization_witness` is a different, undotted prefix --
+// similar-looking `test.claim.floor.floor_resolve_realization_witness_test` is a different, undotted prefix --
 // so the module never entered the prepared closure, produced no rows in either
 // `required_floor_claim_cost.tsv` or the disposition artifact, and the mutation RED that qualified
 // it had been run locally only. An instrument that does not execute on the lane whose artifact it

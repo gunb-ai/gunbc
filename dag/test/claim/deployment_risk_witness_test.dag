@@ -28,7 +28,7 @@ import gunbc.deployment_risk {
   srv2_deploy_deployment,
 }
 import gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deployments_state { a_test_deployment_acts_on_the_prod_deployments_state }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_risk_class,
   macbook_local_dashboard_instance,

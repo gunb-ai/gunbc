@@ -1,25 +1,25 @@
-module gunbc.fleet_converge_plan
+module gunbc.fleet.fleet_converge_plan
 
-import gunbc.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
-import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
-import gunbc.host_kernel_dependency { HostKernelDependencyPlan, host_kernel_dependency_action_lines, host_kernel_maintenance_capability }
-import gunbc.host_kernel_dependency_wire { host_kernel_dependency_row }
+import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, host_kernel_dependency_action_lines, host_kernel_maintenance_capability }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_row }
 
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetBasis, workspace_commissioning_basis_rows }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_apply_script }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 
-import gunbc.fleet_plan_artifact_location { fleet_reviewed_plan_path, fleet_reviewed_apply_path }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_reviewed_plan_path, fleet_reviewed_apply_path }
 
-import gunbc.fleet_plan_bundle { fleet_plan_component_hash, fleet_plan_bundle_hash }
+import gunbc.fleet.fleet_plan_bundle { fleet_plan_component_hash, fleet_plan_bundle_hash }
 
-import gunbc.fleet_converge_terminal { AwaitingCapability, FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_of_wire, fleet_converge_apply_terminal_wire }
+import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_of_wire, fleet_converge_apply_terminal_wire }
 
-import gunbc.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
 
-import gunbc.fleet_generation_publication { fleet_generation_publication_decode, FleetGenerationLegacy, FleetGenerationPublished, FleetGenerationUnreadable, fleet_generation_native_publication_script, fleet_generation_native_read_script }
+import gunbc.fleet.fleet_generation_publication { fleet_generation_publication_decode, FleetGenerationLegacy, FleetGenerationPublished, FleetGenerationUnreadable, fleet_generation_native_publication_script, fleet_generation_native_read_script }
 import std.content_hash { parse_content_hash }
 
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -61,7 +61,7 @@ import v2.extdeps.languages.bash_build {
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellMember,
   FabricCellAddressDisposition,
   AddressPresent,
@@ -89,7 +89,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
 }
-import gunbc.fabric_cell_effect {
+import gunbc.fabric.fabric_cell_effect {
   FabricCellRealizationRefusal,
   CellTeardownRefusedByOwnership,
   CellRosterDuplicateKey,
@@ -104,12 +104,12 @@ import gunbc.fabric_cell_effect {
   CellAttemptWriterOwned,
   fabric_cell_realization,
 }
-import gunbc.runner_host_grants {
+import gunbc.runner.runner_host_grants {
   fabric_cell_effect_operations,
   fabric_allocation_store_effect_operations,
   runner_host_wide_refused_operations,
 }
-import gunbc.fabric_allocation_store_substrate {
+import gunbc.fabric.fabric_allocation_store_substrate {
   fabric_allocation_store_substrate_spec,
   fabric_allocation_store_ensure_effect,
   AllocationStoreSubstratePrestate,
@@ -119,7 +119,7 @@ import gunbc.fabric_allocation_store_substrate {
   allocation_store_substrate_prestate_wire,
 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
   fabric_cell_observation_outcome,
@@ -146,12 +146,12 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
   membership_added_count,
 }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
 }
-import gunbc.fleet_converge_timer {
+import gunbc.fleet.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
 }
@@ -173,14 +173,14 @@ import gunbc.live_deploy.member_identity {
   effect_labels,
   plan_mutation_count,
 }
-import gunbc.host_axis_caps {
+import gunbc.host.host_axis_caps {
   CapMember,
   CapMemberAt,
   caps_reconcile,
   desired_cap_member,
   cap_upsert_script,
 }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
   gunbc_runner_per_slot_high_dropin_path,
@@ -190,14 +190,14 @@ import gunbc.host_converge {
   systemd_memory_swap_max_property,
   systemd_tasks_max_property,
 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner_slot_retirement {
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
   retirement_baseline_rows,
   transition_baseline_rows,
 }
-import gunbc.runner_slot_provision {
+import gunbc.runner.runner_slot_provision {
   runner_slot_provenance_wire,
   RunnerSlotMember,
   RunnerSlotMemberAt,
@@ -211,7 +211,7 @@ import extdeps.github.actions_runner {
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
   RunnerHostSpecFound,
@@ -220,7 +220,7 @@ import gunbc.runner_host_deploy {
   runner_host_spec_for,
   admit_runner_host,
 }
-import gunbc.runner_service_activation {
+import gunbc.runner.runner_service_activation {
   RunnerUnitStandings,
   runner_unit_standings_baseline_rows,
   RunnerActivationReadiness,
@@ -297,7 +297,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 // and a reader will otherwise wonder why the narrowest scope is this narrow:
 //
 //   THE CAP AXIS IS CI CAPACITY WEARING A HOST-SHAPED NAME. fleet_converge_desired_caps builds
-//   CapMembers at gunbc_runner_per_slot_dropin_path, and gunbc.runner_unit resolves that to
+//   CapMembers at gunbc_runner_per_slot_dropin_path, and gunbc.runner.runner_unit resolves that to
 //   /etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf. Those are drop-ins ON THE
 //   ACTIONS-RUNNER UNIT TEMPLATE -- the same family the slot and activation axes act on, reached by
 //   a different name. Selecting caps here excluded runner capacity through the front door and
@@ -373,7 +373,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 //   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
 //   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
 //   bundle identity -- executed as difference over production-shaped payloads by
-//   test.claim.fleet_converge_launch_scope_non_interference, each pair carrying an owning-scope
+//   test.claim.fleet.fleet_converge_launch_scope_non_interference_test, each pair carrying an owning-scope
 //   control so the equality cannot be a dead fixture;
 //
 //   excess-field initializers are semantically analysed and are not runtime-evaluated.
@@ -885,7 +885,7 @@ fn membership_plan_lines_cap(plan: MembershipPlan<CapMember, CapMemberAt>) -> Li
 // members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is
 // the absorbing failure arm pointed the destructive direction.
 //
-// OBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by
+// OBSERVATION REFUSAL IS UPSTREAM. gunbc.runner.runner_slot_provision RunnerSlotsUnobserved is resolved by
 // the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been
 // established to be a genuine reading of the host rather than an unread one rendered as empty.
 
@@ -969,7 +969,7 @@ fn fleet_converge_slot_family(
 
 // THE FABRIC CELL FAMILY IS A SIBLING OF THE GitHub RUNNER SLOT FAMILY, NOT A FILTER OVER IT.
 //
-// Its desired population comes from gunbc.runner_slot_allocation's exact fabric identities, and it
+// Its desired population comes from gunbc.runner.runner_slot_allocation's exact fabric identities, and it
 // shares with the slot family exactly one thing: the RunnerSlotIdentity that names the physical
 // cell. It routes through none of runner_host_deploy_for, actions_runner_binary_artifact_for_arch
 // or runner_slot_provision_plan -- those are the GitHub family's facts, and a fabric cell that
@@ -995,7 +995,7 @@ fn fleet_converge_slot_family(
 // So the family has a third arm, carrying the planned actions. Its meaning NARROWED when the
 // declared dissolve-on fired: this arm was REFUSED-REALIZATION back when the family had no
 // host-effect realizer at all, and its own trigger said it narrows "to whatever remains genuinely
-// unrealizable" when the realizer lands. The realizer has landed (gunbc.fabric_cell_effect emits
+// unrealizable" when the realizer lands. The realizer has landed (gunbc.fabric.fabric_cell_effect emits
 // typed effects; the apply shell renders them through the exact-argv privileged-operation seam), so
 // the arm is now PLANNED: each consumer asks fabric_cell_realization, realizable actions render as
 // executable work, and what still refuses -- teardown, change realization, ownership walls -- is
@@ -1086,11 +1086,11 @@ fn fleet_converge_fabric_cell_lines(
 // THE REALIZATION IS NOW ASKED RATHER THAN ASSUMED UNAVAILABLE, AND THAT IS THE WHOLE CHANGE.
 // This arm previously rendered every action as an undifferentiated "REFUSED-REALIZATION", which was
 // honest when the fabric family had no realization surface at all. It has one now
-// (gunbc.fabric_cell_effect), so the family asks it, and an operator reads WHICH address could not
+// (gunbc.fabric.fabric_cell_effect), so the family asks it, and an operator reads WHICH address could not
 // be realized and WHY instead of learning that something somewhere is unrealizable.
 //
 // THE PLAN STILL REFUSES AS A WHOLE, and the lines say so rather than implying partial progress.
-// gunbc.fabric_cell_effect refuses a cell in which any address is unrealizable, because a cell root
+// gunbc.fabric.fabric_cell_effect refuses a cell in which any address is unrealizable, because a cell root
 // created without its resource boundary is an UNBOUNDED cgroup slice -- worse than an absent cell,
 // since absent is honest and unbounded looks provisioned.
 fn fabric_cell_realization_lines(
@@ -1200,7 +1200,7 @@ fn fleet_converge_slot_lines(
 // emitting ADD here is converge acting within its own authority rather than reaching outside it.
 //
 // REMOVE AND CHANGE EMIT NOTHING, AND THAT IS THE FAIL-CLOSED ARM RATHER THAN AN OVERSIGHT.
-// gunbc.runner_slot_provision runner_slot_member_ownership returns Absent for every observed slot
+// gunbc.runner.runner_slot_provision runner_slot_member_ownership returns Absent for every observed slot
 // because no provenance signal exists yet to tell a gunbc-managed directory from one somebody put
 // there by hand. Reconcile therefore yields MemberRemovalRefused rather than MemberRemoved, those
 // refusals ARE rendered into plan.txt for the reviewer, and nothing deletes a directory whose
@@ -1302,7 +1302,7 @@ fn fleet_converge_activation_refusal_count(
 // specific way: the row goes stale while the refusal printed beside it keeps naming a different
 // cause, so the two disagree and no mechanism notices. Rendering them into plan.txt puts the
 // declared blocker and the executed refusal in front of the same reader in the same artifact, and
-// test.claim.runner_service_activation asserts they agree.
+// test.claim.runner.runner_service_activation_witness_test asserts they agree.
 //
 // BOTH ROWS, NOT ONE. The reachability row says why the admission cannot say yes here; the safety
 // row says what it would guarantee if it did, and that the raw systemctl grants leave a door beside
@@ -1584,7 +1584,7 @@ fn activation_apply_lines(
 // desired runner is restarted or reinstalled, inhibition is `mask --now` on units the retirement
 // admission authorized as surplus, and a tree is removed only for a unit whose RetirementComplete
 // was independently re-observed.
-data runner_slot_apply_family_header: String = "# runner-slot membership (gunbc.runner_slot_provision): ADDITIONS, plus retirement inhibition (systemctl mask --now) for units the retirement admission authorized as surplus, plus tree removal ONLY for a unit with an independently reobserved RetirementComplete. No desired runner is stopped, restarted or reinstalled; see slot_apply_lines for the per-disposition lines"
+data runner_slot_apply_family_header: String = "# runner-slot membership (gunbc.runner.runner_slot_provision): ADDITIONS, plus retirement inhibition (systemctl mask --now) for units the retirement admission authorized as surplus, plus tree removal ONLY for a unit with an independently reobserved RetirementComplete. No desired runner is stopped, restarted or reinstalled; see slot_apply_lines for the per-disposition lines"
 
 fn slot_apply_lines(
   host: NonEmptyStr,
@@ -2084,7 +2084,7 @@ data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition =
 data fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.fleet_converge_plan",
+    module_path: "gunbc.fleet.fleet_converge_plan",
     decl_name: "fleet_converge_apply_shell_emit_dissolution_trigger",
     field: WholeDeclaration,
   },
@@ -2234,7 +2234,7 @@ fn fleet_converge_generation_admission(observation: GenerationStoreObservation) 
 
 // THE LEASE IS HELD BY THE PRINCIPAL THAT RUNS THE APPLY, so it is grounded on that principal
 // rather than spelled here. Doing it the other way would put a second authoring of "who converges"
-// beside gunbc.fleet_posix_accounts, and the two would drift the moment either moved.
+// beside gunbc.fleet.fleet_posix_accounts, and the two would drift the moment either moved.
 //
 // WHY THIS ROW EXISTS AT ALL: the lease directory used to be created with `sudo -n mkdir -p`, and
 // the lock then taken with `sudo -n flock`. Neither mkdir nor flock is in this principal's NOPASSWD
@@ -2578,7 +2578,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
           concat(
             slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
             concat(
-              ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
               concat(
                 activation_apply_lines(host: host, readiness: readiness, standings: standings),
                 fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
@@ -2608,7 +2608,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
 
 // THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
 // OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
-// gunbc.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
 // and its authorization are one value rendered twice, so a command with no grant has no spelling
 // here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
 // realization, an observation refusal -- reaches the script as a comment refusal line, counted in
@@ -2660,7 +2660,7 @@ fn fabric_cell_apply_lines(
 // THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
 // ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
 // two applies against one baseline could both proceed, and an applier bolted beside
-// gunbc.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
 // disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
 // the operator reads before approving, the whole script runs under the generation flock, and the
 // readback that decides whether the capability actually landed stays with the module that claims it
@@ -2676,7 +2676,7 @@ fn fabric_cell_apply_lines(
 // forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
 // (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
 // directory rows are ensures by construction.
-data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
 
 fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
   match runner_host_spec_for(host: host as HostIdentity) {
@@ -2701,7 +2701,7 @@ fn fabric_cell_apply_comment_lines(
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   concat(
-    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time"],
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
     map(
       fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       l => concat("# ", l),
@@ -2723,7 +2723,7 @@ fn fabric_cell_effect_apply_command_lines(
   flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
 }
 
-data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
 fn fabric_cell_apply_executable_lines(
   host: NonEmptyStr,
@@ -2893,7 +2893,7 @@ fn fleet_converge_allocation_store_plan_artifact(
       )
       let apply_shell = join(
         concat(
-          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric_allocation_store_substrate)"],
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
           map(operations, op => executor_privileged_operation_shell_command(op: op)),
         ),
         "\n",

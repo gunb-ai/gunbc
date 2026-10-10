@@ -261,7 +261,7 @@ fn login_transaction_expired(t: OidcLoginTransaction, observed_at: Timestamp) ->
 // issuer JWKS with a bounded deadline and a one-hour file cache, assembles the announced RSA
 // key as an SPKI document in pure .dag, verifies the RS256 signature through the openssl
 // realization, and is the sole production producer of this value — the login callback
-// (gunbc.roadmap_serve.auth_google_callback_response) is its only production caller, and every
+// (gunbc.roadmap.roadmap_serve.auth_google_callback_response) is its only production caller, and every
 // sub-refusal of the realization maps to OidcIdTokenSignatureRefused, so no production path
 // reaches the verified arm except a real signature check. What the realization itself cannot
 // check — that the bound openssl invocation actually performed RSASSA-PKCS1-v1_5 with SHA-256

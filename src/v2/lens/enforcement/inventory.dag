@@ -574,7 +574,7 @@ type WitnessAdmissionInventoryRow {
   cadence_rows: List<CadenceSchedulingRow>
 }
 
-// Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots
+// Phase 0B witness admission inventory: every row is derived from gunbc.ci.ci_layer_roots
 // witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission
 // cadence projection — never hand-authored scheduling. First specimen:
 // enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the

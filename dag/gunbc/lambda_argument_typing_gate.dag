@@ -116,7 +116,7 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
     miss: AbsentFromRoster,
     cause: StringDeclarationSiteAlias,
     cause_receipt: MeasuredByCargoProbe {
-      probe_subject_entry: "src/v2/compiler/01_tokenize.dag",
+      probe_subject_entry: "src/v2/compiler/tokenize.dag",
       emitted_file: "v2_compiler_tokenize.rs",
       emitted_line: 154,
       rustc_code: "E0282",
@@ -149,7 +149,7 @@ data lambda_typing_gate_departed_sites: List<LambdaTypingGateSiteDeparture> = [
     caller_decl: "parse_lexeme_digest",
     cause_at_departure: StringDeclarationSiteAlias,
     receipt_at_departure: MeasuredByCargoProbe {
-      probe_subject_entry: "src/v2/compiler/02_parse.dag",
+      probe_subject_entry: "src/v2/compiler/parse.dag",
       emitted_file: "v2_compiler_parse.rs",
       emitted_line: 532,
       rustc_code: "E0282",

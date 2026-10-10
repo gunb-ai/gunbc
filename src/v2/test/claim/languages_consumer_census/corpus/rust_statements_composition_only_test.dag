@@ -1,4 +1,4 @@
-module v2.test.languages_consumer_census.corpus.rust_statements_composition_only
+module v2.test.claim.languages_consumer_census.corpus.rust_statements_composition_only_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -263,7 +263,7 @@ test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Boo
 // for the whole module unchanged -- so the construct's tag, the record's declared fields and the
 // declared type it is judged at are all the production route's. Inferring the whole module is more
 // than one claim's budget on the required floor once the verdict is an acceptance
-// (v2.test.execution.data_decl_lowering_grounding records the same measurement), and the type
+// (v2.test.claim.execution.data_decl_lowering_grounding_test records the same measurement), and the type
 // declarations beside the member are not what these claims are about. The refusing claims above
 // and below do run the whole module: a refusal stops early.
 fn rcf_member_arrow(root: Node, name: Symbol) -> Optional<Node> {

@@ -13,8 +13,8 @@ import gunbc.workspace_commissioning_executor_store {
   workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathUnreadable }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
-import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_slot_unit { workspace_launch_credential_source_path }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared, WorkspaceCommissioningRecordUnreadable }
 import gunbc.workspace_slot_mutation {
@@ -25,10 +25,10 @@ import gunbc.workspace_slot_mutation {
 }
 
 import v2.std.algebra { filter }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
-import gunbc.runner_microvm_slot_controller { slot_controller_receipt_prefix, outcome_text, SlotControllerCommissioned }
-import gunbc.runner_microvm_slot_start {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
+import gunbc.runner.runner_microvm_slot_controller { slot_controller_receipt_prefix, outcome_text, SlotControllerCommissioned }
+import gunbc.runner.runner_microvm_slot_start {
   MicrovmSlotStartRun, SlotStartCompleted, UnitPropertyRead, ControllerReceiptRead,
   MicrovmUnitStartSubject, microvm_unit_start_observed, microvm_invocation_observe, InvocationTerminated,
   SlotStartWrongHost, SlotStartRefused, SlotStartAlreadyActive, SlotStartInvocationUnread, SlotStartInvocationUnchanged, SlotStartStillActiveAtBound, UnitPropertyUnread, ControllerReceiptUnreadable, InvocationWaitRefused,
@@ -43,9 +43,9 @@ import gunbc.workspace_commissioning_store {
 import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
 import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
-import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
-import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
-import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.runner.runner_microvm_cell_readiness { CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import product.fabric.sanitation { CellReady }
 
 // This readback is necessary before credential removal, not a fleet-apply terminal. Its caller

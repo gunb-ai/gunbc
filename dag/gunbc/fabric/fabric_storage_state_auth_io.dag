@@ -1,10 +1,10 @@
-module gunbc.fabric_storage_state_auth_io
+module gunbc.fabric.fabric_storage_state_auth_io
 
 import std.types { String, Timestamp, NonEmptyStr }
 import extdeps.shell
 import gunbc.auth.mac_keyring { read_mac_keyring, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRead, ApprovalKeyFileUnreadable }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fabric_storage_state_auth { fabric_state_key_path, fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestReading, FabricStateRequestRefused }
+import gunbc.fabric.fabric_storage_state_auth { fabric_state_key_path, fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestReading, FabricStateRequestRefused }
 
 // Deployment-owned configuration permits isolated served tests without touching host credentials.
 // An invalid configured path refuses; it never falls back to the installed credential.

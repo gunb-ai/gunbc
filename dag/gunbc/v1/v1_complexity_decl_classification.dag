@@ -1,15 +1,15 @@
-module gunbc.v1_complexity_decl_classification
+module gunbc.v1.v1_complexity_decl_classification
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import v2.std.algebra { filter, length }
 import v2.std.decl_index { DeclFact, decl_facts }
-import gunbc.v1_complexity_capability_census {
+import gunbc.v1.v1_complexity_capability_census {
   ComplexityCapabilityId,
   V1ComplexityInventoryRow,
   inventory_row_semantic_capability,
 }
-import gunbc.v1_complexity_decl_classification_types {
+import gunbc.v1.v1_complexity_decl_classification_types {
   V1ComplexityDeclRole,
   V1ComplexityDeclClassification,
   AuthorityOf,

@@ -1,4 +1,4 @@
-module tools.merge_admission_capture_transport
+module gunbc.instruments.merge_admission_capture_transport
 
 import extdeps.git.inspect
 import extdeps.gunbc

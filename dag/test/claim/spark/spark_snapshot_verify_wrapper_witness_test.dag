@@ -1,4 +1,4 @@
-module test.claim.spark_snapshot_verify_wrapper
+module test.claim.spark.spark_snapshot_verify_wrapper_witness_test
 
 import std.logic { Bool }
 import std.types { String }
@@ -28,7 +28,7 @@ import gunbc.spark.model_snapshot_materialize {
 //
 // WHAT IS ENROLLED HERE IS THE PURE HALF, and it is enrolled rather than retired because DESIGN section
 // 4b(4) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
-// The wet half is asserted in test.claim.spark_snapshot_verify_wrapper_local_wet, which drives real
+// The wet half is asserted in test.claim.spark.spark_snapshot_verify_wrapper_local_wet_test, which drives real
 // processes through an admitted production bridge. An earlier version of this sentence said that half
 // was "not expressible hermetically" and could not be written at all; that was false, and the route it
 // claimed did not exist is composed of two admitted builders.

@@ -37,7 +37,7 @@ type Verb = Read | Write | Execute
 // Execute grant reach for process/binary invocation: target is a NamespacePosition in
 // FilesystemPathTree naming the executable. The verb is shape-grounded:
 // verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via
-// PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays
+// PosixSudoGrant -> Grant projection (gunbc.fleet.fleet_posix_accounts). WHO may execute stays
 // GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via
 // admit_effect (shell-intent Wave A follow-on).
 

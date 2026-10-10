@@ -16,8 +16,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
-import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.host.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
@@ -39,7 +39,7 @@ import gunbc.owned_directory {
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
-import gunbc.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_revision_argv, deployed_tree_read_tree_argv, deployed_tree_status_argv, deployed_tree_ignored_argv,
@@ -64,7 +64,7 @@ import gunbc.live_deploy.member_identity {
 // ONE interface with TWO realizations, which is DESIGN section 3's rule for transport: when the
 // executor is the host (LocalShell) the read is the tool's own typed operation -- extdeps.git.inspect,
 // extdeps.crypto.hash, extdeps.systemd.systemctl, extdeps.filesystem, extdeps.shell -- and when the
-// host is behind ssh the same invocation goes as argv through gunbc.host_effect_realize
+// host is behind ssh the same invocation goes as argv through gunbc.host.host_effect_realize
 // run_typed_argv_transport, which rightly refuses LocalShell because it has no remote target. The
 // argv builders and the operations spell one invocation each; that pair is the extdeps seam every
 // shell-transported operation carries today, and it folds when an operation's transport row can be
@@ -530,7 +530,7 @@ fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
 // user can neither list it nor stat what is under it, while a correctly protected tree must still read
 // as converged in planning and readback. Both reads are gunbc.executor_privileged_operation operations
 // bound to one named directory -- ListDirectoryEntries and ReadDirectoryIdentity -- rendered into the
-// runner host's sudoers by gunbc.runner_host_grants for exactly the directories this deployment
+// runner host's sudoers by gunbc.runner.runner_host_grants for exactly the directories this deployment
 // demands and their ancestors, the same authorization machinery every other root operation of this
 // principal goes through; no path-unrestricted grant is added. The local arm runs the elevated command
 // with its spawn as a value (gunbc.command_runner run_shell_command_observe_outcome); the remote arm

@@ -1,4 +1,4 @@
-module v2.test.name_resolve.explicit_fn_import_binds
+module v2.test.claim.name_resolve.explicit_fn_import_binds_test
 
 import v2.compiler.compile {
   native_test_context_from_ingest,

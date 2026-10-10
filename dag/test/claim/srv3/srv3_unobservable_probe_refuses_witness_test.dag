@@ -1,16 +1,16 @@
-module test.claim.srv3_unobservable_probe_refuses_witness
+module test.claim.srv3.srv3_unobservable_probe_refuses_witness_test
 
 import std.logic { Bool }
 import std.types { NonEmptyStr }
 import extdeps.tools.xorriso { xorriso_cli_tool }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   LocalShell,
   EmitArtifactThenThinRun,
   BootstrapFragment,
   ThinInvocation,
   HostEffectTransport,
 }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   Srv3HostPredicate,
   Srv3PredicateHolds,
   Srv3PredicateFails,

@@ -1,4 +1,4 @@
-module v2.test.manual.english_emit_add
+module v2.test.claim.manual.english_emit_add_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }

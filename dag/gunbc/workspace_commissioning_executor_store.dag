@@ -13,8 +13,8 @@ import gunbc.workspace_commissioning_executor_journal {
   workspace_executor_record_coherent, workspace_executor_record_follows,
   workspace_executor_record_decode, workspace_executor_record_text,
 }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.durable_cas_file_store {
   observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload,
   DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,

@@ -2,15 +2,15 @@ module test.claim.runner.runner_browser_ready_label_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.runner_registration_labels {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner.runner_registration_labels {
   runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
   gunbc_browser_ready_label,
 }
-import gunbc.runner_browser_toolchain {
+import gunbc.runner.runner_browser_toolchain {
   BrowserReadyLabelsPlan, BrowserReadyLabelsGrantReady, BrowserReadyLabelsRevokeReady,
   BrowserReadyLabelsUnrenderable, BrowserReadyLabelsReload, ReadyLabelsReloadRun, ReadyLabelsReloadPostureSkipped,
   BrowserReadyLabelsPosture, ReadyLabelsSudoElevated, ReadyLabelsUnprivileged, BrowserReadyLabelsTarget,

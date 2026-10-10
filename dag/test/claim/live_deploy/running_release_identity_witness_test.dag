@@ -7,13 +7,13 @@ import test.claim.live_deploy.deploy_release_fixture {
   deploy_witness_other_release_revision,
   deploy_witness_third_release_revision,
 }
-import gunbc.roadmap_site_surface_render {
+import gunbc.roadmap.roadmap_site_surface_render {
   healthz_body_with_release_identity,
   healthz_body_from_surface_artifacts,
   site_artifact_digest,
 }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
-import gunbc.roadmap_site_surface_expect {
+import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
+import gunbc.roadmap.roadmap_site_surface_expect {
   roadmap_site_healthz_surface_is_current,
   healthz_surface_projection,
   HealthzSurfaceProjected,
@@ -58,7 +58,7 @@ fn witness_artifact(path: NonEmptyStr) -> RoadmapSiteSurfaceArtifact {
 
 // Live materialize is an 800k-step inhabitance charge. These claims discriminate
 // identity/revision/surface algebra over a supplied bundle; live inhabitance stays on
-// gunbc.roadmap_site_surface_witness.
+// gunbc.roadmap.roadmap_site_surface_witness.
 fn witness_bundle() -> RoadmapSiteSurfaceBundle {
   let dispatch = witness_artifact(path: "/target/roadmap-dispatch.json" as NonEmptyStr)
   let daily = witness_artifact(path: "/" as NonEmptyStr)

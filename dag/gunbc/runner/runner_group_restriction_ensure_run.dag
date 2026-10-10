@@ -1,4 +1,4 @@
-module gunbc.runner_group_restriction_ensure_run
+module gunbc.runner.runner_group_restriction_ensure_run
 
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.measure { Second, second, second_count, Minute, minute }
@@ -13,7 +13,7 @@ import extdeps.github.org_actions { runner_group_visibility_wire }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.org_actions_inspection { read_runner_groups, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
 import extdeps.shell.credentials { env_credential }
 import gunbc.auth.approval_gate {
@@ -23,7 +23,7 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
-import gunbc.runner_group_restriction_ensure {
+import gunbc.runner.runner_group_restriction_ensure {
   RunnerGroupCreateSubject, restricted_runner_groups, runner_group_create_subject_text,
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused, plan_runner_group_ensure,
   CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create,
@@ -47,7 +47,7 @@ import gunbc.runner_group_restriction_ensure {
 // no tap, and a group holding the name with any other restriction refuses before the operator is
 // asked to approve something this run would not do. Only a planned create is filed. The POST runs
 // only on GateAdmitted, and the run succeeds only when the organization, read again, holds the
-// sealed restriction (gunbc.runner_group_restriction_observation).
+// sealed restriction (gunbc.runner.runner_group_restriction_observation).
 //
 // A RERUN NEEDS NO CLAIM SLOT, because the effect's own readback is its idempotence: a run that dies
 // after the POST leaves a group the next run's first read finds restricted, and that run is a noop.
@@ -56,7 +56,7 @@ import gunbc.runner_group_restriction_ensure {
 //
 // WHERE IT RUNS. The approval broker is reached on srv1's loopback, so the run refuses anywhere else
 // before reading a credential. The org-admin token is minted in-run by the step's prelude
-// (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
+// (gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
 // never an argv word and never leaves the step.
 
 data microvm_runner_group_ensure_receipt_path: String = "artifacts/microvm-runner-group-ensure-receipt.txt"

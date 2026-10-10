@@ -1,4 +1,4 @@
-module test.claim.parse_test_parse_table_claims
+module v2.test.claim.parse.parse_test_parse_table_claims_test
 
 
 

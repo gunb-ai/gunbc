@@ -1,4 +1,4 @@
-module tools.approval_store_live_probe
+module gunbc.instruments.approval_store_live_probe
 
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -71,7 +71,7 @@ fn probe_request() -> StoredApprovalRequest {
 fn probe_redeem(root: NonEmptyStr, decision_segment: NonEmptyStr, identity: String) -> String {
   store_redemption_reason(r: redeem_over_store(
     root: root,
-    trust: IdentityHeaderTrustEstablished { evidence: "tools.approval_store_live_probe fixture: exercising the store, not the deployment" },
+    trust: IdentityHeaderTrustEstablished { evidence: "gunbc.instruments.approval_store_live_probe fixture: exercising the store, not the deployment" },
     keyring: ApprovalKeyLoaded { key: probe_key() },
     method: POST,
     segment: decision_segment as String,

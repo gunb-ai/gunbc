@@ -1,8 +1,8 @@
-module v2.test.long.loop_eval_by_execution
+module v2.test.claim.execution.long.loop_eval_by_execution_test
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
 }

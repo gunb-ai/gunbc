@@ -4,7 +4,7 @@ import std.types { List }
 import std.logic { Bool }
 import std.nat { Nat }
 import v2.std.algebra { any, filter, length }
-import gunbc.witness_row_cost { gunbc_ci_fast_lane_eval_budget_ms }
+import gunbc.witness.witness_row_cost { gunbc_ci_fast_lane_eval_budget_ms }
 import gunbc.commit_workflow {
   CommitCheckEnrollment,
   CommitWorkflowSurface,
@@ -20,7 +20,7 @@ import gunbc.commit_workflow {
 // PrTier requires (a) a measured warm-cost receipt within the fast-lane budget and (b) a
 // hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier
 // and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold
-// is REUSED from the single fast-lane authority (gunbc.witness_row_cost
+// is REUSED from the single fast-lane authority (gunbc.witness.witness_row_cost
 // gunbc_ci_fast_lane_eval_budget_ms), never a second 5s definition. That row moved out of
 // v2.workflow.ci_floor_plan when the CI wipe deleted that module on 2026-08-15; its home is now the
 // module whose subject is what a witness row may cost, and NO consumer arms it today because the

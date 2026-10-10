@@ -7,7 +7,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // eval_builtin_inner and eval_algebra_method_inner had no handler, so the primitive existed in
 // every realization except the one that runs .dag directly. The arm now exists
 // (free_call.sorted_map_keys and method_call.sorted_map_keys in
-// gunbc.v1_interpreter_primitive_surface).
+// gunbc.v1.v1_interpreter_primitive_surface).
 //
 // EXISTING IS NOT THE BAR; THE ORDER IS. Two realizations of one primitive that disagree on order
 // are worse than one missing realization: sorted_map_keys is called precisely to make a fold

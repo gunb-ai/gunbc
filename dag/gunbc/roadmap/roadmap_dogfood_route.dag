@@ -1,4 +1,4 @@
-module gunbc.roadmap_dogfood_route
+module gunbc.roadmap.roadmap_dogfood_route
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
@@ -19,26 +19,26 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_is_canonically_spelled }
 import gunbc.clock_read { clock_now_probed_at }
 import std.content_hash { content_hash_of_value, lower_hex_40 }
 import std.materialization_provider { wire_content_hash_to_hex }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
   WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptEvidence }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptEvidence }
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable }
 import gunbc.roadmap.roadmap_review_function { ReviewReport, review_report_json }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   PublicationSubjectObservation, PublicationSubjectObserved, PublicationSubjectUnobserved,
   publication_evidence_for, EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
   ReceiptBound, ReceiptHeadDiverged, ReceiptBindingAmbiguous, ReceiptRemoteBranchAtHeadWithoutPullRequest,
   ReceiptRemoteBranchHeadDiverged, ReceiptRemoteBranchBindingAmbiguous, ReceiptBranchNotPublished, ReceiptObservationRefused,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap_session_placement {
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
 }
-import gunbc.roadmap_service_evidence {
+import gunbc.roadmap.roadmap_service_evidence {
   ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
   service_evidence_snapshot_final_metering, service_evidence_snapshot_published_result,
   service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode_bound,
@@ -57,12 +57,12 @@ import gunbc.roadmap.roadmap_result_returned {
 }
 import gunbc.roadmap.roadmap_event_log { ResultPublished, ResultVerificationFailed, ResultHandedBack }
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
-import gunbc.roadmap_attempt_metering {
+import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringObservation, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
   metering_token_total, metering_seat_time_total, ComputeUsage, ComputeNotAttributable,
   MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
 }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
   belt_workflow_attempt_history_evidences_observe_for_instance,
 }
@@ -130,7 +130,7 @@ type PublicationEvidence sole_constructor {
   url: String
 }
 
-// THE SESSION'S PLACEMENT GRANT, from the placement record gunbc.roadmap_session_placement
+// THE SESSION'S PLACEMENT GRANT, from the placement record gunbc.roadmap.roadmap_session_placement
 // session_placement_observe_for_attempt has already bound to this node, attempt, host and unit.
 type PlacementGrantEvidence sole_constructor {
   host: String
@@ -392,7 +392,7 @@ fn dogfood_review_reading(node_id: String, head_sha: String, report: ReviewRepor
 
 // PUBLICATION IS ADMITTED ONLY ON A RECEIPT FOR THIS SUBJECT whose expected head is the captured
 // submission's head and whose outcome binds a pull request at that head.
-fn dogfood_publication_reading(head_sha: String, subject: PublicationSubjectObservation, evidence_source: gunbc.roadmap_publish.PublicationReceiptSource) -> PublicationReading {
+fn dogfood_publication_reading(head_sha: String, subject: PublicationSubjectObservation, evidence_source: gunbc.roadmap.roadmap_publish.PublicationReceiptSource) -> PublicationReading {
   match subject {
     PublicationSubjectUnobserved { reason } => PublicationGap { gap: StageOwed { owed_by: reason } }
     PublicationSubjectObserved { subject: s } =>
@@ -472,7 +472,7 @@ data dogfood_owed_shared_computation: String = "G1 cutover: belt verify runs thr
 // unit was granted and launched toward; they do not establish that the unit RAN: every session slot
 // closes as terminal:recovered whether its unit executed or never started, and nothing records the
 // unit's own start or exit against the grant.
-data dogfood_owed_isolated_execution: String = "G5 execution observation: a record binding the granted unit's observed start and exit (systemd ExecMainStartTimestamp / ExecMainStatus) to this attempt's grant and fence; gunbc.roadmap_session_placement session_placement_observe_for_attempt proves the grant and its release, not that the capped unit ran"
+data dogfood_owed_isolated_execution: String = "G5 execution observation: a record binding the granted unit's observed start and exit (systemd ExecMainStartTimestamp / ExecMainStatus) to this attempt's grant and fence; gunbc.roadmap.roadmap_session_placement session_placement_observe_for_attempt proves the grant and its release, not that the capped unit ran"
 
 // THE STAGES WITH NO PRODUCER, as one constant record: the fold reads them from here, and the
 // recorder asks the same record whether completion is still structurally impossible, so no flag is
@@ -499,7 +499,7 @@ fn dogfood_unproduced_stages(u: DogfoodUnproduced) -> List<DogfoodStage> {
 }
 
 // THE ATTEMPT'S RECORDS BESIDE ITS WORKFLOW EVIDENCE, GATHERED ONCE: the request record (G4's
-// create-only binding) and the attempt's joined service evidence (gunbc.roadmap_service_evidence),
+// create-only binding) and the attempt's joined service evidence (gunbc.roadmap.roadmap_service_evidence),
 // whose inputs already carry the one G3 metering observation and the one G4 result observation with
 // its snapshot-close standing. The route's metering and result stages read those same inputs, and the
 // start pins the snapshot made from them, so each producer is read once per attempt. They ride beside
@@ -516,8 +516,8 @@ type DogfoodAttemptView {
 
 fn dogfood_attempt_records_for(instance: HostDashboardInstance, e: WorkflowAttemptEvidence) -> DogfoodAttemptRecords {
   DogfoodAttemptRecords {
-    request: attempt_request_binding_read_for_instance(instance: instance, node_id: e.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
-    service: service_evidence_observe_for_attempt(instance: instance, node_id: e.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
+    request: attempt_request_binding_read_for_instance(instance: instance, node_id: e.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
+    service: service_evidence_observe_for_attempt(instance: instance, node_id: e.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
   }
 }
 
@@ -629,7 +629,7 @@ fn dogfood_route_receipt_for(v: DogfoodAttemptView) -> DogfoodRouteReceipt {
 // WHAT "FIRST" MEANS, stated so it is not mistaken for more: the start receipt is the first complete
 // attempt, selected in refname order, by the first SUCCESSFUL RECORDER to observe one. The recorder runs in every belt tick until a receipt
 // exists, and each run scans the instance's whole durable attempt history (every dispatch ref, read
-// by its own attempt key -- gunbc.roadmap_belt_actuate
+// by its own attempt key -- gunbc.roadmap.roadmap_belt_actuate
 // belt_workflow_attempt_history_evidences_observe_for_instance), so a completed attempt is found
 // whether or not it is still its node's current attempt, and a tick that dies before recording
 // leaves it for the next tick to find. Among several complete attempts in one scan, the first in
@@ -641,7 +641,7 @@ data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmpt
 data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v6"
 
 // THE SLOT LIVES IN A ROOT THE DEPLOYMENT ALREADY CONVERGES. The file CAS store does not create its
-// the attempt-state demand (gunbc.roadmap_dashboard_instance dashboard_instance_dispatch_attempt_state_directory) both deployment routes ensure with its owner
+// the attempt-state demand (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_dispatch_attempt_state_directory) both deployment routes ensure with its owner
 // the AttemptStateRoot member gunbc.live_deploy.spec deployment_owned_steps installs with its owner
 // and mode before any belt timer runs, and the directory the session placement records already
 // share -- under its own key. A root of its own would be a second deployment member for one file.
@@ -654,7 +654,7 @@ fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // which check every join; the wire encoder re-checks them, so correctness does not rest on
 // sole_constructor (enforced by the seed, not yet by the native route -- gunbc.rung_drop
 // g0_type_decl_modifier_parse_without_sealing_property), which is defence in depth here.
-// THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap_service_evidence, #13109/#13157) is one
+// THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap.roadmap_service_evidence, #13109/#13157) is one
 // ServiceEvidenceSnapshot: the canonical evidence wire, persisted whole, from which the decoder of that
 // module derives the digest, the binding and every field's standing. The start receipt carries no
 // digest or standing list of its own, so the two can never describe different evidence, and the field
@@ -929,18 +929,18 @@ type DogfoodStartRecord
 // THE ONE INSTANCE-BOUND JUDGMENT OF AN OCCUPIED SLOT, used by the recorder's first read, by its
 // lost-race read and by the acceptance read: the decoded receipt's pinned evidence must name exactly
 // the attempt's durable binding -- instance, node, attempt and launch revision, read from the
-// attempt's launch record in THIS instance (gunbc.roadmap_service_evidence
+// attempt's launch record in THIS instance (gunbc.roadmap.roadmap_service_evidence
 // service_evidence_snapshot_binding_defect).
 fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt: DogfoodStartReceipt) -> String? {
   match service_evidence_snapshot_binding_defect(
     snapshot: receipt.service_evidence,
-    binding: service_evidence_binding_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key),
+    binding: service_evidence_binding_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key),
   ) {
     Present { value: why } => Present { value: why }
     Absent =>
-      match dogfood_request_record_defect(receipt: receipt, record: attempt_request_binding_read_for_instance(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key)) {
+      match dogfood_request_record_defect(receipt: receipt, record: attempt_request_binding_read_for_instance(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key)) {
         Present { value: why } => Present { value: why }
-        Absent => dogfood_durable_g3_g4_defect(receipt: receipt, service: service_evidence_observe_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key))
+        Absent => dogfood_durable_g3_g4_defect(receipt: receipt, service: service_evidence_observe_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key))
       }
   }
 }

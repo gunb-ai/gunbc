@@ -1,7 +1,7 @@
 module gunbc.workflow_capability_closure
 
 import std.types { String, List, Bool }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
   execution_capability_label,
 }

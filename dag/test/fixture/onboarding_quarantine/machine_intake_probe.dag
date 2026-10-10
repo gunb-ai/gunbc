@@ -1,8 +1,8 @@
 module test.fixture.onboarding_quarantine.machine_intake_probe
 
 import std.types { String }
-import gunbc.bmc_onboarding { BmcOnboardingPhase, BmcLifecycleState, bmc_factory_state }
-import gunbc.machine_intake_receipt { IntakeLedgerValidation }
+import gunbc.bmc.bmc_onboarding { BmcOnboardingPhase, BmcLifecycleState, bmc_factory_state }
+import gunbc.machine_intake.receipt { IntakeLedgerValidation }
 
 // THE AUTHORED RED FOR test.claim.bmc_onboarding_quarantine_witness_test. This module is
 // exactly what the quarantine forbids: a carrier that joins the legacy BmcOnboardingPhase

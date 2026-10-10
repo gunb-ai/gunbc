@@ -1,4 +1,4 @@
-module v2.test.provenance.occurrence_id_model
+module v2.test.claim.provenance.occurrence_id_model_test
 
 import std.occurrence_identity { node_occurrence_identity_minted }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }

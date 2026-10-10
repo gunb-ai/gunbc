@@ -1,4 +1,4 @@
-module v2.test.emit.rust_freemonoid_char_string_grounding
+module v2.test.claim.emit.rust_freemonoid_char_string_grounding_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate {

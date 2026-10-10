@@ -1,6 +1,6 @@
-module v2.test.emit.rust_body_add_emit
+module v2.test.claim.emit.rust_body_add_emit_test
 
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body,
   table_fixture_add_arrow_with_body_swapped_operands
 }

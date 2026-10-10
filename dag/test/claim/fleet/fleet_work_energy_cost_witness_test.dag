@@ -1,4 +1,4 @@
-module test.claim.fleet_work_energy_cost_witness
+module test.claim.fleet.fleet_work_energy_cost_witness_test
 
 import std.types { Bool, Int, NonEmptyStr }
 import std.measure { second, watt, watt_count, money_per_kilowatt_hour_micros }

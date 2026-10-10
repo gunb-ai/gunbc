@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_review_function {
   review_join, ReviewJoined, ReviewJoinRefused, ReviewObservationForUnknownCall, ReviewObservationDuplicated, ReviewObservationForOtherSubject, ReviewObservationForOtherRevision,
   review_aggregate, review_report_approved, review_report_worker_text,
 }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending }
+import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning }
 
 fn subject() -> ReviewSubject {

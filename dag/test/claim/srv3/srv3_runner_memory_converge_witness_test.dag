@@ -1,4 +1,4 @@
-module test.claim.srv3_runner_memory_converge_witness
+module test.claim.srv3.srv3_runner_memory_converge_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

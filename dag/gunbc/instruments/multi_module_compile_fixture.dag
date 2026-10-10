@@ -1,4 +1,4 @@
-module tools.multi_module_compile_fixture
+module gunbc.instruments.multi_module_compile_fixture
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }

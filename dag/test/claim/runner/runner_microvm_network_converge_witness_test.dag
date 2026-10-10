@@ -1,16 +1,16 @@
-module gunbc.test.claim.runner.runner_microvm_network_converge_witness_test
+module test.claim.runner.runner_microvm_network_converge_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
   SystemdDaemonReload, SystemdEnableUnit, EnsureOwnedDirectory,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   runner_slot_network, runner_slot_host_cidr,
   TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
   AutoAssignmentAbsentFromKernel, AutoAssignmentOn, AutoAssignmentUnread, HelperAutoAssignment,
@@ -20,7 +20,7 @@ import gunbc.runner_microvm_network {
   helpers_excluded,
   HelperSurfaceReading, HelperSurfaceCounted, HelperSurfaceUnread,
 }
-import gunbc.runner_microvm_network_converge {
+import gunbc.runner.runner_microvm_network_converge {
   parse_disable_ipv6, ip_forward_standing, ct_helper_statement_count,
   microvm_network_converge_operations, converge_staged_files, StagedFile,
   SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,

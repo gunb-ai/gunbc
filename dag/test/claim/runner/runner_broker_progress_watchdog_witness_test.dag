@@ -1,10 +1,10 @@
-module test.claim.runner_broker_progress_watchdog_witness
+module test.claim.runner.runner_broker_progress_watchdog_witness_test
 
 import std.types { String, Bool, Timestamp }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner_broker_progress_watchdog {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_broker_progress_watchdog {
   RemoteRegistrationEvidence,
   RemoteRegistrationObserved,
   RemoteRegistrationRefused,

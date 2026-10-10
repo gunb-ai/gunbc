@@ -13,7 +13,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
 }
-import gunbc.witness_v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteReceipt, NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   NativeRouteAdmissionRefusalCause,
@@ -758,7 +758,7 @@ fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, proposal: NativeF
         "module gunbc.native_frontier_roster",
         "",
         "import v2.compiler.native_test_vocabulary { NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval }",
-        "import gunbc.witness_v2_native_route {",
+        "import gunbc.witness.v2_native_route {",
         "  NativeRouteTestIdentity,",
         "  CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,",
         "  NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap",

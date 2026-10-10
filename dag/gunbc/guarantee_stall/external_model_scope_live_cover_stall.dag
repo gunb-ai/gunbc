@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 data external_model_scope_live_cover_stall: GuaranteeStall = GuaranteeStall {
   subject: "the live external-model scope cover does not cover the extdeps tree",

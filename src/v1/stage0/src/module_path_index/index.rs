@@ -77,7 +77,7 @@ impl ModuleBindingRefusal {
 /// header is still read as a moduleless fragment, silently. NEXT-RUNG TRIGGER: a
 /// parser affordance that can parse a fragment, or a distinct diagnostic for
 /// "no header at all" versus "header did not parse". Both are v1 parser changes and
-/// are refused under `gunbc.v1_maintenance_standing` (NewLanguageBehavior /
+/// are refused under `gunbc.v1.v1_maintenance_standing` (NewLanguageBehavior /
 /// SeedFeatureCompletion), so this does not climb inside the seed.
 fn module_declaration_line_present(content: &str) -> bool {
     for line in content.lines() {

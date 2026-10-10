@@ -1,15 +1,15 @@
-module test.claim.attempt_admission_subject_witness_test
+module test.claim.roadmap.attempt_admission_subject_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.content_hash { Sha1Digest, Sha1DigestHex, content_hash_eq_structural }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_eq }
 import gunbc.merge_admission_subject { parse_git_object_id_wire }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContract, ExecutionContractUnspecified, PathsUnrestricted, PathsAllowed, CargoFmtValidation,
   CargoTestValidation, CargoCapability, PublicWorktreeLayout, PinnedPublicPlusLocalRoot,
 }
-import gunbc.roadmap_dispatch_destination {
+import gunbc.roadmap.roadmap_dispatch_destination {
   AttemptAdmissionSubject, AttemptSubjectAdmission, AttemptSubjectAdmitted, AttemptSubjectRefused,
   AttemptSubjectInputMissing, AttemptSubjectDestinationUnobserved, AttemptSubjectSealStale,
   AttemptSubjectRevisionInvalid, AdmittedBaseRevision, AdmittedPublicRevision,

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_bmc_rotation_route_evidence
+module gunbc.machine_intake.bmc_rotation_route_evidence
 
 import std.types { Int, NonEmptyStr, String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -8,21 +8,21 @@ import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
-import gunbc.machine_intake_bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
-import gunbc.machine_intake_mtjade1_factory_network {
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake.bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
+import gunbc.machine_intake.mtjade1_factory_network {
   ObservedBmcNetwork, BmcNetworkObservedStatic, BmcNetworkObservedDhcpLease, BmcNetworkUnobserved,
 }
-import gunbc.machine_intake_mtjade1_access_observation {
+import gunbc.machine_intake.mtjade1_access_observation {
   RecordedManagerIdentityObservation, RecordedManagerDecoded, RecordedManagerRefused,
   read_mtjade1_recorded_manager_identity,
 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
 import extdeps.bmc.ipmi_channel { IpmiPrivilegeAdministrator, ipmi_user_channel_access, extdeps_external_authority_anchor }
 import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead,
   PublicStandardOperation, EffectObserved, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
 }
@@ -39,7 +39,7 @@ import gunbc.machine_intake_bmc_rotation_route {
 // is the request receipt and the response receipt, at its committed digest. THE EFFECT WAS OBSERVED:
 // the value set was a newly minted secret the account did not hold before (steps b and c), and step (d)
 // then authenticated with it over IPMI and the web API, so the before and after readings differ. It is consumed for the
-// same rotation by gunbc.machine_intake_mtcollins1_bmc_secure_observation as RotationApplied.
+// same rotation by gunbc.machine_intake.mtcollins1_bmc_secure_observation as RotationApplied.
 fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
   rotation_route_from_committed_execution(
     endpoint: mtcollins1_endpoint,
@@ -117,7 +117,7 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
 // request. So this module states only what the capture is entitled to: a historical route
 // observation naming the observed surface, the address and build it was read at, and the Redfish
 // account write that makes it worth qualifying. mtjade1's CURRENT standing is not minted here: the
-// AccessDiscover step of gunbc.machine_intake_arrival_converge (cut O1c-1) mints it, inside the step,
+// AccessDiscover step of gunbc.machine_intake.arrival_converge (cut O1c-1) mints it, inside the step,
 // from the current Manager GET at the controller's current endpoint (J1, 2026-10-06), joined to this unit by its observed
 // BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
 // discriminate a family yields no observation rather than a stand-in.

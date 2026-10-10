@@ -5053,13 +5053,13 @@ mod compiler_tests {
         };
 
         // (1) THE RED: a field-position reference with no resolution, sitting outside its declaring module.
-        let unresolved = node("String", "src/v2/compiler/01_tokenize.dag", Ref, None);
+        let unresolved = node("String", "src/v2/compiler/tokenize.dag", Ref, None);
         assert!(
             matches!(identity(unresolved.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::NoResolutionBoundAtReference)),
             "an unresolved reference must refuse, never key on the file it sits in"
         );
         assert!(
-            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/01_tokenize.dag"),
+            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/tokenize.dag"),
             "the legacy read keys that same reference on its own location -- the answer the split refuses"
         );
 

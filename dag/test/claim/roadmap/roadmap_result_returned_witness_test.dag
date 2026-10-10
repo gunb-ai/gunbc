@@ -2,10 +2,10 @@ module test.claim.roadmap.roadmap_result_returned_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal }
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
-import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef }
 import gunbc.roadmap.roadmap_submission {
   CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
@@ -51,9 +51,9 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
   result_returned_observation_of,
 }
-import gunbc.roadmap_belt_tick_cli { belt_tick_exit_with_snapshot_closes }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_tick_exit_with_snapshot_closes }
 import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
-import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
+import test.claim.roadmap.roadmap_belt_actuate_witness_test { completed_attempt_progress }
 
 data rr_attempt: String = "feedfacefeedface"
 
@@ -185,7 +185,7 @@ test fn a_retryable_state_that_resolves_yields_exactly_the_final_result() -> Boo
 }
 
 // THE REAL PROGRESS FOLD INHABITS THE FIELD THE PASS READS. An attempt row built by
-// gunbc.roadmap_workflow_progress workflow_attempt_progress from attempt evidence -- a worker that
+// gunbc.roadmap.roadmap_workflow_progress workflow_attempt_progress from attempt evidence -- a worker that
 // ended with no captured submission -- carries the yielded handoff state on the row, and the pass
 // classifies THAT value as pending: a row that lost the field, or a classifier that returned a
 // yielded worker as handed back before its capture concluded, turns this red.

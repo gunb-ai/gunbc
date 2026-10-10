@@ -1,6 +1,6 @@
-module test.claim.fabric_allocation_store_substrate_witness
+module test.claim.fleet.fabric_allocation_store_substrate_witness_test
 
-import gunbc.fleet_converge_scope { FabricAllocationStoreOnly }
+import gunbc.fleet.fleet_converge_scope { FabricAllocationStoreOnly }
 
 import std.types { Bool, String, NonEmptyStr }
 import std.content_hash { serialize_content_hash }
@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntrySubjectRefused,
 }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
-import gunbc.fabric_allocation_store_substrate {
+import gunbc.fabric.fabric_allocation_store_substrate {
   fabric_allocation_store_substrate_spec,
   AllocationStoreRootWriterOnly,
   AllocationStoreDirectoryAbsent,
@@ -27,9 +27,9 @@ import gunbc.fabric_allocation_store_substrate {
   allocation_store_directory_present,
   allocation_store_directory_absent,
 }
-import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.fleet_converge_plan {
+import gunbc.fabric.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_allocation_store_plan_artifact,
   fleet_converge_scope_matches,
   fleet_converge_scope_wire,

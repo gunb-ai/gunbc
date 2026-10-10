@@ -1,4 +1,4 @@
-module test.claim.floor_discovery_roster_fixture
+module test.claim.floor.floor_discovery_roster_fixture_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool }

@@ -1,10 +1,10 @@
 module test.claim.shell.shell_dag_compile_pool_slice_install_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host_effect_realize { compile_pool_slice_install_staging, CompilePoolInstallReady, CompilePoolInstallRefused }
+import gunbc.host.host_effect_realize { compile_pool_slice_install_staging, CompilePoolInstallReady, CompilePoolInstallRefused }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import gunbc.host_disk_reclaim_units { reclaim_service_unit_file }
+import gunbc.host.host_disk_reclaim_units { reclaim_service_unit_file }
 import std.materialization_ladder { string_list_contains }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ACCEPTANCE ORACLE FOR shell-dag-compile-pool-slice-install, AUTHORED RED BY DESIGN AND NOW
 // GREEN: the node landed (shell-to-dag, PR #12989 following #12973/#12787). The oracle's bar was
-// that gunbc.host_effect_realize stops assembling install/staging shell text -- the body opened
+// that gunbc.host.host_effect_realize stops assembling install/staging shell text -- the body opened
 // with `set -euo pipefail`, an authored mktemp assignment and an authored trap line, the two lines
 // the module's own annotation declared unmodelled, so the rendered install surface carried a shell
 // control word before any field was even adversarial. The body is deleted; the install is a typed

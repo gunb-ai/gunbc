@@ -1,14 +1,14 @@
-module test.claim.runner_slot_allocation_witness
+module test.claim.runner.runner_slot_allocation_witness_test
 
-import gunbc.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import std.nat { Nat }
-import gunbc.fleet_intent { ComputeHost, CpuProcessor, srv3_host, fleet_intent_cpu }
+import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, srv3_host, fleet_intent_cpu }
 import extdeps.cpu.types { CpuFacts }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
-import gunbc.floor_demand {
+import gunbc.floor.floor_demand {
   gunbc_floor_measured_peak_observation,
   gunbc_floor_measured_peak_is_uncensored,
   gunbc_floor_uncensored_demand_receipt,
@@ -82,7 +82,7 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // WHICH IS THE POINT THIS PAIR WAS MAKING ALL ALONG. Asserting only committed width would miss a
 // reintroduced disk pin or a memory regression hidden behind a CPU ceiling; asserting only memory
 // admission would miss provisioning that skips the apply gate. srv4's historical disk row-pin stays
-// retired and disk binding stays at apply-time gunbc.runner_lifecycle runner_width_disk_preflight.
+// retired and disk binding stays at apply-time gunbc.runner.runner_lifecycle runner_width_disk_preflight.
 
 // srv1 MOVED 27 -> 25 AND srv2 NO LONGER STATES A MEMORY ADMISSION AT ALL. The first is the
 // synchronization of a derived literal after its input changed: srv1's ungrounded 20 GiB fleet-wide
@@ -108,7 +108,7 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // 11. It was 15 on main and stale: main derived 14 without the served-slice term, and 14 did not
 // conserve on srv1.
 // MOVED AGAIN 2026-10-09, BY RULING RATHER THAN BY A SLICE: the operator fixed the slot at a 22 GiB
-// hard maximum (gunbc.runner_slot_desired, the v1 withdrawal's memory envelope), and a smaller slot
+// hard maximum (gunbc.runner.runner_slot_desired, the v1 withdrawal's memory envelope), and a smaller slot
 // admits more of them -- srv1 11 -> 12, srv3 and srv4 17 -> 21. The numbers below are the
 // derivation's answers under that row (re-derived by the authority's own folds, read once through a
 // probe and then pinned here as the alarm this claim is), not figures chosen for the hosts.
@@ -309,7 +309,7 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
 }
 
 // SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB and the declaration now MATCHES it, so
-// the 2GiB drift this subject was written for is dissolved (gunbc.runner_slot_allocation
+// the 2GiB drift this subject was written for is dissolved (gunbc.runner.runner_slot_allocation
 // gunbc_srv2_03_drift_dissolved_by_ruling_note). The witness below asserts the ABSENCE of drift;
 // the readback-refusal predicate keeps its discriminating input from
 // gunbc_synthetic_drifted_cap_observation instead, deliberately synthetic so no convergence can
@@ -340,7 +340,7 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
 // 2026-10-09 ruling withdrew the floor from the required path (gunbc.rung_drop
 // v1_required_lanes_withdrawn) and fixed the slot that the emit-and-build steps run in at a hard
 // 22 GiB maximum, 21 GiB throttle line and NO swap ("no thrashing allowed ever"). The floor's own
-// envelope is no longer this row: it is gunbc.floor_demand gunbc_floor_pinned_memory_max/_high,
+// envelope is no longer this row: it is gunbc.floor.floor_demand gunbc_floor_pinned_memory_max/_high,
 // where the floor's receipts join (test.claim.floor.floor_demand_witness_test). A row that moves
 // again moves by a ruling cited here, never by the last place a pin landed.
 test fn witness_declared_row_pins_22_21_gib_and_no_swap_from_the_2026_10_09_ruling() -> Bool {
@@ -364,7 +364,7 @@ test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
 // THE READING KINDS DISCRIMINATE, IN BOTH DIRECTIONS. The row this replaced discriminated the
 // binary and decimal readings of a 2026-08-17 rendered string; that reading retired with its
 // receipt when the wall's input moved to the typed 2026-09-12 scope measurement in
-// gunbc.floor_demand. What the wall now relies on is that a pin cannot be mistaken for a demand:
+// gunbc.floor.floor_demand. What the wall now relies on is that a pin cannot be mistaken for a demand:
 // the uncensored receipt classifies as UncensoredPeak, the 2026-09-19 pin classifies as ThrottlePin,
 // and a fold that returned one kind for both would fail here.
 test fn witness_the_uncensored_receipt_and_the_pin_classify_differently() -> Bool {

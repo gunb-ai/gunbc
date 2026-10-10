@@ -1,7 +1,7 @@
 module test.claim.runner.runner_microvm_stop_propagation_probe_witness_test
 
 import std.types { Bool, String }
-import gunbc.runner_microvm_stop_propagation_probe {
+import gunbc.runner.runner_microvm_stop_propagation_probe {
   StopPropagationVerdict, StandInStoppedWithItsSupervisor, StandInSurvivedItsSupervisor,
   StandInNotRunningBeforeTheAction, SupervisorNeverStarted, StandInStateUnreadable,
   stop_propagation_verdict, stop_propagation_admitted,

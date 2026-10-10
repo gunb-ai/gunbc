@@ -1,4 +1,4 @@
-module gunbc.roadmap_publication_helper
+module gunbc.roadmap.roadmap_publication_helper
 
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, List, Bool, CommitSha, FilePath }
@@ -31,10 +31,10 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir }
+import gunbc.host.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir }
 import gunbc.roadmap.roadmap_publish_actuate { publish_attempt, PublishActuated, PushRefused, PullRequestRefused }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RoadmapPublicationSubject,
   PublicationReceipt,
   publication_subject_json,
@@ -54,8 +54,8 @@ import gunbc.roadmap_publish {
   SubjectMatches,
   SubjectDiffers,
 }
-import gunbc.roadmap_publish { PublicationOutcome, PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous, RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged, RemoteBranchBindingAmbiguous, BranchNotPublished, PublicationObservationRefused, publication_subject_remote }
-import gunbc.roadmap_publish_observe {
+import gunbc.roadmap.roadmap_publish { PublicationOutcome, PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous, RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged, RemoteBranchBindingAmbiguous, BranchNotPublished, PublicationObservationRefused, publication_subject_remote }
+import gunbc.roadmap.roadmap_publish_observe {
   PublicationCredentialSource,
   CredentialSourceConfigured,
   CredentialSourceAbsent,
@@ -80,7 +80,7 @@ import gunbc.roadmap_publish_observe {
 // SESSION -- stated that way rather than as `no children`, because the weaker sentence is the one
 // that is true and it is still sufficient. This process does spawn children: `printenv` for the
 // presence probe and `git` for the ref advertisement. Neither is a session anything is dispatched
-// into, and neither survives the run. gunbc.fleet_posix_accounts
+// into, and neither survives the run. gunbc.fleet.fleet_posix_accounts
 // fleet_posix_publication_helper_sudo_grants states the other half -- the principal holds no sudo
 // grant of any shape, so it cannot act as anybody else either.
 //
@@ -123,7 +123,7 @@ import gunbc.roadmap_publish_observe {
 //
 // THE COLLISION`S TWO HALVES HAVE DIFFERENT SEVERITIES, and only one of them was already contained.
 // On the ANSWER side a collision could not have produced a wrong answer, because
-// publication_answer_read_at compares all six fields through gunbc.roadmap_publish
+// publication_answer_read_at compares all six fields through gunbc.roadmap.roadmap_publish
 // publication_receipt_subject_match and refuses a mismatched document as AnswerUnreadable rather
 // than reading it as this subject`s answer. On the REQUEST side nothing compared anything: two
 // subjects sharing a key write to one path, so the second silently overwrites the first, the helper
@@ -186,7 +186,7 @@ fn publication_answer_path_for(instance_root: String, key: String) -> String {
 // belt used to derive the request address, so the two agree by construction and neither is stated.
 //
 // THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent publication_receipt_schema_v2_note sets
-// in gunbc.roadmap_publish: a document whose schema is not exactly this string is refused, so a
+// in gunbc.roadmap.roadmap_publish: a document whose schema is not exactly this string is refused, so a
 // future request shape cannot be silently read as this one with members missing.
 data publication_request_schema: NonEmptyStr = "roadmap-publication-request/v2"
 
@@ -256,7 +256,7 @@ fn publication_request_decode(request: String) -> PublicationRequestDecode {
 // ---------------------------------------------------------------------------------------------
 
 // ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ, which is the same rule
-// gunbc.roadmap_belt_actuate publication_receipt_absence_is_established_note states for the
+// gunbc.roadmap.roadmap_belt_actuate publication_receipt_absence_is_established_note states for the
 // attempt's own receipt and for the same reason: Filesystem.Read answers success=false both for a
 // file that does not exist and for one that exists and cannot be read, and those two worlds have
 // opposite correct actions -- ask again, versus stop and say what broke.
@@ -378,7 +378,7 @@ type PublicationAnswerStanding
   | AnswerSpoolRefused { reason: String }
 
 // THE REQUEST IS RE-ASKED ON EVERY REACH, AND GETTING THIS WRONG WOULD HAVE FROZEN THE LAMP -- the
-// same failure gunbc.roadmap_belt_actuate belt_publish_gate_note records for the receipt, arriving
+// same failure gunbc.roadmap.roadmap_belt_actuate belt_publish_gate_note records for the receipt, arriving
 // one layer out through the new boundary.
 //
 // The tempting shape is `if an answer exists, use it; otherwise ask`, and it is wrong for exactly
@@ -437,7 +437,7 @@ fn publication_answer_standing(
 // THE ANSWERING SIDE -- the only code in this repository that resolves a publication credential.
 // ---------------------------------------------------------------------------------------------
 
-// THE PROBE, MOVED HERE FROM THE BELT RATHER THAN COPIED. gunbc.roadmap_belt_actuate carried
+// THE PROBE, MOVED HERE FROM THE BELT RATHER THAN COPIED. gunbc.roadmap.roadmap_belt_actuate carried
 // belt_publication_credential and its source row until this change; both are DELETED there, which
 // is the deliverable rather than a tidy-up -- the belt now has no function that can name, read or
 // hold a publication token, so the boundary is a property of what exists rather than of what the
@@ -578,7 +578,7 @@ fn publication_helper_disposition_detail(d: PublicationHelperDisposition) -> Str
 }
 
 // THE STOPPING POPULATION CARRIES ITS MEMBERS, and an EMPTY stopped run has no constructor -- the
-// first-plus-rest shape gunbc.fleet_posix_accounts uses for allocation conflicts, for the same
+// first-plus-rest shape gunbc.fleet.fleet_posix_accounts uses for allocation conflicts, for the same
 // reason: `stopped, with nothing that stopped it` is not a state. That is what lets the exit name
 // what went wrong instead of dumping the whole ledger and leaving a reader to find it.
 type PublicationHelperRunStanding
@@ -991,7 +991,7 @@ fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> Stri
   ]))
 }
 
-// EXIT SEMANTICS, on the belt's own precedent (gunbc.roadmap_belt_tick_cli belt_run_once_cli): a recorded refusal is a
+// EXIT SEMANTICS, on the belt's own precedent (gunbc.roadmap.roadmap_belt_tick_cli belt_run_once_cli): a recorded refusal is a
 // counted outcome and not a failure to run, so an answer recording an absent credential exits 0 --
 // the fact reached disk and the requester will read it. Nonzero is reserved for the helper failing
 // to do its job at all: a spool it cannot reach, a request it cannot read, an answer it cannot

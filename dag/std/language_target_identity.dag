@@ -26,7 +26,7 @@ import extdeps.external_authority { ExternalModelScope }
 // rust/go/python/typescript only — Bash is absent — so it is at most a presentation key;
 // v2.std.compilers.target_model TargetModel carries bundle, lexing, spellings, authority text and
 // runtime configuration but NO identity field, which is correct because one target may have several
-// target-model revisions without changing identity; tools.emit_host_gate's per-language smoke fns
+// target-model revisions without changing identity; gunbc.instruments.emit_host_gate's per-language smoke fns
 // are evidence producers, not subjects; std.primitive_identity RealizationTarget is deliberately a
 // three-arm primitive-realization DISPATCH surface (InterpreterHost | EmitRust | EmitTypeScript),
 // not a general language identity, and widening it would fuse two unrelated join keys;
@@ -666,7 +666,7 @@ fn integrity_violation_count(vs: List<LanguageTargetJoinViolation>) -> Int {
 // #8259 (continuation eligibility derived from dag_syntax_spec.operators; witness
 // w_arithmetic_operator_newline_family_test in
 // dag/test/claim/dag_parse_continuation_operator_witness_test.dag, migrated from src/v1 in the
-// dead-witness-tree triage, gunbc.ci_layer_roots v1_dead_witness_tree_triage_receipt). Named
+// dead-witness-tree triage, gunbc.ci.ci_layer_roots v1_dead_witness_tree_triage_receipt). Named
 // bindings remain clearer here regardless. WHAT MADE THE ORIGINAL PARSE FAILURE EXPENSIVE was blast
 // radius: the kernel failed to load, so every downstream consumer reported unresolved import plus
 // unbound names rather than a located syntax error — indistinguishable from Class B pool-membership

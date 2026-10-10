@@ -1,4 +1,4 @@
-module v2.test.host_language_transport_script.corpus.migrated_transports_clean
+module v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

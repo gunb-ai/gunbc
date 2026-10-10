@@ -1,9 +1,9 @@
-module test.claim.roadmap_identity_witness_test
+module test.claim.roadmap.roadmap_identity_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap_identity {
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_identity {
   RoadmapIdentityRecord,
   ActiveIdentity,
   TombstonedIdentity,

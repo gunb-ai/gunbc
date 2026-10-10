@@ -10,13 +10,13 @@ import extdeps.ssh.session {
 }
 import extdeps.ssh.session
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_words,
   shape_ssh_shell_exec,
 }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
@@ -179,7 +179,7 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
 // be two representations of one rule, and the typed one is strictly stronger.
 // THE SESSION IS A FACT OF THE PRINCIPAL, READ HERE RATHER THAN ASSUMED. This arm named
 // shape_fleet_ssh_exec, so every typed argv run against the bootstrap principal was a key-session
-// leg against an account that holds no key. gunbc.fleet_bootstrap_principal_session decides.
+// leg against an account that holds no key. gunbc.fleet.fleet_bootstrap_principal_session decides.
 fn typed_argv_exec_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,

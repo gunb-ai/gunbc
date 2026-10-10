@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_render
+module gunbc.accelerator_demo.accelerator_demo_render
 
 
 type AcceleratorDemoPlanView {
@@ -63,7 +63,7 @@ fn project_plan_view(
 ) -> AcceleratorDemoPlanView {
   AcceleratorDemoPlanView {
     target: demo_target_label
-    fused_op_count: gunbc.accelerator_demo_plan.demo_plan_fused_op_count(plan: plan)
+    fused_op_count: gunbc.accelerator_demo.accelerator_demo_plan.demo_plan_fused_op_count(plan: plan)
     placement_label: render_placement(placement: kernel_placement)
     target_medium: target_medium
     contract_label: render_numerical_contract(contract: contract)
@@ -197,7 +197,7 @@ fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
   concat(
     "fused elementwise kernel: Mul -> Add -> Relu (op_count=",
     concat(
-      to_string(gunbc.accelerator_demo_program.elementwise_op_count(program: program)),
+      to_string(gunbc.accelerator_demo.accelerator_demo_program.elementwise_op_count(program: program)),
       ")"
     )
   )
@@ -236,7 +236,7 @@ fn project_triptych_view(
   program: AcceleratorDemoProgram,
   contract: NumericalContract
 ) -> AcceleratorDemoTriptychView {
-  let outcome = gunbc.accelerator_demo_recognizer.recognize_accelerator_program_with_contract(
+  let outcome = gunbc.accelerator_demo.accelerator_demo_recognizer.recognize_accelerator_program_with_contract(
     program: program,
     contract: contract,
     insist_on_fma_fused_kernel: false

@@ -1,4 +1,4 @@
-module v2.test.emit.rust_logic_meet_join_emit
+module v2.test.claim.emit.rust_logic_meet_join_emit_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }

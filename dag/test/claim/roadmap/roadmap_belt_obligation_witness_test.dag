@@ -1,32 +1,32 @@
 module test.claim.roadmap.roadmap_belt_obligation_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
   SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
 }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed }
+import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_outstanding, belt_attempt_next_after, belt_attempt_obligation_kind_key,
   belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name,
   ServedObservationObligation, LaunchObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key,
 }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_obligation_hold_decision, BeltObligationMayStart, BeltObligationIsHeld, BeltObligationHoldUnread,
 }
-import gunbc.roadmap_dispatch_actuator { AttemptUnitActive, AttemptUnitAbsent, AttemptUnitFinished, AttemptUnitUnreadable }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitActive, AttemptUnitAbsent, AttemptUnitFinished, AttemptUnitUnreadable }
 import gunbc.live_deploy.emit { live_deploy_belt_exit_path_unit_file, live_deploy_belt_exit_drain_service_unit_file }
 import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name, deployment_owned_steps, DeploymentArtifactStep }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.host_layout { attempt_exit_inbox_dir }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.host.host_layout { attempt_exit_inbox_dir }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 
 // THE OBLIGATION MODEL'S DECISIONS over supplied evidence (DESIGN section 3: a witness discriminates at
 // one interface, so the attempt's segments are supplied, not produced by running a worker). The
-// production route that consumes them -- gunbc.roadmap_belt_actuate belt_attempt_obligations_run and
+// production route that consumes them -- gunbc.roadmap.roadmap_belt_actuate belt_attempt_obligations_run and
 // belt_discover_for_instance -- reads the same derivation; the wet witness beside this file runs the
 // exit drain over a real spool.
 

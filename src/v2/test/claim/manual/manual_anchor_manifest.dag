@@ -1,4 +1,4 @@
-module v2.test.manual.manual_anchor_manifest
+module v2.test.claim.manual.manual_anchor_manifest
 
 
 data manual_anchor_tc_conj: ManualAnchorKey = ManualTcConjEmpty

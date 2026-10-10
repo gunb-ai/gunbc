@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_eager_materialize_dedup_cutover
+module v2.test.claim.manual.typescript_eager_materialize_dedup_cutover_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

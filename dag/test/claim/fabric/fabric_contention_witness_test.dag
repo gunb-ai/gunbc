@@ -1,4 +1,4 @@
-module test.claim.fabric_contention_witness_test
+module test.claim.fabric.fabric_contention_witness_test
 
 // THE SUBJECT IS WHICH DEMAND WINS ONE SCARCE OFFER, which nothing in the
 // fabric could answer before product.fabric.contention. A suite that only

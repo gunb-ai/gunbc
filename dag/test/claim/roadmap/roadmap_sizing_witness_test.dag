@@ -1,14 +1,14 @@
-module test.claim.roadmap_sizing_witness
+module test.claim.roadmap.roadmap_sizing_witness_test
 
 import std.types { String, Bool }
-import gunbc.roadmap_status { TicketLine, TicketFields, TicketUpdate, PlainLine, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate, PlainLine, Unsigned }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge,
   Dispatchable, NotDispatchable, ManualAcceptance, PrsMerged,
   node_sizing_subject, node_sizing_derivation,
 }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   SizingSubject, SizingSubjectId,
   NodeSizing, Intricacy, IntricacyHigh, Volume, VolumeLarge,
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
@@ -19,7 +19,7 @@ import gunbc.dispatch_selection {
   SizingProfileExpectation, NoDerivedSizingExpectation, DerivedSizingExpectation,
   sizing_profile_expectation,
 }
-import gunbc.roadmap_spawner { node_json }
+import gunbc.roadmap.roadmap_spawner { node_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

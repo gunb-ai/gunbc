@@ -28,8 +28,8 @@ import gunbc.diff_baseline {
   diff_baseline_diff_head,
   diff_baseline_is_exact_replay
 }
-import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import gunbc.ci_diff_policy { DiffTwoDot, gunbc_ci_diff_policy }
+import gunbc.repo.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
+import gunbc.ci.ci_diff_policy { DiffTwoDot, gunbc_ci_diff_policy }
 import v2.workflow.floor_diff_observe {
   floor_diff_mode_for_baseline,
   floor_git_diff_range_of_mode,

@@ -1,4 +1,4 @@
-module v2.test.manual.call_carrier_node_query
+module v2.test.claim.manual.call_carrier_node_query_test
 
 import v2.std.node {
   Atom,

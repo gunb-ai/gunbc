@@ -266,9 +266,9 @@ type ClosureMembershipObservation {
 // emitted and leave "would an unimported one be emitted anyway?" unanswered -- which is exactly
 // the question the second precondition of the refuted route turns on.
 data required_regen_closure_membership_controls: List<ClosureMembershipObservation> = [
-  ClosureMembershipObservation { module_path: "extdeps.cargo", seed_reachable: true, emitted: true },
+  ClosureMembershipObservation { module_path: "extdeps.rust.cargo", seed_reachable: true, emitted: true },
   ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_reachable: true, emitted: true },
-  ClosureMembershipObservation { module_path: "gunbc.ci_spec", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.ci.ci_spec", seed_reachable: false, emitted: false },
   ClosureMembershipObservation { module_path: "gunbc.commit_workflow", seed_reachable: false, emitted: false },
   ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_reachable: false, emitted: false }
 ]

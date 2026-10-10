@@ -1,4 +1,4 @@
-module test.claim.spark_grant_privileged_operation_witness
+module test.claim.spark.spark_grant_privileged_operation_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
@@ -8,8 +8,8 @@ import gunbc.spark.bootstrap_credential {
   CredentialMaterializationPending,
 }
 import gunbc.spark.managed_access_bootstrap { RebootThisHost, spark_managed_grant_population, spark_managed_grant_sudoers_command }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.grant_privileged_operation {
   spark_sudo_prompt_sentinel,
   spark_bootstrap_credential_lease,
@@ -31,7 +31,7 @@ import gunbc.spark.grant_privileged_operation {
   BootstrapCredentialReady,
   BootstrapCredentialNotMaterialized,
 }
-import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
+import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 
 // A CARRIED name, never a derived one -- the fixture supplies it exactly as an operator would.
 fn enrolled() -> SparkCredentialStanding {

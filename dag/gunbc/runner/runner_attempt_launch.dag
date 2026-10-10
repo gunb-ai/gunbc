@@ -1,4 +1,4 @@
-module gunbc.runner_attempt_launch
+module gunbc.runner.runner_attempt_launch
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.optional { Absent, Present }
@@ -23,10 +23,10 @@ import extdeps.virtualization.firecracker {
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.work { Work, TrustDomainRef }
 import product.fabric.sanitation { CellId }
-import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
-import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
-import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
-import gunbc.runner_microvm_attempt_bounds { runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace }
+import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.runner.runner_microvm_attempt_bounds { runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.budget { MoneyAccount }
 import product.fabric.grant_issue {
@@ -46,7 +46,7 @@ import gunbc.runner.jit_registration_subject { JitRegistrationSubject, microvm_r
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   jit_drive_content, jit_drive_utf8_size,
   runner_microvm_vm_config,
   attach_workspace_drive,
@@ -55,12 +55,12 @@ import gunbc.runner_microvm {
   runner_microvm_workspace_grant,
   gunbc_runner_jit_transport,
 }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt,
   runner_microvm_attempt_jail_base,
   runner_microvm_attempt_slice_property,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   runner_slot_network,
   runner_slot_network_as_microvm_networking,
   runner_slot_guest_network_boot_args,
@@ -82,7 +82,7 @@ data runner_attempt_launch_disposition: ConstructionMechanism = SingleAuthority
 // witness, not recovered/ remaining as evidence. SUFFICIENT FOR deleting recovered/ and this
 // frontier together. NOT satisfied by this module existing beside the recovered init.
 data host_boot_cutover_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the host-image build whose per-attempt driver is gunbc.runner_attempt_launch plan_attempt_launch executed at host boot on tmpfs. TRIGGER: that capability holds — Y execs at host boot and the host image is built from Y — so the recovered initramfs/init path has zero production consumers. SUFFICIENT FOR deleting docs/recovered/mtcollins-host-image-source and this row in one motion. NOT satisfied by this planner compiling, by a gunbc binary in a checkout, or by Y sitting beside X." as NonEmptyStr,
+  description: "NAMED CONSUMER: the host-image build whose per-attempt driver is gunbc.runner.runner_attempt_launch plan_attempt_launch executed at host boot on tmpfs. TRIGGER: that capability holds — Y execs at host boot and the host image is built from Y — so the recovered initramfs/init path has zero production consumers. SUFFICIENT FOR deleting docs/recovered/mtcollins-host-image-source and this row in one motion. NOT satisfied by this planner compiling, by a gunbc binary in a checkout, or by Y sitting beside X." as NonEmptyStr,
 )
 
 // SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".
@@ -132,7 +132,7 @@ data jail_workspace_path: FilePath = "/work.img"
 
 data host_busybox_bin: NonEmptyStr = "/bin/busybox"
 
-// THE WORKSPACE GRANT MOVED TO gunbc.runner_microvm runner_microvm_workspace_grant, beside the
+// THE WORKSPACE GRANT MOVED TO gunbc.runner.runner_microvm runner_microvm_workspace_grant, beside the
 // drive it sizes, so the guest shape can judge the Work's storage demand against it; the plan
 // realizes shape.workspace and no longer carries a size of its own.
 
@@ -182,7 +182,7 @@ type JitCredentialAdmission
 // BYTES, MEASURED AS BYTES. string_length counts CODE POINTS, so building a ByteSize from it labels
 // one quantity as another -- they coincide for the base64 GitHub returns and diverge for anything
 // else, which is exactly the silent wrong answer a floor and ceiling must not admit (review 68668).
-// gunbc.runner_microvm jit_drive_utf8_size is the corpus authority for the UTF-8 size of text, and
+// gunbc.runner.runner_microvm jit_drive_utf8_size is the corpus authority for the UTF-8 size of text, and
 // it is the same measure the staged device is read back against.
 fn jit_credential_bytes(credential: EncodedJitConfig) -> ByteSize {
   jit_drive_utf8_size(text: credential.encoded as String)
@@ -248,15 +248,15 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
 // jail; (2) the drive bytes are written into it -- through the filesystem, never an argv.
 //
 // THE BYTES ARE THE GUEST'S CONTRACT, NOT A HOST CHOICE. What goes on the drive is exactly
-// gunbc.runner_microvm jit_drive_content(credential): one ACTIONS_RUNNER_INPUT_JITCONFIG line,
-// newline-padded to whole sectors, which is what the guest agent (gunbc.runner_guest_image) reads
+// gunbc.runner.runner_microvm jit_drive_content(credential): one ACTIONS_RUNNER_INPUT_JITCONFIG line,
+// newline-padded to whole sectors, which is what the guest agent (gunbc.runner.runner_guest_image) reads
 // from the device jit_drive_guest_device names. A second host-side format (the recovered init's
 // NUL padding, which this module used to write) would be a second authority for one fact, and the
 // guest could not read it. The staged file's size is therefore the content's own size, and
 // readback checks exactly that.
 //
 // The file is inside the chroot of exactly one attempt. The guest sees it as a read-only drive
-// (gunbc.runner_microvm JitConfigOnReadOnlyDrive) and never sees the host path, the App key, the
+// (gunbc.runner.runner_microvm JitConfigOnReadOnlyDrive) and never sees the host path, the App key, the
 // JWT or the installation token, none of which this carrier holds.
 type BootstrapDeviceStaging {
   host_path: String
@@ -313,13 +313,13 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Boo
 // ── TWO AUTHORIZATIONS, ONE PLAN, AND THE SECOND IS A DECLARED FRONTIER'S SUBSTITUTE ─────────
 //
 // THE GRANT ARM IS THE TERMINAL CONSTRUCTION AND HAS NO PRODUCER. grant_authorizes_reservation
-// consumes an ExecutionGrant, and nothing in production constructs one (gunbc.fabric_control_plane
+// consumes an ExecutionGrant, and nothing in production constructs one (gunbc.fabric.fabric_control_plane
 // "THREE GAPS THAT ARE ONE ABSENCE": the ReleaseDirective-to-slot-key relation, the atomic
 // cross-ledger acquire join and the whole identity layer are unproduced). So, for the trusted-
 // workload microVM shakedown on srv1, the parent lane ruled (2026-09-21) that the planner admits a
 // SECOND authorization: the sealed RequiredBuildCellSnapshot, which is the host CAS's own re-read of
 // the committed reservation and is constructible only inside
-// gunbc.fabric_required_build_cell observe_required_build_cell_wet (one construction site, checked
+// gunbc.fabric.fabric_required_build_cell observe_required_build_cell_wet (one construction site, checked
 // by test.claim.runner.runner_attempt_launch_witness_test).
 //
 // WHAT THE SNAPSHOT ARM PRESERVES, REFUSAL FOR REFUSAL. The grant join refuses on four facts:
@@ -327,7 +327,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Boo
 //              reservation. The MoneyAccount is a pure in-process value with no durable home, so
 //              in a later process the fence's referent does not exist; what the host DOES hold is
 //              the CAS generation the snapshot was read at, and the controller binds the attempt's
-//              allocation generation to it (gunbc.runner_microvm_lifecycle controller_start's
+//              allocation generation to it (gunbc.runner.runner_microvm_lifecycle controller_start's
 //              CellBindingRefusedGeneration). The arm carries that generation and refuses if the
 //              caller's allocation generation disagrees -- ReservationGenerationDisagrees.
 //   work       the reservation's demand names the Work presented -- ReservationNamesDifferentWork.
@@ -341,7 +341,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Boo
 // the unproduced layer.
 //
 // THE ARM IS SELECTED BY THE WORK'S TRUST DOMAIN AS A TYPED FACT, NOT BY A FLAG: a Work whose
-// requirements.trust_domain is not gunbc.floor_demand gunbc_internal_fleet_trust_domain
+// requirements.trust_domain is not gunbc.floor.floor_demand gunbc_internal_fleet_trust_domain
 // refuses with ReservationArmRequiresInternalFleetTrust, so the untrusted-CI route -- which the
 // migration plan keeps grant disagreement for -- cannot reach this arm by construction. The
 // witness carries the control.
@@ -356,7 +356,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Boo
 // the witness already carries that flip (its control over the reservation arm becomes a refusal
 // that the arm no longer exists).
 data reservation_authorization_grant_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_attempt_launch, which today consumes an ExecutionGrant no production route constructs, so the microVM shakedown runs through plan_attempt_launch_reservation_authorized instead. TRIGGER, at capability grain: an ExecutionGrant produced at reservation commit with the atomic cross-ledger join (gunbc.fabric_control_plane 'THREE GAPS' note: ReleaseDirective-to-slot-key relation, atomic acquire join, produced identity layer), persisted beside the CAS reservation and re-read by the slot controller in a later process. SUFFICIENT FOR deleting LaunchAuthorizedByReservation, ReservationAuthorization, plan_attempt_launch_reservation_authorized and this row together. NOT satisfied by a witness constructing a grant, by the reservation arm being narrowed further, or by a durable MoneyAccount alone." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner.runner_attempt_launch plan_attempt_launch, which today consumes an ExecutionGrant no production route constructs, so the microVM shakedown runs through plan_attempt_launch_reservation_authorized instead. TRIGGER, at capability grain: an ExecutionGrant produced at reservation commit with the atomic cross-ledger join (gunbc.fabric.fabric_control_plane 'THREE GAPS' note: ReleaseDirective-to-slot-key relation, atomic acquire join, produced identity layer), persisted beside the CAS reservation and re-read by the slot controller in a later process. SUFFICIENT FOR deleting LaunchAuthorizedByReservation, ReservationAuthorization, plan_attempt_launch_reservation_authorized and this row together. NOT satisfied by a witness constructing a grant, by the reservation arm being narrowed further, or by a durable MoneyAccount alone." as NonEmptyStr,
 )
 
 type ReservationAuthorization
@@ -828,7 +828,7 @@ type WorkspaceStanding
   | WorkspaceUnreadable { reason: NonEmptyStr }
   | WorkspaceReadbackOfDifferentImage { read: String, planned: String }
 
-// THE EXPECTED SIZE IS THE ONE GRANT, read from gunbc.runner_microvm runner_microvm_workspace_grant
+// THE EXPECTED SIZE IS THE ONE GRANT, read from gunbc.runner.runner_microvm runner_microvm_workspace_grant
 // -- the same row the plan's dd seek and the guest shape's storage fit read -- so the readback
 // judges the image against the size that was planned and not against a second copy of it.
 fn runner_attempt_workspace_bytes() -> ByteSize {

@@ -1,4 +1,4 @@
-module test.claim.bmc_fan_converge_witness
+module test.claim.bmc.bmc_fan_converge_witness_test
 
 import extdeps.bmc.openbmc_fan_control {
   OpenBmcTachAtOrAboveThreshold,
@@ -19,7 +19,7 @@ import extdeps.bmc.types {
   validate_bmc_fan_curve,
 }
 import std.measure { celsius, celsius_delta, percent, rpm, second, second_count }
-import gunbc.bmc_fan_converge {
+import gunbc.bmc.bmc_fan_converge {
   BmcFanAppliedReceipt,
   BmcFanAppliedAndVerified,
   BmcFanAppliedWithCleanupDebt,
@@ -34,14 +34,14 @@ import gunbc.bmc_fan_converge {
   bmc_fan_live_digest_matches,
   bmc_fan_record_cleanup_debt,
 }
-import gunbc.bmc_fan_monitor {
+import gunbc.bmc.bmc_fan_monitor {
   BmcFanMonitoringCompleted,
   BmcFanMonitoringReceipt,
   BmcFanMonitoringRefused,
   BmcFanMonitoringSample,
   bmc_fan_assess_monitoring_samples,
 }
-import gunbc.fleet_intent { srv3_host, srv4_host }
+import gunbc.fleet.fleet_intent { srv3_host, srv4_host }
 import extdeps.bmc.endpoint { OpenBmc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }

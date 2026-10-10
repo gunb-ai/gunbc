@@ -1,4 +1,4 @@
-module v2.test.workflow.body_lowering_retention_census
+module v2.test.claim.workflow.body_lowering_retention_census_test
 
 import v2.std.algebra { Empty, length }
 import v2.std.text { String }

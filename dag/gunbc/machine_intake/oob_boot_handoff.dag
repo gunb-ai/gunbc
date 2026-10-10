@@ -1,4 +1,4 @@
-module gunbc.machine_intake_oob_boot_handoff
+module gunbc.machine_intake.oob_boot_handoff
 
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -40,7 +40,7 @@ import extdeps.bmc.capability {
 }
 
 // THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
-// reach THROUGH. Every existing transport in this repository — gunbc.host_effect LocalShell and
+// reach THROUGH. Every existing transport in this repository — gunbc.host.host_effect LocalShell and
 // FleetSsh — talks to a machine via the operating system being installed, so neither can act on a
 // host that has none. This module models the arm that acts on the CONTROLLER instead, which is the
 // only arm that can move a bare host toward serving.
@@ -76,7 +76,7 @@ type OobBootHandoffAdmission
 // The first boot-control route the observation carries, as an Option. The list is folded rather than
 // pattern-matched because the surface grammar admits no list patterns — measured, not assumed: a
 // match with [] and [first, ..] arms fails to parse with "expected FatArrow, found LBracket". This
-// is the same fold shape gunbc.machine_intake_access control_route_evidence_unnamed uses over the
+// is the same fold shape gunbc.machine_intake.access control_route_evidence_unnamed uses over the
 // same field, so the idiom is the corpus's rather than this module's.
 fn first_observed_boot_control_route(observation: BmcAccessObservation) -> BmcAccessRoute? {
   fold(
@@ -423,7 +423,7 @@ fn oob_power_action_after_confirmed_selection(
   device: NonEmptyStr,
 ) -> OobBootHandoffOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+    decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
   ]
 {
   let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
@@ -448,7 +448,7 @@ fn oob_power_actuate_and_read_back(
   action: OobPowerAction,
 ) -> OobBootHandoffOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
+    decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
   ]
 {
   control = diagnostic.ipmi.Tool.ChassisPowerControl(
@@ -492,8 +492,8 @@ fn oob_boot_handoff(
   selection: IpmiBootSelection,
 ) -> OobBootHandoffOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
-    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
+    decl_ref(module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
+    decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
   ]
 {
   let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)

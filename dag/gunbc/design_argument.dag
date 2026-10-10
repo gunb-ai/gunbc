@@ -273,8 +273,8 @@ data conformance_domains: List<ConformanceDomain> = [
           homes: ConformanceHomes {
             first: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
             rest: [
-              decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "CellReservation"),
-              decl_ref(module_path: "gunbc.fabric_executor_class", decl_name: "CapacityClassAdmission"),
+              decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"),
+              decl_ref(module_path: "gunbc.fabric.fabric_executor_class", decl_name: "CapacityClassAdmission"),
             ],
           },
         },
@@ -285,7 +285,7 @@ data conformance_domains: List<ConformanceDomain> = [
             first: decl_ref(module_path: "product.capacity.lease", decl_name: "LeaseGrant"),
             rest: [
               decl_ref(module_path: "product.capacity.pool_events", decl_name: "SeatRequest"),
-              decl_ref(module_path: "gunbc.fabric_event_log", decl_name: "fabric_seat_acquire"),
+              decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
               decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat"),
               decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_group_admission"),
             ],

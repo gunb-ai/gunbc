@@ -49,7 +49,7 @@ import gunbc.auth.materialized_secret {
   SecretNotLive, SecretVersionUnusable, LivenessProbeNotIndependent,
 }
 import gunbc.readback_independence { ReadBackProbe, ProbeInert }
-import gunbc.fabric_quota {
+import gunbc.fabric.fabric_quota {
   QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease_for, QuotaTermToWindowEnd,
   fabric_quota_settle, QuotaSettle, QuotaSettled, QuotaSettleRefused, quota_settle_wire,
   fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
@@ -65,7 +65,7 @@ import gunbc.harness.harness_reasoning_wire {
 // leasing that upstream's quota rather than by taking a seat on a serving group. The seat model
 // (gunbc.harness.harness_seat) is about co-tenancy on an engine with loaded state; a hosted upstream
 // meters REQUESTS against a credential, so the honest capacity fact is the per-request quota and its
-// carrier is gunbc.fabric_quota over the upstream's published UpstreamRateLimit rows.
+// carrier is gunbc.fabric.fabric_quota over the upstream's published UpstreamRateLimit rows.
 //
 // FOUR THINGS HAPPEN HERE AND NOWHERE ELSE: the route's facts are joined from their upstream authorities;
 // the reasoning level a turn on the route runs at is SELECTED, not written down; the credential is
@@ -428,7 +428,7 @@ fn hosted_access_from_key(route: HarnessHostedRoute, key: OpenRouterKeyRead, lev
 // THE DAY POOL STARTS FROM WHAT THE UPSTREAM SAYS REMAINS, NOT FROM ITS CEILING. The tier sets the
 // ceiling; free_model_daily_requests.remaining says how much of it is left today, including requests
 // another client of this key spent and requests made before this ledger existed. The reading is
-// recorded on the day partition (gunbc.fabric_quota fabric_quota_observe_upstream) before the binding is
+// recorded on the day partition (gunbc.fabric.fabric_quota fabric_quota_observe_upstream) before the binding is
 // handed out, so the first lease already sees it. A reading that cannot be recorded refuses the bind:
 // leasing against the bare ceiling would admit requests the upstream has already refused.
 fn hosted_day_remaining(key: OpenRouterKeyRead) -> Nat? {
@@ -544,7 +544,7 @@ fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
 //
 // THE LOCAL QUOTA IS A CLOSE, CONSERVATIVE PRE-CHECK, NOT AN EXACT GATE, AND THE UPSTREAM'S 429 IS THE
 // BACKSTOP. This route deliberately revises the 2026-09-06 ruling that a caller refuses before the upstream
-// would have answered 429 (gunbc.fabric_quota): the pools below make an over-spend rare and keep the
+// would have answered 429 (gunbc.fabric.fabric_quota): the pools below make an over-spend rare and keep the
 // ledger honest, but nothing here can make the local count equal the upstream's at a window boundary --
 // the upstream counts a request when it RECEIVES it, and nothing on this side bounds when a process's first
 // request byte leaves. A 429 that gets through is a typed refusal carrying the upstream's own retry hints
@@ -560,7 +560,7 @@ fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
 // fixed it: a lease held until the answer arrives still outlives a window the request was counted in.
 //
 // SO A REQUEST IS CHARGED, NOT HELD. Each pool is leased for the remainder of its current window
-// (gunbc.fabric_quota QuotaTermToWindowEnd, read off the same clock reading the lease is stamped with),
+// (gunbc.fabric.fabric_quota QuotaTermToWindowEnd, read off the same clock reading the lease is stamped with),
 // and both leases are settled at one BEFORE the request goes out. The charge then stands for the rest of
 // the window whatever the response does, which is also the conservative accounting for a request whose
 // fate is unknown: a crash after the send, or a transport that failed mid-flight, still counted upstream

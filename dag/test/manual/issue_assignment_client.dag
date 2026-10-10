@@ -4,8 +4,8 @@ import std.types { String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.typescript.program { serialize_ts_stmt }
-import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
-import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
+import gunbc.roadmap.roadmap_issue_sort { issue_sort_bind_statements }
+import gunbc.roadmap.roadmap_inline_assignment_client { inline_assignment_bind_statements }
 
 fn assignment_client_script() -> String {
   inline_assignment_bind_statements() |> map(s => serialize_ts_stmt(s: s)) |> join("\n")

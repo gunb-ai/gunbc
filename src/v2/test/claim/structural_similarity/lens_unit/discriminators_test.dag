@@ -1,4 +1,4 @@
-module v2.test.structural_similarity.lens_unit.discriminators
+module v2.test.claim.structural_similarity.lens_unit.discriminators_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

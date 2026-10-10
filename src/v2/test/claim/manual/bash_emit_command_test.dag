@@ -1,4 +1,4 @@
-module v2.test.manual.bash_emit_command
+module v2.test.claim.manual.bash_emit_command_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }

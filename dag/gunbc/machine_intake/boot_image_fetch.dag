@@ -1,7 +1,7 @@
-module gunbc.machine_intake_boot_image_fetch
+module gunbc.machine_intake.boot_image_fetch
 
 import std.types { Bool, FilePath, List, NonEmptyStr, String }
-import gunbc.machine_intake_boot_image_export_ownership {
+import gunbc.machine_intake.boot_image_export_ownership {
   export_ownership_admits_publication,
   export_ownership_refusal_reason,
   observed_export_ownership_standing,
@@ -207,7 +207,7 @@ fn verify_and_publish_boot_image(
 // agreed, in the same shape the boot handoff uses to keep its power cycle behind a confirmed
 // read-back. A future edit cannot fall through to it.
 // THE OWNERSHIP ADMISSION SITS AT THE WRITE BOUNDARY, which is the only place it means anything.
-// gunbc.machine_intake_boot_image_export_ownership previously described who may own the export and
+// gunbc.machine_intake.boot_image_export_ownership previously described who may own the export and
 // was consulted by NOTHING: this module called mv directly, so the program published whenever the
 // operating system's permissions happened to allow it -- as root, or into a world-writable export --
 // while a probe asserted the policy against fixtures. A requirement with no causal position is a

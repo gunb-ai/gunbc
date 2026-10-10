@@ -1,4 +1,4 @@
-module test.claim.parse_test_grammar_expect
+module v2.test.claim.parse.parse_test_grammar_expect_test
 
 import std.types { List }
 import v2.compiler.parse { ParseArtifact, parse_module }
@@ -59,7 +59,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A reason outside the closed `v2.std.parse_refusal_reason` vocabulary is not a claim here: it does
 // not typecheck. The two tie labels are the vocabulary's two real variants.
 // The dag grammar's own use -- the `fn ... =` expression body -- is claimed in
-// v2.test.parse.expression_bodied_fn_decl_parse.
+// v2.test.claim.parse.expression_bodied_fn_decl_parse_test.
 
 fn ge_token(class: Symbol, start: Int) -> Token {
   Token { class: class, lexeme: std.algebra.Empty, file: ^ge_file, start: start, end: start + 1 }

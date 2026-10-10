@@ -117,7 +117,7 @@ fn bmc_lifecycle_inverse_target_model_bundle() -> Node {
   )
 }
 
-data bmc_lifecycle_inverse_authority_source: String = "gunbc.bmc_onboarding lifecycle inverse roundtrip fidelity quotient"
+data bmc_lifecycle_inverse_authority_source: String = "gunbc.bmc.bmc_onboarding lifecycle inverse roundtrip fidelity quotient"
 
 fn bmc_lifecycle_inverse_target_model() -> TargetModel {
   TargetModel {

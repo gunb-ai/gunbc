@@ -1,6 +1,6 @@
 module gunbc.host_crypto_digest_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -14,12 +14,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // WHY A HOST SEAM AND NOT THE PURE FOLD. extdeps.crypto.sha2 sha256_hex is the substrate's SHA-256 and
 // stays its authority and oracle, but interpreted it costs ~200k eval steps per 64-octet block
 // (measured with claim_batch on test.claim.sha256_host_known_answer_witness), and the fabric store
-// door (gunbc.fabric_store_operation_admission) digests an approved intent on every protected write.
+// door (gunbc.fabric.fabric_store_operation_admission) digests an approved intent on every protected write.
 //
 // NOT COUNTED BELOW, disclosed: the interpreter arms free_call.hmac_sha256_hex, free_call.hmac_sha256_
 // verify_hex and free_call.sha256_hex_of_text (macro arms inside eval_builtin_inner, not citable
 // declarations). The generated v1_interpreter_dispatch_generated.rs and v1_compiler_infer_method.rs
-// project gunbc.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities
+// project gunbc.v1.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities
 // change with them.
 data host_crypto_digest_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

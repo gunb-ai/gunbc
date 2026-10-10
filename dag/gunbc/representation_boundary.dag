@@ -291,17 +291,17 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/reference_realization_witness_test.dag",
+      entry: "dag/test/claim/reference_realization_witness.dag",
       function: "w_opaque_provider_preserves_the_provider_declaration",
       module_path: "test.claim.reference_realization_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "name_keyed_coercion_matches_the_declared_cast_rosters_holds",
       module_path: "v2.test.claim.coercion.two_algebra_fork"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "homomorphism_coercion_matches_the_structural_preservation_contract_holds",
       module_path: "v2.test.claim.coercion.two_algebra_fork"
     )
@@ -412,7 +412,7 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/self_host_symbol_identity_binding_witness_test.dag",
+      entry: "dag/test/claim/self_host_symbol_identity_binding_witness.dag",
       function: "w_symbol_declaration_resolves_to_std_string",
       module_path: "test.claim.self_host_symbol_identity_binding_witness"
     )
@@ -459,7 +459,7 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/materialization_ladder_witness_test.dag",
+      entry: "dag/test/claim/materialization_ladder_witness.dag",
       function: "cross_frame_duplicate_discharged_by_covering_provider",
       module_path: "test.claim.materialization_ladder_witness"
     )
@@ -505,13 +505,13 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
     witness_subject(
       entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation_test.dag",
       function: "cross_tree_real_ingest_dag_to_v2_denied_holds",
-      module_path: "v2.test.long.cross_tree_real_ingest_activation"
+      module_path: "v2.test.claim.long.cross_tree_real_ingest_activation_test"
     )
   ],
   supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry.",
   preservation_obligation: "An edge the model admits resolves, an edge it denies refuses, and the decision depends on the declared source-root tags rather than on how the invocation spelled its paths.",
   crossing_evidence: EvidenceOnBothRoutes {
-    what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
+    what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.claim.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
   },
   next_trigger: climbs_when(capability: "none identified by this inventory for the DECISION itself, which conforms. Whether its arbiter is reached on a required route is answered by boundary_interpreted_standing rather than asserted here.")
 }

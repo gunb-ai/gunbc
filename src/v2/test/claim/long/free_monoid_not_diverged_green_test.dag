@@ -1,4 +1,4 @@
-module v2.test.long.free_monoid_not_diverged_green
+module v2.test.claim.long.free_monoid_not_diverged_green_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

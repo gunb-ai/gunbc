@@ -1,9 +1,9 @@
-module tools.cause_assertion_census
+module gunbc.instruments.cause_assertion_census
 
 import std.types { Bool, Int, List, String }
 import std.import { ParsedImportStatement, ImportStatementsParsed, ImportStatementParseRefused, ImportStatementParseCause, SourceHasNoModuleDeclaration, import_statement_parse_cause_label }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
-import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import gunbc.namespace.parsed_import_statement_production { parsed_import_observation_live }
 import v2.std.compilers.lexing { Token }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
 import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }

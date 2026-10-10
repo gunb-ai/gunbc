@@ -1,4 +1,4 @@
-module test.claim.scm_repository_load_witness
+module test.claim.scm.scm_repository_load_witness_test
 
 // THE LOAD BOUNDARY, ARM BY ARM. `load_repository` is the only place in gunbc.scm that touches the
 // host filesystem, and its whole reason for existing is that four different things can go wrong

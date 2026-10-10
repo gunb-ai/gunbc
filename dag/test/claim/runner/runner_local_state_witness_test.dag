@@ -1,4 +1,4 @@
-module test.claim.runner_local_state
+module test.claim.runner.runner_local_state_witness_test
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, String, List }
@@ -18,9 +18,9 @@ import extdeps.systemd.unit_file {
   systemd_exit_type_wire,
   systemd_kill_mode_reaches_whole_cgroup,
 }
-import gunbc.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { SlotServesGitHubActions, SlotServesFabricExecution }
-import gunbc.runner_unit {
+import gunbc.build_cache.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { SlotServesGitHubActions, SlotServesFabricExecution }
+import gunbc.runner.runner_unit {
   runner_slot_unit_name,
   runner_unit_name_of_registration,
   runner_unit_template_name,
@@ -37,7 +37,7 @@ import gunbc.runner_unit {
   gunbc_runner_lifecycle_intent,
   gunbc_runner_main_exits_when_incarnation_ends,
 }
-import gunbc.runner_local_state {
+import gunbc.runner.runner_local_state {
   RunnerUnitObservation,
   UnitUnobserved,
   UnitNotLoaded,
@@ -89,15 +89,15 @@ import gunbc.runner_local_state {
   SlotRunningJob,
   SlotIdle,
 }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   gunbc_runner_unit_template,
   gunbc_runner_all_slots_unit_glob,
   gunbc_runner_per_slot_dropin_path,
   runner_instance_glob,
 }
-import gunbc.runner_connectivity_recovery { recovery_runner_slot_unit_name }
-import gunbc.host_runner_memory_cap_verify { runner_memory_cap_probe_unit }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_connectivity_recovery { recovery_runner_slot_unit_name }
+import gunbc.host.host_runner_memory_cap_verify { runner_memory_cap_probe_unit }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every subject below is a modeled value constructed in this file -- no host is read, so the floor

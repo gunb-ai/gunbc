@@ -1,4 +1,4 @@
-module v2.test.long.accumulator_copy_fold_analysis
+module v2.test.claim.long.accumulator_copy_fold_analysis_test
 
 import v2.std.live_tree { LiveTreeDisposition }
 

@@ -1,7 +1,7 @@
-module gunbc.floor_attempt_standing
+module gunbc.floor.floor_attempt_standing
 
 import std.types { String }
-import gunbc.ci_failure_class {
+import gunbc.ci.ci_failure_class {
   FloorOutcome,
   NoFailure,
   FloorFailed,
@@ -67,7 +67,7 @@ import gunbc.ci_failure_class {
 //
 // THERE IS NO `run_attempt` FIELD, AND ITS ABSENCE IS A DECISION RATHER THAN AN OVERSIGHT.
 // `run_attempt` has no shape anywhere in `extdeps/` -- it exists in this repository only as the
-// raw env-var name `GITHUB_RUN_ATTEMPT` read by `tools.merge_admission_current_context`. The head
+// raw env-var name `GITHUB_RUN_ATTEMPT` read by `gunbc.instruments.merge_admission_current_context`. The head
 // axis does not need it: head-standing is decided by measured head against current head, and
 // nothing yet needs to distinguish two attempts of the SAME run. Adding the field now would be a
 // carrier with no consumer, which is the thing this module is otherwise arguing against.

@@ -1,15 +1,15 @@
-module test.claim.fleet_converge_launch_environment_scope_witness
+module test.claim.fleet.fleet_converge_launch_environment_scope_witness_test
 
-import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
+import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
-import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
+import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
 
 import std.types { String, Bool, NonEmptyStr, List, Int, list_length }
 import product.host_identity { HostIdentity }
-import gunbc.fabric_cell_converge { fabric_cell_expected_slots }
-import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
-import gunbc.fleet_converge_plan {
+import gunbc.fabric.fabric_cell_converge { fabric_cell_expected_slots }
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.fleet.fleet_converge_plan {
   FleetConvergeRequest,
   FullHostConverge,
   LaunchEnvironmentConverge,
@@ -38,22 +38,22 @@ import gunbc.fleet_converge_plan {
   fleet_converge_desired_caps,
   timer_retirement_observed_legacy_srv1
 }
-import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
-import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
+import gunbc.runner.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
 }
-import gunbc.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
+import gunbc.runner.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
 import gunbc.live_deploy.spec { deployment_owned_steps_retract_order }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.host_axis_caps { CapMember }
-import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.host.host_axis_caps { CapMember }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
 import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -198,12 +198,12 @@ test fn the_launch_environment_apply_script_emits_no_foreign_axis_work() -> Bool
     terminal: fleet_converge_apply_terminal(request: witness_full_host_request()),
   )
   !string_contains(s: le, pattern: "# runner-slot membership")
-    && !string_contains(s: le, pattern: "# runner-service activation (gunbc.runner_service_activation)")
+    && !string_contains(s: le, pattern: "# runner-service activation (gunbc.runner.runner_service_activation)")
     && !string_contains(s: le, pattern: "REFUSED-UNMODELED-HOST")
     && !string_contains(s: le, pattern: "fabric-cell")
     && !string_contains(s: le, pattern: gunbc_runner_per_slot_dropin_path)
     && string_contains(s: fh, pattern: "# runner-slot membership")
-    && string_contains(s: fh, pattern: "# runner-service activation (gunbc.runner_service_activation)")
+    && string_contains(s: fh, pattern: "# runner-service activation (gunbc.runner.runner_service_activation)")
     && string_contains(s: fh, pattern: "REFUSED-UNMODELED-HOST")
 }
 
@@ -520,7 +520,7 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
 // THE FABRIC TERM IS DERIVED FROM THE ROSTER, NOT TRANSCRIBED. This row read `fabric-cell=0` and
 // n == 33 while srv1 carried no fabric slot. #12011 made srv1-13 a fabric execution member, so the
 // fixture's unobserved fabric position is now a denial (one observer-unavailable refusal per host
-// that expects cells, gunbc.fabric_cell_observation_admission fabric_cell_observation_unobserved)
+// that expects cells, gunbc.fabric.fabric_cell_observation_admission fabric_cell_observation_unobserved)
 // and the row went red with the fold behaving as declared. The fixture's own terms -- 31 surplus
 // slot names, 2 activation transitions -- stay spelled out, because they ARE the incident.
 fn srv1_fabric_refusals() -> Int {

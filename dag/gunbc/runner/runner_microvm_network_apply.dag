@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_network_apply
+module gunbc.runner.runner_microvm_network_apply
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
@@ -24,10 +24,10 @@ import gunbc.actions_run_binding {
   fleet_converge_expected_host_env_name, rlm_expected_revision_env_name,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
 }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.typed_remote_file_write {
@@ -35,21 +35,21 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
   typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileWriteAdmissionRefused, TypedRemoteFileWriteAdmitted,
 }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy, runner_host_deploy_for, runner_slot_identities_of,
   RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
-import gunbc.runner_host_grants { bootstrap_principal_is_not_the_grantee }
-import gunbc.runner_host_file_converge {
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_file_converge {
   RunnerHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
   runner_host_root_only_find_argv, classify_root_only_paths, runner_host_path_metadata_wire,
   elevated_argv,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import extdeps.tools { CliTool, apt_package_of }
-import gunbc.host_cli_dependency { microvm_network_host_cli_requirements }
-import gunbc.host_effect { HostEffectTransport, FleetSsh, LocalShell, SshShell, EmitArtifactThenThinRun }
-import gunbc.host_effect_realize {
+import gunbc.host.host_cli_dependency { microvm_network_host_cli_requirements }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host.host_effect_realize {
   Srv3HostPredicate,
   Srv3PredicateHolds,
   Srv3PredicateFails,
@@ -58,18 +58,18 @@ import gunbc.host_effect_realize {
   srv3_read_token, Srv3EffectiveUserId, Srv3TokenObserved, Srv3TokenAbsent, Srv3TokenUnobserved,
 }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv, executor_privileged_operation_elevated_command }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   runner_microvm_shared_host_grain,
   runner_microvm_nft_read_operation,
 }
-import gunbc.runner_microvm_network_converge {
+import gunbc.runner.runner_microvm_network_converge {
   StagedFile, converge_staged_files, microvm_network_converge_operations,
   runner_microvm_staging_dir,
 }
 
 // THE MICROVM NETWORK'S MUTATING HALF, EXECUTED BY THE HOST'S ADMINISTRATOR AND BY NOBODY ELSE.
 //
-// WHAT THIS DISSOLVES. gunbc.runner_microvm_network_converge models the whole converge -- the files
+// WHAT THIS DISSOLVES. gunbc.runner.runner_microvm_network_converge models the whole converge -- the files
 // each slot and each host needs, and the ordered privileged operations that install them -- and
 // grants the job user the READBACKS ONLY. The reason is stated there and is not a preference:
 // every file the converge stages is staged unprivileged, and the job user is the principal every
@@ -79,8 +79,8 @@ import gunbc.runner_microvm_network_converge {
 // it may not CHOOSE the content the host then executes as root.
 //
 // SO THE PRINCIPAL CHANGES, NOT THE GRANT. This module is the apply half under
-// gunbc.fleet_bootstrap_principal executor_bootstrap_principal, reached over the fleet SSH edge,
-// exactly as gunbc.runner_host_file_converge already writes root-evaluated files. The job user
+// gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal, reached over the fleet SSH edge,
+// exactly as gunbc.runner.runner_host_file_converge already writes root-evaluated files. The job user
 // gains nothing: microvm_network_granted_operations still returns the readbacks alone, and
 // re-admitting the install operations to THAT roster would be granting the job user the pair the
 // frontier refused. The roster has one principal, and it is not this one.
@@ -105,7 +105,7 @@ import gunbc.runner_microvm_network_converge {
 //
 // WHAT IT STILL DOES NOT CLOSE, SAID HERE RATHER THAN LEFT TO BE DISCOVERED. The job user holds a
 // path-unrestricted NOPASSWD grant over /usr/bin/install and /usr/bin/systemctl on srv1 today, from
-// gunbc.ci_deploy_sudoers and not from anything this module or the operation roster renders. That
+// gunbc.ci.ci_deploy_sudoers and not from anything this module or the operation roster renders. That
 // grant is arbitrary root by itself, so nothing here makes the host safe for untrusted pull
 // requests; what it does is stop the microVM network from being a REASON to grant that pair. The
 // loss is rostered at gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant and the
@@ -116,10 +116,10 @@ import gunbc.runner_microvm_network_converge {
 // AND IT INSTALLS; IT DOES NOT CONVERGE. This module reads back what it installed -- every staged
 // path root-only, every operation's exit, and the ruleset as the kernel lists it -- and records
 // that digest. It does NOT mint a ConvergedSlotNetwork: that value says what the host IS at a
-// generation and is produced only by gunbc.runner_microvm_network_observe runner_microvm_network_observe_wet from live readings, which
+// generation and is produced only by gunbc.runner.runner_microvm_network_observe runner_microvm_network_observe_wet from live readings, which
 // is why the two are separate modes and separate receipts.
 
-// THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner_microvm_network_converge
+// THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner.runner_microvm_network_converge
 // runner_microvm_staging_dir is the authority for where staged content lives and for the source
 // every InstallFile names; this module supplies the scope and the ancestor check over that same
 // value, so the directory the administrator creates and the directory the installs read from cannot
@@ -135,7 +135,7 @@ data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
 // ownership decides the leaf's safety is the one the check must reach.
 //
 // THE PREFIXES COME FROM gunbc.file_access, WHICH IS THE ONE PLACE THAT DERIVES THEM. This fold was
-// copied here from gunbc.runner_host_file_converge runner_host_path_ancestors, separator codepoint
+// copied here from gunbc.runner.runner_host_file_converge runner_host_path_ancestors, separator codepoint
 // included, because that function filters to its own /etc scope and so could not be called directly
 // (review 69712). Copying it made two answers to "what are the ancestor directories of this path",
 // free to drift on trailing slashes, on the separator, and on whether the leaf is included -- which
@@ -165,7 +165,7 @@ type MicrovmNetworkApplyAdmission
   | MicrovmNetworkApplyRefused { cause: String }
 
 // ONE ADMINISTRATOR TARGET FOR BOTH MODES. The apply installs as this principal and
-// gunbc.runner_microvm_network_observe reads the root-only surfaces back as it, so the account that
+// gunbc.runner.runner_microvm_network_observe reads the root-only surfaces back as it, so the account that
 // wrote the ruleset and the account that lists it are one fact, not two constructions free to drift.
 fn runner_microvm_administrator_target(host: HostIdentity) -> SshTarget {
   SshTarget {
@@ -176,7 +176,7 @@ fn runner_microvm_administrator_target(host: HostIdentity) -> SshTarget {
 
 // THE ADMINISTRATOR MAY NOT BE THE JOB USER, AND THAT IS THE WHOLE POINT OF THE MODE. If the two
 // accounts coincide on this host, reaching root "as the administrator" is reaching root as the
-// principal every CI step runs as, and the mode has moved nothing. gunbc.runner_host_file_converge
+// principal every CI step runs as, and the mode has moved nothing. gunbc.runner.runner_host_file_converge
 // refuses on exactly this condition for exactly this reason.
 fn microvm_network_apply_admission(
   host: String,
@@ -277,8 +277,8 @@ fn observe_administrator_privilege(
 // therefore anti-correlated with the property it checks -- it could only pass while the staging root
 // was traversable by a non-root principal, which is the arrangement the frontier refuses -- and the
 // first real run on srv1 refused with `the staged bytes were not established as root-only`
-// (fleet-converge run 35680600837). gunbc.host_credential_custody_converge already elevates this
-// same argv for the same reason; gunbc.runner_host_file_converge does not, because ITS subjects are
+// (fleet-converge run 35680600837). gunbc.fleet.host_credential_custody_converge already elevates this
+// same argv for the same reason; gunbc.runner.runner_host_file_converge does not, because ITS subjects are
 // world-traversable /etc directories, and copying that call shape onto a root-only subject is what
 // produced the defect. Split out as its own row so a claim can discriminate the sudo prefix without
 // a host.
@@ -535,10 +535,10 @@ fn read_back_ruleset(
 // ── The host prerequisites ──────────────────────────────────────────────────────────────────────
 
 // THE SLOT NETWORK'S HOST TOOLS ARE ENSURED HERE, BEFORE A BYTE IS STAGED, AND READ BACK. The
-// roster is gunbc.host_cli_dependency microvm_network_host_cli_requirements -- the same fact the
+// roster is gunbc.host.host_cli_dependency microvm_network_host_cli_requirements -- the same fact the
 // observe mode's helper reading depends on -- and the package and install path come off each
 // CliTool's own SourceApt row, so this module authors neither. The installer is the corpus's one
-// apt ensure, gunbc.host_effect_realize srv3_ensure_apt_tool, over FleetSsh as the administrator:
+// apt ensure, gunbc.host.host_effect_realize srv3_ensure_apt_tool, over FleetSsh as the administrator:
 // the job user holds no apt grant for the reason every mutation in this module runs as the
 // administrator. The ensure's verdict IS the readback -- Holds only after the binary tests
 // executable at its declared path -- so a tool that installs but lands elsewhere refuses.

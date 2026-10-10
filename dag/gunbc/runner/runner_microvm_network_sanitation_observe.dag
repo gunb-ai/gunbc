@@ -1,16 +1,16 @@
-module gunbc.runner_microvm_network_sanitation_observe
+module gunbc.runner.runner_microvm_network_sanitation_observe
 
 import std.types { String, NonEmptyStr, Bool }
 import std.algebra { trim }
 import std.resources { Filesystem }
 import std.content_hash { sha256_hex_digest }
 import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, tun_census_refusal_text, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable, TunAttachedQueueRequirement, tun_attached_queue_requirement }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   SlotNetworkSanitationSubject, SlotNetworkReadings,
   TapHolderObservation, TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
   TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,

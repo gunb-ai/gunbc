@@ -1,9 +1,9 @@
-module test.claim.fleet_desired_expectation_witness
+module test.claim.fleet.fleet_desired_expectation_witness_test
 
 import std.types { Bool, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import extdeps.git.publication_transport { RemoteRefMustBeAbsent, RemoteRefMustEqual }
-import gunbc.fleet_main_revision {
+import gunbc.fleet.fleet_main_revision {
   FleetDesiredRevision,
   FleetDesiredAdmitted,
   FleetDesiredAbsent,

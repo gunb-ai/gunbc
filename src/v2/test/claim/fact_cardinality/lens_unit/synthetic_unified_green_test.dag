@@ -1,4 +1,4 @@
-module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
+module v2.test.claim.fact_cardinality.lens_unit.synthetic_unified_green_test
 
 import v2.lens.fact_cardinality {
   FactCardinalityDeclFact,

@@ -1,4 +1,4 @@
-module test.claim.roadmap_forecast_witness
+module test.claim.roadmap.roadmap_forecast_witness_test
 
 import std.measure {
   millisecond,
@@ -7,10 +7,10 @@ import std.measure {
 }
 import std.types { Map }
 import v2.std.collection { empty_map, map_insert, map_lookup, Present, Absent }
-import gunbc.roadmap_belt { BeltCapacity }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_status { PlainLine, Unsigned }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_status { PlainLine, Unsigned }
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNodeIdentity,
   RoadmapNode,
@@ -20,7 +20,7 @@ import gunbc.roadmap_model {
   node_sizing_subject_id,
   ManualAcceptance,
 }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection,
   roadmap_acceptance_event_history_load,
   RoadmapAuthorityProjection,
@@ -29,13 +29,13 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes_for_accepted,
 }
 import std.keyed_row { KeyedRow }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   SizingDerived,
   NodeSizing,
   IntricacyMedium, IntricacyHigh,
   VolumeSmall, VolumeMedium,
 }
-import gunbc.roadmap_forecast {
+import gunbc.roadmap.roadmap_forecast {
   NodeSizingAssignment,
   NodeSizingAdaptation,
   node_sizing_adaptation,
@@ -108,7 +108,7 @@ fn anchor() -> ForecastAnchorObservation {
 // SIZE IS NO LONGER ON THE FIXTURE NODE. The forecast takes a sizing assignment list, so a fixture
 // declares the node and, separately, the cell it wants that node to be sized at; a node with no
 // assignment is the unsized case. That split is what keeps the positive controls below executable
-// while gunbc.roadmap_sizing derive_task_sizing is still a stub -- the production assignment list
+// while gunbc.roadmap.roadmap_sizing derive_task_sizing is still a stub -- the production assignment list
 // is empty, and these witnesses supply their own.
 fn fixture_node(id: String) -> RoadmapNode {
   RoadmapNode {
@@ -630,7 +630,7 @@ test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Boo
 // frontier_sets_from_live_history() and handing the forecast an empty RoadmapDocument looks
 // cheaper -- and is, when measured with claim_batch, which has no cross-claim share: 613,121 eval
 // steps against 240,465. That reading is over the wrong population.
-// v2.workflow.floor_pure_producer_share enrols gunbc.roadmap_authority.roadmap_authority_projection
+// v2.workflow.floor_pure_producer_share enrols gunbc.roadmap.roadmap_authority.roadmap_authority_projection
 // as a carried-input warm row over roadmap_acceptance_event_history_load, so on the floor the
 // projection is SERVED rather than derived -- which is why the required run measures this identity
 // at 211,628 where claim_batch measures 613,121. frontier_sets_from_live_history is not enrolled,

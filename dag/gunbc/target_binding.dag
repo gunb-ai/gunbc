@@ -357,7 +357,7 @@ type RawDiagnosticClassObservation {
 
 // THE OBSERVATION'S PROVENANCE, FIVE DIGESTS THAT EACH CLOSE ONE WAY THE READING COULD BE ABOUT
 // SOMETHING ELSE. The field set is the Step 0 binding-provenance contract's receipt roster
-// (gunbc.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
+// (gunbc.namespace.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
 // census that has no strip: source vector, compiler executable, resolver policy, class schema,
 // closure. What each digest binds:
 //

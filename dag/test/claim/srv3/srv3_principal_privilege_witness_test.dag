@@ -1,4 +1,4 @@
-module test.claim.srv3_principal_privilege_witness
+module test.claim.srv3.srv3_principal_privilege_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
@@ -16,7 +16,7 @@ import extdeps.tools.chown { chown_argv, chown_binary_path, ChownOwnerIds }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chmod { chmod_add_executable_argv, chmod_binary_path, chmod_path_resolved_program }
 import extdeps.sudo.elevation { sudo_elevate, sudo_program }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   Srv3EffectiveOwner,
   Srv3EffectiveOwnerObserved,
   Srv3EffectiveOwnerUnobserved,

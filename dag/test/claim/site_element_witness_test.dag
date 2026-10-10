@@ -15,13 +15,13 @@ import extdeps.google.issue_tracker {
   IssueActionEnabled, IssueActionDisabled,
   issue_tracker_visual_tokens,
 }
-import gunbc.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
-import gunbc.roadmap_issue_status {
+import gunbc.roadmap.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
+import gunbc.roadmap.roadmap_issue_status {
   IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
   DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_statuses, issue_display_status_is_closed,
 }
-import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
-import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
+import gunbc.roadmap.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap.roadmap_lineage { LineageCyclic }
 import gunbc.roadmap.roadmap_hierarchy_view {
   NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_derived,

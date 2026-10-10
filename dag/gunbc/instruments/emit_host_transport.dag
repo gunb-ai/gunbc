@@ -1,11 +1,11 @@
-module tools.emit_host_transport
+module gunbc.instruments.emit_host_transport
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.python
 import extdeps.go
 import extdeps.node
@@ -33,7 +33,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent
 }
 import v2.std.node { Atom, Node, TypeNode }
-import tools.emit_host_fixtures {
+import gunbc.instruments.emit_host_fixtures {
   rust_stdout_fixture_source,
   python_stdout_fixture_source,
   go_stdout_fixture_source,

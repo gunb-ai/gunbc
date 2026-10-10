@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // A UNIT VARIANT USED AS A PHANTOM TYPE ARGUMENT IS BOUND EXACTLY WHEN THE RESOLVER WOULD RESOLVE IT, under
-// the measured compile compile_dag_diagnostic_census arms (gunbc.type_ref_hit_ne_bind_measure). The
+// the measured compile compile_dag_diagnostic_census arms (gunbc.type_ref_hit_ne_bind_measure.authority). The
 // measure's binding authority used to have no arm for a variant, so every such leaf was charged to a
 // missing import: a census whose closure reached std.measure -- which passes its own Quantity and
 // scale variants as type arguments -- reported 147 blocking UnresolvedType rows, while the unmeasured

@@ -218,8 +218,8 @@ test fn the_survey_keeps_both_evidence_rows() -> Bool {
 
 test fn the_survey_keeps_its_remaining_consumer_labels() -> Bool {
   let rows = interpreter_replacement_survey().consumer_rows
-  label_present(rows: rows, name: "gunbc.v1_interpreter_primitive_surface")
-    && label_present(rows: rows, name: "gunbc.v1_interpreter_dispatch_emit")
+  label_present(rows: rows, name: "gunbc.v1.v1_interpreter_primitive_surface")
+    && label_present(rows: rows, name: "gunbc.v1.v1_interpreter_dispatch_emit")
     && label_present(rows: rows, name: "v1_compiler.bin.claim_executor")
     && label_present(rows: rows, name: "v1_compiler.bin.interp_recorded_fixture_witness")
     && label_present(rows: rows, name: "v1_compiler.bin.auth_declared_but_unwired_witness")
@@ -316,8 +316,8 @@ test fn the_region_labels_are_pinned_in_order() -> Bool {
   list_length(items: labels) == 4
     && nth_label_is(labels: labels, index: 0, name: "v1_compiler.v1_interpreter")
     && nth_label_is(labels: labels, index: 1, name: "v1_compiler.v1_interpreter_dispatch_generated")
-    && nth_label_is(labels: labels, index: 2, name: "gunbc.v1_interpreter_primitive_surface")
-    && nth_label_is(labels: labels, index: 3, name: "gunbc.v1_interpreter_dispatch_emit")
+    && nth_label_is(labels: labels, index: 2, name: "gunbc.v1.v1_interpreter_primitive_surface")
+    && nth_label_is(labels: labels, index: 3, name: "gunbc.v1.v1_interpreter_dispatch_emit")
 }
 
 // The four contract fields by equality. new_root in particular was corrected once
@@ -424,7 +424,7 @@ test fn the_five_retire_reasons_are_pinned_and_keep_their_two_classes_apart() ->
   let rows = interpreter_replacement_survey().consumer_rows
   row_disposition_matches(
     rows: rows,
-    name: "gunbc.v1_interpreter_primitive_surface",
+    name: "gunbc.v1.v1_interpreter_primitive_surface",
     p: retired_because(reason: "its entire subject is X's primitive dispatch arms"),
   )
     && row_disposition_matches(
@@ -434,7 +434,7 @@ test fn the_five_retire_reasons_are_pinned_and_keep_their_two_classes_apart() ->
        )
     && row_disposition_matches(
          rows: rows,
-         name: "gunbc.v1_interpreter_dispatch_emit",
+         name: "gunbc.v1.v1_interpreter_dispatch_emit",
          p: retired_because(reason: "the emitter whose only output is X's dispatch table"),
        )
     && row_disposition_matches(

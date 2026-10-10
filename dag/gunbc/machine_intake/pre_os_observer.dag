@@ -1,23 +1,23 @@
-module gunbc.machine_intake_pre_os_observer
+module gunbc.machine_intake.pre_os_observer
 
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { firmware_pxe_mac_rendering }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { firmware_pxe_mac_rendering }
 import std.types { Bool, NonEmptyStr, String }
-import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
+import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly,
   FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware, firmware_console_report,
 }
-import gunbc.host_memory_qualification {
+import gunbc.host.host_memory_qualification {
   HostBootOutcome, BootReachedOperatingSystem, BootOutcomeUnobserved, RepeatingFirmwareReset, BootStalledWithoutReset,
 }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { FreeSemigroup, Empty }
 
 
-// Every reader below frames the SOL transcript with gunbc.machine_intake_terminal_transcript terminal_transcript_lines,
+// Every reader below frames the SOL transcript with gunbc.machine_intake.terminal_transcript terminal_transcript_lines,
 // the one authority for the channel's CR NL terminator (shared with
-// gunbc.machine_intake_host_capture_envelope); no reader trims a line of its own.
+// gunbc.machine_intake.host_capture_envelope); no reader trims a line of its own.
 
 // Activation acknowledgement ONLY. Neither this banner nor a wrapper's lifetime
 // establishes liveness, coverage, persistence, training or OS boot.

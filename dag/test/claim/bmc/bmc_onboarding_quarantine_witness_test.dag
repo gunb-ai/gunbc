@@ -1,4 +1,4 @@
-module test.claim.bmc_onboarding_quarantine_witness_test
+module test.claim.bmc.bmc_onboarding_quarantine_witness_test
 
 import std.types { Bool, Int, List, Set, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -22,11 +22,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // INSTRUMENT. v2.std.decl_index.decl_facts, the parse-only declaration census, over the two
 // directories that hold the subjects: dag/gunbc/machine_intake (every gunbc.machine_intake_*
-// module) and dag/gunbc/bmc (gunbc.bmc_onboarding and its siblings). Each fn row carries its
+// module) and dag/gunbc/bmc (gunbc.bmc.bmc_onboarding and its siblings). Each fn row carries its
 // body SKELETON - callee atoms and record-constructor spellings - and each type row its
 // field-type atoms; atoms are read with v2.lens.effect_reach.atom_identities_in_node, the
 // reader the live-read classifier uses. Vocabularies are derived, not listed: every name
-// declared under gunbc.bmc_onboarding is the onboarding vocabulary, every name declared under
+// declared under gunbc.bmc.bmc_onboarding is the onboarding vocabulary, every name declared under
 // gunbc.machine_intake is the intake vocabulary, and a declaration is a hit when an atom of
 // it spells a vocabulary name. onboarding_and_intake_vocabularies_share_no_spelling executes
 // that the lexeme grain is unambiguous today; were a spelling ever declared on both sides the
@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // signature census, export_signature_facts, refuses over any pool holding an optional-typed
 // parameter (marshal_type_expr_ref "empty authored type name" on
 // extdeps.shell.credentials.env_credential_token corpus-wide and on
-// gunbc.machine_intake_receipt.receipt_previous_atom inside this very pool), and
+// gunbc.machine_intake.receipt.receipt_previous_atom inside this very pool), and
 // v2.std.fn_index carries parameter names only. So this wall makes two shapes unwritable in
 // the pool - a CARRIER joining or holding the legacy lifecycle, and a declaration whose body
 // IS a legacy call - and does not see a fn that takes BmcOnboardingPhase and consumes it under
@@ -116,14 +116,14 @@ data onboarding_quarantine_control_facts: List<DeclFact> = decl_facts(pool_roots
 data onboarding_quarantine_fixture_prefix: String = "test.fixture.onboarding_quarantine."
 
 data live_subject: OnboardingQuarantineSubject = OnboardingQuarantineSubject {
-  onboarding_module: "gunbc.bmc_onboarding",
+  onboarding_module: "gunbc.bmc.bmc_onboarding",
   intake_module_prefix: "gunbc.machine_intake",
   consumer_population: DeclarationsUnder { prefix: "gunbc.machine_intake" },
   bridging_population: EveryDeclaration
 }
 
 data fixture_control_subject: OnboardingQuarantineSubject = OnboardingQuarantineSubject {
-  onboarding_module: "gunbc.bmc_onboarding",
+  onboarding_module: "gunbc.bmc.bmc_onboarding",
   intake_module_prefix: "gunbc.machine_intake",
   consumer_population: DeclarationsUnder { prefix: onboarding_quarantine_fixture_prefix },
   bridging_population: DeclarationsUnder { prefix: onboarding_quarantine_fixture_prefix }
@@ -187,7 +187,7 @@ fn onboarding_quarantine_hits(lexemes: List<String>, spellings: Set<String>) -> 
 // lifecycle — a bridge is defined as consuming AND naming, so a non-consumer's intake hits
 // decide nothing and are not computed. Each required-CI
 // witness evaluates this fold alone (no cross-witness memoization), under the 500ms required-floor
-// CPU safety limit (a refusal, distinct from the gunbc.witness_row_cost migration disclosure whose
+// CPU safety limit (a refusal, distinct from the gunbc.witness.witness_row_cost migration disclosure whose
 // value happens to coincide), so the fold's cost is a fact about the wall. Hits are returned in
 // lexeme order, not vocabulary order; every consumer reads emptiness or membership.
 fn onboarding_quarantine_examine(

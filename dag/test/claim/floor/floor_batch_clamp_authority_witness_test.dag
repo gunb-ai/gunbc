@@ -1,4 +1,4 @@
-module test.claim.floor_batch_clamp_authority_witness
+module test.claim.floor.floor_batch_clamp_authority_witness_test
 
 import std.realization_schedule {
   RunnableBatchClamp,
@@ -7,7 +7,7 @@ import std.realization_schedule {
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, second_count }
 import std.types { NonEmptyStr }
-import gunbc.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
+import gunbc.ci.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,7 +31,7 @@ fn positional_clamp_row_zero() -> RunnableBatchClamp {
 
 test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
   let c = positional_clamp_row_zero()
-  (c.authority.module_path as String == "gunbc.ci_spec")
+  (c.authority.module_path as String == "gunbc.ci.ci_spec")
     && (c.authority.decl_name as String == "gunbc_ci_floor_batch_clamp_params")
     && (second_count(s: c.overhead) == 240)
 }
@@ -43,7 +43,7 @@ test fn a_nonzero_rate_clamp_does_move_with_the_unit_count() -> Bool {
     overhead: second(count: 300),
     per_unit: millisecond(count: 1000),
     authority: decl_ref(
-      module_path: "test.claim.floor_batch_clamp_authority_witness",
+      module_path: "test.claim.floor.floor_batch_clamp_authority_witness_test",
       decl_name: "a_nonzero_rate_clamp_does_move_with_the_unit_count",
     ),
   }

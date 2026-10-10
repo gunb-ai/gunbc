@@ -16,7 +16,7 @@ import v2.std.fn_index { FnArrowDecl }
 import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.text { String }
 
-data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
+data sn_source_rel_path: String = "src/v2/compiler/normalize.dag"
 
 data fixture_transport_facts: List<ModuleImportFact> = [
   ModuleImportFact {
@@ -40,7 +40,7 @@ data fixture_path_data_inits: List<DataInitDecl> = [
     qualified_name: "fix.transport.sn_source_rel",
     module: "fix.transport",
     name: "sn_source_rel",
-    literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
+    literal_fp: "str:\"src/v2/compiler/normalize.dag\""
   }
 ]
 
@@ -152,7 +152,7 @@ data fixture_prose_doc_inits: List<DataInitDecl> = [
     qualified_name: "fix.prose_witness.witness_doc",
     module: "fix.prose_witness",
     name: "witness_doc",
-    literal_fp: "str:\"receipt cites src/v2/compiler/03_normalize.dag but never reads it\""
+    literal_fp: "str:\"receipt cites src/v2/compiler/normalize.dag but never reads it\""
   }
 ]
 

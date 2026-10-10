@@ -789,7 +789,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // external review of the drop row itself.
 //
 // THE POPULATION IS TWO CALLERS, AND THEY ARE NAMED. `gunbc.srv3.srv3_boot_once_cd` and
-// `gunbc.machine_intake_mtcollins1_boot_run` publish authorization claim state under
+// `gunbc.machine_intake.mtcollins1_boot_run` publish authorization claim state under
 // `authorization_claim_store_root`, and that root is a bare path constant: no
 // modeled directory ownership or mode authority stands beside it. Mode 0600 on the generation file is
 // therefore the ONLY confidentiality that state has, including for free-form abort-cause text, so
@@ -811,7 +811,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // so equally failure-atomic -- with the published mode declared by the store's own model rather than
 // left to whatever umask the writing process runs under. A store with more than one declared reader
 // needs it: under a `umask 077` step every generation publishes 0600 and the other reader is locked
-// out (gunbc.fabric_storage_placement). It is not a confidentiality binding; that remains
+// out (gunbc.fabric.fabric_storage_placement). It is not a confidentiality binding; that remains
 // OwnerOnlyCreateOnly's, with its declared limitation above.
 type CasGenerationPublication
   = DefaultAccessCreateOnly

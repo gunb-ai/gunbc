@@ -1,4 +1,4 @@
-module test.claim.runner_slot_provision
+module test.claim.runner.runner_slot_provision_witness_test
 
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr, List, String }
@@ -11,7 +11,7 @@ import extdeps.github.actions_runner {
   actions_runner_binary_artifact_for_arch,
   actions_runner_download_url,
 }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   runner_host_deploy_for,
   RunnerHostDeployFound,
@@ -22,7 +22,7 @@ import gunbc.runner_host_deploy {
   gunbc_ci_github_app,
   RunnerHostDeploy,
 }
-import gunbc.runner_slot_provision {
+import gunbc.runner.runner_slot_provision {
   runner_slot_member_ownership,
   runner_slot_member_observed,
   runner_slot_name_in_host_grammar,
@@ -61,15 +61,15 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Owned }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   host_fabric_slot_count,
   host_memory_admitted_width,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
-import gunbc.runner_slot_retirement {
+import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
   SlotRetirementEvidencePresent,
@@ -82,8 +82,8 @@ import gunbc.runner_slot_retirement {
   CgroupAbsent,
   CgroupUnobserved,
 }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
-import gunbc.fleet_host_identity { operator_host_srv4 }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
@@ -307,7 +307,7 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
 // THE POSITIVE CONTROL, without which the row above is satisfied by a seam that refuses everything.
 // Two Actions slots are observed, so a plan must be produced AND must propose adding every missing
 // Actions slot: srv1's committed width less its one shakedown fabric member (srv1-13, a committed
-// member by identity -- gunbc.runner_slot_allocation host_committed_identities_at) less the two
+// member by identity -- gunbc.runner.runner_slot_allocation host_committed_identities_at) less the two
 // observed.
 test fn an_observed_host_plans_the_missing_slots() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
@@ -381,9 +381,9 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // NO DEPLOY ROW OUT-COMMITS THE MEMORY BUDGET, and this is a join between two authorities rather
 // than a restatement of one.
 //
-// runner_count derives from gunbc.runner_slot_allocation gunbc_runner_committed_width, which is the
+// runner_count derives from gunbc.runner.runner_slot_allocation gunbc_runner_committed_width, which is the
 // MINIMUM over the memory, CPU and disk axes. host_memory_admitted_width is the memory axis ALONE.
-// The memory-only gunbc.fleet_host_budget declared_runner_count_for that used to stand here was a
+// The memory-only gunbc.fleet.fleet_host_budget declared_runner_count_for that used to stand here was a
 // SECOND producer of the committed width and is deleted; the axis it approximated is named directly. Asserting equality between them would be wrong as well as vacuous -- since the 2026-08-23
 // CPU-axis change the CPU axis binds first on srv1, srv3 and srv4, so the two numbers legitimately
 // differ (twenty-one committed against a memory admission of twenty-seven or twenty-nine).
@@ -758,7 +758,7 @@ fn emits_mask(lines: List<String>) -> Bool {
 // THE SURPLUS FIXTURE INDICES FOLLOW THE COMMITTED WIDTH, NOT A TRANSCRIBED ONE. These rows drove
 // srv4-13 and srv1-13 as the first surplus slots while the fleet committed 12; under the 2026-09-19
 // one-core-per-slot ruling srv4 commits 17 and srv1 15, so the required retirees derived by
-// gunbc.runner_width_transition are srv4-18..21 and srv1-16..50, and a slot-13 fixture is a MEMBER
+// gunbc.runner.runner_width_transition are srv4-18..21 and srv1-16..50, and a slot-13 fixture is a MEMBER
 // whose plan is membership, not retirement. The fixtures name srv4-18 / srv4-19 / srv1-16 -- the
 // first surplus index on each host -- so each row still exercises the retirement route.
 //

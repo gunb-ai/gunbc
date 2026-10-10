@@ -1,4 +1,4 @@
-module test.claim.host_converge_delta_witness
+module test.claim.host.host_converge_delta_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,28 +1,28 @@
 module test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test
 
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming }
-import gunbc.machine_intake_megarac_sensor_observation { SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming }
-import gunbc.machine_intake_megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
+import gunbc.machine_intake.megarac_sensor_observation { SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming }
+import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import std.process { ExitSuccess, ExitFailure, exit_failure }
-import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
+import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import std.optional { Present }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, StateAbsent, StateEnabled, StateUnrecognized, HealthOk, HealthCritical,
   redfish_memory_member_of, redfish_processor_member_of,
   RedfishCollectionPage, redfish_collection_page_of, RedfishLinkSameOrigin, RedfishLinkRefused, redfish_same_origin_link,
 }
-import gunbc.machine_intake_sel_stimulus_listener { sel_read }
+import gunbc.machine_intake.sel_stimulus_listener { sel_read }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering, ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
   IpmiBootCdrom, aarch64_uefi_once_boot_selection,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootRunRecord, run_record_not_taken,
   BootParam5Read, BootParam5Unread, BootParam5NotTaken, BootOverrideConsumption,
   OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt, OverrideNotHandedOff, OverrideConsumptionUnread,
@@ -42,16 +42,16 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_collection_member_bound,
   console_size_of_stat, mtcollins1_systems_link, BmcLinkUnpublished,
 }
-import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
 import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent }
-import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
+import gunbc.machine_intake.pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import std.measure { byte_size, byte_size_count, second_count }
 import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg }
-import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_read_order, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, BmcAnomaly, MemoryBelowRecordedPopulation, SlotRow, PopulationOperatorAttested, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
+import gunbc.machine_intake.ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_read_order, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, BmcAnomaly, MemoryBelowRecordedPopulation, SlotRow, PopulationOperatorAttested, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -67,7 +67,7 @@ fn smpro_probed(outcomes: List<SmproProbeOutcome>) -> SmproReading {
 
 // ── SUPPLIED FIXTURES ────────────────────────────────────────────────────────────────────────
 //
-// THE SEL ROWS ARE mtcollins1's OWN. gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// THE SEL ROWS ARE mtcollins1's OWN. gunbc.machine_intake.mtcollins1_32dimm_bringup_observation
 // transcribes records 1004 (OEM, manufacturer 00cd3a) and 1084/1085 (threshold events with the
 // seventh "Reading" field) from this controller; they are re-rendered here in `ipmitool sel elist`
 // form with hexadecimal ids (1004 = 3ec, 1084 = 43c, 1085 = 43d). The boot-restart row follows
@@ -91,7 +91,7 @@ data memory_member_absent_fixture: String = "{\"Id\": \"DIMM_S1_A1\", \"DeviceLo
 data processor_member_fixture: String = "{\"Id\": \"CPU0\", \"Socket\": \"CPU 0\", \"TotalCores\": 80, \"Status\": {\"State\": \"Enabled\", \"Health\": \"OK\"}}"
 
 // THE SENSOR TABLE IS mtcollins1's OWN LINES, EDITED. Six lines are copied from its committed
-// `sdr elist` (gunbc.machine_intake_mtcollins1_32dimm_bringup_observation mtcollins1_sdr_capture,
+// `sdr elist` (gunbc.machine_intake.mtcollins1_32dimm_bringup_observation mtcollins1_sdr_capture,
 // read with both sockets up), and the two CPU1 rails are then rewritten to "ns | No Reading": the
 // shape a dark socket-1 VRM would print. No socket-1-dark sensor table from this BMC is in the corpus.
 data sensors_socket1_dark_fixture: String = "CPU0_0V75_PCP    | 20h | ok  | 19.0 | 1.06 Volts\nCPU0_CPU_VCORE   | 47h | ok  | 19.40 | 1.03 Volts\nCPU0_CPU_Status  | D9h | ok  |  3.2 | \nCPU1_0V75_PCP    | 2Eh | ns  | 19.0 | No Reading\nCPU1_CPU_VCORE   | 58h | ns  | 19.51 | No Reading\nFAN0_0_Speed     | 01h | ok  | 29.0 | 5802 RPM"
@@ -123,7 +123,7 @@ fn no_run() -> MtCollins1BootRunRecord {
 }
 
 // THE NAMING THE FIXTURE'S SENSOR READING CARRIES IS THE REAL ONE: minted through the MegaRAC admission of
-// the managed host mtcollins1 (gunbc.megarac_managed_host), as mtcollins1_boot_sensors mints it before it
+// the managed host mtcollins1 (gunbc.host.megarac_managed_host), as mtcollins1_boot_sensors mints it before it
 // reads. A host that stopped admitting leaves the fixture with no sensor reading, and the sensor claims red.
 fn sensors_socket1_dark() -> SensorReading {
   match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacSdrSocketNaming) {
@@ -307,7 +307,7 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 // ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
 
 // 2 SEL snapshots, 1 SDR dump, 1 sensor read and the SMpro probes (2 sockets x the planned read order,
-// gunbc.machine_intake_ampere_smpro_observation smpro_pass_read_order) x (20 s + 5 s
+// gunbc.machine_intake.ampere_smpro_observation smpro_pass_read_order) x (20 s + 5 s
 // kill-after) + 48 Redfish reads x 15 s + 60 s publish. The SMpro term was the literal 10 until #13058
 // grew the read order to 24 registers per socket, which left this claim red on main.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
@@ -381,7 +381,7 @@ test fn with_no_recorded_topology_a_missing_processor_is_a_question_not_a_shortf
   !any_contains(xs: f, pattern: "Processor member(s);") && any_contains(xs: f, pattern: "the expected topology was not recorded for this attempt")
 }
 
-// A BUNDLE WHOSE ATTEMPT NAMED NO RECEIPT: the configuration gunbc.host_boot_attempt_admission
+// A BUNDLE WHOSE ATTEMPT NAMED NO RECEIPT: the configuration gunbc.host.host_boot_attempt_admission
 // projects then, every field not recorded.
 fn no_receipt_configuration() -> AttemptConfigurationReceipt {
   attempt_configuration_not_recorded(host: "mtcollins1", attempt: "witness", reason: "the witness attempt named no attempt receipt")

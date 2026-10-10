@@ -1,4 +1,4 @@
-module v2.test.self_host.compiler_frontier_emit_probe
+module v2.test.claim.self_host.compiler_frontier_emit_probe_test
 
 import v2.compiler.self_host.frontier_probe_types {
   UnknownProbeCause,

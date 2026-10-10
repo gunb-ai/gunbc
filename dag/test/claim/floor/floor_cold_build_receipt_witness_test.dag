@@ -1,10 +1,10 @@
-module test.claim.floor_cold_build_receipt_witness_test
+module test.claim.floor.floor_cold_build_receipt_witness_test
 
 import std.types { Bool, String, Int, List }
 import std.decl_ref { DeclarationRef }
 import std.measure { byte_size, byte_size_count, second, second_count, minute, minute_to_second, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
 import extdeps.toolchain.types { Aarch64, X86_64 }
-import gunbc.floor_cold_build_receipt {
+import gunbc.floor.floor_cold_build_receipt {
   ColdBuildSubject, ColdBuildReceipt, ColdBuildVerdict,
   ColdBuildWithinShape, ColdBuildSubjectNotCold, ColdBuildWallExceedsTimeout,
   ColdBuildPeakExceedsCell, ColdBuildWorkspaceExceedsGrant,
@@ -12,9 +12,9 @@ import gunbc.floor_cold_build_receipt {
   gunbc_floor_cold_build_receipt_standing, ColdBuildReceiptPending, ColdBuildReceiptTaken,
   cold_wall_prediction_ceiling, subject_is_cold,
 }
-import gunbc.floor_demand { gunbc_floor_job_wall_receipt_2026_09_19 }
-import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.floor.floor_demand { gunbc_floor_job_wall_receipt_2026_09_19 }
+import gunbc.witness.witness_floor_workflow { witness_floor_lane_timeout }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
 fn cold_subject() -> ColdBuildSubject {
   ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: false }
@@ -135,8 +135,8 @@ test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_bas
         && names_declaration(refs: p.instruments, module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun")
         && names_declaration(refs: p.instruments, module_path: "extdeps.linux.cgroup_v2_memory", decl_name: "CgroupMemoryInterfaceFile")
         && names_declaration(refs: p.instruments, module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command")
-        && names_declaration(refs: p.revises, module_path: "gunbc.runner_microvm", decl_name: "runner_microvm_workspace_grant")
-        && names_declaration(refs: p.revises, module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components")
+        && names_declaration(refs: p.revises, module_path: "gunbc.runner.runner_microvm", decl_name: "runner_microvm_workspace_grant")
+        && names_declaration(refs: p.revises, module_path: "gunbc.floor.floor_demand", decl_name: "gunbc_floor_storage_components")
   }
 }
 

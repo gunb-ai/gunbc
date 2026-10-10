@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // repair had over-reached in the opposite direction.
 //
 // MEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry
-// src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them
+// src/v2/compiler/compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them
 // E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5,
 // allocate_literal 4, step 3, init 3, and a tail of ones and twos).
 //

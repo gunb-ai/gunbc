@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_boot_dry_realization
+module gunbc.machine_intake.mtcollins1_boot_dry_realization
 
 import extdeps.tools.gnu_coreutils { readlink_command }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -23,9 +23,9 @@ import extdeps.tools.env { EnvSet }
 import extdeps.ssh.openssh_client_commands { ssh_add_list_identities_command }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_sol_activate_preamble }
 import extdeps.bmc.ipmi { ipmitool_sol_operational_banner }
-import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix }
-import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_watcher_path, mtcollins1_sol_notice_token_env }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
+import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_watcher_path, mtcollins1_sol_notice_token_env }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
 import gunbc.remote_host_model { ModeledRemoteHost, remote_host_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings, wall_clock_unix }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
@@ -40,7 +40,7 @@ import v2.std.operation_argv { InputText, InputTextList }
 // transition belongs to its own model; this module places them side by side, lifts their bindings into
 // the composite state, and owns only the handlers whose effect spans two of them (a collector the BMC
 // session feeds and the worker's filesystem records). The real entry --
-// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 -- runs unchanged over it.
+// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 -- runs unchanged over it.
 type MtCollins1BootWorld {
   bmc: BmcWorld
   fs: ModeledFilesystem
@@ -71,7 +71,7 @@ fn agent_listing(agent: ModeledSshAgent) -> ShellExchangeObservation {
 
 // THE WORKER'S PROCESSES: the SOL collector the attempt starts, and the notice watcher the boot step
 // starts before the entry runs. A live process is visible the way the production observers read it
-// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_collector_observe, sol_observer_refusal_of):
+// (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_collector_observe, sol_observer_refusal_of):
 // /proc/<pid>/stat, whose field 22 is the start time the hold publishes as "<pid> <starttime>", and
 // /proc/<pid>/cmdline. An exited process has neither. The model writes cmdline with spaces where Linux
 // writes NULs; the production reader asks only whether it contains `ipmitool`, which both answer alike.
@@ -141,7 +141,7 @@ fn proc_cmdline_path(pid: Int) -> String {
 // THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
 // one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
 // under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
-// read from these (gunbc.managed_host_unit_hold self_process_identity) and a
+// read from these (gunbc.host.managed_host_unit_hold self_process_identity) and a
 // successor observes the holder through them (holder_process_liveness), so a worker that starts writes
 // both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
 // directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid
@@ -232,9 +232,9 @@ fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> 
   with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_snoc_item(xs: w.worker.processes, item: p), uptime_at_origin: w.worker.uptime_at_origin })
 }
 
-// THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci_spec): its token in the
+// THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci.ci_spec): its token in the
 // environment, its readiness file holding that token, and its record naming a live process -- what
-// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_await_observer requires before any BMC
+// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_await_observer requires before any BMC
 // contact. It is scenario state because the entry does not start it.
 fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: String) -> MtCollins1BootWorld {
   let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }

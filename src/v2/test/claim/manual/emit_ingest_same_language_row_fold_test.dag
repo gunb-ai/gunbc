@@ -1,4 +1,4 @@
-module v2.test.manual.emit_ingest_same_language_row_fold
+module v2.test.claim.manual.emit_ingest_same_language_row_fold_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

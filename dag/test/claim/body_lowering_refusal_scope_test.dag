@@ -1,7 +1,7 @@
-module gunbc.test.claim.body_lowering_refusal_scope_test
+module test.claim.body_lowering_refusal_scope_test
 
 import v2.std.node { Symbol }
-import gunbc.tools.body_lowering_population_probe {
+import gunbc.instruments.body_lowering_population_probe {
   BodyLoweringSubject,
   BodyLoweringObservationStanding,
   LiveFileSubject,
@@ -20,7 +20,7 @@ import gunbc.tools.body_lowering_population_probe {
   reading_of_standing,
   refusal_standing_of
 }
-import gunbc.tools.frontier_ingestion_probe { NormalizeAccepted, NormalizeOther, NormalizeRetained }
+import gunbc.instruments.frontier_ingestion_probe { NormalizeAccepted, NormalizeOther, NormalizeRetained }
 
 // A census refusal is scoped to the batch. These assert the scoping directly rather than through
 // a live census, because forcing CensusRefusedAtWorld would mean breaking the tree to observe the

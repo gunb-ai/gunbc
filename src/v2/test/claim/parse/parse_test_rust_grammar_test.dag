@@ -1,4 +1,4 @@
-module test.claim.parse_test_rust_grammar
+module v2.test.claim.parse.parse_test_rust_grammar_test
 
 data rust_extended_fn_source: String = "fn choose(x: i32, y: i32) -> i32 { let z = x + 1;\nif z > 0 { return z }\nreturn 0 }"
 
@@ -41,7 +41,7 @@ fn rust_tokenize_and_parse() -> Outcome<ParseTree> {
 // Rust lex/grammar accepts an extended function with let, if, return, and binary expressions.
 // Formerly the data row `claim_rust_extended_function_parses: TestClaim = EqualsClaim`, which no runner executes (the
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
-// v2.test.parse census (gunbc#13372).
+// v2.test.claim.parse census (gunbc#13372).
 test fn claim_rust_extended_function_parses_holds() -> Bool {
   (rust_parse_accepted(out: rust_tokenize_and_parse())) == true
 }
@@ -49,7 +49,7 @@ test fn claim_rust_extended_function_parses_holds() -> Bool {
 // Rust grammar accepts return; with layout-free return lexeme and trivia between tokens.
 // Formerly the data row `claim_rust_return_semi_parses: TestClaim = EqualsClaim`, which no runner executes (the
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
-// v2.test.parse census (gunbc#13372).
+// v2.test.claim.parse census (gunbc#13372).
 test fn claim_rust_return_semi_parses_holds() -> Bool {
   (rust_parse_accepted(
       out: rust_tokenize_and_parse_source(text: rust_return_semi_source)

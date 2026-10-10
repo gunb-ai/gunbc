@@ -1,9 +1,9 @@
-module test.claim.fleet_converge_plan_witness
+module test.claim.fleet.fleet_converge_plan_witness_test
 
-import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
+import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   ci_runner_sudo_binary_path, ci_runner_sudo_binary_probe, ci_runner_sudo_binaries,
   fleet_posix_ci_runner_sudo_grants,
   SudoInstall, SudoSystemctl, SudoRm,
@@ -12,7 +12,7 @@ import extdeps.github.actions_runner {
   actions_runner_slot_extract_script, actions_runner_release_2_336_0,
   ActionsRunnerBinaryArtifact, ActionsRunnerLinuxArm64,
 }
-import gunbc.runner_slot_provision {
+import gunbc.runner.runner_slot_provision {
   gunbc_runner_slot_privileged_commands,
   RunnerSlotMember,
   runner_slot_member_observed,
@@ -21,15 +21,15 @@ import gunbc.runner_slot_provision {
 }
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
-import gunbc.host_axis_caps { CapMember, desired_cap_member }
-import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.host.host_axis_caps { CapMember, desired_cap_member }
+import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.fabric.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   admit_fabric_cell_probe,
   fabric_cell_observation_unobserved,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.fabric_cell_observe {
   FabricCellHostProbe,
   FabricCellNamespaceProbeEntry,
   FabricCellAddressProbeEntry,
@@ -41,7 +41,7 @@ import gunbc.fabric_cell_observe {
   AddressStateRead,
   AddressStateReadRefused,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   StandingExplicitlyAbsent,
   StandingObservedDrift,
   StandingSatisfied,
@@ -74,10 +74,10 @@ import gunbc.fabric_cell_converge {
   FabricCellUnexpectedCellEvidence,
 }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_cap_lines,
   fleet_converge_cap_refusal_count,
   fabric_cell_observation_refusal_line,
@@ -145,25 +145,25 @@ import gunbc.fleet_converge_plan {
   fleet_converge_slot_lines,
   fleet_converge_slot_refusal_count
 }
-import gunbc.fabric_cell_effect {
+import gunbc.fabric.fabric_cell_effect {
   fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner_width_transition { required_retirees_for_host, RetireesKnown, RetireesUnresolved }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_width_transition { required_retirees_for_host, RetireesKnown, RetireesUnresolved }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy }
-import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
+import gunbc.runner.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.fleet_converge_plan_cli {
+import gunbc.fleet.fleet_converge_plan_cli {
   fleet_converge_plan_cli_note,
   fleet_converge_deploy_branch_admits,
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.runner_slot_retirement {
+import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
   SlotRetirementEvidencePresent,
@@ -174,7 +174,7 @@ import gunbc.runner_slot_retirement {
   srv4_transition_interruption_authorization,
   CgroupAbsent,
 }
-import gunbc.host_operation_exec { HostOperationObserved }
+import gunbc.host.host_operation_exec { HostOperationObserved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -720,7 +720,7 @@ test fn the_full_host_apply_script_carries_the_hosts_own_executor_grants() -> Bo
     observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: rostered.apply_shell, pattern: "'/usr/bin/sudo' '-n' '/usr/sbin/usermod' '-aG' 'kvm' 'ghrunner'")
-    && string_contains(s: rostered.apply_shell, pattern: "host-wide executor grants (gunbc.runner_host_grants runner_host_wide_refused_operations)")
+    && string_contains(s: rostered.apply_shell, pattern: "host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations)")
     && !string_contains(s: unrostered.apply_shell, pattern: "usermod")
     && string_contains(s: unrostered.apply_shell, pattern: "no runner host spec for srv-not-rostered")
 }
@@ -792,7 +792,7 @@ test fn a_modeled_host_proposes_the_slots_it_is_missing() -> Bool {
     && (any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST")) == false)
 }
 
-// AN OUT-OF-BAND SLOT IS REFUSED REMOVAL RATHER THAN DELETED. gunbc.runner_slot_provision cannot yet
+// AN OUT-OF-BAND SLOT IS REFUSED REMOVAL RATHER THAN DELETED. gunbc.runner.runner_slot_provision cannot yet
 // establish that a directory under /opt/actions-runner was placed there by gunbc, so ownership is
 // Absent and reconcile must produce MemberRemovalRefused. A plan that silently emitted REMOVE here
 // would delete a stranger's directory on apply.
@@ -892,7 +892,7 @@ fn sudo_n_word(spelling: String) -> String {
 // THE PRIVILEGED WORDS AN EMITTED CONVERGE SCRIPT MAY NAME ARE THE ROSTER'S, AND THESE ARE THE
 // EXECUTING EVIDENCE OF IT. Every negative clause below was TRUE of main until the srv3 apply
 // measured it: the lease guard named mkdir and flock under sudo and the extract script named tar
-// and chown, none of which gunbc.fleet_posix_accounts grants this principal. So each `!contains`
+// and chown, none of which gunbc.fleet.fleet_posix_accounts grants this principal. So each `!contains`
 // is a discriminating RED that fires the moment an ungranted binary is reintroduced -- not a
 // restatement of the closed vocabulary, because these emitters build words from strings and the
 // vocabulary can only constrain the ones routed through its accessor.

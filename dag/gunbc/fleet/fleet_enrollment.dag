@@ -1,4 +1,4 @@
-module gunbc.fleet_enrollment
+module gunbc.fleet.fleet_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
@@ -6,7 +6,7 @@ import product.host_identity { HostIdentity }
 import extdeps.cloud.hetzner { cax41_catalog }
 import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
 import product.fabric.provider_route { ProviderRoute }
-import gunbc.fleet_host_backing {
+import gunbc.fleet.fleet_host_backing {
   HostBacking,
   OwnedMachine,
   BmcVirtualMediaInstall,
@@ -16,9 +16,9 @@ import gunbc.fleet_host_backing {
   ProviderResourceBinding,
   backing_microvm_forbidding_offer,
 }
-import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
-import gunbc.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
-import gunbc.fleet_host_identity {
+import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
   operator_host_srv2,
   operator_host_srv3,
@@ -29,7 +29,7 @@ import gunbc.fleet_host_identity {
 
 // THE FLEET'S ENROLLMENT ROOT. Which hosts are in the fleet, what each is for and what supplies it
 // are declared ONCE, here, and every fleet population is derived from this roster -- the standup
-// phase matrix (gunbc.host_phase_status), the runner population, capacity control and session
+// phase matrix (gunbc.host.host_phase_status), the runner population, capacity control and session
 // residency's denominator. Before this module the same membership was re-listed as literal srv1-srv4
 // lists in several consumers, and adding a machine meant finding every list; now it is one row.
 // This module is deliberately light: a consumer that only needs WHO is enrolled imports it without
@@ -63,7 +63,7 @@ fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool 
 }
 
 // An enrollment joins three separate facts about one stable identity: what the host is FOR
-// (participation), and what SUPPLIES it (backing, gunbc.fleet_host_backing). Its allocated names live
+// (participation), and what SUPPLIES it (backing, gunbc.fleet.fleet_host_backing). Its allocated names live
 // in gunbc.hostname_allocation and are not repeated here. A known identity can exist without a
 // participation, a participation can exist before its readiness is established, and only the
 // applicable admission downstream produces runnable capacity.
@@ -90,7 +90,7 @@ data inference_serving_enrollment_participation: List<FleetParticipation> = [Inf
 
 // Interactive agent sessions are their own participation, not an attribute of CI: which hosts run
 // session containers is the fact that charges a host a sessions reservation (gunbc.session_residency)
-// and scopes CLI-provider capacity control (gunbc.fleet_capacity_control). It coincided with the CI
+// and scopes CLI-provider capacity control (gunbc.fleet.fleet_capacity_control). It coincided with the CI
 // hosts on srv1-srv4, and the coincidence was carried as copies of the same four-host list; a rented
 // CI guest runs no sessions, so the two are separate rows the first time they differ.
 data ci_runner_and_session_enrollment_participation: List<FleetParticipation> = [
@@ -107,7 +107,7 @@ data both_participation_enrollment_participation: List<FleetParticipation> = [
 // participation is the CI runner role the operator intends for them; whether that role can RUN is
 // not decided here -- the entitlement says nested virtualization is unavailable on Hetzner Cloud, so
 // the Firecracker execution path downstream refuses on it with that cause. Each is bound to its
-// provider resource id (gunbc.hetzner_cloud_acquisition), never to a console display name, because a
+// provider resource id (gunbc.fleet.hetzner_cloud_acquisition), never to a console display name, because a
 // display name is not the resource an operation may target.
 fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostBacking {
   ProviderGuest {
@@ -120,7 +120,7 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
   }
 }
 
-// The enrolled fleet. gunbc.host_phase_status reads it rather than re-listing it, so the standup
+// The enrolled fleet. gunbc.host.host_phase_status reads it rather than re-listing it, so the standup
 // matrix can never disagree with the roster about WHICH hosts exist. This is also
 // the enrollment prerequisite the srv4 OOM incident priced (fleet_subsumption_manual_gaps section
 // C): a host takes no fleet work until it is an intent row, so a host absent from this list has no

@@ -1,13 +1,13 @@
-module test.claim.fleet_capacity_gate_witness_test
+module test.claim.fleet.fleet_capacity_gate_witness_test
 
 import std.types { Bool, NonEmptyStr, List }
 import extdeps.llm.cli_lifecycle { ProviderKind, CodexCliProvider, ClaudeCliProvider }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_capacity_control {
+import gunbc.fleet.fleet_capacity_control {
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
   WithdrawnForMaintenance, WithdrawnToReduceSpend,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
 import gunbc.dispatch_selection {
   ProviderOffer, ProviderInventory,
   declared_provider_inventory_for_instance,

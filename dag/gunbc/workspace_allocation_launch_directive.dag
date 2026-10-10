@@ -1,6 +1,6 @@
 module gunbc.workspace_allocation_launch_directive
 
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.algebra { trim }
 import std.durable_compare_and_set { ExpectSlotGeneration }

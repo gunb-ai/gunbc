@@ -1,4 +1,4 @@
-module v2.test.manual.sg5_set_non_ordable_falsification
+module v2.test.claim.manual.sg5_set_non_ordable_falsification_test
 
 import v2.compiler.translate { translate_type_expression_project }
 import v2.extdeps.languages.rust {

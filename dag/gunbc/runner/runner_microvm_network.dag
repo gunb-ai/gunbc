@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_network
+module gunbc.runner.runner_microvm_network
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Port, brand }
 import std.algebra { trim }
@@ -8,14 +8,14 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
 import product.host_identity { HostIdentity }
-import gunbc.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap }
+import gunbc.runner.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
   SystemdDaemonReload, SystemdEnableUnit, ReadNftTable, EnsureOwnedDirectory,
 }
-import gunbc.fleet_posix_accounts { fleet_nft_binary_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_nft_binary_path }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   Description, After, Wants, ServiceType, SystemdServiceMode, OneshotMode, RemainAfterExit, ExecStart, WantedBy,
@@ -577,7 +577,7 @@ fn runner_microvm_nft_ruleset_text_for(host: HostEgressGrain) -> String {
 // ruling A, 2026-09-19), and a plan with no host identity could only ever render one host's grain.
 // The installer is the host converge, which knows which host it is converging.
 //
-// THE INSTALLER IS gunbc.runner_microvm_network_apply, executing as the host administrator: fleet-converge
+// THE INSTALLER IS gunbc.runner.runner_microvm_network_apply, executing as the host administrator: fleet-converge
 // run 36043010087 (microvm_network_apply, srv1) installed this ruleset and read its listing back, and
 // run 36045264008 (microvm_network_observe, srv1) recorded that digest in ConvergedSlotNetwork.
 
@@ -777,7 +777,7 @@ fn runner_microvm_nft_unit_path() -> String {
 }
 
 // THE UNIT IS A MODELED SystemdUnitFile, NOT CONCATENATED INI. extdeps.systemd.unit_file owns that
-// syntax -- its sections, its separators, its terminating newline -- and gunbc.build_cache_unit
+// syntax -- its sections, its separators, its terminating newline -- and gunbc.build_cache.build_cache_unit
 // already records what happens when a consumer re-mints it: a second authority for systemd's own
 // file format, the DESIGN section 3 nicknaming that module exists to prevent (review 69082). The one
 // directive it lacked, RemainAfterExit=, is now a row there rather than a literal here.
@@ -925,12 +925,12 @@ fn runner_slot_guest_network_boot_args(net: RunnerSlotNetwork) -> String {
 
 // DECLARED FRONTIER (DESIGN 3c). The host setting has a host readback (the per-attempt
 // TapIpv6DisabledFact below); the guest's does not yet. NAMED CONSUMER: the guest boot observation
-// (gunbc.runner_microvm_boot_probe). TRIGGER: a booted guest reports /proc/sys/net/ipv6 absent (the
+// (gunbc.runner.runner_microvm_boot_probe). TRIGGER: a booted guest reports /proc/sys/net/ipv6 absent (the
 // v6 stack never initialised) over the boot observation channel. SUFFICIENT FOR deleting this row.
 // It is evidence of the guest's configuration, never of sanitation: a guest event may trigger
 // teardown and may not establish sanitation.
 data guest_ipv6_disabled_readback_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_boot_probe guest boot observation. TRIGGER: a booted guest reports its v6 stack absent (/proc/sys/net/ipv6 missing) under ipv6.disable=1 over the boot observation channel. SUFFICIENT FOR deleting this row. NOT satisfied by the boot argument being present, and never counted as sanitation evidence." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner.runner_microvm_boot_probe guest boot observation. TRIGGER: a booted guest reports its v6 stack absent (/proc/sys/net/ipv6 missing) under ipv6.disable=1 over the boot observation channel. SUFFICIENT FOR deleting this row. NOT satisfied by the boot argument being present, and never counted as sanitation evidence." as NonEmptyStr,
 )
 
 // --- the converge receipt: persistent slot network state at one generation ---
@@ -1037,9 +1037,9 @@ type ConvergedSlotNetwork {
   nft_digest: Sha256Digest
 }
 
-// THE PRODUCER HAS EXECUTED: gunbc.runner_microvm_network_converge runner_microvm_network_observe_wet
+// THE PRODUCER HAS EXECUTED: gunbc.runner.runner_microvm_network_converge runner_microvm_network_observe_wet
 // minted a ConvergedSlotNetwork for srv1 at generation 36045264008 (fleet-converge run 36045264008),
-// after gunbc.runner_microvm_network_apply installed the slot and host network (run 36043010087).
+// after gunbc.runner.runner_microvm_network_apply installed the slot and host network (run 36043010087).
 
 // --- the sanitation subject: sealed, and joined to the receipt ---
 
@@ -1125,7 +1125,7 @@ type SlotNetworkFact
   | RulesetMatchesConvergedFact
 
 // EACH FACT HAS ITS OWN WIRE WORD, because a consumer that folds this readback into one sanitation
-// fact (gunbc.runner_microvm_lifecycle maps it onto product.fabric.sanitation SlotNetworkQuiescent)
+// fact (gunbc.runner.runner_microvm_lifecycle maps it onto product.fabric.sanitation SlotNetworkQuiescent)
 // otherwise reports "the slot network is not quiescent" and sends an operator to look at all seven.
 // The label lives here, with the coproduct, rather than being spelled a second time by that consumer.
 fn slot_network_fact_label(fact: SlotNetworkFact) -> String {
@@ -1422,17 +1422,17 @@ data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dis
 )
 
 // DECLARED FRONTIER (DESIGN 3c). The kernel records dns0 in /proc/net/pnp; it does not write
-// /etc/resolv.conf. NAMED CONSUMER: the guest image (gunbc.runner_guest_image), whose resolver
+// /etc/resolv.conf. NAMED CONSUMER: the guest image (gunbc.runner.runner_guest_image), whose resolver
 // configuration must read the booted dns0 so the guest resolves through the one address the DNS
-// grant admits. THE IMAGE HALF IS LANDED: gunbc.runner_guest_image runner_guest_resolver_link_command
+// grant admits. THE IMAGE HALF IS LANDED: gunbc.runner.runner_guest_image runner_guest_resolver_link_command
 // makes the image's /etc/resolv.conf a symlink to /proc/net/pnp, the form the kernel's own nfsroot
 // documentation names. WHAT REMAINS is the executing half -- a booted, NETWORKED guest resolving
 // github.com through runner_microvm_guest_resolver -- which the boot probe cannot supply (it boots
-// with GuestNetworkAbsent) and only a real job under a test label can (gunbc.runner_guest_image
+// with GuestNetworkAbsent) and only a real job under a test label can (gunbc.runner.runner_guest_image
 // guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the
 // link alone, nor by the boot argument carrying dns0 alone.
 data guest_resolver_configuration_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. IMAGE HALF LANDED: runner_guest_resolver_link_command links /etc/resolv.conf to /proc/net/pnp. REMAINING TRIGGER: a booted networked guest resolves github.com through runner_microvm_guest_resolver, observed on the console of the first test-label job (guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the link alone or by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner.runner_guest_image resolver configuration. IMAGE HALF LANDED: runner_guest_resolver_link_command links /etc/resolv.conf to /proc/net/pnp. REMAINING TRIGGER: a booted networked guest resolves github.com through runner_microvm_guest_resolver, observed on the console of the first test-label job (guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the link alone or by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
 )
 
 // --- the receipt as a wire value: what a later process reads back ---

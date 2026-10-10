@@ -1,4 +1,4 @@
-module v2.test.grounding_typescript.sg_claims
+module v2.test.claim.grounding_typescript.sg_claims_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

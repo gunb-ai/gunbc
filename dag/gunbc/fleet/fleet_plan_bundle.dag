@@ -1,4 +1,4 @@
-module gunbc.fleet_plan_bundle
+module gunbc.fleet.fleet_plan_bundle
 
 import std.types { String, NonEmptyStr }
 import std.content_hash {

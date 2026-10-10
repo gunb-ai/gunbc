@@ -1,21 +1,21 @@
-module test.claim.fleet_converge_privilege_hold_witness
+module test.claim.fleet.fleet_converge_privilege_hold_witness_test
 
 import std.types { Bool, Int, list_length }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_operator_sudo_grants,
   fleet_posix_ci_runner_sudo_grants,
   fleet_posix_operator_sudo_grant_is_hostnamectl_only,
 }
-import gunbc.fleet_converge_cli {
+import gunbc.fleet.fleet_converge_cli {
   converge_cli_receipt_owner_readback_required,
   converge_cli_expected_receipt_owner_name,
 }
-import gunbc.host_converge_slice1 {
+import gunbc.host.host_converge_slice1 {
   host_converge_slice1_shadow_revert_script_matches_authority,
   host_converge_slice1_probe_unit,
   host_converge_slice1_cap_author_before_shadow_revert_enforced,
 }
-import gunbc.host_axis_caps {
+import gunbc.host.host_axis_caps {
   runner_memory_cap_author_ready_for_shadow_revert,
   derived_runner_memory_cap_members,
 }
@@ -36,7 +36,7 @@ test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl
 // could not have failed for any state of the tree — including the state the tree was actually in,
 // where the converge-side apply arm it claimed was suppressed was still wired and reachable.
 // The privilege hold it named is now enforced by the absence of that arm
-// (gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason, and the deleted
+// (gunbc.host.host_effect_realize converge_in_process_apply_withdrawn_reason, and the deleted
 // gunbc.host_converge_realize), so deleting this test removes a false guarantee rather than a
 // real one. A reviewer counting tests should read this as one fewer assertion and one more wall.
 

@@ -1,4 +1,4 @@
-module v2.test.manual.medium_source_serializer_determinism_fidelity
+module v2.test.claim.manual.medium_source_serializer_determinism_fidelity_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

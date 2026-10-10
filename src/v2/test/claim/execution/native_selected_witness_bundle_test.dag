@@ -1,4 +1,4 @@
-module v2.test.execution.native_selected_witness_bundle
+module v2.test.claim.execution.native_selected_witness_bundle_test
 
 import std.content_hash {
   Fnv1a64Structural,
@@ -87,17 +87,17 @@ import v2.std.machine { Byte }
 import v2.std.node { Node }
 import std.optional { Absent, Optional, Present }
 import v2.std.runtime { RuntimeValue }
-import v2.test.execution.emit_host_complement_equals_eval {
+import v2.test.claim.execution.emit_host_complement_equals_eval_test {
   emit_complement_eval_bool_false,
   emit_complement_eval_bool_true,
   emit_complement_eval_context,
 }
-import v2.test.execution.emit_host_meet_join_equals_eval {
+import v2.test.claim.execution.emit_host_meet_join_equals_eval_test {
   meet_join_eval_bool_false,
   meet_join_eval_bool_true,
   meet_join_eval_context,
 }
-import v2.test.execution.emit_on_demand_family_crate_witness {
+import v2.test.claim.execution.emit_on_demand_family_crate_witness_test {
   family_crate_alt_members,
   family_crate_complement_alt_tree,
   family_crate_complement_tree,

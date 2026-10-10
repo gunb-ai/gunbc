@@ -1,4 +1,4 @@
-module v2.test.execution.emit_on_demand_kernel_witness
+module v2.test.claim.execution.emit_on_demand_kernel_witness_test
 
 import std.logic { Bool }
 import std.types { String, List }
@@ -50,9 +50,9 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_target_model_staging, rust_fixture_emitted_add_fn }
-import v2.test.manual.eval_runtime { eval_add_subgraph_node }
-import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
-import v2.test.execution.emit_host_add_equals_eval {
+import v2.test.claim.manual.eval_runtime { eval_add_subgraph_node }
+import v2.test.claim.manual.rust_add_emit_translate_test { rust_add_inferred_tree }
+import v2.test.claim.execution.emit_host_add_equals_eval_test {
   emit_eval_context,
   emit_eval_claim,
   emit_eval_subject_tree,

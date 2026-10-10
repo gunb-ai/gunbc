@@ -1281,7 +1281,7 @@ pub fn escape_receipt_seed_growth_mark() -> String {
 pub fn hex_escape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
+            "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

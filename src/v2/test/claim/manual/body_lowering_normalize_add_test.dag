@@ -1,4 +1,4 @@
-module v2.test.manual.body_lowering_normalize_add
+module v2.test.claim.manual.body_lowering_normalize_add_test
 
 import std.types { List }
 import v2.compiler.body_lowering_fold {

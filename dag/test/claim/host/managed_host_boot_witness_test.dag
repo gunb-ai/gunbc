@@ -1,4 +1,4 @@
-module test.claim.managed_host_boot_witness
+module test.claim.host.managed_host_boot_witness_test
 
 import std.types { Bool, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -6,19 +6,19 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
-import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
-import gunbc.host_reset_boot_selection { reset_boot_selection }
-import gunbc.boot_medium {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.host.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
+import gunbc.host.host_reset_boot_selection { reset_boot_selection }
+import gunbc.host.boot_medium {
   BootMedium,
   BootMediumReadbackHeld,
   BootMediumReadbackDigestDiffers,
   boot_medium_readback,
   stock_installer_boot_medium,
 }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
-import gunbc.managed_host_boot_handoff { CredentialPathGiven, CredentialPathMissing, boot_handoff_password_file, boot_handoff_admission_probe_of }
-import gunbc.managed_host_boot {
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.host.managed_host_boot_handoff { CredentialPathGiven, CredentialPathMissing, boot_handoff_password_file, boot_handoff_admission_probe_of }
+import gunbc.host.managed_host_boot {
   BootSubjectAdmitted,
   BootSubjectRefused,
   BootSubjectHostNotManaged,
@@ -52,7 +52,7 @@ fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation
 
 // THE REAL PATH: mtcollins1's one managed-host row admits a boot with the medium Mt. Collins boots
 // today, and the subject carries that medium, the boot arm's own one-shot CD selection, and the
-// binding's controller. This is the inhabitance claim for gunbc.managed_host_boot AdmittedBootSubject:
+// binding's controller. This is the inhabitance claim for gunbc.host.managed_host_boot AdmittedBootSubject:
 // the subject the boot run reads is minted from the real row, not supplied.
 test fn w_the_real_row_admits_a_boot_with_its_medium_and_the_boot_selection() -> Bool {
   match boot_subject_admission_for(host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: revision) {
@@ -140,7 +140,7 @@ test fn w_a_medium_read_back_with_another_digest_is_refused() -> Bool {
 
 // THE TWO ARMS DECIDE THEIR OWN SELECTIONS. Neither admission takes a selection as a parameter, so the
 // reset arm's value cannot be handed to a boot; the forged-carrier probe
-// (test.claim.managed_host_forged_probe_witness) pins that an AdmittedBootSubject cannot be authored
+// (test.claim.host.managed_host_forged_probe_witness_test) pins that an AdmittedBootSubject cannot be authored
 // with one. This claim executes both deciders over the real row: each decides one for mtcollins1 and
 // the boot subject carries the boot arm's, from its own authority.
 test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {

@@ -8,7 +8,7 @@ module test.claim.plain_call_result_wrap_roster_test
 // predicate at four positions, only two of which lowered through the roster they
 // asked, so a roster could answer for a position it never produced text at.
 //
-// WHAT THAT COST, measured on the src/v2/compiler/01_tokenize.dag closure before
+// WHAT THAT COST, measured on the src/v2/compiler/tokenize.dag closure before
 // the repair: v2.std.compilers.lexing token_stream_remaining is a PLAIN CALL to
 // the declared v2.std.algebra skip, which lowers as an ordinary declared call and
 // already returns the wrapped level; `skip` is also a simple-method template

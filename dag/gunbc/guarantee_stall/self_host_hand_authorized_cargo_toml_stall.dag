@@ -6,7 +6,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // DECLARED 2026-09-06 against the seed-unavailable transport's Cargo.toml, which was then
 // HAND-AUTHORED as literal TOML text and duplicated dependency names and versions the emitter
 // owns. REDUCED 2026-10-03: the dependency roster is gone from every .dag harness route --
-// tools.emitted_crate_harness_manifest derives each harness manifest from the Cargo.toml the
+// gunbc.instruments.emitted_crate_harness_manifest derives each harness manifest from the Cargo.toml the
 // emission wrote. What remains medium-as-string per DESIGN §3 is the overlay that module appends:
 // the [lib] and [[bin]] target tables and the seed path-dependency subtable are still TOML text.
 data self_host_hand_authorized_cargo_toml_stall: GuaranteeStall = GuaranteeStall {
@@ -17,5 +17,5 @@ data self_host_hand_authorized_cargo_toml_stall: GuaranteeStall = GuaranteeStall
   population: BoundedPopulation { members: [
     "dag/gunbc/instruments/emitted_crate_harness_manifest.dag — harness_lib_target_table, harness_crate_target_tables and harness_seed_link_dependency_table spell their tables as string literals",
   ] },
-  next_rung_trigger: climbs_when(capability: "extdeps.languages.toml can render an array-of-tables header and a dotted sub-table header, SUFFICIENT FOR the three harness overlay tables to be TomlTable values rendered by the serializer, leaving no TOML punctuation authored in tools.emitted_crate_harness_manifest."),
+  next_rung_trigger: climbs_when(capability: "extdeps.languages.toml can render an array-of-tables header and a dotted sub-table header, SUFFICIENT FOR the three harness overlay tables to be TomlTable values rendered by the serializer, leaving no TOML punctuation authored in gunbc.instruments.emitted_crate_harness_manifest."),
 }

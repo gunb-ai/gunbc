@@ -1,4 +1,4 @@
-module test.claim.bmc_readback_target_witness
+module test.claim.bmc.bmc_readback_target_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.tools.bmc_onboard {

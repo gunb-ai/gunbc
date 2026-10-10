@@ -1,11 +1,11 @@
-module test.claim.fleet_runner_connectivity_witness
+module test.claim.fleet.fleet_runner_connectivity_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_runner_connectivity {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
   runner_slot_connectivity_verdict,
   runner_slot_connectivity_verdict_for_incarnation,
@@ -186,7 +186,7 @@ fn count_matching(
 // everything, and the defect this pair pins is that a slot missing from a PREFIX
 // was never observed to be missing -- rendering it Orphaned is the empty-observation
 // narrow, and Orphaned is what maps to a restart at
-// gunbc.runner_capacity_plan connectivity_replace_action.
+// gunbc.runner.runner_capacity_plan connectivity_replace_action.
 //
 // THE PAIR IS THE POINT. The RED arm alone would also pass if Orphaned had simply
 // been disabled everywhere, so the complete-roster control is what makes it

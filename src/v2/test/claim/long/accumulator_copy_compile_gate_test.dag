@@ -1,4 +1,4 @@
-module v2.test.long.accumulator_copy_compile_gate
+module v2.test.claim.long.accumulator_copy_compile_gate_test
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -24,7 +24,7 @@ import v2.std.diagnostic {
 import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+import v2.test.claim.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

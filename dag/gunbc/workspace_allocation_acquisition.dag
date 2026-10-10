@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, Timestamp }
 import std.decl_ref { decl_ref }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_actor_admits, workspace_cancel_unelected_actor, workspace_establish_actor_protocol,

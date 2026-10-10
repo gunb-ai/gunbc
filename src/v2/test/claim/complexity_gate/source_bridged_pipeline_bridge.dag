@@ -1,4 +1,4 @@
-module v2.test.complexity_gate.source_bridged_pipeline_bridge
+module v2.test.claim.complexity_gate.source_bridged_pipeline_bridge
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }

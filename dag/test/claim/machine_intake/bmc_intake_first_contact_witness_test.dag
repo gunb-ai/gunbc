@@ -1,9 +1,9 @@
-module test.claim.bmc_intake_first_contact_witness
+module test.claim.machine_intake.bmc_intake_first_contact_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
-import gunbc.machine_intake_mtjade1_access_observation {
+import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake.mtjade1_access_observation {
   CaptureBoundToAnotherLink,
   CaptureDigestMismatch,
   CaptureFieldUnread,
@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtjade1_access_observation {
   mtjade1_redfish_manager_capture_sha256,
   recorded_manager_family_standing,
 }
-import gunbc.machine_intake_mtjade1_factory_network { mtjade1_bmc_observed_network }
+import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_observed_network }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import gunbc.tools.bmc_intake_first_contact {
   HostUnreachable,
@@ -79,7 +79,7 @@ test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
 // this branch deleted elsewhere, surviving in the one file whose prose defended it.
 //
 // THE RECORDED-CAPTURE DECODE, OVER SUPPLIED DOCUMENTS (DESIGN §3: the committed file's real read
-// runs once, in test.claim.mtjade1_recorded_manager_capture_witness). Each control states the one
+// runs once, in test.claim.machine_intake.mtjade1_recorded_manager_capture_witness_test). Each control states the one
 // gap it must land in, so a decoder that refused for a DIFFERENT reason would red it. The supplied
 // documents carry their own digest, computed here, because the subject of these claims is the
 // decode and binding, not the recorded digest -- that is the live witness's subject.

@@ -1,9 +1,9 @@
-module test.claim.roadmap_row_witness
+module test.claim.roadmap.roadmap_row_witness_test
 
-import gunbc.roadmap_style { roadmap_css, roadmap_rules }
+import gunbc.roadmap.roadmap_style { roadmap_css, roadmap_rules }
 import gunbc.design.material { serialize_rules }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_multi_parent_ids }
-import gunbc.roadmap_component {
+import gunbc.roadmap.roadmap_component {
   dispatch_reserved_width, workflow_controls_class,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

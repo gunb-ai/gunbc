@@ -1,10 +1,10 @@
-module tools.module_impact_query_front_door
+module gunbc.instruments.module_impact_query_front_door
 
 import std.types { List }
 import v2.std.algebra { any, fold_list, list_reverse }
 import std.algebra { Cons }
 import v2.std.text { String }
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureUnavailable,
   RepeatedMentionsCollapseDependency,
@@ -81,7 +81,7 @@ data front_door_importer_roots: List<String> = ["dag", "src/v2"]
 data front_door_exclude_substrings: List<String> = []
 
 // The standing the front door reports is NOT asserted here: these are the two dependency-projection
-// capabilities that gunbc.namespace_reference_derived_closure_admission reports Unavailable,
+// capabilities that gunbc.namespace.namespace_reference_derived_closure_admission reports Unavailable,
 // carried as the admission rows the reading consumes, so a live query renders
 // PoolIndependentProjectionUnavailable with the trigger that owns the climb. When the namespace
 // lane establishes pool-independent projection, this roster is what changes and the rendered

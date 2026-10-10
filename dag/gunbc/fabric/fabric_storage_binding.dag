@@ -1,10 +1,10 @@
-module gunbc.fabric_storage_binding
+module gunbc.fabric.fabric_storage_binding
 
 import std.types { String, NonEmptyStr }
-import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_door_socket }
+import gunbc.fabric.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_door_socket }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
 
 fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
   match placement {

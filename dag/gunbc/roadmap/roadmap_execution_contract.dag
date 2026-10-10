@@ -1,4 +1,4 @@
-module gunbc.roadmap_execution_contract
+module gunbc.roadmap.roadmap_execution_contract
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -42,7 +42,7 @@ type AttemptPathScope
   | PathsAllowed { prefixes: List<FilePath> }
 
 data paths_allowed_production_consumer_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "attempt_paths_admitted"),
+  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "attempt_paths_admitted"),
   reason: "PathsAllowed is constructible and attempt_paths_admitted already decides it; no production tick supplies a name-status observation as touched",
   dissolution: unbound_dissolution(
     description: "belt_verify_attempt_for_instance or the admitted-base POST /dispatch verify calls attempt_paths_admitted with a name-status observation over that exact diff window as touched, and a production tick refuses PathOutOfScope for a path outside the declared prefixes. Not satisfied by belt_verify_attempt_for_instance existing, nor by a witness constructing PathsAllowed, nor by a second path census"
@@ -58,18 +58,18 @@ type ClaimSourceRootLayout
   | PinnedPublicPlusLocalRoot { public_prefix: NonEmptyStr }
 
 data pinned_public_plus_local_root_production_consumer_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "claim_source_root_args"),
+  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "claim_source_root_args"),
   reason: "claim_source_root_args already matches PinnedPublicPlusLocalRoot; no production ExecutionContract binds that arm",
   dissolution: unbound_dissolution(
-    description: "a RoadmapNode the belt looks up — on gunbc.roadmap_authority or a plan supplied as a parameter — is constructed with ExecutionContract.source_roots = PinnedPublicPlusLocalRoot, and a production tick (POST /dispatch or belt verify) reads claim_source_root_args of that arm. Not satisfied by claim_source_root_args existing or matching the arm, nor by a witness constructing the arm in isolation, nor by binding every contract to PublicWorktreeLayout"
+    description: "a RoadmapNode the belt looks up — on gunbc.roadmap.roadmap_authority or a plan supplied as a parameter — is constructed with ExecutionContract.source_roots = PinnedPublicPlusLocalRoot, and a production tick (POST /dispatch or belt verify) reads claim_source_root_args of that arm. Not satisfied by claim_source_root_args existing or matching the arm, nor by a witness constructing the arm in isolation, nor by binding every contract to PublicWorktreeLayout"
   ),
 )
 
 data not_agent_work_production_constructor_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "WorkItemExecutionContract"),
+  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "WorkItemExecutionContract"),
   reason: "launch, serve, verify, and contract_closure already refuse by NonAgentWorkMode; no RoadmapNode.execution is constructed as NotAgentWork",
   dissolution: unbound_dissolution(
-    description: "a RoadmapNode the belt looks up — on gunbc.roadmap_authority or a plan supplied as a parameter — is constructed with execution: NotAgentWork { mode }, so LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. Not satisfied by not_agent_work_execution existing, nor by a witness constructing the arm, nor by minting a public node whose work is not operator-exclusive, external-lead, or calendar-observation"
+    description: "a RoadmapNode the belt looks up — on gunbc.roadmap.roadmap_authority or a plan supplied as a parameter — is constructed with execution: NotAgentWork { mode }, so LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. Not satisfied by not_agent_work_execution existing, nor by a witness constructing the arm, nor by minting a public node whose work is not operator-exclusive, external-lead, or calendar-observation"
   ),
 )
 
@@ -201,10 +201,10 @@ fn execution_contract_required_capabilities(
 }
 
 // ONE BINDING LAW, BECAUSE THERE WERE THREE AND THEY DISAGREED. Whether a contract closes anything
-// was decided independently in three places and two answers were given. gunbc.roadmap_authority's
+// was decided independently in three places and two answers were given. gunbc.roadmap.roadmap_authority's
 // node_lacks_closing_validation treated ANY ExecutionContract as bound, so a contract declaring an
-// empty validation list counted as closed; gunbc.roadmap_verify treated the empty list as unbound;
-// gunbc.roadmap_dispatch_environment refused it with its own reason. Empty lists are constructible
+// empty validation list counted as closed; gunbc.roadmap.roadmap_verify treated the empty list as unbound;
+// gunbc.roadmap.roadmap_dispatch_environment refused it with its own reason. Empty lists are constructible
 // — nothing stops ExecutionContract with no validations from being written — so the disagreement is
 // reachable rather than theoretical.\n\nThe consequence lands on the acceptance frontier. A node
 // bound to an empty contract disappears from nodes_needing_acceptance, because the projection reads
@@ -339,7 +339,7 @@ fn gunbc_claims_execution_contract(
   )
 }
 
-// ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap_authority
+// ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap.roadmap_authority
 // closing_contract_task_naming_correction_note recorded the gap this closes: a derived
 // closing-contract task was itself built with ExecutionContractUnspecified, so dispatch refused the
 // very row whose job is to supply a contract, and the belt could not run the frontier it computes.
@@ -353,7 +353,7 @@ fn gunbc_claims_execution_contract(
 // points would have to be edited in step with it.
 //
 // WHAT THE PREDICATE DECIDES AND WHAT IT DOES NOT is stated at
-// gunbc.roadmap_closing_contract_authoring closing_contract_authoring_predicate_note. It is not the
+// gunbc.roadmap.roadmap_closing_contract_authoring closing_contract_authoring_predicate_note. It is not the
 // whole of the note's wish list, and the boundary is declared there rather than implied by a green.
 
 data closing_contract_authoring_entry: FilePath = "dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag" as FilePath

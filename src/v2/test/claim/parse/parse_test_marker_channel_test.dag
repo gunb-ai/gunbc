@@ -1,6 +1,6 @@
-module test.claim.parse_test_marker_channel
+module v2.test.claim.parse.parse_test_marker_channel_test
 
-import test.claim.parse_test_declaration_choice_route { route_parse_at }
+import v2.test.claim.parse.parse_test_declaration_choice_route_test { route_parse_at }
 import v2.test.claim.parse.test_marker_channel {
   test_marker_find_emitted,
   test_marker_inner_declaration,

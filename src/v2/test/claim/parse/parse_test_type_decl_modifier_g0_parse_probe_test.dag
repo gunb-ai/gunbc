@@ -1,4 +1,4 @@
-module test.claim.parse_test_type_decl_modifier_g0_parse_probe
+module v2.test.claim.parse.parse_test_type_decl_modifier_g0_parse_probe_test
 
 import std.types { List }
 import v2.compiler.parse { parse_module }

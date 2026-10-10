@@ -51,7 +51,7 @@ import gunbc.package_delivery {
   codex_runtime_version_identity_satisfied,
   codex_bundled_executable_for_srv1,
 }
-import gunbc.host_layout { srv1_codex_bundled_executable }
+import gunbc.host.host_layout { srv1_codex_bundled_executable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -25,7 +25,7 @@ import extdeps.ci_runner.depot { depot_provider_identity }
 import extdeps.ci_runner.github_actions { github_actions_provider_identity }
 import extdeps.ci_runner.warpbuild { warpbuild_provider_identity }
 import extdeps.cloud.ubicloud { ubicloud_provider_identity }
-import gunbc.runner_shape_census {
+import gunbc.runner.runner_shape_census {
   MemoryPerVcpuReading,
   NoShapesForProviderArchitecture,
   NonIntegralRatioInSizes,

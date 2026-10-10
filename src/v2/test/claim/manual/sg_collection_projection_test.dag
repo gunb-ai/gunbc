@@ -1,4 +1,4 @@
-module v2.test.manual.sg_collection_projection
+module v2.test.claim.manual.sg_collection_projection_test
 
 data sg_collection_expected_vec_rc_node: String = "Vec<Rc<Node>>"
 

@@ -1,4 +1,4 @@
-module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
+module v2.test.claim.fact_cardinality.lens_unit.synthetic_fork_red_test
 
 import v2.std.live_tree { LiveTreeDisposition }
 import v2.lens.fact_cardinality { Dag, FactCardinalityDeclFact, V2, fact_cardinality_cross_tree_diverged_fork }

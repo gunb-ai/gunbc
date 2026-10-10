@@ -1,4 +1,4 @@
-module test.claim.qualification_job_log_receipt_forged_probe_witness
+module test.claim.runner.qualification_job_log_receipt_forged_probe_witness_test
 
 import std.types { String, Bool, Int, List }
 import extdeps.filesystem.filesystem_io
@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // each must refuse at its own subject. Counts are scoped to class AND subject, and a control source
 // that only NAMES the module and calls its open decoder must refuse at neither, so the refusals are
 // attributable to the forgeries rather than to importing the module at all. The pattern is
-// test.claim.jit_deregistration_forged_probe_witness's.
+// test.claim.runner.jit_deregistration_forged_probe_witness_test's.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)

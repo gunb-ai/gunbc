@@ -1,5 +1,5 @@
 //! R1 closeout item TWO, claim B: the roster<->handler-arm bijection stays exhaustive-by-
-//! construction over the REAL `gunbc.v1_interpreter_primitive_surface` roster and the REAL
+//! construction over the REAL `gunbc.v1.v1_interpreter_primitive_surface` roster and the REAL
 //! `v1_interpreter.rs` handler-arm list -- not a mirrored shape in a disconnected fixture crate.
 //!
 //! `interpreter_dispatch_bijection_compile_red.rs` proves rustc refuses a non-exhaustive match
@@ -16,7 +16,7 @@
 //! cargo subprocess never sits in the per-PR CI discovery lane.
 //!
 //! ENROLLMENT: this check IS the `falsifier_self_host_wet` class (cargo build, process execution,
-//! real gunbc emit -- `gunbc.ci_layer_roots` `falsifier_self_host_wet_note`), but that lane has no
+//! real gunbc emit -- `gunbc.ci.ci_layer_roots` `falsifier_self_host_wet_note`), but that lane has no
 //! scheduled executor today (`std.witness_admission` `witness_cadence_has_scheduled_route` returns
 //! false for `FalsifierSelfHostWet`; `falsifier.yml` was deleted at 611fd02770/#8283), so it runs
 //! only by hand (`cargo test --release -p v1-compiler --test

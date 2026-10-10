@@ -28,10 +28,10 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
-import gunbc.roadmap_nesting { roadmap_roots }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
-import gunbc.roadmap_status { TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
-import gunbc.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
+import gunbc.roadmap.roadmap_nesting { roadmap_roots }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap.roadmap_status { TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
 import gunbc.roadmap.roadmap_lineage {
   LineageWalk,
   LineageRooted,
@@ -75,7 +75,7 @@ type AlignmentChainLink {
 // ONE PARENT PER ROW (operator ruling, 2026-09-30) retires the refusals the keyed membership roster
 // needed: a node claimed by two projects, and an edge whose contribution was missing, empty or
 // disagreeing, have no constructor now that the parent and its contribution live on the row
-// (gunbc.roadmap_model NodeParent carries a NonEmptyStr contribution). The walk itself is
+// (gunbc.roadmap.roadmap_model NodeParent carries a NonEmptyStr contribution). The walk itself is
 // gunbc.roadmap.roadmap_lineage lineage_walk, shared with readiness and minting, so the chain and
 // the dispatcher cannot disagree about where a node sits.
 type AlignmentChain
@@ -554,7 +554,7 @@ fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
     AlignmentWalkUnrooted { at, walked: _ } =>
       join([
         "the parent walk from the task ended at ", at,
-        ", which declares no parent and is not an admitted root (gunbc.roadmap_nesting roadmap_roots);",
+        ", which declares no parent and is not an admitted root (gunbc.roadmap.roadmap_nesting roadmap_roots);",
         " a chain that never reaches the top of its functional decomposition has no alignment answer,",
         " so the node must be attached to the hierarchy before it can dispatch",
       ], "")

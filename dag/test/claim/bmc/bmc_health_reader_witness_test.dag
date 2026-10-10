@@ -1,7 +1,7 @@
-module test.claim.bmc_health_reader_witness
+module test.claim.bmc.bmc_health_reader_witness_test
 
 import std.types { Bool, String }
-import gunbc.bmc_health_reader {
+import gunbc.bmc.bmc_health_reader {
   CreateReaderAccount,
   ReaderAccountAbsent,
   ReaderAccountConverged,
@@ -23,10 +23,10 @@ import gunbc.tools.bmc_health_reader_converge {
   bmc_health_reader_body_path,
   reader_login_exit,
 }
-import gunbc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
+import gunbc.bmc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
 import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
-import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

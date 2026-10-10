@@ -1,6 +1,6 @@
 module gunbc.fixture_closure_union_emit_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // gunbc.fixture_render_selection_seed_growth, which is the C1 narrowing this phase restores the
 // other half of.
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): it serves the v2 self-host program.
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing): it serves the v2 self-host program.
 // Floor C1 stopped rendering every closure module per fixture compile, so a corpus module's own
 // emit refusal no longer reached any required gate unless a v1 seed mirror happened to cover it.
 // This phase records each fixture instrument's resolved closure and, once per required run,

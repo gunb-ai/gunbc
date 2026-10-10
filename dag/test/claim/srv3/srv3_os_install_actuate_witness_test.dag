@@ -1,15 +1,15 @@
-module test.claim.srv3_os_install_actuate
+module test.claim.srv3.srv3_os_install_actuate_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
-// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+// real rendering route is exercised by test.claim.srv3.srv3_seeded_install_media_witness_test.
 data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
 
 // A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
 // claims check does not depend on which bytes the actuator serves, only on the path reaching the
-// intent; the real resolution route is exercised by test.claim.mtcollins1_census_image.
+// intent; the real resolution route is exercised by test.claim.machine_intake.mtcollins1_census_image_witness_test.
 data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
   built: ubuntu_seeded_install_media_built(
     input: srv3_seeded_install_media_input_for(user_data_body: srv3_seeded_user_data_fixture),
@@ -32,7 +32,7 @@ test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool {
 }
 
 test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(
+  let intent = gunbc.srv3.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(
     iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
   )
   intent.bmc_host == asrock_srv3_live_bmc_host
@@ -56,7 +56,7 @@ test fn srv3_actuate_prep_paths_are_declared() -> Bool {
 // joined-string supervision-grammar arm this witness used to assert retired with the raw word
 // lists -- the law it enforced is structural on the transient-unit realization surface.
 test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
+  let intent = gunbc.srv3.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
     bmc_host: intent.bmc_host,
     ws_path: intent.ws_path,
@@ -81,7 +81,7 @@ test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
 // equal its derivation from the intent's own token, so a dropped header or a dead token
 // reference fails here.
 test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
+  let intent = gunbc.srv3.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
     bmc_host: intent.bmc_host,
     ws_path: intent.ws_path,

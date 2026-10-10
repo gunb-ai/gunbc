@@ -14,9 +14,9 @@ type OperatingSystemSurface {
   process_semantics: ProcessSemantics
 }
 
-// MODELING GAP (crisp-wren-896 finding, PR #8590): no host instance anywhere in gunbc.fleet_intent
-// or gunbc.ci_fleet populates distro_or_product -- srv1-4 (gunbc.fleet_intent, ComputeHost rows)
-// and our own CI/falsifier runner (gunbc.ci_fleet) all carry `OperatingSystemSurface {
+// MODELING GAP (crisp-wren-896 finding, PR #8590): no host instance anywhere in gunbc.fleet.fleet_intent
+// or gunbc.ci.ci_fleet populates distro_or_product -- srv1-4 (gunbc.fleet.fleet_intent, ComputeHost rows)
+// and our own CI/falsifier runner (gunbc.ci.ci_fleet) all carry `OperatingSystemSurface {
 // distro_or_product: none, ... }`. This is not a missing field on the type:
 // UbuntuDistributionCatalogRow / WindowsDistributionCatalogRow / MacosDistributionCatalogRow below
 // already model a distro's package_manager, libc, and libc_version, and OsPackageManager is a

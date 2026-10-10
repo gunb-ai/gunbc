@@ -37,9 +37,9 @@ test fn the_pattern_grammar_admits_three_set_forms_and_refuses_the_rest() -> Boo
 }
 
 data corpus: List<String> = [
-  "dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_launch_admission_witness.dag",
   "dag/test/claim/roadmap/roadmap_verify_witness_test.dag",
-  "dag/test/claim/harness_chat_shape_test.dag",
+  "dag/test/claim/harness_chat_shape.dag",
   "dag/test/claim/compute/work_request_witness_test.dag",
   "dag/gunbc/roadmap/roadmap_serve.dag",
   "README.md",
@@ -56,9 +56,9 @@ fn selected_paths(text: String) -> List<String> {
 // one package, a single target takes one file; a non-.dag path is never a target and a sibling
 // package is never swept in by a shared prefix (RED against substring matching).
 test fn selection_follows_the_pattern_and_never_a_shared_prefix() -> Bool {
-  selected_paths(text: "//dag/test/claim/roadmap/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
-    && selected_paths(text: "//dag/test/claim:all") == ["dag/test/claim/harness_chat_shape_test.dag"]
-    && selected_paths(text: "//dag/test/claim/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag", "dag/test/claim/harness_chat_shape_test.dag", "dag/test/claim/compute/work_request_witness_test.dag"]
+  selected_paths(text: "//dag/test/claim/roadmap/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
+    && selected_paths(text: "//dag/test/claim:all") == ["dag/test/claim/harness_chat_shape.dag"]
+    && selected_paths(text: "//dag/test/claim/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag", "dag/test/claim/harness_chat_shape.dag", "dag/test/claim/compute/work_request_witness_test.dag"]
     && selected_paths(text: "//dag/test/claim/roadmap:roadmap_verify_witness_test") == ["dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
     && selected_paths(text: "//dag/test/cla/...") == []
     && count(selected_paths(text: "//...")) == 5

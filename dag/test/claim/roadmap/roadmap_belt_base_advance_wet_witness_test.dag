@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test
 // THE BASE ADVANCE, EXECUTED AGAINST A REAL GIT REPOSITORY (the BaseAdvance follow-up to
 // gunbc#13111). The hermetic claims (test.claim.roadmap.roadmap_belt_base_advance_witness_test)
 // supply the diff and the bytes; this one runs the SAME shell production runs
-// (gunbc.roadmap_belt_actuate belt_scm_base_advance) over a throwaway repository with two real
+// (gunbc.roadmap.roadmap_belt_actuate belt_scm_base_advance) over a throwaway repository with two real
 // commits S0 and S1 -- a modify, an add, a delete, a rename, and a path below a new directory -- so
 // git itself answers whether both revisions are observable, what changed between them, and what each
 // changed path holds at S1. The advanced manifest must be S1's tree exactly, path for path and byte
@@ -26,8 +26,8 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, intake_tip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous }
-import gunbc.roadmap_dispatch_actuator { host_exec_argv }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_base_advance, BaseAdvanced, BaseAdvanceRefused, BaseAdvancePoisoned,
   belt_exec, belt_path_parent_dir, ExecOk, ExecFailed, ExecRefused,
 }

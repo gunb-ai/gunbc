@@ -10,7 +10,7 @@ data wet_witness_premise_read_from_the_runner_it_happens_to_land_on: RecurringFa
   receipts: [
     "**a wet witness's premise read from the runner it happens to land on** (a required-floor claim is ABOUT a host of one kind -- here, an executor with no event log placement -- but observes the executing runner's identity instead of supplying the subject, so its expected verdict is true only on the runners that happen to be of that kind; on any other runner it is red with no change to the code).",
 
-    "SPECIMEN (2026-09-27, #12425 and other unrelated PRs). test.claim.spark.fabric_capacity_standing_wet_witness and test.claim.spark.spark_pair_serving_apply_wet_witness observed the runner's hostname and asserted every group's authority read refused 'off fleet'. The floor job passed on srv3/srv4 runners and failed (expected passed, observed failed) on srv1 runners: gunbc.roadmap_dashboard_instance declares a dashboard instance for srv1, so gunbc.fabric_event_log_host event_log_store_for_host RESOLVES there and the premise is false. Not a regression in the read and not flake: the verdict was a function of runner assignment.",
+    "SPECIMEN (2026-09-27, #12425 and other unrelated PRs). test.claim.spark.fabric_capacity_standing_wet_witness and test.claim.spark.spark_pair_serving_apply_wet_witness observed the runner's hostname and asserted every group's authority read refused 'off fleet'. The floor job passed on srv3/srv4 runners and failed (expected passed, observed failed) on srv1 runners: gunbc.roadmap.roadmap_dashboard_instance declares a dashboard instance for srv1, so gunbc.fabric.fabric_event_log_host event_log_store_for_host RESOLVES there and the premise is false. Not a regression in the read and not flake: the verdict was a function of runner assignment.",
 
     "WHY IT IS A CLASS: a CI runner pool is not a neutral environment -- runners are fleet hosts, and which one a job lands on is scheduling, not an input the claim declares. The tell is a wet claim whose expectation names a property of the host ('off fleet', 'no dashboard', 'no GPU') while its subject is taken from observe_executor_reach or another observation of the executing machine. DESIGN §3: the subject belongs at the interface as a supplied value.",
 
@@ -23,7 +23,7 @@ data wet_witness_premise_read_from_the_runner_it_happens_to_land_on: RecurringFa
 
   evidence: [
     decl_ref(module_path: "gunbc.instruments.fabric_capacity_standing", decl_name: "fabric_capacity_standing_for"),
-    decl_ref(module_path: "gunbc.fabric_event_log_host", decl_name: "event_log_store_for_host"),
+    decl_ref(module_path: "gunbc.fabric.fabric_event_log_host", decl_name: "event_log_store_for_host"),
     decl_ref(module_path: "test.claim.approval_ntfy_access_readback_wet_witness_test", decl_name: "the_root_refuses_before_minting_on_this_host_by_real_execution"),
   ],
 }

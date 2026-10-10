@@ -1,4 +1,4 @@
-module test.claim.managed_host_unit_hold_store_host_witness
+module test.claim.host.managed_host_unit_hold_store_host_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -22,7 +22,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
-import gunbc.managed_host_unit_hold { unit_hold_store_root, maintenance_hold_take, maintenance_hold_release }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_root, maintenance_hold_take, maintenance_hold_release }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -43,7 +43,7 @@ import extdeps.llm.codex_auth {
   codex_observed_refresh_persistence,
   codex_observed_concurrent_sessions_per_root,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardExistingProviderState,
   srv1_lab_dashboard_instance,

@@ -51,7 +51,7 @@ type StructuralTextOccurrencePopulation {
 data type_reference_containment_binding_structural_text_positive_subset: List<StructuralTextOccurrencePopulation> = [
   StructuralTextOccurrencePopulation { module_path: "v2.compiler.tokenize" as NonEmptyStr, occurrence_count: 25, in_measured_compiler_closure: true },
   StructuralTextOccurrencePopulation { module_path: "v2.std.compilers.lexing" as NonEmptyStr, occurrence_count: 4, in_measured_compiler_closure: true },
-  StructuralTextOccurrencePopulation { module_path: "v2.test.tokenize.source_text_ingress" as NonEmptyStr, occurrence_count: 1, in_measured_compiler_closure: false }
+  StructuralTextOccurrencePopulation { module_path: "v2.test.claim.tokenize.source_text_ingress_test" as NonEmptyStr, occurrence_count: 1, in_measured_compiler_closure: false }
 ]
 
 type NewlyExposedRustDiagnosticIdentity {
@@ -127,7 +127,7 @@ data type_reference_containment_binding_codeless_emission_consumer: CodelessEmis
 // skipped). The replacement Y is the authority above: one exact declaration binding per
 // TypeOccurrence, derived from containment/qualification and carried through typecheck and emit.
 // MEASURED with gunbc.instruments.emission_entry_instrument over
-// src/v2/compiler/00_compile.dag. The run identity, producer digests, refusal, split replay, and
+// src/v2/compiler/compile.dag. The run identity, producer digests, refusal, split replay, and
 // coded/codeless counts are carried together above; the combined instrument produced no cargo
 // population after its EAGAIN failures, so its output is not the source of the count. String is the
 // only v2.std top-level declaration colliding with the Rust prelude; 18 closure modules import it,
@@ -168,4 +168,4 @@ data type_reference_containment_binding_scaffold: Disposition = Scaffold {
   }
 }
 
-data type_reference_containment_binding_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")
+data type_reference_containment_binding_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")

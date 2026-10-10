@@ -204,7 +204,7 @@ fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> Non
 //                           refusal with the roadmap still able to serve, which is the whole reason
 //                           this stage is before the next one and not after it.
 //   6. RetireRoadmapRoutes -- the cutover arm and its projection are deleted from
-//                           gunbc.roadmap_serve, and the roadmap process stops being able to reach
+//                           gunbc.roadmap.roadmap_serve, and the roadmap process stops being able to reach
 //                           the store or either keyring at all.
 
 // ── THE EVIDENCE ─────────────────────────────────────────────────────────────────────────────

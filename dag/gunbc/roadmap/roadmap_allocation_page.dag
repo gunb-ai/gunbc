@@ -1,14 +1,14 @@
-module gunbc.roadmap_allocation_page
+module gunbc.roadmap.roadmap_allocation_page
 import gunbc.site.document { site_document, site_extend_styles }
-import gunbc.roadmap_allocation_style { allocation_rules }
+import gunbc.roadmap.roadmap_allocation_style { allocation_rules }
 import gunbc.site.document { SiteStyles }
 
-import gunbc.roadmap_auth_route_paths { auth_login_route_path }
+import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path }
 import std.types { String, Bool, List }
 import std.measure { ByteSize, measure_count, gibibyte_scale_factor_bytes, minute_count }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 import gunbc.workspace_allocation { WorkspaceProfile, workspace_profiles, workspace_profile_wire, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound }
 
 // These are navigation identities, shared by the route and its rendered links.

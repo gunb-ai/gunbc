@@ -1,4 +1,4 @@
-module test.claim.floor_preparation_shared_build
+module test.claim.floor.floor_preparation_shared_build_witness_test
 
 import v2.std.text { String }
 import v2.workflow.required_floor {

@@ -1,4 +1,4 @@
-module test.claim.bmc_firmware_thermal_witness
+module test.claim.bmc.bmc_firmware_thermal_witness_test
 
 import extdeps.bmc.capability {
   BmcFirmwareIntent,
@@ -49,7 +49,7 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_factory_temp_soc_fan_curve,
 }
 import extdeps.crypto.hash { sha256_digest }
-import gunbc.fleet_bmc_observation {
+import gunbc.fleet.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
   srv3_bmc_firmware_2_07_00_observation,
   srv3_bmc_redfish_surface,
@@ -65,7 +65,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_redfish_surface,
   srv4_bmc_update_service_observation,
 }
-import gunbc.fleet_bmc_state {
+import gunbc.fleet.fleet_bmc_state {
   BmcFanDurabilityEvidenceBuilt,
   BmcFanDurabilityEvidenceConstructionRefused,
   DurabilityReceiptDigestMismatch,
@@ -77,7 +77,7 @@ import gunbc.fleet_bmc_state {
   srv4_bmc_fan_projection_capability,
   srv4_bmc_fan_reboot_persistence_receipt,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   AdmittedConfigDigestKnown,
   AdmittedConfigDigestUnavailable,
   BmcFanPolicyProjectionCapability,
@@ -111,11 +111,11 @@ import extdeps.filesystem.linux {
   ReplacementAtomicityUnspecified,
   linux_synchronized_rename_replace_publication,
 }
-import gunbc.bmc_fan_alignment_standing {
+import gunbc.bmc.bmc_fan_alignment_standing {
   HostBmcFanAlignmentStanding,
   IntentMatchesObservedProgram,
 }
-import gunbc.bmc_converge {
+import gunbc.bmc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
   BmcFanPolicyDurabilityQualified,
   BmcFanPolicyDurabilityRefused,
@@ -125,12 +125,12 @@ import gunbc.bmc_converge {
   bmc_fan_policy_durability_gate,
   bmc_firmware_classification,
 }
-import gunbc.bmc_intent {
+import gunbc.bmc.bmc_intent {
   fleet_bmc_valid_state,
   fleet_fan_policy_is_thermally_bounded,
   fleet_quiet_temp_soc_fan_curve,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   ComputeHost,
   srv3_baseboard,
   srv1_host,
@@ -195,7 +195,7 @@ fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
 // THESE FIXTURES TEST DISTINCTIONS DOWNSTREAM OF THE ALIGNMENT GATE -- durability linkage,
 // topology drift, live-digest mismatch -- so they supply a roster that admits srv4 in order to
 // REACH those arms. This is not asserting that srv4 is aligned; the fleet's own roster says it is
-// not, and gunbc.bmc_fan_alignment_standing_witness is what tests that. Passing the fleet roster
+// not, and gunbc.bmc.bmc_fan_alignment_standing_witness is what tests that. Passing the fleet roster
 // here would answer every one of these with the alignment refusal and the subjects below would go
 // untested while the file still looked green.
 data fixture_alignment_admits_srv4: List<HostBmcFanAlignmentStanding> = [

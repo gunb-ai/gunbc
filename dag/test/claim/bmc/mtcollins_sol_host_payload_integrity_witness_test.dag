@@ -1,9 +1,9 @@
-module test.claim.mtcollins_sol_host_payload_integrity_witness
+module test.claim.bmc.mtcollins_sol_host_payload_integrity_witness_test
 
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
-import gunbc.mtcollins_memory_change {
+import gunbc.host.mtcollins_memory_change {
   mtcollins_training_capture_path,
   mtcollins_training_capture_sha256,
 }

@@ -1,14 +1,14 @@
-module gunbc.test.claim.workspace_acquisition_storage_wet_witness_test
+module test.claim.workspace_acquisition_storage_wet_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_from_json, workspace_reservation_plan_reservation }
 import gunbc.workspace_allocation { workspace_reservation_json }
 import extdeps.shell
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
-import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
-import gunbc.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import extdeps.languages.json.emit { serialize_json, json_array, json_object, json_kv, json_string }
 import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_protocol_key, workspace_acquisition_actor_key, workspace_recorded_actor, RecordedActorInvocation, workspace_rearm_actor,
@@ -16,7 +16,7 @@ import gunbc.workspace_acquisition_invocation {
 }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceAcquiring, WorkspaceRetired, WorkspaceReleased, workspace_owner_key, workspace_allocation_json, WorkspaceStoreWritten, WorkspaceStoreWriteRefused }
 import gunbc.workspace_allocation_acquisition { workspace_settle_unelected_retirement }
-import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation }
+import test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation }
 
 fn acquisition_fixture_write(store: FabricStorageBinding, key: NonEmptyStr, value: NonEmptyStr) -> Bool {
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: value) {

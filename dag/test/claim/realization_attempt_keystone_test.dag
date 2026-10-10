@@ -1,4 +1,4 @@
-module gunbc.test.claim.realization_attempt_keystone_test
+module test.claim.realization_attempt_keystone_test
 
 import v2.workflow.realization_attempt {
   RealizationPhase,

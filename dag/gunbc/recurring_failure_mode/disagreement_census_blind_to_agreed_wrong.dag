@@ -15,7 +15,7 @@ data disagreement_census_blind_to_agreed_wrong: RecurringFailureMode = Recurring
 
     "Its calibration control -- stated in docs/plans/carrier-realization-arbiter-repair-design.md -- requires the diagnostic-producing `DivergesWithExactIdentity` subset to reproduce arm A 25 sites, joined by source declaration and enclosing declaration, never by line.",
 
-    "Run over the transitive import closure of `src/v2/compiler/01_tokenize.dag`, the module that emits the file where every arm-A site lives contributed 76 rows: 74 Agrees, 2 IdentityUnavailable, ZERO divergences, and all 26 of its `String`-named rows Agree.",
+    "Run over the transitive import closure of `src/v2/compiler/tokenize.dag`, the module that emits the file where every arm-A site lives contributed 76 rows: 74 Agrees, 2 IdentityUnavailable, ZERO divergences, and all 26 of its `String`-named rows Agree.",
 
     "Every divergence row in the closure sat in `v2.std.text`, the DECLARING module, in the opposite direction.",
 

@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_state_location
+module gunbc.fabric.fabric_storage_state_location
 
 import std.types { NonEmptyStr }
 

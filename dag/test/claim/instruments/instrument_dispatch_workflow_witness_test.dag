@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import v2.std.algebra { length }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.optional { Absent, Present }
-import gunbc.instrument_dispatch_workflow {
+import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_steps, instrument_dispatch_seed_step_name,
   InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,
   expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered,

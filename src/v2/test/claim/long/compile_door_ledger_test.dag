@@ -1,4 +1,4 @@
-module v2.test.long.compile_door_ledger
+module v2.test.claim.long.compile_door_ledger_test
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

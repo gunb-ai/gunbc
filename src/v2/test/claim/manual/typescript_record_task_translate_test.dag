@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_record_task_translate
+module v2.test.claim.manual.typescript_record_task_translate_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.compile {

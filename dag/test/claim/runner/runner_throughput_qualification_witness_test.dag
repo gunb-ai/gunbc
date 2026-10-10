@@ -1,4 +1,4 @@
-module test.claim.runner_throughput_qualification_witness
+module test.claim.runner.runner_throughput_qualification_witness_test
 
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String, WorkflowRunId }
@@ -26,25 +26,25 @@ import product.fabric.node_qualification {
   ClaimedDeliveryHolds, ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
   RunnerThroughputDidNotHold,
 }
-import gunbc.host_budget_source { HostBudgetResolved, HostBudgetObserved, BudgetSourceCgroupMemoryHigh }
+import gunbc.host.host_budget_source { HostBudgetResolved, HostBudgetObserved, BudgetSourceCgroupMemoryHigh }
 import gunbc.required_ci_phase_roster { RequiredCiPhase, ParsePhase, FloorPhase, required_ci_phases, required_ci_phase_is }
-import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
-import gunbc.fabric_executor_class {
+import gunbc.runner.runner_slot_allocation { gunbc_runner_cores_per_slot }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.fabric.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }
-import gunbc.floor_demand { floor_execution_requirements }
-import gunbc.fleet_host_budget {
+import gunbc.floor.floor_demand { floor_execution_requirements }
+import gunbc.fleet.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound, HeadroomSet, fleet_host_plan_for, oomd_actuation_floor,
   HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed,
 }
-import gunbc.fleet_container { gha_runner_container }
-import gunbc.ci_floor_measurement { OomdEnforced }
+import gunbc.fleet.fleet_container { gha_runner_container }
+import gunbc.ci.ci_floor_measurement { OomdEnforced }
 import extdeps.jobserver { jobserver_config }
 import v2.workflow.floor_eval_step_calibration {
   floor_eval_step_calibration, calibration_rate, calibration_specimen_eval_steps, calibration_specimen_identity,
 }
-import gunbc.runner_throughput_qualification {
+import gunbc.runner.runner_throughput_qualification {
   FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
   workspace_bytes_locus,
   PhaseWall, RateSpecimenRead, CgroupMemoryReading, CgroupMemoryRead, CgroupMemoryUnreadable, EffectiveSlotProperties,
@@ -69,10 +69,10 @@ import std.observation { OccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
-import gunbc.runner_throughput_selection {
+import gunbc.runner.runner_throughput_selection {
   RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
 }
-import gunbc.runner_throughput_qualification_route {
+import gunbc.runner.runner_throughput_qualification_route {
   QualificationStage, BootHostUnderApprovalGate, RegisterEphemeralRunnerSlot, DispatchFloorToSlot,
   CollectInstruments, DeregisterRunnerSlot,
   BmcWrite, GitHubControlPlaneWrite, ObservationOnly, stage_effect, stage_egress,
@@ -83,7 +83,7 @@ import gunbc.runner_throughput_qualification_route {
   mtcollins1_qualification_workspace_backing, mtcollins1_route_legs,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
 }
-import gunbc.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
+import gunbc.runner.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -164,8 +164,8 @@ fn expected_width() -> Int {
 
 fn owned_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "gunbc.fleet_host_identity", decl_name: "operator_host_mtcollins1"),
-    service: decl_ref(module_path: "gunbc.floor_demand", decl_name: "floor_execution_requirements"),
+    provider: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_mtcollins1"),
+    service: decl_ref(module_path: "gunbc.floor.floor_demand", decl_name: "floor_execution_requirements"),
     region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
   }
 }
@@ -196,7 +196,7 @@ fn selected_offer_stating(key: String, architecture: Architecture?) -> SupplierO
     ready_at: "2026-09-19T12:00:00Z",
     quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
     billing_quantum: second(count: 0),
-    evidence: ObservedSupply { observed_at: "2026-09-19T12:00:00Z", receipt: "gunbc.runner_throughput_qualification fixture" },
+    evidence: ObservedSupply { observed_at: "2026-09-19T12:00:00Z", receipt: "gunbc.runner.runner_throughput_qualification fixture" },
   }
 }
 
@@ -854,7 +854,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
             match i {
               FloorCgroupRows => {
                 let p = qualification_instrument_producer(i: i)
-                (p.module_path as String) == "gunbc.host_budget_source" && (p.decl_name as String) == "HostBudgetResolution"
+                (p.module_path as String) == "gunbc.host.host_budget_source" && (p.decl_name as String) == "HostBudgetResolution"
               }
               _ => false
             }

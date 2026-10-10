@@ -15,7 +15,7 @@ import std.content_hash {
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.lens.module_graph { import_closure_live }
-import tools.multi_module_compile_fixture {
+import gunbc.instruments.multi_module_compile_fixture {
   FixtureCompileCompleted,
   FixtureCompileRefused,
   FixtureInstrumentRefused,
@@ -24,8 +24,8 @@ import tools.multi_module_compile_fixture {
   compile_fixture,
   fixture_source,
 }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.bmc_fan_program_interpretation {
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.bmc.bmc_fan_program_interpretation {
   DecoderIdentityEstablished,
   DecoderIdentityNotInstrumented,
   DecoderIdentityStanding,
@@ -44,7 +44,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // which is also why this file is short:
 //
 //   v2.lens.module_graph import_closure_live       enumerates an entry's transitive closure
-//   tools.multi_module_compile_fixture compile_fixture   returns a structural digest over the
+//   gunbc.instruments.multi_module_compile_fixture compile_fixture   returns a structural digest over the
 //                                                 (path, content) vector AND the running compiler
 //                                                 binary's own content hash, both computed host-
 //                                                 side from what actually ran
@@ -68,7 +68,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // which IS the identity's subject -- naming what you are identifying is not the same as authoring
 // the answer. Every other input is read: the closure comes from the module graph, the contents
 // from the files those paths name. THE DECLARATION IS NOT AUTHORED HERE EITHER: fan_program_decoder
-// is consumed from gunbc.bmc_fan_program_interpretation, which is the module that declares the
+// is consumed from gunbc.bmc.bmc_fan_program_interpretation, which is the module that declares the
 // standing this instrument exists to discharge, so the reader being identified and the reader
 // whose standing is at stake cannot drift apart (review 57069; a byte-identical DeclarationRef
 // stood here). THE PATH IS A SECOND FACT AND NOT A SECOND SPELLING OF THE SAME ONE: a module path
@@ -195,7 +195,7 @@ fn measure_decoder_identity() -> DecoderIdentityMeasurement {
 // the interpreter received this vector and no wider one, so the honest reading is that this
 // measures THE DECODER'S SOURCE IDENTITY and not THE IDENTITY OF A PARTICULAR DECODE.
 //
-// SO THE STANDING IS NOT HANDED OUT FROM HERE. gunbc.bmc_fan_program_interpretation's
+// SO THE STANDING IS NOT HANDED OUT FROM HERE. gunbc.bmc.bmc_fan_program_interpretation's
 // DecoderIdentityEstablished is what lets a consumer treat two readings as same-reader, and
 // granting it from a run that did not perform the reading would restore the unbound claim under a
 // name that reads as bound. This module reports a measurement; binding it is a separate

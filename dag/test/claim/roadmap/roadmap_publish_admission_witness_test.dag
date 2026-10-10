@@ -1,9 +1,9 @@
 module test.claim.roadmap.roadmap_publish_admission_witness_test
 
 import std.types { Bool, String, CommitSha }
-import test.claim.roadmap_verification_receipt_witness_test { exact_head_receipt }
-import gunbc.roadmap_validation_oracle { ValidationPassed, ValidationFailed, ValidationNotRun, ValidationRefused }
-import gunbc.roadmap_verification_receipt { VerificationReceipt, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject }
+import test.claim.roadmap.roadmap_verification_receipt_witness_test { exact_head_receipt }
+import gunbc.roadmap.roadmap_validation_oracle { ValidationPassed, ValidationFailed, ValidationNotRun, ValidationRefused }
+import gunbc.roadmap.roadmap_verification_receipt { VerificationReceipt, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmitted, PublishWithheld, verdict_admission, publish_admission }
 
 test fn a_passed_verdict_admits_publication() -> Bool {

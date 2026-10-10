@@ -26,7 +26,7 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.worktree_inventory { WorktreeChange, WorktreeBind, WorktreeDelete }
 import gunbc.scm.object_table_json { object_id_key }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_advance_fold, BeltDeltaFold,
   belt_scm_intake_base_for, BeltIntakeBaseReady, BeltIntakeBaseRefused, BeltIntakeBasePoisoned,
 }

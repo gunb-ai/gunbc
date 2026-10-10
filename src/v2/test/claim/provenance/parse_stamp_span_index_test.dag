@@ -1,4 +1,4 @@
-module v2.test.provenance.parse_stamp_span_index
+module v2.test.claim.provenance.parse_stamp_span_index_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

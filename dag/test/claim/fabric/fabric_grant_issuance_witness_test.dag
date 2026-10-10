@@ -1,4 +1,4 @@
-module test.claim.fabric_grant_issuance_witness
+module test.claim.fabric.fabric_grant_issuance_witness_test
 
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_use, fixture_unadmitted_use, fixture_route, fixture_route_sibling_region,

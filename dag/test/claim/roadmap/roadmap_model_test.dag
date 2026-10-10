@@ -1,11 +1,11 @@
-module test.claim.roadmap_model
+module test.claim.roadmap.roadmap_model_test
 
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   Pointer,
   RoadmapNode, RoadmapEdge,
@@ -15,7 +15,7 @@ import gunbc.roadmap_model {
   node_carrier_clean,
   node_status_drift,
 }
-import gunbc.roadmap_status { Signoff, Unsigned }
+import gunbc.roadmap.roadmap_status { Signoff, Unsigned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

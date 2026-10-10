@@ -5,11 +5,11 @@ import gunbc.workspace_initial_sanitation {
   WorkspaceInitialSanitationReadings, workspace_initial_sanitation_observations,
   workspace_initial_storage_reading, workspace_initial_mount_reading,
 }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.runner.runner_microvm_lifecycle {
   CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
-import gunbc.runner_microvm_network { SlotNetworkConfirmed, SlotNetworkUnobservable, TapUnheldFact }
+import gunbc.runner.runner_microvm_network { SlotNetworkConfirmed, SlotNetworkUnobservable, TapUnheldFact }
 import product.fabric.sanitation { CellId, SlotScopedNetwork, cell_readiness_from_observations, CellReady, CellQuarantined }
 
 fn clean_initial_readings() -> WorkspaceInitialSanitationReadings {

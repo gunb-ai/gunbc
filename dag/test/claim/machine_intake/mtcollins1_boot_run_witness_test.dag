@@ -1,24 +1,24 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
-import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_still_allowance }
-import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
-import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
+import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_still_allowance }
+import gunbc.machine_intake.mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
+import gunbc.machine_intake.mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
 import extdeps.github.log_annotations { log_annotation_message_line }
-import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
-import gunbc.machine_intake_megarac_boot_media_attach { megarac_stale_power_off_allowance }
-import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ipmi_read_bound }
+import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
+import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_allowance }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_ipmi_read_bound }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import std.optional { Present }
-import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
+import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, SmproReading, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.machine_intake.mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_sol_notice_final_allowance,
@@ -43,20 +43,20 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick,
 }
 import extdeps.bmc.ipmi { SolPayloadAlreadyActive, SolPayloadActivationUnanswered }
-import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_line_prefix, mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_release_script }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { BmcAuthRefused, BmcSessionUnestablished }
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_one_socket_milestone, mtcollins1_boot_topology_expectation, mtcollins1_dual_socket_workload }
-import gunbc.machine_intake_host_capture_envelope { host_capture_workload_total_bytes }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
-import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
-import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
+import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_line_prefix, mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_release_script }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { BmcAuthRefused, BmcSessionUnestablished }
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_one_socket_milestone, mtcollins1_boot_topology_expectation, mtcollins1_dual_socket_workload }
+import gunbc.machine_intake.host_capture_envelope { host_capture_workload_total_bytes }
+import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
+import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
@@ -65,13 +65,13 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
+import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
-import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 
 // A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
-// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// the medium the claim needs; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor). Absent fails the claim that asked for it.
 fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
   match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
@@ -214,8 +214,8 @@ fn pending_because(v: MtCollins1BootTerminalVerdict, fragment: String) -> Bool {
 //     is Pending, with it Refused;
 // (4) the same-name / different-digest subject-medium disagreement this claim used to render is no
 //     longer a state: the subject carries the medium it was admitted with and the verdict reads
-//     that one value (gunbc.managed_host_boot AdmittedBootSubject), and a subject cannot be authored
-//     field-for-field (test.claim.managed_host_forged_probe_witness).
+//     that one value (gunbc.host.managed_host_boot AdmittedBootSubject), and a subject cannot be authored
+//     field-for-field (test.claim.host.managed_host_forged_probe_witness_test).
 // Review 69667: in a CLOSED envelope a section that opened and never printed its EXIT line is
 // "unterminated", not "absent", and a section whose printed output already refused is not
 // reported a second time -- closed_unterminated_workload yields exactly the write refusal plus the
@@ -434,7 +434,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   }
 }
 
-// THE ONE-SOCKET MILESTONE, DISCRIMINATED (gunbc.machine_intake_mtcollins1_boot_milestone): the
+// THE ONE-SOCKET MILESTONE, DISCRIMINATED (gunbc.machine_intake.mtcollins1_boot_milestone): the
 // verdict is held against 80 threads ALL on socket 0, not against the machine's 160, and not
 // against the count alone. Positive control: 80 on socket 0 accepts. REDs: 79 on socket 0 refuses
 // on the count; 80 split 40/40 across sockets passes nproc and refuses on placement -- the case a
@@ -459,7 +459,7 @@ fn milestone_capture_with_workload(nproc: String, numa: String, workload: String
   )
 }
 
-// THE WORKLOAD IS HELD TO THE MILESTONE PROFILE'S DECLARED FOOTPRINT (gunbc.machine_intake_mtcollins1_boot_milestone
+// THE WORKLOAD IS HELD TO THE MILESTONE PROFILE'S DECLARED FOOTPRINT (gunbc.machine_intake.mtcollins1_boot_milestone
 // mtcollins1_one_socket_workload, 4294967296 bytes). Positive control: the declared bytes, preflight
 // fits, writes succeed, both passes agree -> ACCEPTED. REDs: a PREFLIGHT REFUSAL (the 64 GiB shape
 // against a 16 GiB machine, as run 35808203121 would have reported it had the preflight existed) is
@@ -834,7 +834,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 
 // RELEASE SIGNALS ONLY THE PROCESS THE HOLD RECORDED, and only while it is still that process. The
 // data row is ReleaseHeld's argv, the one the teardown executes; the boot step's EXIT trap carries the same data row
-// (gunbc.ci_spec gunbc_ci_mtcollins1_boot_trap_body). Its executed controls are in
+// (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_trap_body). Its executed controls are in
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script

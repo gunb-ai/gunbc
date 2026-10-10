@@ -1,4 +1,4 @@
-module v2.test.tokenize.line_comment_extent
+module v2.test.claim.tokenize.line_comment_extent_test
 
 import v2.std.text { String }
 import v2.std.algebra { fold_list }

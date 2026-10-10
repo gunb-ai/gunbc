@@ -1,4 +1,4 @@
-module test.claim.fleet_desired_admission_witness_test
+module test.claim.fleet.fleet_desired_admission_witness_test
 
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
@@ -9,10 +9,10 @@ import extdeps.github.workflow_runs {
   WorkflowRunConclusion, Success, Failure, Cancelled, Skipped, TimedOut, Neutral, ActionRequired, StartupFailure,
 }
 import extdeps.github.push_event { PushRefUpdate }
-import gunbc.witness_floor_workflow { witness_floor_workflow_name }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.fleet_revision_acceptance { AcceptedFleetRevision }
-import gunbc.fleet_main_revision {
+import gunbc.witness.witness_floor_workflow { witness_floor_workflow_name }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.fleet.fleet_main_revision {
   DeployRevisionRelation, SameRevision, DeployedIsAncestor, CandidateIsAncestor,
   FleetRevisionRelationObservation,
   FleetDesiredAdvanceInput,
@@ -21,7 +21,7 @@ import gunbc.fleet_main_revision {
   FleetDesiredRefUndecodable,
   decide_fleet_desired_advance,
 }
-import gunbc.fleet_desired_admission {
+import gunbc.fleet.fleet_desired_admission {
   FleetDesiredAdmissionOutcome, AdmissionActionAuthorized, AdmissionRefused,
   FleetDesiredAuthorizedAction,
   FleetDesiredRemoteAdvance, FleetDesiredAlreadyConvergedAction, FleetDesiredSupersededAction,
@@ -33,7 +33,7 @@ import gunbc.fleet_desired_admission {
   fleet_desired_unobservable_judge_source_refusal_reason,
 }
 import v2.workflow.ci_workflow_run_emit { ci_isolate_echo_cargo_home_command, ci_isolate_echo_rustup_home_command }
-import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.fleet.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 
 
 // Every witness here is about a non-epoch admission dimension, so the epoch is held at the
@@ -61,7 +61,7 @@ fn fixture_oid(hex: String) -> GitObjectId {
 //
 // THE ROUTE IS THE MERGE-QUEUE ONE BECAUSE IT IS THE ONLY ONE. The workflow_run route and the
 // classification rows that exercised it were deleted with the push-on-main required run
-// (gunbc.witness_floor_workflow witness_floor_triggers). The refusals they carried are not lost:
+// (gunbc.witness.witness_floor_workflow witness_floor_triggers). The refusals they carried are not lost:
 // test.claim.fleet.fleet_desired_merge_queue_admission_witness holds the CI-fact and branch-fact
 // refusals for the surviving route, on its own evidence.
 fn admitting_push() -> PushRefUpdate {
@@ -107,7 +107,7 @@ test fn the_fixture_push_is_accepted_and_names_the_candidate_revision() -> Bool 
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE JOIN. The rows above prove the event is classified; gunbc.fleet_main_revision's own witness
+// THE JOIN. The rows above prove the event is classified; gunbc.fleet.fleet_main_revision's own witness
 // proves the advance decision. These prove the seam BETWEEN them -- that each decision becomes
 // exactly one action, and that a refusal becomes no action at all.
 
@@ -234,7 +234,7 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
 // AN ABSENT REF REFUSES, AND THIS ROW WAS INVERTED AND THEN INVERTED BACK WITHIN ONE DAY.
 //
 // The policy it asserts -- absence is a STATE, creation is a CAPABILITY, and no observation of
-// absence can supply a mint authority -- is gunbc.fleet_main_revision's, authored deliberately
+// absence can supply a mint authority -- is gunbc.fleet.fleet_main_revision's, authored deliberately
 // under the title "creation is not implied by absence". gunbc#8746 landed the opposite policy on
 // main four and a half hours later, so merging main here was a policy DIVERGENCE. I then flipped
 // this row to assert creation, calling my own position an accidental regression. It was not, and
@@ -363,7 +363,7 @@ test fn the_admission_workflow_emits_rather_than_refusing() -> Bool {
 // about what the workflow actually runs, so these read the emitted bytes.
 // THE workflow_run ABSENCE IS READ FROM THE TRIGGER BLOCK. The defect this guards was a workflow_run
 // TRIGGER; a job that reads the Actions API's `.workflow_run.id` field (the candidate fetch,
-// gunbc.fleet_desired_candidate) is not one, so the claim reads the text above `jobs:`.
+// gunbc.fleet.fleet_desired_candidate) is not one, so the claim reads the text above `jobs:`.
 test fn the_admission_workflow_triggers_on_the_push_of_the_landed_revision() -> Bool {
   let yml = admission_yml()
   let trigger = split(s: yml, delimiter: "jobs:").first()
@@ -479,7 +479,7 @@ test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Boo
 //
 // RUNG: mitigatable. NEXT-RUNG TRIGGER: workflow capability closure -- a typed step operation
 // deriving CargoCapability (the derivation already exists for validations in
-// gunbc.roadmap_execution_contract) and a projection that refuses to emit a job whose derived
+// gunbc.roadmap.roadmap_execution_contract) and a projection that refuses to emit a job whose derived
 // capabilities are unclosed. The permanent control then becomes structural -- a Cargo operation
 // with no dominating provider REFUSES -- which is invariant under every spelling above because
 // it never inspects one. When that lands these two claims are deleted or demoted to a byte

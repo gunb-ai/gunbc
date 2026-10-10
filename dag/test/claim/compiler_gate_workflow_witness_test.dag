@@ -2,7 +2,7 @@ module test.claim.compiler_gate_workflow_witness_test
 
 import std.types { Bool, String }
 import extdeps.github.actions { SelfHosted, RunsOnExpression }
-import gunbc.compiler_gate_workflow {
+import gunbc.witness.compiler_gate_workflow {
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
   compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids,
   compiler_gate_required_job_id

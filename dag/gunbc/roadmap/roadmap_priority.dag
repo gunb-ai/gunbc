@@ -1,4 +1,4 @@
-module gunbc.roadmap_priority
+module gunbc.roadmap.roadmap_priority
 
 import std.types { String, List, Int }
 import v2.std.algebra { any }

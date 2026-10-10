@@ -1,7 +1,7 @@
-module gunbc.runner_microvm_lifecycle_realize
+module gunbc.runner.runner_microvm_lifecycle_realize
 
 import extdeps.systemd.journalctl
-import gunbc.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
+import gunbc.runner.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
 import extdeps.virtualization.firecracker { FirecrackerVmConfig, firecracker_vm_config_document }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
@@ -38,14 +38,14 @@ import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fabric_cell_converge { fabric_cell_slice_name }
-import gunbc.runner_microvm_attempt {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
   runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property,
   runner_microvm_attempt_part_of_property,
 }
-import gunbc.runner_attempt_launch {
+import gunbc.runner.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
   AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedVmConfiguration, AttemptStagingReceipt, jail_config_path,
@@ -53,18 +53,18 @@ import gunbc.runner_attempt_launch {
   WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
   launch_payload_device, attempt_staging_verdict, workspace_readback_command, stage_bootstrap_device,
 }
-import gunbc.runner_microvm_attempt_bounds {
+import gunbc.runner.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, attempt_stop_grace, attempt_force_stop_bound,
 }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellBoundAttempt, CellIncarnationAdmission, cell_incarnation_admission,
   CellReadinessWrite, in_flight_attempt_unit,
 }
-import gunbc.runner_microvm_cell_readiness_store {
+import gunbc.runner.runner_microvm_cell_readiness_store {
   read_cell_readiness_store, persist_cell_readiness_write,
   CellReadinessStorePersist, StorePersisted,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   BoundSlotNetworkReadback, slot_network_readback,
   SlotNetworkSanitationSubject, SlotNetworkReadings,
   TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
@@ -82,7 +82,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
   systemd_run_option_words_refused_cause_detail,
 }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.runner.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
@@ -113,7 +113,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // readbacks are, so an incomplete or uncertain cleanup quarantines the cell rather than reporting it
 // clean.
 //
-// gunbc.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
+// gunbc.runner.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
 // is the other half that module deliberately cannot have: reaching the host. Each producer below
 // turns one host reading into one of that module's observation carriers, and a producer that decided
 // anything would be a second authority for a verdict (DESIGN section 3), so none of them does: the
@@ -127,7 +127,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // ORIGINAL HEADER, KEPT BECAUSE ITS CLAIM IS STILL TRUE OF WHAT IS HERE:
 // THE WET HALF OF THE microVM SLOT LIFECYCLE: THE PROCESS THE SLOT UNIT EXECS AS ITS MainPID.
 //
-// gunbc.runner_microvm_lifecycle owns every DECISION this controller makes and this module adds
+// gunbc.runner.runner_microvm_lifecycle owns every DECISION this controller makes and this module adds
 // none. What it owns is the other half that module deliberately cannot have: reaching the host.
 // Each producer below turns one host reading into one of that module's observation carriers, and
 // the controller then hands those carriers to the folds that decide. A producer that decided
@@ -149,7 +149,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // processes" -- so the kernel already answers the recursive question, in one read, with no walk to
 // get wrong. cgroup.procs cannot: it lists the pids attached to ONE cgroup and reads empty for an
 // inner node whose every process sits in a child, which is exactly the double-forked daemon moved
-// one level down that gunbc.runner_microvm_lifecycle names. A hand-rolled walk asked to decide
+// one level down that gunbc.runner.runner_microvm_lifecycle names. A hand-rolled walk asked to decide
 // EMPTY would have to be complete, and an incomplete walk reporting empty is the silent narrow this
 // whole lane exists to close. Here the walk cannot say empty at all: it runs only after the kernel
 // has already said populated, and it exists to name the pids an operator must go look at.
@@ -385,9 +385,9 @@ fn observe_path_exists(path: String) -> PathExistenceReading
   )
 }
 
-// THE GROUND CHECK IS THE SAME READING ASKED BEFORE THE ATTEMPT RUNS. gunbc.runner_attempt_launch
+// THE GROUND CHECK IS THE SAME READING ASKED BEFORE THE ATTEMPT RUNS. gunbc.runner.runner_attempt_launch
 // AttemptGround is the host's own answer to "is anything of a previous attempt still here", and the
-// controller consumes it at start (gunbc.runner_microvm_lifecycle controller_start). An UNREADABLE
+// controller consumes it at start (gunbc.runner.runner_microvm_lifecycle controller_start). An UNREADABLE
 // resource counts as OCCUPIED here and that asymmetry is deliberate: before the attempt, not knowing
 // whether residue is present must refuse; there is no arm in which a failed probe clears the ground.
 fn observe_attempt_ground(attempt: MicroVmAttempt) -> AttemptGround
@@ -412,7 +412,7 @@ fn resource_is_absent(r: ResourceReadback) -> Bool {
 
 // --- the bounded stop ---
 
-// THE GRACE AND THE FORCE BOUND ARE DECLARED IN gunbc.runner_microvm_attempt_bounds beside the VMM
+// THE GRACE AND THE FORCE BOUND ARE DECLARED IN gunbc.runner.runner_microvm_attempt_bounds beside the VMM
 // deadline, because the slot unit's stop timeout is their sum and its emitter cannot import this
 // module without a cycle.
 data attempt_stop_poll_interval: Second = second(count: 1)
@@ -587,7 +587,7 @@ fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQu
 // THE ATTEMPT'S INVOCATION ID IS CARRIED INTO THE UNIT AND READ BACK OUT OF IT, AND THE FIRST CUT
 // READ THE WRONG IDENTIFIER ENTIRELY.
 //
-// gunbc.runner_microvm_lifecycle's teardown join compares the OBSERVED stop's invocation id against
+// gunbc.runner.runner_microvm_lifecycle's teardown join compares the OBSERVED stop's invocation id against
 // the one the STORE recorded for this attempt, and that recorded value is the ATTEMPT's invocation
 // id -- written at WriteAttemptStarted, BEFORE anything is staged, so it cannot be systemd's
 // InvocationID, which does not exist until the unit starts. This module used to fill the observed
@@ -684,7 +684,7 @@ fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvo
 // still running measures the stop's progress rather than its result. The stop's own outcome travels
 // out beside the readings, so surviving_process_observation can require BOTH host facts -- the stop
 // did not exceed its bound AND the subtree holds no pid -- exactly as
-// gunbc.runner_microvm_lifecycle declares.
+// gunbc.runner.runner_microvm_lifecycle declares.
 //
 // THE FUNCTION MUTATES, AND ITS NAME SAYS SO. It signals the unit. Naming it `observe_` would hide
 // the one step in this module that changes the host.
@@ -704,9 +704,9 @@ fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvo
 //
 // WHAT IS REMOVED IS WHAT THIS ATTEMPT OWNS AND NOTHING ELSE. The jail base, the attempt directory
 // (workspace and attempt root) and the staged credential device are all derived from the attempt
-// (gunbc.runner_microvm_attempt runner_microvm_attempt_jail_base / runner_microvm_attempt_dir, and
+// (gunbc.runner.runner_microvm_attempt runner_microvm_attempt_jail_base / runner_microvm_attempt_dir, and
 // the in-flight record's device path); the network flush is the slot's own
-// (gunbc.runner_microvm_network runner_slot_teardown_flush_commands: conntrack entries to or from the
+// (gunbc.runner.runner_microvm_network runner_slot_teardown_flush_commands: conntrack entries to or from the
 // slot's guest address and the neighbour entry on the slot's tap). No host-wide flush, no other
 // slot's tap, no shared table.
 //
@@ -873,7 +873,7 @@ fn observe_slot_network_after_stop(subject: SlotNetworkSanitationSubject, after:
 }
 
 data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize observe_slot_network_after_stop, which builds the teardown's BoundSlotNetworkReadback after the stop. TRIGGER: the slot-network converge running on a host so conntrack and the gunbc-microvm nft ruleset exist to be read, plus a readings producer in gunbc.runner_microvm_network that reads them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying SlotNetworkReadings, nor by this consumer returning anything other than what it read." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner.runner_microvm_lifecycle_realize observe_slot_network_after_stop, which builds the teardown's BoundSlotNetworkReadback after the stop. TRIGGER: the slot-network converge running on a host so conntrack and the gunbc-microvm nft ruleset exist to be read, plus a readings producer in gunbc.runner.runner_microvm_network that reads them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying SlotNetworkReadings, nor by this consumer returning anything other than what it read." as NonEmptyStr,
 )
 
 // THE READINGS TAKE THE STOP'S OUTCOME AS AN ARGUMENT so they cannot be hoisted above it. Order in
@@ -881,7 +881,7 @@ data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dis
 // the very staleness this restructuring removed.
 //
 // THE TWO HOST-GRAIN FACTS CARRY THE RECEIPT'S OWN COORDINATES, and that is load-bearing rather than
-// decorative. `gunbc.runner_microvm_network` `host_residue_readback` and `ruleset_readback` gate on
+// decorative. `gunbc.runner.runner_microvm_network` `host_residue_readback` and `ruleset_readback` gate on
 // `at_receipt`, which compares the reading's host AND generation against `s.converged`; a reading
 // that does not match is answered `different_generation`, whose sealed reason says the reading was
 // taken against a different converge generation. A literal generation here would therefore DISCARD
@@ -1013,7 +1013,7 @@ fn command_exit_code(outcome: ProcessOutcome) -> Int {
 }
 
 // THE SUPERBLOCK READING NAMES THE IMAGE IT READ, because the path is what
-// gunbc.runner_attempt_launch workspace_standing compares against the plan's own workspace_path.
+// gunbc.runner.runner_attempt_launch workspace_standing compares against the plan's own workspace_path.
 // Reading some other image -- a previous attempt's, another slot's -- and reporting its size would
 // otherwise pass as this plan's workspace being ready.
 fn read_workspace_superblock(workspace_path: String) -> WorkspaceReadback
@@ -1041,7 +1041,7 @@ fn read_workspace_superblock(workspace_path: String) -> WorkspaceReadback
 
 // STAGING IS NOT A VERDICT AND THIS FUNCTION DOES NOT PRODUCE ONE. It runs what the plan said to
 // run and reads back what the host did, then hands BOTH stagings to
-// gunbc.runner_attempt_launch attempt_staging_verdict, which is the single authority for whether
+// gunbc.runner.runner_attempt_launch attempt_staging_verdict, which is the single authority for whether
 // a jailer may be released. A refused plan has nothing to stage -- its arms carry no commands --
 // so this reports that no staging was attempted rather than manufacturing observations to feed a
 // fold whose answer for those arms is already fixed.
@@ -1123,7 +1123,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
 
 // THE VMM STARTS FROM THE RECEIPT AND FROM NOWHERE ELSE.
 //
-// This is the consumption gunbc.runner_attempt_launch's workspace_staging_consumer_frontier was
+// This is the consumption gunbc.runner.runner_attempt_launch's workspace_staging_consumer_frontier was
 // waiting for -- that row named this step, and this step executes the plan's workspace create and
 // format, stages the JIT device, and reaches the jailer only through attempt_staging_verdict -- so
 // the row is deleted with this change rather than left standing over its own met trigger.
@@ -1142,7 +1142,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
 //
 // THE UNIT IS THE ATTEMPT'S AND THE SLICE IS THE CELL'S, both derived from the attempt rather than
 // passed in: a VMM started outside the cell's slice is a guest whose CPU, memory and task
-// consumption no reservation accounts for (gunbc.runner_microvm_attempt), and Slice= cannot be added
+// consumption no reservation accounts for (gunbc.runner.runner_microvm_attempt), and Slice= cannot be added
 // after the fact.
 type AttemptLaunch
   = VmmStarted { unit: NonEmptyStr, receipt: AttemptStagingReceipt }
@@ -1208,7 +1208,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
 
 // THE DEADLINE IS A TERMINAL TRIGGER AND NOT AN ERROR PATH. A guest that runs past its deadline is
 // torn down exactly as one that exited, through the same stop and the same readbacks, and the cell's
-// readiness is decided by what the host finds afterwards. That is gunbc.runner_microvm_lifecycle's
+// readiness is decided by what the host finds afterwards. That is gunbc.runner.runner_microvm_lifecycle's
 // rule made operational: the trigger starts a teardown and never decides its outcome.
 //
 // THE EXIT STATUS IS CARRIED AND GOES NOWHERE. VmmExited holds it because an operator reading a
@@ -1256,15 +1256,15 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 
 // --- the controller ---
 
-// THE CONSUMER OF run_controller IS THE microVM SLOT UNIT, THROUGH gunbc.runner_microvm_slot_controller.
+// THE CONSUMER OF run_controller IS THE microVM SLOT UNIT, THROUGH gunbc.runner.runner_microvm_slot_controller.
 //
 // This module used to carry controller_main_pid_consumer_frontier: nothing called run_controller,
 // and the row named its consumer as the slot unit's ExecStart execing this controller as MainPID,
 // emitted by the converge route that writes the other slot units. That trigger is met and the row
-// is deleted rather than left standing over it: gunbc.runner_microvm_slot_unit renders
+// is deleted rather than left standing over it: gunbc.runner.runner_microvm_slot_unit renders
 // gunbc-microvm-slot@.service with Type=exec and an ExecStart naming
-// gunbc.runner_microvm_slot_controller microvm_slot_controller_main (Environment carries the slot
-// instance and the release locus; ExitType=main and KillMode=control-group are gunbc.runner_unit's
+// gunbc.runner.runner_microvm_slot_controller microvm_slot_controller_main (Environment carries the slot
+// instance and the release locus; ExitType=main and KillMode=control-group are gunbc.runner.runner_unit's
 // declared lifecycle intent, the VmmUnderLifecycleController prerequisite), gunbc.live_deploy.emit
 // installs that unit beside the root-owned release locus through the microvm_controller_install
 // fleet-converge mode, and that entry composes the readiness store, the reservation re-read, the
@@ -1273,7 +1273,7 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 // topology; the unit execs the controller directly, so it is MainPID for the attempt's whole life.
 //
 // WHAT STILL STANDS BETWEEN THAT ENTRY AND A LAUNCHED VMM IS DECLARED WHERE IT IS OWNED: the
-// planner's grant arm has no production producer (gunbc.runner_attempt_launch
+// planner's grant arm has no production producer (gunbc.runner.runner_attempt_launch
 // reservation_authorization_grant_producer_frontier). It is not this module's, and it does not make
 // the consumer of this entry anything other than the unit.
 
@@ -1281,7 +1281,7 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 //
 // The in-flight record is written BEFORE anything is staged, and a record that did not persist stops
 // the controller before it stages or launches. That is the durable half of boot recovery
-// (gunbc.runner_microvm_cell_readiness): a controller lost at any later point leaves a record saying
+// (gunbc.runner.runner_microvm_cell_readiness): a controller lost at any later point leaves a record saying
 // cleanup is owed, rather than the previous attempt's settled Ready readmitting a cell whose VMM may
 // still be running. Launching first and recording afterwards would make the window between them
 // invisible, which is the one window in this whole lane that nobody can observe after the fact.
@@ -1376,15 +1376,15 @@ fn run_launched_attempt(
 
 // ── the guest-to-host readiness channel ────────────────────────────────────────────────────────
 //
-// THE CHANNEL IS THE ATTEMPT UNIT'S OWN CONSOLE, AND THE BINDING IS THE HOST'S. gunbc.runner_guest_image
+// THE CHANNEL IS THE ATTEMPT UNIT'S OWN CONSOLE, AND THE BINDING IS THE HOST'S. gunbc.runner.runner_guest_image
 // puts the guest agent's observation lines (GuestBooted, RunnerStarted, RunnerExited) and the
 // listener's own readiness line on ttyS0, which Firecracker delivers on the VMM's stdout, which
 // systemd records in the journal of the attempt's transient unit. The guest never names its attempt
 // -- a line that did would be the workload forging a key the host must hold -- so the join to THIS
 // attempt is that the line is in THIS unit's journal, and the unit's name is the attempt's
-// (gunbc.runner_microvm_attempt runner_microvm_attempt_unit_name carries the attempt segment), so no
+// (gunbc.runner.runner_microvm_attempt runner_microvm_attempt_unit_name carries the attempt segment), so no
 // other attempt's lines can be read here. Each event is then advanced under the controller's own
-// AttemptIdentity through gunbc.runner_microvm_lifecycle advance_bring_up, so the phase this reading
+// AttemptIdentity through gunbc.runner.runner_microvm_lifecycle advance_bring_up, so the phase this reading
 // reports is the lifecycle's transition, not a second progression decided beside it.
 //
 // IT IS READ ONCE, AFTER THE TERMINAL TRIGGER. What it decides is attribution, not the teardown: the

@@ -1,4 +1,4 @@
-module v2.test.manual.discriminant_intrinsic
+module v2.test.claim.manual.discriminant_intrinsic_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

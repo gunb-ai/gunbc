@@ -1,4 +1,4 @@
-module v2.test.manual.refinement_authoritative_constants
+module v2.test.claim.manual.refinement_authoritative_constants_test
 
 import v2.std.refinement {
   make_at_least_minus_one_int_at_authoritative,

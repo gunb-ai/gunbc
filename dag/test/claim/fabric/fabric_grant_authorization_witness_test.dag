@@ -1,12 +1,12 @@
-module test.claim.fabric_grant_authorization_witness
+module test.claim.fabric.fabric_grant_authorization_witness_test
 
 import std.types { NonEmptyStr, Bool, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-// THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric_grant_issuance_witness
+// THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric.fabric_grant_issuance_witness_test
 // owns the one construction of an issued grant and the account it fences against; rebuilding
 // either here would be a second answer to "what authorizes this work", and the two would drift
 // the first time issuance moved.
-import test.claim.fabric_grant_issuance_witness {
+import test.claim.fabric.fabric_grant_issuance_witness_test {
   issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
   money_request,
 }

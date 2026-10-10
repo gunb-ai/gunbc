@@ -1,8 +1,8 @@
-module v2.test.long.bind_eval_by_execution
+module v2.test.claim.execution.long.bind_eval_by_execution_test
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
   table_fixture_bind_wrong_value_arrow_with_body
 }

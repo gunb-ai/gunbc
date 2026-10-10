@@ -23,7 +23,7 @@ type BmcProtocol = Redfish | Ipmi
 // cited facts; this coproduct is the agnostic shape they inhabit and carries
 // no per-product facts itself. Per DESIGN §3 the dispatch that selects among
 // the inhabitants is realization and lives peripherally in
-// gunbc.bmc_implementation_dispatch, so a Chrome change never edits Safari's
+// gunbc.bmc.bmc_implementation_dispatch, so a Chrome change never edits Safari's
 // module: the 2026-08-29 machine-intake ruling required an AMI MegaRAC identity
 // for Mt. Collins, and the three family-keyed dispatchers that used to live
 // INSIDE extdeps.bmc.openbmc would have forced that OpenBMC module to change

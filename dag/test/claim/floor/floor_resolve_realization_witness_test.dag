@@ -1,7 +1,7 @@
-module test.claim.floor_resolve_realization_witness
+module test.claim.floor.floor_resolve_realization_witness_test
 
 import std.types { List }
-import gunbc.ci_materialization {
+import gunbc.ci.ci_materialization {
   ResolveObligation,
   ResolveObligationSubject,
   ResolveRealization,
@@ -25,13 +25,13 @@ import gunbc.ci_materialization {
   ci_floor_expected_resolve_obligation_count,
   ci_floor_declared_resolve_count,
 }
-import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
+import gunbc.floor.floor_materialization { floor_entry_walk_memo_provider_id }
 import std.measure { nanosecond }
 
 // Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor
 // cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation;
 // duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed
-// physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan
+// physical resolve. Authority: gunbc.ci.ci_materialization; claim_executor observes; ci_floor_plan
 // transports only.
 
 fn cold_main_realizations() -> List<ResolveRealization> {

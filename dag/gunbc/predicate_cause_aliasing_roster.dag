@@ -29,9 +29,9 @@ module gunbc.predicate_cause_aliasing_roster
 // these are obligations, not guarantees.
 //
 // THREE SITES ARE ABSENT FROM THIS LIST ON PURPOSE and are recorded so the absence is not read as
-// completeness. tools.self_host_curated_seed_linked_harness cssl_seed_linked_behavioral_receipt was
+// completeness. gunbc.instruments.self_host_curated_seed_linked_harness cssl_seed_linked_behavioral_receipt was
 // migrated by the class-A lane, whose repair replaced a single fault_run.success bit with an exact
-// marker observation. tools.emit_host_transport run_rust_smoke and run_python_smoke are migrated in a
+// marker observation. gunbc.instruments.emit_host_transport run_rust_smoke and run_python_smoke are migrated in a
 // separate change already in review, which lifted their comparison out of the shell transport first.
 
 import std.logic { Bool }
@@ -46,7 +46,7 @@ type AliasedPredicateSite {
 
 data class_b_remaining_sites: List<AliasedPredicateSite> = [
   AliasedPredicateSite {
-    module_path: "gunbc.roadmap_dashboard_instance_apply",
+    module_path: "gunbc.roadmap.roadmap_dashboard_instance_apply",
     symbol: "dashboard_source_anchor_matches",
     proposition: "the dashboard source anchor matches its declared authority",
     aliased_causes: "the anchor differs; the read that would have compared it never happened"
@@ -100,49 +100,49 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
     aliased_causes: "an expect-fail arm, so a harness failure SATISFIES it -- the fail-open shape"
   },
   AliasedPredicateSite {
-    module_path: "tools.build_step_transport",
+    module_path: "gunbc.instruments.build_step_transport",
     symbol: "corruption_probe_with_content",
     proposition: "a corrupted artifact is detected by the verification path",
     aliased_causes: "detection failed; the probe was never written or never made executable"
   },
   AliasedPredicateSite {
-    module_path: "tools.build_step_transport",
+    module_path: "gunbc.instruments.build_step_transport",
     symbol: "witness_readiness_absent_refuses_located",
     proposition: "an absent artifact refuses with a located reason",
     aliased_causes: "an expect-refusal arm; harness failure satisfies it"
   },
   AliasedPredicateSite {
-    module_path: "tools.build_step_transport",
+    module_path: "gunbc.instruments.build_step_transport",
     symbol: "witness_readiness_empty_artifact_refuses_located",
     proposition: "an empty artifact refuses with a located reason",
     aliased_causes: "an expect-refusal arm; harness failure satisfies it"
   },
   AliasedPredicateSite {
-    module_path: "tools.build_step_transport",
+    module_path: "gunbc.instruments.build_step_transport",
     symbol: "witness_readiness_nonempty_executable_is_ready",
     proposition: "a nonempty executable artifact is ready",
     aliased_causes: "readiness was wrong; the artifact was never staged"
   },
   AliasedPredicateSite {
-    module_path: "tools.build_step_transport",
+    module_path: "gunbc.instruments.build_step_transport",
     symbol: "witness_readiness_not_executable_refuses_located",
     proposition: "a non-executable artifact refuses with a located reason",
     aliased_causes: "an expect-refusal arm; harness failure satisfies it"
   },
   AliasedPredicateSite {
-    module_path: "tools.dag_compile_clean_shard_transport",
+    module_path: "gunbc.instruments.dag_compile_clean_shard_transport",
     symbol: "single_module_shard_compile_typed",
     proposition: "a single-module shard compiles clean",
     aliased_causes: "the module was unclean; the compile never ran"
   },
   AliasedPredicateSite {
-    module_path: "tools.dag_compile_clean_transport",
+    module_path: "gunbc.instruments.dag_compile_clean_transport",
     symbol: "dcc_perturb_compile_with_args",
     proposition: "a perturbed compile refuses",
     aliased_causes: "an expect-refusal arm; harness failure satisfies it"
   },
   AliasedPredicateSite {
-    module_path: "tools.direct_rust_door_transport",
+    module_path: "gunbc.instruments.direct_rust_door_transport",
     symbol: "run_direct_rust_door_emit_write_compile_smoke",
     proposition: "the emitted artifact writes and compiles",
     aliased_causes: "class A and class B in one function: a Rejected arm discards its diagnostics INSIDE a success conjunction"

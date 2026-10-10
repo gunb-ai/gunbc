@@ -9,7 +9,7 @@ import extdeps.systemd { ControlGroup, systemd_unit_property_wire }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved, MembershipMalformed, MembershipMissing }
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
-import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 import gunbc.workspace_commissioning_start_observe {
   WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
 }
@@ -27,10 +27,10 @@ import gunbc.workspace_commissioning_apply_readback {
   WorkspaceCommissioningApplyCompleted, WorkspaceCommissioningApplyFinished, WorkspaceCommissioningApplyFinishRefused,
   workspace_commissioning_apply_recover_completed,
 }
-import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_commissioning_executor_journal { ExecutorReleaseObserved, ExecutorGenerationCommitted }
-import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_publication_as_owner }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }

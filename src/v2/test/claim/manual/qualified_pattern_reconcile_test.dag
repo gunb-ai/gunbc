@@ -1,4 +1,4 @@
-module v2.test.manual.qualified_pattern_reconcile
+module v2.test.claim.manual.qualified_pattern_reconcile_test
 
 import std.nat { Nat, Zero, Succ, nat_mul }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -1,4 +1,4 @@
-module test.claim.bmc_wif_delegation_chain_witness
+module test.claim.bmc.bmc_wif_delegation_chain_witness_test
 
 // IMPORTS NAMED (the file carried none, so SecretAccessGrant resolved ambiguously between
 // gunbc.auth.secret_access_grant and gunbc.auth.gcp_secret_access), and list heads matched as the

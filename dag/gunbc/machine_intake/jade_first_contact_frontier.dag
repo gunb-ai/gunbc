@@ -1,4 +1,4 @@
-module gunbc.machine_intake_jade_first_contact_frontier
+module gunbc.machine_intake.jade_first_contact_frontier
 
 import std.types { List }
 import std.dissolution { unbound_dissolution }
@@ -25,14 +25,14 @@ import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
 
 // RETIRED 2026-10-03: discriminate_family and family_standing_from_discrimination. Their trigger was
 // a decoded Manager response folded through the discriminator, and the receipt that fired it is the
-// HISTORICAL capture gunbc.machine_intake_mtjade1_access_observation
+// HISTORICAL capture gunbc.machine_intake.mtjade1_access_observation
 // read_mtjade1_recorded_manager_identity: artifacts/bmc/mtjade1-redfish-manager-self-2026-10-03.json,
 // digest-checked, decoded and bound to mtjade1's observed BMC link before
 // mtjade1_firmware_family_standing calls them. A live converge is no longer this row's trigger.
 
 data jade_first_contact_frontier_rows: List<FrontierRow> = concat(
   frontier_rows_for_decls(
-    module_path: "gunbc.machine_intake_bmc_firmware_family_discriminator",
+    module_path: "gunbc.machine_intake.bmc_firmware_family_discriminator",
     decl_names: [
       "openbmc_oem_key_standing",
       "megarac_oem_key_standing",
@@ -42,7 +42,7 @@ data jade_first_contact_frontier_rows: List<FrontierRow> = concat(
   ),
   concat(
     frontier_rows_for_decls(
-      module_path: "gunbc.machine_intake_factory_segment_lease",
+      module_path: "gunbc.machine_intake.factory_segment_lease",
       decl_names: [
         "lease_time_standing",
         "disposition_for_unplaced",
@@ -52,7 +52,7 @@ data jade_first_contact_frontier_rows: List<FrontierRow> = concat(
       dissolution: unbound_dissolution(description: "NAMED CONSUMER: the same converge, which places 10.0.7.3/29 on srv1's LAN interface under a deadline, arps the controller, probes, and releases on the way out. TRIGGER: that run acquires a real address, reaches a SegmentAddressDisposition on every exit arm, and reads host_was_left_as_found to decide its own exit status. SUFFICIENT FOR deleting the NAME the run reads. NOT satisfied by a run that releases correctly without consulting host_was_left_as_found, because then a refused release would not reach the exit status."),
     ),
     frontier_rows_for_decls(
-      module_path: "gunbc.machine_intake_mtjade1_factory_network",
+      module_path: "gunbc.machine_intake.mtjade1_factory_network",
       decl_names: [
         "mtjade1_factory_bmc_network_standing",
         "mtjade1_bmc_address",

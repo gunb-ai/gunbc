@@ -4,7 +4,7 @@ import std.types { Bool, String }
 import extdeps.github.actions { self_hosted_provenance_label, SelfHosted, RunStep }
 import std.optional { Present }
 import extdeps.languages.yaml.types { YamlValue, YamlString }
-import gunbc.runner_microvm_shakedown_workflow {
+import gunbc.runner.runner_microvm_shakedown_workflow {
   microvm_shakedown_job, microvm_shakedown_known_task_step, microvm_shakedown_attempt_expression,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

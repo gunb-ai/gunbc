@@ -1,30 +1,30 @@
-module gunbc.roadmap_site_surface_observe
+module gunbc.roadmap.roadmap_site_surface_observe
 
-import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
  
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
   expected_roadmap_md_for_projection,
 }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
-import gunbc.roadmap_page {
+import gunbc.roadmap.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
+import gunbc.roadmap.roadmap_page {
   roadmap_daily_workspace_page_for_projection_observed,
 }
-import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_site_surface_types {
+import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_site_surface_types {
   RoadmapSiteSurfaceArtifact,
   RoadmapSiteSurfaceBundle,
   LiveRoadmapSiteSurfaceBundle,
   roadmap_site_surface_subject,
 }
-import gunbc.roadmap_site_surface_render {
+import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
   site_artifact_digest,
@@ -35,11 +35,11 @@ import gunbc.roadmap_site_surface_render {
 // THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization.
 // materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and
 // projects roadmap authority for site-surface rendering; downstream consumers evaluate
-// gunbc.roadmap_site_surface_expect predicates over the retained bundle.
+// gunbc.roadmap.roadmap_site_surface_expect predicates over the retained bundle.
 
 // producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population).
 fn roadmap_site_surface_producer_identity() -> Fnv1a64Structural {
-  content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as NonEmptyStr)
+  content_hash_atom(value: "gunbc.roadmap.roadmap_site_surface_observe/v1" as NonEmptyStr)
 }
 
 fn acceptance_identity_from_accepted(accepted: List<RoadmapNodeId>) -> Fnv1a64Structural {

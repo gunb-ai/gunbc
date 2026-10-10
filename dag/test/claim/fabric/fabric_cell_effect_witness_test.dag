@@ -1,14 +1,14 @@
-module test.claim.fabric_cell_effect_witness
+module test.claim.fabric.fabric_cell_effect_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.membership_reconcile {
   MemberAction, MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
   MemberNotOwned,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellMember,
   FabricCellResourceAddress,
   FabricCellRootAddress,
@@ -21,10 +21,10 @@ import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_slice_name,
 }
-import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import std.measure { hardware_thread_count }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
-import gunbc.fabric_cell_effect {
+import gunbc.fabric.fabric_cell_effect {
   FabricCellRealization,
   CellPlanRealizable,
   CellPlanRefused,

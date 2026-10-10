@@ -1,8 +1,8 @@
-module test.claim.mtjade1_rmedia_residue_witness
+module test.claim.machine_intake.mtjade1_rmedia_residue_witness_test
 
 import std.types { Bool, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.machine_intake_mtjade1_access_observation {
+import gunbc.machine_intake.mtjade1_access_observation {
   FactoryEmpty,
   MegaRacObservedShare,
   PutAcknowledgedNotApplied,

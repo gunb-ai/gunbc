@@ -1,7 +1,7 @@
 module test.claim.install_transport_qualification_witness_test
 
 import std.types { Bool, List, list_length }
-import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.install_transport_qualification {
   BootOverrideNamesGadgetDevice,
   ConfigfsMounted,
@@ -24,7 +24,7 @@ import gunbc.install_transport_qualification {
   configfs_reinstall_path_standing,
   transport_requirement_standing,
 }
-import gunbc.fleet_install_transport_observations {
+import gunbc.fleet.fleet_install_transport_observations {
   srv3_configfs_reinstall_path_standing,
   srv3_configfs_transport_observations,
 }

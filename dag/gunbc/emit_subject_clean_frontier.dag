@@ -43,7 +43,7 @@ import extdeps.github.actions_environment {
   ActionsRunCoordinateMissing,
   ActionsRunCoordinateEmpty
 }
-import tools.emission_entry_instrument {
+import gunbc.instruments.emission_entry_instrument {
   EmissionMeasurement,
   EmissionMeasurementSubject,
   WorkingTreeStanding,
@@ -74,7 +74,7 @@ import tools.emission_entry_instrument {
 
 // THE EMIT-SUBJECT CLEAN FRONTIER: the ratchet consumer of the per-entry emission instrument.
 //
-// tools.emission_entry_instrument answers ONE question about ONE entry -- what population did the
+// gunbc.instruments.emission_entry_instrument answers ONE question about ONE entry -- what population did the
 // emitter produce -- and stores nothing. It says so itself, and says why: it is the instrument, not
 // a board, and it is deliberately NOT A GATE, with gating named there as a separate decision
 // carrying a separate argument. This module is the other half of that sentence, and it is still not
@@ -341,7 +341,7 @@ import tools.emission_entry_instrument {
 // repairing one orphan does not make the next one visible.
 //
 // THE HONEST SCOPE IS `dag` AND `src/v2`, NEVER "the corpus". src/v1 is excluded because
-// gunbc.ci_layer_roots rules the floor's source roots out of widening to include it on name
+// gunbc.ci.ci_layer_roots rules the floor's source roots out of widening to include it on name
 // resolution grounds, and that ruling is not this module's to reopen.
 type RosterDiscoveryPolicy
   = DeclarationIndexUnderRoots { roots: List<String> }
@@ -796,7 +796,7 @@ fn emit_subject_outcome(m: EmissionMeasurement) -> EmitSubjectOutcome {
 // entry string could not say WHICH SOURCE ROOT WAS PRIMARY -- three runs were reported as
 // whole-corpus while measuring 3109 of 4170 sources.
 //
-// tools.emission_entry_instrument emission_scope_join_key owns the answer, and it owns it because
+// gunbc.instruments.emission_entry_instrument emission_scope_join_key owns the answer, and it owns it because
 // the INSTRUMENT stamps the same key onto its own subject-unestablished arms. A local match here
 // would be a second derivation of one key, free to disagree with the producer that writes it --
 // and review 57181 caught exactly that disagreement in the other direction before this call
@@ -1509,7 +1509,7 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
 // coordinates of the run that produced it.
 //
 // NOTHING IS MINTED HERE, AND THAT IS THE WHOLE POINT. Every coordinate already has an authority:
-// CommitSha and Digest come through tools.emission_entry_instrument's EmissionMeasurementSubject,
+// CommitSha and Digest come through gunbc.instruments.emission_entry_instrument's EmissionMeasurementSubject,
 // which reuses extdeps.git.inspect and extdeps.crypto.hash and says so; the run coordinates come
 // from extdeps.github.actions_environment, beside GITHUB_SHA, because they are facts the RUNNER
 // supplies and the reference defines. Adding a source-head field to this module would have been a
@@ -1831,7 +1831,7 @@ data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 // place this carrier is arguing that a name without a mechanism is worthless.
 //
 // TODAY'S ANSWER IS `NoConsumer`, and it is measured rather than assumed: no workflow, no phase and
-// no module in the tree names `tools.emit_subject_clean_ratchet` or this module. So the derived
+// no module in the tree names `gunbc.instruments.emit_subject_clean_ratchet` or this module. So the derived
 // standing is UnexecutedDeferredWitness -- nothing claims the runner -- whose remedy the admission
 // authority states as naming a cadence or deleting the witness. Neither is available from inside a
 // PR: enrolment is a floor-cut re-add and DESIGN requires each of those to be re-derived under its

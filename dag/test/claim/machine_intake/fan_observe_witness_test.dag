@@ -6,9 +6,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
-import gunbc.machine_intake_fan_observe {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
   fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
 }
@@ -25,7 +25,7 @@ fn authority_names(a: FanObserveAdmission, module_path: String, decl_name: Strin
 }
 
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE: the one managed row, mtcollins1, reaches the fan read
-// through its real binding (gunbc.managed_host managed_host_binding_for, the lookup the wet entry
+// through its real binding (gunbc.host.managed_host managed_host_binding_for, the lookup the wet entry
 // makes), and its observed family -- AMI MegaRAC -- selects the MegaRAC policy authority. Its observed
 // family changing, its binding refusing, or the dispatch defaulting turns this red.
 test fn the_megarac_row_is_read_against_the_megarac_policy() -> Bool {

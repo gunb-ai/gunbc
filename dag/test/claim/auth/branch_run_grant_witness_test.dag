@@ -1,4 +1,4 @@
-module test.claim.branch_run_grant_witness
+module test.claim.auth.branch_run_grant_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String, Timestamp, CommitSha }
@@ -12,7 +12,7 @@ import gunbc.auth.gcp_iam_converge {
   AddPolicyCells, CreateServiceAccount, ServiceAccountPolicy, SecretPolicy, GcpIamApply,
   PolicyObserved, PolicyResourceAbsent, GrantPolicyReading, plan_dedicated_federation, gcp_iam_converge_targets,
 }
-import gunbc.hetzner_cloud_acquisition { hetzner_cloud_default_read_token, hetzner_cloud_api_grants }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_default_read_token, hetzner_cloud_api_grants }
 import gunbc.auth.branch_dispatch_federation {
   hetzner_cloud_control_federation, branch_dispatch_attribute_condition, branch_dispatch_attribute_mapping,
   branch_run_impersonation_cell, branch_run_principal_set, parse_branch_run_key, mode_of_run_title, run_scoped_mode_named,

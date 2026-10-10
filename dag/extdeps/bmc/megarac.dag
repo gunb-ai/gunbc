@@ -132,7 +132,7 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 // (NO-FALLBACK-1). Read as prose, "wait for the listing to change" and "keep asking until it
 // agrees" are the same sentence, and only one of them is admissible. The bound, the terminal
 // exits and the rule that no later observation overwrites a terminal one are modelled in
-// gunbc.machine_intake_mount_establishment, which is where they belong: what our polling saw is
+// gunbc.machine_intake.mount_establishment, which is where they belong: what our polling saw is
 // a receipt of OUR attempt, never a fact this vendor module owns.
 data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_session_login,
@@ -174,9 +174,9 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // REDIRECTION_STATUS. The codes that this
 // decoder names are the ones committed observations actually returned on firmware 0.32:
 // 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
-// and 100 connecting (gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+// and 100 connecting (gunbc.machine_intake.mtcollins1_diskless_boot_receipt
 // mtcollins1_diskless_boot_artifact_path, and
-// gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
+// gunbc.machine_intake.mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
 // Connecting is presenting: the same unit booted GRUB from a session that still read 100.
 // Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial.
 // A firmware identity this row
@@ -239,7 +239,7 @@ fn megarac_redirection_presentation_standing(
 // layout for those manufacturer bytes is extdeps.ampere.oem_sel.
 //
 // §3c frontier: megarac_web_event_log_layout and megarac_ipmi_sel_layout. Consumer: the PreOs
-// OEM-decode / SEL axis in gunbc.machine_intake_pre_os_observation_capabilities on gunbc#11110
+// OEM-decode / SEL axis in gunbc.machine_intake.pre_os_observation_capabilities on gunbc#11110
 // (this PR does not mint that file). Until that lands, a web-log empty SelData row cannot be
 // refused as a preserved IPMI payload, and the two layouts remain unjoined to a decoder.
 type MegaRacEventLogLayout

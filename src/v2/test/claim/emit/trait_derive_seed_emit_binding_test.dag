@@ -1,4 +1,4 @@
-module v2.test.emit.trait_derive_seed_emit_binding_test
+module v2.test.claim.emit.trait_derive_seed_emit_binding_test
 
 import extdeps.languages.rust.capabilities {
   RustCapability,

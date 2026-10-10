@@ -1,13 +1,13 @@
 module test.claim.workspace_ssh_access_witness_test
 
 import std.types { Bool, String }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, workspace_access_refusal, workspace_access_receipt }
 import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access, workspace_operator_principal, workspace_operator_guest_key, workspace_operator_guest_identity_file }
-import gunbc.fleet_ssh_access { operator_ssh_principal, fleet_automation_ssh_key }
-import gunbc.runner_slot_allocation
+import gunbc.fleet.fleet_ssh_access { operator_ssh_principal, fleet_automation_ssh_key }
+import gunbc.runner.runner_slot_allocation
 import gunbc.workspace_gateway
-import gunbc.fleet_known_hosts_anchor
+import gunbc.fleet.fleet_known_hosts_anchor
 
 test fn direct_host_access_is_fresh_and_bound_to_the_selected_host() -> Bool {
   let slot = RunnerSlotIdentity { host: "srv1", slot_index: 13 }
@@ -39,10 +39,10 @@ test fn the_operator_uses_a_separate_guest_key_on_the_host() -> Bool {
 }
 
 test fn workspace_gateway_tailnet_names_have_one_enrolled_host_key() -> Bool {
-  all(gunbc.runner_slot_allocation.workspace_execution_slot_identities(), slot =>
+  all(gunbc.runner.runner_slot_allocation.workspace_execution_slot_identities(), slot =>
     match gunbc.workspace_gateway.workspace_fleet_gateway(slot: slot) {
       Absent => false
-      Present { value: gateway } => count(filter(gunbc.fleet_known_hosts_anchor.fleet_known_hosts_rows(), row => row.endpoint == (gateway.tailnet_name as String))) == 1
+      Present { value: gateway } => count(filter(gunbc.fleet.fleet_known_hosts_anchor.fleet_known_hosts_rows(), row => row.endpoint == (gateway.tailnet_name as String))) == 1
     })
 }
 

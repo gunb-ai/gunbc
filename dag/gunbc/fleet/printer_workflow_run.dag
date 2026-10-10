@@ -9,8 +9,8 @@ import std.decimal { decimal_digits_only }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number, sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
 import gunbc.secret_provision { secret_ref_pin_version }
-import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
-import gunbc.fleet_printer_access {
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
+import gunbc.fleet.fleet_printer_access {
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound,
   PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
 }

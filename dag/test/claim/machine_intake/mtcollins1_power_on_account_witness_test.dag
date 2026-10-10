@@ -10,21 +10,21 @@ import extdeps.bootloader.grub { grub_console_report, grub_error_text }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_reg, smpro_gpi_ras_err_reg,
   smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
   smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, SmproRegister, SmproBootProgressRefused }
-import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart }
-import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart }
-import gunbc.machine_intake_pre_os_bringup_verdict { firmware_console_report }
-import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_observation }
-import gunbc.machine_intake_ampere_checkpoint_console_observation {
+import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart }
+import gunbc.machine_intake.pre_os_bringup_verdict { firmware_console_report }
+import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_observation }
+import gunbc.machine_intake.ampere_checkpoint_console_observation {
   AmpereCheckpointRelation, AmpereCheckpointToken, ReferenceContinues, ampere_checkpoint_console_observation,
 }
-import gunbc.machine_intake_mtcollins1_console_milestone_observation { mtcollins1_console_milestones, UefiConsolePromptObserved, UefiShellObserved, FirmwareSummaryObserved }
-import gunbc.machine_intake_ampere_socket_console_observation { ampere_socket_console_observation }
-import gunbc.machine_intake_linux_boot_console_observation { linux_boot_console_observation, EfiLoadError }
-import gunbc.machine_intake_kernel_module_decompression_observation { kernel_module_decompression_observation }
-import gunbc.machine_intake_mtcollins1_power_on_account {
+import gunbc.machine_intake.mtcollins1_console_milestone_observation { mtcollins1_console_milestones, UefiConsolePromptObserved, UefiShellObserved, FirmwareSummaryObserved }
+import gunbc.machine_intake.ampere_socket_console_observation { ampere_socket_console_observation }
+import gunbc.machine_intake.linux_boot_console_observation { linux_boot_console_observation, EfiLoadError }
+import gunbc.machine_intake.kernel_module_decompression_observation { kernel_module_decompression_observation }
+import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
   HandoffPoweredOn, HandoffNotConfirmed, SelEventsRead, SelEventsNotRead, WatchdogUnobserved,
   ExpectedSockets, ExpectedTopologyNotRecorded, ConfiguredExpectedTopology, ConsoleSpansUnbound, BootBoundaryAmbiguous, OpenedBySelRestart, SpanBindingAmbiguous,
@@ -40,7 +40,7 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead, BootLoaderFailed, FirmwareStatement, PowerOnCorroboration, DistinctRestart,
   mtcollins1_power_on_account, span_console_readings, mtcollins1_power_on_account_text, firmware_set_boot_readback,
 }
-import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -134,7 +134,7 @@ fn ccix_pass() -> List<SmproPassEvidence> {
   ])
 }
 
-// REAL SEL ROWS, re-typed as the reader types them (gunbc.machine_intake_pre_os_bringup_verdict
+// REAL SEL ROWS, re-typed as the reader types them (gunbc.machine_intake.pre_os_bringup_verdict
 // SelWindowEvent). Run 37069907299's own window (artifact mtcollins1-boot-diagnostics.txt, sha256
 // 5d11c12a4bb1d9eda3b7b0c5568e46b91f57b93d68507f1e3e6f6969cc3946f6): c26 "Initiated by power up" then
 // c2b "System Restart" -- the power-on and the one restart before its second DRAM pass. Step 1's

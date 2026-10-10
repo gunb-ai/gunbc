@@ -1,10 +1,10 @@
-module test.claim.roadmap_document
+module test.claim.roadmap.roadmap_document_test
 
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, WorkItemDispatch, NotDispatchable, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, WorkItemDispatch, NotDispatchable, SectionElement, section_group }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

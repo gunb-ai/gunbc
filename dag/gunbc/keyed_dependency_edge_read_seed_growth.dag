@@ -1,6 +1,6 @@
 module gunbc.keyed_dependency_edge_read_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -42,7 +42,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // item now delegates to its half); and the pool-root refusal added to the EXISTING free_call.dependency_resolution_facts arm, which is an
 // existing seed item modified, not new growth. The generated files in the same diff --
 // v1_interpreter_dispatch_generated.rs and v1_compiler_infer_method.rs -- project
-// gunbc.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities change
+// gunbc.v1.v1_interpreter_primitive_surface and v1.compiler.infer_method, whose authorities change
 // with them.
 data keyed_dependency_edge_read_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

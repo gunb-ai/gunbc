@@ -4,7 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import gunbc.v1_complexity_capability_census {
+import gunbc.v1.v1_complexity_capability_census {
   ComplexityCapabilityId,
   ComplexityCapabilityDisposition,
   CapabilityWorkKind,
@@ -78,7 +78,7 @@ data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) v1 comp
 // to drag the v2 lens closure into the per-PR witness layer — and the floor measured the
 // consequence on an unrelated witness: roadmap_program_view_witness_test
 // witness_live_constraint_present_iff_line_unaccepted recorded 3901.9ms on green main and 5019ms
-// here, without its own semantic work changing. BASIS, per gunbc.witness_row_cost
+// here, without its own semantic work changing. BASIS, per gunbc.witness.witness_row_cost
 // witness_row_cost_clock_basis_note (landed on main 2026-08-05, gunbc#7820): both figures are WALL
 // and the fast-lane cap is enforced on thread CPU. The 3901.9ms baseline is therefore a real
 // reading — eval is single-threaded, so a wall figure under the cap proves cpu under it. The 5019ms

@@ -9,7 +9,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestPassed, NativeTestReturnedOther,
   NativeTestStage, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
 }
-import gunbc.witness_v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteTestIdentity, NativeRouteMemberRow, NativeRouteExclusionCause,
   NativeEntryResolutionLimit, CompilerFrontierAttributed,
   NativeAgreementPass, NativeExclusion,

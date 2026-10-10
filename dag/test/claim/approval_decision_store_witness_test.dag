@@ -5,7 +5,7 @@ import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch, mac_key_material_hex_length, mac_suite_key_size }
 import std.measure { byte_size_count }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_dimm_physical_orientation
+module gunbc.machine_intake.dimm_physical_orientation
 
 import extdeps.board_authority { BoardAuthorityRef, BoardAuthorityLookup }
 import gunbc.board_authority_binding { observed_board_authority }
@@ -15,12 +15,12 @@ import gunbc.mt_collins_dimm_physical_identity {
   PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
   resolve_dimm_diagram_identity,
 }
-import gunbc.managed_host { ManagedHostBinding }
-import gunbc.baseboard_dimm_figure {
+import gunbc.host.managed_host { ManagedHostBinding }
+import gunbc.host.baseboard_dimm_figure {
   BaseboardDimmFigure, BaseboardDimmFigureOf, BoardFigureUnmodeled,
   baseboard_dimm_figure, figure_banks, figure_channel_pairs, figure_population_rows,
 }
-import gunbc.machine_intake_dimm_row_orientation {
+import gunbc.machine_intake.dimm_row_orientation {
   ChassisEnd, DimmPlacementAnchor, DimmOrientationOutcome, DimmDamagedConnectorReport, DimmDamagedCandidates,
   DamagedCandidates, DamagedCandidatesRefused, DamageFrameUnreported,
   DimmPopulationDamageStanding, PopulationAvoidsDamage, PopulationUsesDamaged, PopulationDamageUndetermined,
@@ -33,9 +33,9 @@ import gunbc.machine_intake_dimm_row_orientation {
 }
 
 // THE PHYSICAL ORIENTATION OF A MANAGED HOST'S DIMM ROW. The board is read off the access observation
-// gunbc.managed_host managed_host_binding bound (never stored beside it), its figure is selected by
-// gunbc.baseboard_dimm_figure, and a board with no modeled figure refuses before any anchor is read.
-// The row logic is gunbc.machine_intake_dimm_row_orientation, over the figure this module hands it.
+// gunbc.host.managed_host managed_host_binding bound (never stored beside it), its figure is selected by
+// gunbc.host.baseboard_dimm_figure, and a board with no modeled figure refuses before any anchor is read.
+// The row logic is gunbc.machine_intake.dimm_row_orientation, over the figure this module hands it.
 // What a unit observed -- its boots, the frame its operator faced, its damage report, its connector
 // colours -- is supplied by the unit's own modules as parameters; nothing in this module names a unit.
 
@@ -85,7 +85,7 @@ fn host_population_damage_standings(oriented: DimmOrientedHost, report: DimmDama
 
 data dimm_population_selection_frontier: FrontierRow = FrontierRow {
   subject: DeclSubject { ref: DeclarationRef {
-    module_path: "gunbc.machine_intake_dimm_physical_orientation",
+    module_path: "gunbc.machine_intake.dimm_physical_orientation",
     decl_name: "host_population_damage_standings",
     field: WholeDeclaration,
   } },

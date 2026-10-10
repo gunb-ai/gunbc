@@ -11,7 +11,7 @@ import extdeps.exec.command { argv_words, LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.typed_argv_exec { typed_argv_exec_over_ssh, typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.live_deploy.spec { DeploymentSpec }
 import gunbc.live_deploy.tailnet_door_cutover {
   ServeRouteObservation, ServeRouteTargets, ServeRouteUnreadable,
@@ -27,9 +27,9 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable,
   CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused, cas_unreadable_slot_detail,
 }
-import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
 import extdeps.tailscale.serve { tailscale_serve_route_key_label, tailscale_serve_proxy_url, tailscale_serve_backend_of_proxy_target }

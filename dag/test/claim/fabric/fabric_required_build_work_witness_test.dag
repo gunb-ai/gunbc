@@ -3,7 +3,7 @@ module test.claim.fabric.fabric_required_build_work_witness_test
 import std.types { Bool, NonEmptyStr }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import product.fabric.identity { WorkKey }
-import gunbc.fabric_witness_run {
+import gunbc.fabric.fabric_witness_run {
   RequiredBuildSource, ExactGitSource, MovingGitRef, WorkingDirectorySource,
   GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
   RequiredBuildEnvironmentEntry, RequiredBuildExecutionSpec,

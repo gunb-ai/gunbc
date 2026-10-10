@@ -1,4 +1,4 @@
-module v2.test.computation_shapes.loop_linear_bound
+module v2.test.claim.computation_shapes.loop_linear_bound
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {

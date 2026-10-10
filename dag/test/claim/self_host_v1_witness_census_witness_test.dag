@@ -2,7 +2,7 @@ module test.claim.self_host_v1_witness_census_witness_test
 
 import std.types { Bool }
 import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided }
-import gunbc.v1_witness_census {
+import gunbc.v1.v1_witness_census {
   v1_claim_live_population,
   v1_every_claim_accounted, v1_every_claim_row_is_in_roster, v1_claim_native_targets_are_distinct,
   v1_every_claim_red_control_is_distinct, v1_no_fixture_member_carries_a_disposition,

@@ -1,4 +1,4 @@
-module v2.test.manual.medium_node_instantiation
+module v2.test.claim.manual.medium_node_instantiation_test
 
 import v2.std.live_tree { LiveTreeDisposition }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_literal_pin }

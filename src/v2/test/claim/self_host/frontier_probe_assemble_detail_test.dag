@@ -1,4 +1,4 @@
-module v2.test.self_host.frontier_probe_assemble_detail
+module v2.test.claim.self_host.frontier_probe_assemble_detail_test
 
 import v2.std.diagnostic {
   Diagnostic,

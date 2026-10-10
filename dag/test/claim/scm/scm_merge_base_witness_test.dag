@@ -1,4 +1,4 @@
-module test.claim.scm_merge_base_witness
+module test.claim.scm.scm_merge_base_witness_test
 
 // CONTROLS FOR THE CONTENT BASE A SQUASH IS ENTITLED TO, BUILT TO THE WRONG IMPLEMENTATIONS.
 //

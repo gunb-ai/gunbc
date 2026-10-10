@@ -5,7 +5,7 @@ import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestBodyUndecodable }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
-import gunbc.runner_group_restriction_observation {
+import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
   RunnerGroupListUnreadable, RunnerGroupAbsent, RunnerGroupDuplicated,
   RunnerGroupNotRestrictedToWorkflows, RunnerGroupSelectsOtherWorkflows,

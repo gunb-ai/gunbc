@@ -5,7 +5,7 @@ import std.algebra { list_append }
 import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
-import gunbc.bmc_netboot_serve {
+import gunbc.bmc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
   BmcNetbootMakeDir,
   BmcNetbootPutArtifact,
@@ -234,10 +234,10 @@ test fn staged_text_puts_derive_distinct_local_staging_paths() -> Bool {
 // not as a module of this tree: a bypass that resolved would refuse inside the probe's own
 // compilation, never in this file. The exact spelling a bypass author would reach for: a
 // prepared put with a remote path the author chose, handed to the world as if staging had
-// minted it. The wrapper is a sole_constructor declared in gunbc.bmc_netboot_serve, so the
+// minted it. The wrapper is a sole_constructor declared in gunbc.bmc.bmc_netboot_serve, so the
 // foreign record literal is a SoleConstructorViolation -- a staged fact stays something only
 // staging can mint, which is the whole enforcement surface the seal claims.
-data prepared_op_bypass_probe_source: String = "module probe.bmc_netboot_prepared_op_bypass\nimport gunbc.bmc_netboot_serve { BmcNetbootPreparedOp, BmcNetbootPreparedPutText }\n\ndata probe_bypass_prepared: BmcNetbootPreparedOp = BmcNetbootPreparedOp {\n  disposition: BmcNetbootPreparedPutText {\n    remote_path: \"/etc/somewhere-else/payload\",\n    text: \"authored outside staging\",\n  },\n}\n"
+data prepared_op_bypass_probe_source: String = "module probe.bmc_netboot_prepared_op_bypass\nimport gunbc.bmc.bmc_netboot_serve { BmcNetbootPreparedOp, BmcNetbootPreparedPutText }\n\ndata probe_bypass_prepared: BmcNetbootPreparedOp = BmcNetbootPreparedOp {\n  disposition: BmcNetbootPreparedPutText {\n    remote_path: \"/etc/somewhere-else/payload\",\n    text: \"authored outside staging\",\n  },\n}\n"
 
 fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)

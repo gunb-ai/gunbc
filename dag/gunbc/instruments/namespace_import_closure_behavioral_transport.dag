@@ -1,10 +1,10 @@
-module tools.namespace_import_closure_behavioral_transport
+module gunbc.instruments.namespace_import_closure_behavioral_transport
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -16,7 +16,7 @@ import v2.std.subject_evidence {
   SubjectEvidence,
   subject_evidence_establishes
 }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
   WitnessBinReady,

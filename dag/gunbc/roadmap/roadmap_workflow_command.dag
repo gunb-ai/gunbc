@@ -1,8 +1,8 @@
-module gunbc.roadmap_workflow_command
+module gunbc.roadmap.roadmap_workflow_command
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash }
-import gunbc.roadmap_verification_receipt { VerificationSubject }
+import gunbc.roadmap.roadmap_verification_receipt { VerificationSubject }
 
 type AttemptKey = String
 

@@ -1,4 +1,4 @@
-module v2.test.manual.generic_instantiation_runtime
+module v2.test.claim.manual.generic_instantiation_runtime_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

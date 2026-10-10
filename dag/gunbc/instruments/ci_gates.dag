@@ -1,20 +1,20 @@
-module tools.ci_gates
+module gunbc.instruments.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
-import gunbc.ci_spec {
+import gunbc.ci.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
+import gunbc.ci.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
   SourceRootIngestGate
 }
-import tools.emit_host_gate { run_emit_host_ci_gate }
-import tools.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
-import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
-import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
-import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
-import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
-import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
+import gunbc.instruments.emit_host_gate { run_emit_host_ci_gate }
+import gunbc.instruments.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
+import gunbc.instruments.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
+import gunbc.instruments.dag_compile_clean_gate { run_dag_compile_clean_gate }
+import gunbc.instruments.generated_artifact_gate { run_generated_artifact_drift_gate }
+import gunbc.instruments.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
+import gunbc.instruments.prose_row_introduction_gate { run_prose_row_introduction_gate }
 import gunbc.rung_drop { rung_drop_declaration_message }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 

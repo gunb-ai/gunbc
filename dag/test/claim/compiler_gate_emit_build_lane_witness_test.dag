@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
-import gunbc.compiler_gate_workflow {
+import gunbc.witness.compiler_gate_workflow {
   compiler_gate_workflow,
   compiler_gate_required_job, compiler_gate_required_job_id,
   compiler_gate_fleet_job_condition,
@@ -29,7 +29,7 @@ import gunbc.emitted_subject_build_gate {
   emit_build_memory_envelope_lines
 }
 import std.measure { byte_size_count }
-import gunbc.runner_slot_desired {
+import gunbc.runner.runner_slot_desired {
   gunbc_runner_slot_desired,
   JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
 }

@@ -1,14 +1,14 @@
-module test.claim.branch_run_grant_broker_workflow_witness
+module test.claim.auth.branch_run_grant_broker_workflow_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.github.actions { PermRead, PermWrite }
-import gunbc.branch_run_grant_broker_workflow {
+import gunbc.fleet.branch_run_grant_broker_workflow {
   BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused,
   expected_branch_run_grant_broker_workflow_yml, branch_run_grant_broker_job, branch_run_grant_broker_job_condition,
 }
-import gunbc.fleet_converge_workflow { fleet_converge_job }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

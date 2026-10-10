@@ -1,4 +1,4 @@
-module test.claim.machine_intake_bmc_rotation_route_witness_test
+module test.claim.machine_intake.machine_intake_bmc_rotation_route_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.decl_ref { decl_field_ref }
@@ -12,17 +12,17 @@ import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity, SurfaceAccountManagement }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, ProposeDeny, approval_capability_protocol }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
 import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts, bmc_ipmi_get_user_access, bmc_ipmi_set_user_access }
 import extdeps.bmc.ipmi_channel { IpmiChannelPrivilegeLimit, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator, IpmiPrivilegeOperator, IpmiPrivilegeUser, IpmiUserChannelAccess, ipmi_user_channel_access }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
-import gunbc.machine_intake_mtjade1_access_observation { read_mtjade1_recorded_manager_identity }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
+import gunbc.machine_intake.mtjade1_access_observation { read_mtjade1_recorded_manager_identity }
+import gunbc.machine_intake.bmc_rotation_route {
   RouteQualificationRequestAdmission,
   BmcRotationRouteStanding, BmcAccountWriteRequest, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, RedfishAccountPasswordWrite,
   ObservedSurfaceRead, PublicStandardOperation,
@@ -47,7 +47,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   dry_route_qualification_request, qualify_rotation_route, classify_modeled_route_qualification, admit_rotation_apply,
   account_write_request_eq, redfish_account_password_write,
 }
-import gunbc.machine_intake_bmc_rotation_route_evidence {
+import gunbc.machine_intake.bmc_rotation_route_evidence {
   mtcollins1_rotation_route_standing, mtcollins1_channel_access_route_standing, mtjade1_historical_rotation_route_observation, historical_route_observation_from_manager_read,
 }
 
@@ -387,7 +387,7 @@ test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
 // over its stated characteristics: the selection returns the operator-approved capability, and the
 // row's realization (an admitted Redemption) conforms to it.
 test fn the_qualification_effect_is_classified_operator_approved_and_conforms() -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "admit_password_route_qualification")
+  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake.bmc_rotation_route" && (r.site.decl_name as String) == "admit_password_route_qualification")
   length(rows) == 1
     && all(rows, r =>
       match select_authorization_pattern(e: r.effect) {
@@ -507,7 +507,7 @@ test fn a_grounded_password_route_does_not_admit_a_channel_access_apply() -> Boo
 // its own characteristics (not the password row's): the selection returns the operator-approved
 // capability and the row's realization conforms.
 test fn the_channel_access_qualification_effect_is_classified_by_executing_the_selection() -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "admit_privilege_limit_route_qualification")
+  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake.bmc_rotation_route" && (r.site.decl_name as String) == "admit_privilege_limit_route_qualification")
   length(rows) == 1
     && all(rows, r =>
       match select_authorization_pattern(e: r.effect) {

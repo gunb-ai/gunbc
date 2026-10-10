@@ -1,6 +1,6 @@
-module test.claim.floor_non_verdict_classification_witness
+module test.claim.floor.floor_non_verdict_classification_witness_test
 
-import gunbc.floor_non_verdict_classification {
+import gunbc.floor.floor_non_verdict_classification {
   classified_non_verdict_identities_are_unique,
   classification_joins_the_roster_exactly,
   classified_non_verdict_row_count,

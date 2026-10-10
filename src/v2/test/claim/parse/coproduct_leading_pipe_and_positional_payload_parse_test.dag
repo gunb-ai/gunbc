@@ -1,9 +1,9 @@
-module v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse
+module v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse_test
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -16,12 +16,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
 // opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`). Both first
 // refused std.content_hash (`type HashFamily =` / `| Fnv1a64(Fnv1a64Structural)`), the module
-// the native adjudicate of //v2/test/parse:expression_bodied_fn_decl_parse stopped on. The
+// the native adjudicate of //v2/test/claim/parse:expression_bodied_fn_decl_parse stopped on. The
 // boundary is the prepared-grammar parse the native route runs, then normalize; the refusing
 // controls pin that each row admits only the seed's spelling.
 
-// THE FOUR fn-DECLARATION CLAIMS, HELD UNGATED AND UNCHANGED. The v2.test.parse census (gunbc#13372)
-// moved this module's other claims into test.claim.parse_test_coproduct_leading_pipe. These four
+// THE FOUR fn-DECLARATION CLAIMS, HELD UNGATED AND UNCHANGED. The v2.test.claim.parse census (gunbc#13372)
+// moved this module's other claims into v2.test.claim.parse.parse_test_coproduct_leading_pipe_test. These four
 // lower a whole fn declaration; at fragment grain each still exceeds the required floor's CPU enrolment
 // margin (floor run 37456790634: 441-587 ms against 391 ms), a wall no declared drop lowers, so they
 // stay here in their original form, outside required_gate_prefixes, with their single-claim fill-debt
@@ -37,14 +37,14 @@ fn cp_normalizes(o: Outcome<NormalizedTree>) -> Bool {
 
 // The positional row alone, with no leading `|`, at its construction site: the front end CONSUMES
 // the spelling through normalize. The field-"0" lowering itself, the construction's operand and
-// the binder are the subject of v2.test.parse.variant_field_lowering.
+// the binder are the subject of v2.test.claim.parse.variant_field_lowering_test.
 test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool {
   cp_normalizes(o: cps_normalized_7())
 }
 
 // ELIMINATION BINDS THE BINDER. gunbc#11998 turned the silent loss of `A(x) => x`'s binder into a
 // typed refusal until variant fields lowered; they lower now, the refusal is retired, and the arm
-// normalizes -- the shape it binds through is asserted by v2.test.parse.variant_field_lowering
+// normalizes -- the shape it binds through is asserted by v2.test.claim.parse.variant_field_lowering_test
 // vf_positional_pattern_binds_field_zero, so this row keeps only the route half.
 test fn positional_pattern_binder_normalizes_holds() -> Bool {
   cp_normalizes(

@@ -1,4 +1,4 @@
-module test.claim.machine_intake_bmc_secure_state_witness
+module test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String, list_length }
 import std.decl_ref { decl_ref }
@@ -28,7 +28,7 @@ import extdeps.uri { uri_https }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   ComponentIdentity,
   DimmComponent,
@@ -40,8 +40,8 @@ import gunbc.machine_intake_subject {
   qualification_subject_of,
 }
 import gunbc.deployment_risk { ProdRisk, TestRisk }
-import gunbc.machine_intake_phase { machine_qualification_policy }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake.phase { machine_qualification_policy }
+import gunbc.machine_intake.receipt { EvidenceRef }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKeyId }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
@@ -49,7 +49,7 @@ import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
 import v2.std.algebra { any, filter }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.bmc_rotation_route {
   IpmiSetUserPrivilegeLimit, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved,
   RotationApplyWouldLeaveNoAdministrator, rotation_route_candidate, PublicStandardOperation,
   ManagedReadbackFromAnotherRun, ManagedAccountNotAdministratorOnChannel,
@@ -75,7 +75,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   rotation_apply_authority,
   rotation_route_request_identity,
 }
-import gunbc.machine_intake_bmc_secure {
+import gunbc.machine_intake.bmc_secure {
   ChannelCloseInput, ChannelCloseRouteNotSupplied, ChannelCloseApprovalAbsent, ChannelWriteNotAdmitted,
   PlanPrecedesReading, ManagedUserNotTheAuthenticatedAccount,
   BmcSecureGoal,
@@ -261,7 +261,7 @@ fn goal_v1() -> BmcSecureGoal {
 // THE SCHEDULE'S INSTANTS. Only the Bool claims below are admitted to observer_clock_modeled, and
 // each mints its own instants into this open record; no helper here returns a sealed instant, so no
 // function of this module is a proxy constructor for the observer clock.
-data schedule_realization: NonEmptyStr = "test.claim.machine_intake_bmc_secure_state_witness schedule" as NonEmptyStr
+data schedule_realization: NonEmptyStr = "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test schedule" as NonEmptyStr
 
 type ScheduleInstants {
   store: ObserverClockInstant
@@ -303,16 +303,16 @@ fn world_reflash_restored() -> BmcWorld {
 
 fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "decision_on"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_secret_order_is_carried_by_the_plan"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "an_already_secured_controller_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "decision_on"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_secret_order_is_carried_by_the_plan"),
   ]
 {
   read_with(w: w, subject: subject, managed: managed, managed_password: managed_password, census_value: census(published_lan_privilege_closed: closed), account: PublishedAccountRetired, at: at)
@@ -337,9 +337,9 @@ fn seeded(w: BmcWorld, census_value: IpmiControllerChannelCensus) -> BmcWorld {
 
 fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, at: EpochMs) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "secured_read"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "read"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "secured_read"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
   ]
 {
   read_in(w: seeded(w: w, census_value: census_value), subject: subject, managed: managed, managed_password: managed_password, census_value: census_value, account: account, attempt: "attempt-1", at: at)
@@ -347,8 +347,8 @@ fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredent
 
 fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, attempt: String, at: EpochMs) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_with"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "read_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
   ]
 {
   dry_read_bmc_account_state(
@@ -428,7 +428,7 @@ data lab_route_fixture_citation: ExternalAuthority = ExternalAuthority {
 
 fn cited_lab_route_managed_user() -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "grounded_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "grounded_route"),
   ]
 {
   rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 3 }, citation: lab_route_fixture_citation)
@@ -436,7 +436,7 @@ fn cited_lab_route_managed_user() -> BmcRotationRouteStanding
 
 fn cited_lab_route_published_user() -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "grounded_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "grounded_route"),
   ]
 {
   rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 2 }, citation: lab_route_fixture_citation)
@@ -446,7 +446,7 @@ fn cited_lab_route_published_user() -> BmcRotationRouteStanding
 // stale-route control only; admitted to that control alone.
 fn cited_lab_route_managed_user_previous_build() -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
   ]
 {
   rotation_route_from_citation(
@@ -794,7 +794,7 @@ test fn reflash_restored_factory_access_takes_the_same_apply_and_readback_path()
 // Ordering is on the observer clock. A readback stamped with the controller's year-2000 instant
 // cannot satisfy readback-after-application; the observer's own later instant can. (That a
 // ControllerClockReading cannot be placed in an ordering field at all is the compile-time half,
-// test.claim.machine_intake_bmc_secure_state_forged_probe_witness.)
+// test.claim.machine_intake.machine_intake_bmc_secure_state_forged_probe_witness_test.)
 test fn a_year_2000_readback_cannot_satisfy_ordering_and_an_observer_instant_can() -> Bool {
   let i = ScheduleInstants {
     store: observer_clock_modeled(millis: t_store, realization: schedule_realization),
@@ -936,11 +936,11 @@ fn census_with(serial_privilege_open: Bool, unaddressed_lan_open: Bool) -> IpmiC
 
 fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAccountKind) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_goal_bound_retention_refuses_a_prod_risk_admitting_goal_and_a_closed_account_satisfies_it"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_retained_credential_must_be_the_goal_bound_generation"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_goal_bound_retention_refuses_a_prod_risk_admitting_goal_and_a_closed_account_satisfies_it"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_retained_credential_must_be_the_goal_bound_generation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
   ]
 {
   read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_value, account: account, at: t_read)

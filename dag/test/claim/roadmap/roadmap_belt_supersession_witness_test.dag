@@ -27,7 +27,7 @@ import gunbc.scm.repository_envelope {
   SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
 }
 import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
   BaseShaObserved, BaseShaUnobserved,

@@ -1,4 +1,4 @@
-module test.claim.srv3_subsumption
+module test.claim.srv3.srv3_subsumption_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolves, zero coverage lost), not a merge of unrelated concerns: all three are the srv3
 // subsumption lane. The three original witness notes are preserved verbatim below.
 
-// Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet_reach.srv3_reach),
+// Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet.fleet_reach.srv3_reach),
 // distinct from the extdeps model mechanics that test.claim.network_grounding already proves. These
 // pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its
 // network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2
@@ -164,7 +164,7 @@ test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
   tally.changes == 1 && tally.adds == 0 && tally.removals == 0 && tally.refusals == 0
 }
 
-// Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host_toolchain_ensure.
+// Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host.host_toolchain_ensure.
 // The defect being walled: access used to be looked up from the REQUESTED host while the target was
 // resolved kind-aware, so a BuildCache request for srv3 targeted srv3 and authenticated to srv1 —
 // the effect lands on the wrong machine and reports success. A test that merely asserts the reach

@@ -1,4 +1,4 @@
-module test.claim.fleet_main_revision_witness
+module test.claim.fleet.fleet_main_revision_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int }
 import extdeps.git.object_store {
@@ -21,12 +21,12 @@ import gunbc.live_deploy.revision {
   DivergedHistories,
   RelationUnverifiable,
 }
-import gunbc.fleet_revision_acceptance {
+import gunbc.fleet.fleet_revision_acceptance {
   AcceptedFleetRevision,
   RequiredCiContractIdentity,
   required_ci_contract,
 }
-import gunbc.fleet_main_revision {
+import gunbc.fleet.fleet_main_revision {
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
@@ -108,7 +108,7 @@ fn decide_observed(
 // PRECONDITION -- it proves the ref is not there -- and it establishes nothing about whether this
 // path may bring the fleet's root authority into existence. An earlier revision of this decision
 // admitted a create on exactly that inference, which would also have silently widened live policy:
-// gunbc.fleet_desired_admission refuses first creation today, deliberately, so a "consumer port"
+// gunbc.fleet.fleet_desired_admission refuses first creation today, deliberately, so a "consumer port"
 // would have handed a workflow authorized only to ADVANCE the power to MINT.
 //
 // The refusal names the accepted revision, so the receipt says which creation was declined rather

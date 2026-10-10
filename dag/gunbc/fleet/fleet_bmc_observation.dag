@@ -1,4 +1,4 @@
-module gunbc.fleet_bmc_observation
+module gunbc.fleet.fleet_bmc_observation
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -38,11 +38,11 @@ import extdeps.filesystem.linux {
   LinuxSquashFs,
   linux_synchronized_rename_replace_publication,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
   altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   srv3_baseboard,
   srv4_baseboard,
   srv4_host,

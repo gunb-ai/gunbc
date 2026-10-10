@@ -1,6 +1,6 @@
-module test.claim.workspace_allocation_wire_witness_test
+module test.claim.roadmap.workspace_allocation_wire_witness_test
 
-import gunbc.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
+import gunbc.roadmap.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
 import extdeps.uri_path { parse_path_template, match_path_template, path_param_value, ParsedPathTemplate, MalformedPathTemplate, PathMatched, PathNotMatched }
 
 

@@ -9,7 +9,7 @@ import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }
-import extdeps.ssh { ssh_public_key_line }
+import extdeps.ssh.keys { ssh_public_key_line }
 import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read,
@@ -27,7 +27,7 @@ import gunbc.oracle_oci.tenancy_usage {
   OciNamesRead, OciNamesListed, OciNamesRefused, oci_names_of, oci_availability_domains,
   OciWhole, OciWholeValue, OciWholeRefused, oci_shape_config_whole,
 }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
@@ -49,7 +49,7 @@ import gunbc.oracle_oci.api {
 // When every domain has refused for capacity, that is the outcome, and it is reported as such.
 //
 // The instances authorize two keys: the fleet automation key, so the fleet can reach them, and the
-// operator's macbook key, so the operator can. Both come from gunbc.fleet_ssh_access, not re-spelled.
+// operator's macbook key, so the operator can. Both come from gunbc.fleet.fleet_ssh_access, not re-spelled.
 
 data oci_free_boot_volume: Gigabyte = gigabyte(count: 50)
 
@@ -349,7 +349,7 @@ fn oci_out_of_host_capacity(status: Int, body: String) -> Bool {
 // retire while one does.
 //
 // The record lives in /etc/gunbc/oracle-oci, the root-only directory the custody converge creates for
-// the API key (gunbc.host_credential_custody_converge OracleOciApiSigningKey). It is stable across
+// the API key (gunbc.fleet.host_credential_custody_converge OracleOciApiSigningKey). It is stable across
 // checkouts, and every run that can sign can also read it.
 //
 // There is one candidate domain per launch. A1 launches refuse (below), and a micro goes to the domain

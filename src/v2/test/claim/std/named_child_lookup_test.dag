@@ -1,4 +1,4 @@
-module v2.test.std.named_child_lookup
+module v2.test.claim.std.named_child_lookup_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

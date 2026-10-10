@@ -1,4 +1,4 @@
-module extdeps.dpkg
+module extdeps.package_managers.dpkg
 import extdeps.exec.command {ArgvCommand,argv_command}
 import extdeps.exec.program {uncataloged_program}
 

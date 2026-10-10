@@ -1,22 +1,22 @@
-module test.claim.runner_replace_incarnation_seam_witness
+module test.claim.runner.runner_replace_incarnation_seam_witness_test
 
 import std.logic { Bool }
 import std.types { String }
-import gunbc.fleet_intent { srv3_host }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.runner_incarnation {
+import gunbc.fleet.fleet_intent { srv3_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner.runner_incarnation {
   LocalRunnerSlotIncarnation,
   runner_slot_incarnation,
   local_runner_slot_incarnation_fields_match,
 }
-import gunbc.runner_lifecycle {
+import gunbc.runner.runner_lifecycle {
   RunnerReplacementCause,
   ReplacementCauseConnectivityDetached,
   ReplacementCauseOrphanedRegistration,
   ReplacementCauseWedgedBroker,
   ReplacementCauseOperatorForced,
 }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect,
   ReplaceRunnerIncarnation,
   HostOs,
@@ -25,8 +25,8 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
   HostEffectIntent,
 }
-import gunbc.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, IncompatibleCell }
-import gunbc.runner_lifecycle_realize { runner_lifecycle_realize_replace_runner_incarnation }
+import gunbc.host.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, IncompatibleCell }
+import gunbc.runner.runner_lifecycle_realize { runner_lifecycle_realize_replace_runner_incarnation }
 import std.realization_reconcile { Converged, NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

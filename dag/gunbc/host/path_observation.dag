@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word, StatFileTypeOutcome, StatFileTypeObserved, StatPathAbsent, StatFileTypeUnread, stat_file_type_outcome }
-import gunbc.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
+import gunbc.host.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
 import gunbc.compute.host_occupancy { host_operation_ran, HostOperationRan, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
 

@@ -208,7 +208,8 @@ pub(crate) fn external_authority_is_machinery_exempt_for_module_path(module_path
 pub(crate) fn external_authority_is_clean_tree_roster_excluded_for_module_path(
     module_path: &str,
 ) -> bool {
-    module_path.starts_with("extdeps.fixture.") || module_path.ends_with(".mock_corpus")
+    module_path.starts_with("v2.test.fixture.extdeps_external_authority.")
+        || module_path.ends_with(".mock_corpus")
 }
 
 pub(crate) fn external_authority_live_violation_module_paths() -> Vec<String> {

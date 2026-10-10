@@ -1,4 +1,4 @@
-module ctl.pos_emit
+module test.ctl.pos_emit
 
 import std.types { NonEmptyStr, String }
 import extdeps.bmc.ipmi

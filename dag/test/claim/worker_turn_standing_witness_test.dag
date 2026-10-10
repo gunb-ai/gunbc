@@ -4,8 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import std.claim_evidence { RecordedFactId }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
 import gunbc.codex_app_server_press { parse_account_trip_stdout_for_tests, CodexAccountStandingEvidence }
 import gunbc.provider_standing_probe_bridge { provider_standing_bundle_from_codex_account_evidence }
 import gunbc.provider_standing {
@@ -37,7 +37,7 @@ import extdeps.llm.cli_lifecycle { CodexCliProvider, ProviderInstance }
 import gunbc.codex_harness_credential { codex_harness_credential_context, codex_worker_turn_codex_home }
 import gunbc.cursor_harness_credential { cursor_status_reading }
 import gunbc.worker_turn_standing { cursor_standing_from_status, cursor_entitlement_trip_pending_reason }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_actuator_worker_turn_selection_observed,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,

@@ -50,7 +50,7 @@ import v2.compiler.resolve { ResolvedTree }
 // IT IS TRANSPORT-FREE ON PURPOSE. The product is a pure function of a String, so the resident-host
 // question is a REALIZATION fact, never part of the interface (DESIGN section 3: interface,
 // realization and policy are three facts). A route on gunbc serve was REFUSED: that seam is a
-// declared frozen quarry route — gunbc.roadmap_serve roadmap_serve_seam_restoration_note, mirrored
+// declared frozen quarry route — gunbc.roadmap.roadmap_serve roadmap_serve_seam_restoration_note, mirrored
 // at the Commands::Serve arm of src/v1/stage0/src/main.rs, states no new options, verbs, routes
 // into the interpreter, or completion work — and its declared successor
 // roadmap_serve_interpreted_scaffold dissolves to emit-on-demand, a trigger already fired in

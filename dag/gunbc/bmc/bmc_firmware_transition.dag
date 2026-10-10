@@ -1,4 +1,4 @@
-module gunbc.bmc_firmware_transition
+module gunbc.bmc.bmc_firmware_transition
 
 import std.types { Int, List, String }
 import std.decl_ref { DeclarationRef }

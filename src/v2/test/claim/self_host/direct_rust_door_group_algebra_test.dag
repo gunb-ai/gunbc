@@ -1,4 +1,4 @@
-module v2.test.self_host.direct_rust_door_group_algebra
+module v2.test.claim.self_host.direct_rust_door_group_algebra_test
 
 import std.types { List }
 import v2.compiler.self_host.candidate_generation {

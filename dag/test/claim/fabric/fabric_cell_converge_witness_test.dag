@@ -1,19 +1,19 @@
-module test.claim.fabric_cell_converge
+module test.claim.fabric.fabric_cell_converge_witness_test
 
 import std.logic { Bool }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import std.types { list_length, String, NonEmptyStr, Int }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities, identity_is_fabric_execution_member }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, identity_is_fabric_execution_member }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd { parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.fabric_cell_observation_admission {
   fabric_cell_observation_outcome,
   FabricCellObservationDecision,
   FabricCellObservationAdmitted,
@@ -21,8 +21,8 @@ import gunbc.fabric_cell_observation_admission {
   FabricCellObservationNotApplicable,
   fabric_cell_observation_unobserved,
 }
-import gunbc.fabric_required_build_cell { members_owned }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_required_build_cell { members_owned }
+import gunbc.fabric.fabric_cell_converge {
   fabric_cell_member_ownership,
   fabric_cell_observation_refusal_identity,
   StandingExplicitlyAbsent,
@@ -92,7 +92,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THESE ROWS ARE READBACK-LEVEL LAWS, SO THEY ARE STATED OVER THE CLASSIFICATION KERNEL. There is
 // no longer any route from a hand-built readback to a plan-admissible observation -- the mint lives
-// in gunbc.fabric_cell_observation_admission and takes one probe -- and that is the point rather
+// in gunbc.fabric.fabric_cell_observation_admission and takes one probe -- and that is the point rather
 // than an obstacle: a fixture may still hand the kernel any roster and any readback it likes, and
 // what it cannot do is present the result as something the planner accepts. Every row below that
 // once asked "does this population refuse" now asks the kernel directly, which is where the fact it
@@ -100,7 +100,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE EXPECTED ROSTER IS SUPPLIED AT THE KERNEL'S INTERFACE, NOT READ FROM THE LIVE FABRIC ROSTER
 // (DESIGN §3, a witness discriminates at one interface). These rows are about how the kernel treats
-// a readback against a roster; which slots the fleet declares is gunbc.runner_slot_allocation's
+// a readback against a roster; which slots the fleet declares is gunbc.runner.runner_slot_allocation's
 // fact. Reading it here made every row a claim about the live fleet as well: when #11625 gave srv3 a
 // second fabric slot (srv3-07), the unread srv3-07 made every srv3 readback refuse, so the one row
 // asserting a clean readback does NOT refuse went red, and every row asserting a refusal kept
@@ -593,7 +593,7 @@ test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins
 // where its fold seeds true and nothing can lower it.
 //
 // This is recorded as executing evidence rather than prose because a consumer reads members_owned
-// as a SAFETY PREDICATE: gunbc.runner_jit_mint refuses to mint a runner credential for a cell that
+// as a SAFETY PREDICATE: gunbc.runner.runner_jit_mint refuses to mint a runner credential for a cell that
 // is not owned, and that refusal is real in the arm that receives the Bool while the Bool that
 // reaches it cannot presently be false. The guard that actually rejects a malformed cell today is
 // fabric_cell_shape's Incomplete arm, which runs BEFORE ownership is consulted -- a different
@@ -705,7 +705,7 @@ test fn witness_drifted_quota_standing_is_not_converged() -> Bool {
 // as a literal beside the parser's ("" or "unbounded") reads every live cell as drifted; the drift
 // test above is the other half -- a host that reports a one-thread quota against the same row is
 // reported as drift, which is the throttle the 2026-09-19 ruling forbids being made VISIBLE; its
-// repair on an existing cell is explicitly blocked (gunbc.fabric_cell_effect, review F-R1).
+// repair on an existing cell is explicitly blocked (gunbc.fabric.fabric_cell_effect, review F-R1).
 test fn witness_an_unbounded_host_quota_is_satisfied_under_the_unbounded_row() -> Bool {
   match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "infinity")) {
     Absent => false

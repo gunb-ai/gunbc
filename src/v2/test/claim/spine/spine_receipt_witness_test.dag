@@ -1,4 +1,4 @@
-module v2.test.spine.spine_receipt_witness
+module v2.test.claim.spine.spine_receipt_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

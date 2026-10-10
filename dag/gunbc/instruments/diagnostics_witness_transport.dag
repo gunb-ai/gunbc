@@ -1,6 +1,6 @@
-module tools.diagnostics_witness_transport
+module gunbc.instruments.diagnostics_witness_transport
 
-import tools.host_prelude { run_witness_bin }
+import gunbc.instruments.host_prelude { run_witness_bin }
 import std.logic { Bool }
 
 data diagnostics_import_resolution_suite: String = "import_resolution"

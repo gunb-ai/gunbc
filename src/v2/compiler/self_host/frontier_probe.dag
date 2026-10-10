@@ -132,7 +132,7 @@ data frontier_probe_empty_ingest_reason: Symbol = ^frontier_probe_empty_ingest
 // produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered
 // ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the
 // module is missing when its sources were never supplied. Executed against
-// src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. frontier_probe_coverage_gate
+// src/v2/compiler/resolve.dag at 71 reads against the 64 cap. frontier_probe_coverage_gate
 // already classifies this correctly but guards only the discovery path; this entry receives the
 // ingest directly and never consults coverage, so the conflation was reachable from every
 // from_ingest caller. RESIDUE: emptiness is decidable here and coverage is not, because this entry

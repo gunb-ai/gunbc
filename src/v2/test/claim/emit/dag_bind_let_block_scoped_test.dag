@@ -1,4 +1,4 @@
-module v2.test.emit.dag_bind_let_block_scoped
+module v2.test.claim.emit.dag_bind_let_block_scoped_test
 
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }

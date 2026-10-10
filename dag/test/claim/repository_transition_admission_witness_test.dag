@@ -7,7 +7,7 @@ import gunbc.live_deploy.apply {
   live_deploy_transaction_wet_with_access_for_realization,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.ci_deploy_access { ci_deploy_srv1_access, ci_deploy_srv1_operator_access }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access, ci_deploy_srv1_operator_access }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   LegacyGitFileSync,

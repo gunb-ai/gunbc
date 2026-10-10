@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   approval_broker_slice_memory_max,
@@ -12,11 +12,11 @@ import gunbc.live_deploy.slice_bounds {
 }
 
 data served_slice_charge_authority: Disposition = Terminal {
-  reason: "Single authority for what the deployment's SLICES cost a host's memory budget: the roadmap deployment slice and the approval broker slice its served processes run under, and the repository convergence slice its tree-converging oneshot runs under. It owns the per-host claim gunbc.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
+  reason: "Single authority for what the deployment's SLICES cost a host's memory budget: the roadmap deployment slice and the approval broker slice its served processes run under, and the repository convergence slice its tree-converging oneshot runs under. It owns the per-host claim gunbc.fleet.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
 }
 
 // ── THE SLICES WERE UNCHARGED, AND THAT IS A REAL HOLE RATHER THAN A TIDINESS GAP ────────────
-// gunbc.fleet_host_budget host_allocation_tree charges the runner pool, the session pool, the
+// gunbc.fleet.fleet_host_budget host_allocation_tree charges the runner pool, the session pool, the
 // compile pool, the fabric control plane, a fixed overhead and headroom against a host's usable
 // RAM, and concludes whether the host is oversubscribed. The roadmap deployment's slice -- the
 // MemoryMax at gunbc.live_deploy.slice_bounds live_deploy_slice_memory_max, which systemd will
@@ -99,7 +99,7 @@ data served_deployment_placement: ServedDeploymentPlacement = ServedDeploymentPi
 // grain -- what this deployment's units are allowed to hold on the host it is placed on -- and it is
 // placed wherever the deployment is. The residue is the word "served": the oneshot converges the
 // tree the served processes run from and serves nothing itself. Renaming HostServedDeploymentClaim
-// touches gunbc.fleet_host_budget, gunbc.ci_runner_placement and their witnesses for no arithmetic, so
+// touches gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and their witnesses for no arithmetic, so
 // it is left to the change that next edits that verdict chain, and stated here so the sum is not read
 // as served processes alone.
 fn served_deployment_slice_allowance() -> ByteSize {

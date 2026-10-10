@@ -7,7 +7,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_sbin_dir, package_nfct, apt_installed_bin_path }
+import extdeps.package_managers.apt { apt_sbin_dir, package_nfct, apt_installed_bin_path }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -47,7 +47,7 @@ fn nfct_program() -> ProgramIdentity = cataloged_program(invocation: "nfct")
 data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
 
 // WHERE nfct IS INSTALLED IS STATED ONCE, HERE. The apt row below and every consumer that execs the
-// binary by path (gunbc.fleet_posix_accounts fleet_nfct_binary_path, the privileged helper read)
+// binary by path (gunbc.fleet.fleet_posix_accounts fleet_nfct_binary_path, the privileged helper read)
 // derive from nfct_bin_dir, so the row and the exec path cannot disagree.
 data nfct_bin_dir: FilePath = apt_sbin_dir
 

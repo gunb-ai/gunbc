@@ -1,4 +1,4 @@
-module dag.test.claim.witness_deferral_freeze_witness
+module test.claim.witness_deferral_freeze_witness_test
 
 import std.dissolution { dissolution_description }
 
@@ -9,7 +9,7 @@ import v2.workflow.witness_admission {
   witness_floor_admission_holds,
   frozen_path_deferrals_all_discovered
 }
-import gunbc.witness_deferral_freeze {
+import gunbc.witness.witness_deferral_freeze {
   FrozenPathDeferral,
   frozen_path_deferral_covers,
   frozen_path_deferral_covers_in,

@@ -1,4 +1,4 @@
-module v2.test.meta_exec_confinement.roster_soundness
+module v2.test.claim.meta_exec_confinement.roster_soundness_test
 
 import std.types { List }
 import v2.lens.meta_exec_confinement {
@@ -32,7 +32,7 @@ data empty_live_leak_paths: List<String> = []
 // re-run in the same process behind an already-warmed scan the same receipt reports 1852ms, which
 // is warmth borrowed from whichever witness paid the 13s first and is not a property this row can
 // declare. The cost is intrinsic to layer_import_facts_live over a real tree, so no narrower root
-// rescues it; the live receipt therefore lives in v2.test.long.meta_exec_confinement_clean_tree
+// rescues it; the live receipt therefore lives in v2.test.claim.long.meta_exec_confinement_clean_tree_test
 // beside the clean-tree receipt. What CAN run per-PR is stronger than soundness anyway. A stale row
 // is only possible because the roster is a hand-written SECOND representation of a fact the tree
 // already carries (which files import the confined module). At length 0 that second representation

@@ -1,13 +1,13 @@
-module gunbc.managed_host_boot
+module gunbc.host.managed_host_boot
 
 import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.boot_medium { BootMedium }
-import gunbc.managed_host {
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.boot_medium { BootMedium }
+import gunbc.host.managed_host {
   ManagedHost,
   ManagedHostBinding,
   ManagedHostBindingStanding,
@@ -22,7 +22,7 @@ import gunbc.managed_host {
 }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
-// never passed in: gunbc.host_reset_boot_selection decides the reset arm's own, and neither admission
+// never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither admission
 // accepts the other's value. A host with no selection here is not bootable however capable its
 // controller.
 fn boot_selection(host: ManagedHost) -> IpmiBootSelection? {
@@ -95,8 +95,8 @@ fn boot_subject_admission_for(host: HostIdentity, medium: BootMedium, execution_
 
 fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
   match cause {
-    BootSubjectHostNotManaged => "it is not a managed host (gunbc.managed_host managed_hosts has no row for it)"
-    BootSubjectNoSelection => "no boot selection is decided for it (gunbc.managed_host_boot boot_selection)"
+    BootSubjectHostNotManaged => "it is not a managed host (gunbc.host.managed_host managed_hosts has no row for it)"
+    BootSubjectNoSelection => "no boot selection is decided for it (gunbc.host.managed_host_boot boot_selection)"
     BootSubjectHostUnbound { standing: s } =>
       match s {
         ManagedHostBound { binding: _ } => "it is bound"

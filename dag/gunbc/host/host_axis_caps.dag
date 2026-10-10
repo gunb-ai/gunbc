@@ -1,4 +1,4 @@
-module gunbc.host_axis_caps
+module gunbc.host.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
 import std.algebra { trim }
@@ -15,17 +15,17 @@ import gunbc.membership_reconcile {
   membership_removal_count,
   membership_refusal_count,
 }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
   gunbc_runner_per_slot_high_dropin_path,
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 import product.host_identity { HostIdentity }
 import extdeps.systemd {
   MemoryMax,
@@ -138,7 +138,7 @@ fn cap_upsert_stmts(m: CapMember) -> List<Node> {
 // WHAT THIS RENDERS IS READ BY A HUMAN, NOT RUN BY CONVERGE — and that changed on 2026-08-21
 // rather than always having been true. Its execution consumer was
 // gunbc.host_converge_realize's PerSlotMemoryCap arm, which is deleted; its remaining production
-// consumer is gunbc.fleet_converge_plan cap_apply_line, which renders these lines into plan.txt
+// consumer is gunbc.fleet.fleet_converge_plan cap_apply_line, which renders these lines into plan.txt
 // for review and deliberately does NOT emit them into apply.sh
 // (fleet_converge_cap_apply_shell_note). The drop-in writes themselves are deploy-principal
 // authority. The rendering is still built as a modeled bash program rather than joined text,
@@ -523,7 +523,7 @@ fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<CapMember>) -
 }
 
 // Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from
-// gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk
+// gunbc.runner.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk
 // deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via
 // system.control shadows; revert alone drops shadows and falls back to stale disk.
 

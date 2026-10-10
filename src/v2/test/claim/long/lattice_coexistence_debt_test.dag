@@ -1,4 +1,4 @@
-module v2.test.long.lattice_coexistence_debt
+module v2.test.claim.long.lattice_coexistence_debt_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

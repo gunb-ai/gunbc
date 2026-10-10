@@ -1,11 +1,11 @@
-module test.claim.runner_lifecycle
+module test.claim.runner.runner_lifecycle_witness_test
 
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr }
 import std.measure { byte_size, byte_size_count }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.runner_slot_allocation { srv3_fabric_first_slot, srv4_fabric_first_slot }
-import gunbc.runner_lifecycle {
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_allocation { srv3_fabric_first_slot, srv4_fabric_first_slot }
+import gunbc.runner.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
   GitHubRunnerAddSequence,
@@ -25,22 +25,22 @@ import gunbc.runner_lifecycle {
   host_runner_capacity_converged,
   HostRunnerCapacityReceipt,
 }
-import gunbc.build_cache_instance { runner_slot_instance_name, runner_slot_index_suffix }
-import gunbc.runner_incarnation { runner_slot_incarnation }
-import gunbc.host_disk_observation {
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name, runner_slot_index_suffix }
+import gunbc.runner.runner_incarnation { runner_slot_incarnation }
+import gunbc.host.host_disk_observation {
   DiskObserved,
   DiskUnobserved,
   DiskObservationRefused,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_slot_allocation_srv3,
   gunbc_runner_slot_allocation_srv4,
   HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
@@ -177,12 +177,12 @@ fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
 //
 // BOTH SIDES ARE READ FROM THE MEMBERSHIP AUTHORITY, NOT TYPED AS SLOT LITERALS. The previous
 // control was srv4-06, chosen as "the same index on a host of the same width" when srv4 carried
-// no fabric member; gunbc.runner_slot_allocation srv4_fabric_first_slot made srv4-06 a fabric
+// no fabric member; gunbc.runner.runner_slot_allocation srv4_fabric_first_slot made srv4-06 a fabric
 // slot on 2026-09-18, the control became a second fabric row, and the claim went red for a reason
 // it had nothing to say about. Deriving the subjects from srv3_fabric_first_slot and
 // srv4_fabric_first_slot means a moved fabric member moves the claim with it; the control below
 // each is a GitHub member by construction of the carve (the second fabric member sits ABOVE the
-// first, gunbc.runner_slot_allocation fabric_second_slot_index).
+// first, gunbc.runner.runner_slot_allocation fabric_second_slot_index).
 fn fabric_member_refuses_and_its_neighbour_registers(fabric: RunnerSlotIdentity) -> Bool {
   !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index - 1))

@@ -359,7 +359,7 @@ pub fn run_child_in_own_cgroup(
             detail: format!("{program}: {e}"),
         })?;
     // THE CHILD'S STDERR PASSES THROUGH UNCHANGED, AND ITS SEAM BEATS ARE KEPT. The per-phase
-    // attribution (`gunbc.floor_demand` `floor_phase_attribution`) is a fold over the heartbeat's
+    // attribution (`gunbc.floor.floor_demand` `floor_phase_attribution`) is a fold over the heartbeat's
     // own `[floor-cgroup] when=` lines, so the supervisor that already owns the child reads them
     // as they are written rather than a second process scraping a log afterwards. Every line is
     // forwarded first, so the log a reader sees is the log the child wrote. Read on a thread: a
@@ -403,7 +403,7 @@ pub fn run_child_in_own_cgroup(
     ))
 }
 
-/// ONE HEARTBEAT BEAT AS PRIMITIVES, the host half of `gunbc.floor_demand` `FloorBeatReading`.
+/// ONE HEARTBEAT BEAT AS PRIMITIVES, the host half of `gunbc.floor.floor_demand` `FloorBeatReading`.
 /// Transcription only: what a token is, what the held set is and where a phase begins are the
 /// fold's decisions, not this reader's.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-module gunbc.seeded_install_media_policy
+module gunbc.provisioning.seeded_install_media_policy
 
 import std.types { NonEmptyStr }
 import extdeps.provisioning.ubuntu_seeded_install_media { SeededInstallMediaPinnedDates }

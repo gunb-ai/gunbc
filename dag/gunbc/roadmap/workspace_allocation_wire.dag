@@ -1,4 +1,4 @@
-module gunbc.workspace_allocation_wire
+module gunbc.roadmap.workspace_allocation_wire
 
 import std.types { String, NonEmptyStr, Int }
 import gunbc.workspace_allocation { WorkspaceAllocationId, workspace_allocation_id_of }
@@ -69,7 +69,7 @@ fn workspace_release_submission(body: String) -> WorkspaceReleaseSubmission? {
 }
 
 // The availability word a write answers when the server cannot vouch for the tailnet path
-// (gunbc.workspace_allocation_routes workspace_write_unavailable_response, 503 {availability,
-// reason, cause}); the browser client (gunbc.roadmap_allocation_client) compares against it and
+// (gunbc.roadmap.workspace_allocation_routes workspace_write_unavailable_response, 503 {availability,
+// reason, cause}); the browser client (gunbc.roadmap.roadmap_allocation_client) compares against it and
 // stops offering the write.
 data workspace_write_unavailable_wire: String = "unavailable"

@@ -6,7 +6,7 @@ import gunbc.executor_privileged_operation {
   SystemdDaemonReload, SystemdEnableUnit, SystemdStartUnit,
   executor_privileged_operation_argv, executor_privileged_operation_converge_command,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_principal_name, approval_ntfy_state_root, approval_ntfy_config_dir,
   approval_ntfy_unit_name, approval_ntfy_dir_mode,
@@ -54,7 +54,7 @@ import gunbc.managed_directory { declared_directory_mode_octal }
 // this is the middle one -- a DECLARED FRONTIER -- so its trigger is stated rather than left for a
 // reader to discover by grepping.
 //
-// NAMED CONSUMER AND TRIGGER: a member family in gunbc.fleet_converge_plan that reconciles this
+// NAMED CONSUMER AND TRIGGER: a member family in gunbc.fleet.fleet_converge_plan that reconciles this
 // desired set against an observation of the host, discharged through the ConvergedEffect half of
 // std.realization_reconcile so applying can establish that it worked. When that lands, the
 // ownership constraint above becomes structural and the duplicate-key witness becomes a property of
@@ -129,7 +129,7 @@ fn ntfy_attachment_cache_dir() -> NonEmptyStr {
 }
 
 // DERIVED, NOT RE-MINTED -- the same move the paths above got. This was the octal literal "0750",
-// and gunbc.host_credential_custody_converge spelled the same octal for the SAME directory, so one
+// and gunbc.fleet.host_credential_custody_converge spelled the same octal for the SAME directory, so one
 // directory had two authorities for its mode. The arm is declared once by the deployment this
 // converge installs (approval_ntfy_dir_mode) and the octal is rendered by
 // gunbc.managed_directory from a constructed FileMode, so no permission literal survives on either

@@ -1,4 +1,4 @@
-module test.claim.runner_qualification_ref_pin_witness
+module test.claim.runner.runner_qualification_ref_pin_witness_test
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -8,8 +8,8 @@ import extdeps.github.actions {
   WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunCompleted, MergeGroup,
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
-import gunbc.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
-import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+import gunbc.runner.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
+import gunbc.fleet.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
 import test.claim.github_app_registry { group_restricted_to }
 import gunbc.runner.runner_qualification_ref_pin {
   qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref,
@@ -151,7 +151,7 @@ test fn the_branch_is_removed_only_when_a_read_finds_it_absent() -> Bool {
 
 // CREATING A QUALIFICATION BRANCH FIRES NO WORKFLOW. WorkflowTrigger has no `create` variant, so no
 // generated workflow can trigger on branch creation by construction; the one generated workflow with a
-// push trigger is gunbc.fleet_desired_admission_workflow, whose branch filter must not admit
+// push trigger is gunbc.fleet.fleet_desired_admission_workflow, whose branch filter must not admit
 // qualification/<attempt>. A filter containing any glob is read as possibly matching (refused here
 // rather than evaluated), so a widened filter turns this red.
 fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool {

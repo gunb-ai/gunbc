@@ -1,4 +1,4 @@
-module test.claim.bmc_typed_operations_witness
+module test.claim.bmc.bmc_typed_operations_witness_test
 
 import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,

@@ -1,4 +1,4 @@
-module gunbc.roadmap_launch_deployment_cli
+module gunbc.roadmap.roadmap_launch_deployment_cli
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.algebra { trim }
@@ -20,7 +20,7 @@ import extdeps.access.posix_effective_principal_read_op { effective_posix_princi
 import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
+import gunbc.host.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
@@ -28,30 +28,30 @@ import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   run_binding_names_workflow_file,
 }
-import gunbc.fleet_converge_receipt {
+import gunbc.fleet.fleet_converge_receipt {
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
   read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
   read_fleet_converge_apply_receipt_at, FleetConvergeApplyReceiptDecoded, FleetConvergeApplyReceiptUnreadable,
 }
-import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
+import gunbc.fleet.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
-import gunbc.fleet_desired_observe {
+import gunbc.fleet.fleet_desired_observe {
   observe_fleet_desired_revision, FleetDesiredAdmitted, FleetDesiredAbsent, FleetDesiredUndecodable, FleetDesiredUnobserved,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObservation, DeployedTreeObserved, DeployedTreeUnobservable,
   deployed_tree_locus, observe_deployed_tree, deployed_root_tree_standing, deployed_tree_unobservable_text,
 }
 import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBindingUnobserved }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
 import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
@@ -69,18 +69,18 @@ import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
   BeltProviderPreflight, ProviderPreflightRefused,
   belt_exit_spool_times, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
 }
-import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
 import gunbc.dispatch_selection { NoDerivedSizingExpectation }
 import gunbc.dispatch_preflight { dispatch_preflight_for_instance, PreflightAdmitted, PreflightRefused }
-import gunbc.roadmap_launch_admission { launch_admission_contract_digest_hex }
-import gunbc.roadmap_launch_deployment_observe {
+import gunbc.roadmap.roadmap_launch_admission { launch_admission_contract_digest_hex }
+import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
@@ -89,7 +89,7 @@ import gunbc.roadmap_launch_deployment_observe {
   observe_instance_document_routed,
   observe_workflow_document_routed,
 }
-import gunbc.roadmap_launch_deployment_receipt {
+import gunbc.roadmap.roadmap_launch_deployment_receipt {
   ReceiptWorkflowRefStanding, ReceiptWorkflowRefNamesFile, ReceiptWorkflowRefForeign,
   RoadmapLaunchDeploymentSubject, RoadmapLaunchDeploymentFacts, RoadmapLaunchDeploymentVerdict,
   DesiredRevisionObserved, DesiredRevisionUnobserved,
@@ -138,14 +138,14 @@ fn rlm_workflow_file_path() -> String {
 // host and GitHub copies by digest.
 // 
 // THE PRINCIPAL IS OBSERVED, NOT ASSUMED. Footprint, provider and dispatch preflights are only
-// meaningful as the belt's effective service principal (gunbc.roadmap_belt_actuate
+// meaningful as the belt's effective service principal (gunbc.roadmap.roadmap_belt_actuate
 // BeltFootprintRoot), so the receipt run records `whoami` and the join refuses when it
 // is not the emitted ServiceUser. If srv1's runner principal is not that user, the wet run produces
 // an Incomplete receipt naming `principal`, and the repair is a modeled execution-as-principal
 // step, not a relaxation here.
 // 
 // THE PROVIDER PREFLIGHT runs for the provider production would select for an unsized node under
-// the instance's own inventory (gunbc.roadmap_dispatch_actuator dispatch_actuator_selection), which
+// the instance's own inventory (gunbc.roadmap.roadmap_dispatch_actuator dispatch_actuator_selection), which
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"

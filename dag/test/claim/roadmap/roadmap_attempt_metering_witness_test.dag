@@ -9,7 +9,7 @@ import gunbc.harness.harness_turn { harness_event_round_usage, harness_event_rou
 import gunbc.harness.harness_seat_pointer {
   HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_json,
 }
-import gunbc.roadmap_attempt_metering {
+import gunbc.roadmap.roadmap_attempt_metering {
   MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor,
   RoleTokens, TokensObserved, TokensStreamAbsent, TokensRefused,
   SeatHeld, SeatReleased, SeatStillHeld, SeatRefused, SeatPointerAbsent,

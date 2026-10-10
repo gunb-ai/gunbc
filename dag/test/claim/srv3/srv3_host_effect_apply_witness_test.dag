@@ -1,22 +1,22 @@
-module test.claim.srv3_host_effect_apply_witness
+module test.claim.srv3.srv3_host_effect_apply_witness_test
 
 import std.dissolution { dissolution_description }
-import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_response_path }
-import gunbc.srv3_host_effect_apply {
+import gunbc.srv3.srv3_actuate_shell_paths { srv3_bmcweb_login_response_path }
+import gunbc.srv3.srv3_host_effect_apply {
   srv3_shell_stdout_from_reconciliation,
   srv3_typed_receipt_from_lines,
 }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   bmcweb_token_extract_jq_args,
   bmcweb_token_extraction_verdict,
   BmcwebTokenExtraction,
   BmcwebTokenExtracted,
   BmcwebTokenExtractRefused,
 }
-import gunbc.srv3_nbd_proxy_serve_intent {
+import gunbc.srv3.srv3_nbd_proxy_serve_intent {
   srv3_nbd_proxy_serve_host_effect, srv3_nbd_proxy_lease_key,
 }
-import gunbc.host_effect_nbd_proxy_serve {
+import gunbc.host.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_session_binding,
   host_effect_nbd_proxy_serve_session_policy_is_held_lease,
   host_effect_nbd_proxy_serve_apply_with_observation,

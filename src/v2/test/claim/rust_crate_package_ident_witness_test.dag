@@ -1,4 +1,4 @@
-module test.claim.rust_crate_package_ident_witness
+module v2.test.claim.rust_crate_package_ident_witness_test
 
 import std.types { Bool, List, String }
 import std.dissolution { BoundDissolution, DeclarationRetires, UnboundDissolution }
@@ -18,7 +18,7 @@ import gunbc.rust_crate_package_ident {
   rust_crate_package_idents,
   package_ident_bound
 }
-import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows }
 
 // ── THE PROJECTION THAT IS NOT INJECTIVE, AND THE TWO REFUSALS IT OWES ────────────────────────
 //

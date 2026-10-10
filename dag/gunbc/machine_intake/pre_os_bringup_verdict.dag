@@ -1,4 +1,4 @@
-module gunbc.machine_intake_pre_os_bringup_verdict
+module gunbc.machine_intake.pre_os_bringup_verdict
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize }
@@ -16,7 +16,7 @@ import extdeps.bmc.ipmi_sel {
   SystemFirmwareProgressOffset,
   oem_sel_payload_eq,
 }
-import gunbc.machine_intake_pre_os_observation_capabilities {
+import gunbc.machine_intake.pre_os_observation_capabilities {
   DimmLocalizationCapability,
   LocalizationUnavailableFromExposedTelemetry,
   OemSelDecodeCapability,

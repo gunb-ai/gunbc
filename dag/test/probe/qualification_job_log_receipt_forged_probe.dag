@@ -6,7 +6,7 @@ module test.probe.qualification_job_log_receipt_forged_probe
 // writing the sealed receipt from invented readings, (b) calling the one function that mints it from
 // outside the collect stage, (c) calling the reads past the read plan, (d) reading the claim-cost
 // artifact for a free token and run id. The witness
-// test.claim.qualification_job_log_receipt_forged_probe_witness hands this source to the compiler and
+// test.claim.runner.qualification_job_log_receipt_forged_probe_witness_test hands this source to the compiler and
 // requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
 // strict-resolve exclusion, so this source reaches the compiler only through that witness.
 

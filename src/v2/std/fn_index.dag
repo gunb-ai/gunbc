@@ -105,7 +105,7 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // 22ms, 63 files 543ms, 76 files 825ms, 1275 files 14663ms). Three consumers need 1, 2 and 3
 // modules; the smallest DIRECTORIES containing them hold 3, 63 and 1275 files, which costs one of
 // them 29x the floor's per-subject line and hands another two sibling fixtures that were never in
-// its subject. gunbc.ci_layer_roots already ruled file-grain pools unavailable, and that ruling
+// its subject. gunbc.ci.ci_layer_roots already ruled file-grain pools unavailable, and that ruling
 // stands on its own frame: it measured [dag, src/v2] against [dag/gunbc], two LARGE pools four
 // seconds apart, which supports "cost barely moves between two large pools" and does not reach the
 // small region these consumers occupy.

@@ -1,6 +1,6 @@
-module test.claim.roadmap_site_surface_readiness
+module test.claim.roadmap.roadmap_site_surface_readiness_witness_test
 
-import gunbc.roadmap_site_surface_witness { roadmap_site_surface_readiness_group_holds }
+import gunbc.roadmap.roadmap_site_surface_witness { roadmap_site_surface_readiness_group_holds }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

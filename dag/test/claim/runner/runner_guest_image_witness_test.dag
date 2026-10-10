@@ -1,15 +1,15 @@
-module test.claim.runner_guest_image_witness
+module test.claim.runner.runner_guest_image_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_binary_artifact_for_arch }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.toolchain.types { Aarch64 }
-import gunbc.runner_microvm_network { runner_microvm_guest_resolver }
+import gunbc.runner.runner_microvm_network { runner_microvm_guest_resolver }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image, jit_drive_content, jit_drive_newline_sector,
   jit_drive_guest_device, JitDriveDevice, JitDriveNotAttached, runner_microvm_vm_config, attach_workspace_drive, jit_transport_drive_id,
   gunbc_runner_jit_transport, gunbc_runner_microvm_declared_size, GuestNetworkAbsent,
@@ -18,7 +18,7 @@ import extdeps.virtualization.firecracker {
   firecracker_block_sector_size, firecracker_drive_guest_device, FirecrackerDrive,
 }
 import std.measure { byte_size_count }
-import gunbc.runner_guest_image {
+import gunbc.runner.runner_guest_image {
   GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
   ArtifactDigestNotPinnable, runner_guest_built_image_artifact,
   GuestArtifactDigestProvenance, FirstObservedOnFetch,

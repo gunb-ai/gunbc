@@ -1,6 +1,6 @@
-module v2.test.emit.produced_decl_two_target
+module v2.test.claim.emit.produced_decl_two_target_test
 
-import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.compiler.emit_produced { emit_produced_decl, emit_produced_module }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.cpp { cpp_target_model }

@@ -57,7 +57,7 @@ fn uri_is_url(uri: Uri) -> Bool {
 // live declaration index exists, which the emitted compiler does not carry, so the
 // reflective form emitted as a refusal on every non-interpreter target. The roster is the
 // same fact the arms already state, so the drift risk is real and is walled by
-// v2.test.manual.coproduct_reflection_conformance, which reflects UriScheme's arms under
+// v2.test.claim.manual.coproduct_reflection_conformance_test, which reflects UriScheme's arms under
 // the interpreter and compares them to these rows by discriminant.
 fn uri_scheme_inhabitants() -> List<UriScheme> {
   [Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto]

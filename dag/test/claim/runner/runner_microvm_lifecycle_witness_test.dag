@@ -1,22 +1,22 @@
-module gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test
+module test.claim.runner.runner_microvm_lifecycle_witness_test
 
-import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv2 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready, cell_readiness_line }
-import gunbc.runner_microvm { gunbc_runner_guest_image }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
   runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
   runner_microvm_attempt_unit_name,
 }
-import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_slice_name }
 import std.nat { Nat }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   BoundSlotNetworkReadback, slot_network_readback, slot_network_subject, SlotNetworkSubject,
   slot_network_sanitation_subject, SanitationSubjectResult, SanitationSubjectAdmitted, SanitationSubjectRefused,
   SlotNetworkReadings, TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
@@ -26,9 +26,9 @@ import gunbc.runner_microvm_network {
   host_residue_readback, ruleset_readback, ExpectationTableEmptyFact, different_generation,
   SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted, SlotNetworkUnobservable,
 }
-import gunbc.runner_microvm_lifecycle_realize { unreadable_slot_network_readings }
-import gunbc.runner_attempt_launch { GroundClear, GroundOccupied }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_lifecycle_realize { unreadable_slot_network_readings }
+import gunbc.runner.runner_attempt_launch { GroundClear, GroundOccupied }
+import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
   CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned, StoreNotRootOwned,
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
@@ -41,7 +41,7 @@ import gunbc.runner_microvm_cell_readiness {
   cell_incarnation_admission, apply_cell_readiness_write,
   InFlightAttempt, CellBoundAttempt, AttemptBoundToCell, bind_attempt_to_cell,
 }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.runner.runner_microvm_lifecycle {
   AttemptIdentity,
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue, StartRefused, StartBindingRefused, controller_start,
   CellBinding, CellBindingRefusedCell,
@@ -83,7 +83,7 @@ fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
 
 // THE DEVICE PATH IS SUPPLIED, NOT DERIVED, and that is the property under test rather than a
 // shortcut. The staged device now lives inside the jailer's chroot at a path the launch plan owns
-// (gunbc.runner_attempt_launch jit_device_staging), so a witness that recomputed it from the attempt
+// (gunbc.runner.runner_attempt_launch jit_device_staging), so a witness that recomputed it from the attempt
 // would be asserting a convention this corpus no longer has. Supplying it is also what lets the
 // foreign-subject red below name a DIFFERENT device than the record does.
 fn witness_credential_device_path(attempt: MicroVmAttempt) -> String {

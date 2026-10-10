@@ -28,7 +28,7 @@ fn approve_ios_protocol_enum() -> SwiftDecl {
     sw_doc(c: ["gunbc.auth.approval_device_wire approval_redemption_protocol."], d: sw_static_let(n: "redemptionProtocol", e: sw_str(s: "gunbc.approval-redemption.v1"))),
     sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_read_protocol."], d: sw_static_let(n: "readProtocol", e: sw_str(s: "gunbc.approval-device-read.v1"))),
     sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_push_protocol."], d: sw_static_let(n: "pushProtocol", e: sw_str(s: "gunbc.approval-device-push.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: "gunbc.roadmap_serve/device-redemption"))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: "gunbc.roadmap.roadmap_serve/device-redemption"))),
     sw_doc(
       c: [
         "framed_field: \"<n>:<field>,\" where n is the field's length in Unicode code points",

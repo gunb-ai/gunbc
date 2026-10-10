@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_rules_parity_test
+module v2.test.claim.emit.semantic_decl_rules_parity_test
 
 import v2.compiler.emit_semantic_decl { produced_type_binding }
 import std.occurrence_identity { OccurrenceSynthetic }

@@ -1,6 +1,6 @@
-module test.claim.fleet_converge_launch_scope_non_interference
+module test.claim.fleet.fleet_converge_launch_scope_non_interference_test
 
-import gunbc.fleet_converge_terminal { fleet_converge_apply_terminal_wire, FullyApplied, PartiallyApplied, AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { fleet_converge_apply_terminal_wire, FullyApplied, PartiallyApplied, AwaitingCapability }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
@@ -14,15 +14,15 @@ import gunbc.compile_diagnostic_census {
   census_blocking_rows,
   census_total_count,
 }
-import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
-import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.fleet_converge_plan {
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.runner.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_converge_plan {
   FleetConvergeRequest, FullHostConverge, FleetConvergePlanArtifact, fleet_converge_plan_artifact_of_request, fleet_converge_plan_artifact_hash, fleet_converge_apply_terminal, fleet_converge_scope_wire, fleet_converge_desired_caps,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 // THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.
 //
@@ -32,7 +32,7 @@ import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 // discarded it. That was a rung-2 guarantee: the invalid state remained writable and safety
 // depended on the projection continuing to ignore it.
 //
-// gunbc.fleet_converge_plan now gives LaunchEnvironmentConverge exactly two positions -- host and
+// gunbc.fleet.fleet_converge_plan now gives LaunchEnvironmentConverge exactly two positions -- host and
 // observed_timers. Runner slots have a position on FullHostConverge, not on the launch constructor,
 // so the invalid state is structurally impossible in an Accepted program. DESIGN 4b(4) requires the
 // discriminating RED and its positive control to remain enrolled after that climb. They therefore
@@ -62,7 +62,7 @@ fn launch_environment_probe_source(
   join([
     "module probe_launch_environment_scope\n",
     "import std.types { NonEmptyStr }\n",
-    "import gunbc.fleet_converge_plan { FleetConvergeRequest, LaunchEnvironmentConverge }\n",
+    "import gunbc.fleet.fleet_converge_plan { FleetConvergeRequest, LaunchEnvironmentConverge }\n",
     "fn slots() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", slots, " } }\n",
     "fn activation() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", activation, " } }\n",
     "fn caps() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", caps, " } }\n",

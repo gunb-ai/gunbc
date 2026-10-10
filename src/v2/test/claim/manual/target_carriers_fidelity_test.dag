@@ -1,4 +1,4 @@
-module v2.test.manual.target_carriers_fidelity
+module v2.test.claim.manual.target_carriers_fidelity_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

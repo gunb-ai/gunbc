@@ -1,16 +1,16 @@
-module gunbc.build_cache_endpoint_observation
+module gunbc.build_cache.build_cache_endpoint_observation
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_shell_transport_observation {
+import gunbc.fleet.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,
   ShellTransportReachRefused,
   ShellTransportUnobserved,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   BuildCacheInstance,
   BuildCacheEndpointObservation,
   ci_cache_instance,
@@ -24,13 +24,13 @@ import gunbc.build_cache_instance {
 
 data build_cache_endpoint_observation_authority_disposition: ConstructionMechanism = SingleAuthority
 
-// THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
+// THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
 // memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
 // with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
 //
-// CORRECTED 2026-08-21: THE ENDPOINT-OWNER WALK LANDED, AND IT DID NOT LAND HERE. gunbc.build_cache_endpoint_observe
-// decodes the endpoint owner, path state and observation currency, and gunbc.host_effect_realize drives it
+// CORRECTED 2026-08-21: THE ENDPOINT-OWNER WALK LANDED, AND IT DID NOT LAND HERE. gunbc.build_cache.build_cache_endpoint_observe
+// decodes the endpoint owner, path state and observation currency, and gunbc.host.host_effect_realize drives it
 // per effect. What this surface still cannot do is reach it, and the reason is its own signature rather
 // than a missing implementation: it takes a HostIdentity and answers for the whole fleet, so there is no
 // HostEffectTransport in scope to read anything through. Its remaining honest arm is therefore the
@@ -44,7 +44,7 @@ fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEn
       EndpointObservationUnavailable {
         instance: instance,
         reason: ProcTableUnreadable {
-          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache_endpoint_observe, driven from gunbc.host_effect_realize where a HostEffectTransport exists" as NonEmptyStr,
+          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache.build_cache_endpoint_observe, driven from gunbc.host.host_effect_realize where a HostEffectTransport exists" as NonEmptyStr,
         },
       }
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
@@ -90,7 +90,7 @@ fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
 data build_cache_ci_endpoint_observed_producer_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

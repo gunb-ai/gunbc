@@ -1,8 +1,8 @@
-module v2.test.manual.emit_source_store
+module v2.test.claim.manual.emit_source_store_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.eval { inferred_tree_digest }
-import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree, rust_add_target_model }
+import v2.test.claim.manual.rust_add_emit_translate_test { rust_add_inferred_tree, rust_add_target_model }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome }
 import std.types { String }

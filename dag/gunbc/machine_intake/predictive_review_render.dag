@@ -1,4 +1,4 @@
-module gunbc.machine_intake_predictive_review_render
+module gunbc.machine_intake.predictive_review_render
 
 import std.types { List, String }
 import std.decl_ref { declaration_ref_display_key }

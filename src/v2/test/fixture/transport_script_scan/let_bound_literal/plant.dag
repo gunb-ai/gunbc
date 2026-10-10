@@ -1,4 +1,4 @@
-module v2.test.fixture.transport_script_scan.let_bound_literal_plant
+module v2.test.fixture.transport_script_scan.let_bound_literal.plant
 
 fn run_let_bound_literal_violation() -> Bool {
   let s = "echo hello"

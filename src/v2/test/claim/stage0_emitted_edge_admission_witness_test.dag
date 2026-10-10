@@ -1,19 +1,19 @@
-module test.claim.stage0_emitted_edge_admission_witness
+module v2.test.claim.stage0_emitted_edge_admission_witness_test
 
 import std.types { Bool, List, String }
 import v2.std.algebra { any }
 import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
-import gunbc.stage0_crate_partition_generated {
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedLayeredCoreCrate,
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
-import gunbc.stage0_executable_assembly_generated {
+import gunbc.stage0.stage0_executable_assembly_generated {
   generated_host_shell_package_name,
   generated_host_shell_partition_dependencies
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.stage0_emitted_edge_admission {
+import gunbc.stage0.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
   Stage0EmittedEdgesNotCovered,
   Stage0EmittedEdgesRefused,
@@ -27,9 +27,9 @@ import gunbc.stage0_emitted_edge_admission {
 
 // ── ONE ADMISSION, SUPPLIED EDGES, THE REAL PARTITION ROWS ────────────────────────────────────
 //
-// The subject is gunbc.stage0_emitted_edge_admission: given the edges the emitter returned and the
+// The subject is gunbc.stage0.stage0_emitted_edge_admission: given the edges the emitter returned and the
 // host shell's module roster, does every edge land in a package its source crate reaches. The rows
-// and package graph are the committed ones (gunbc.stage0_crate_partition_generated), so the module
+// and package graph are the committed ones (gunbc.stage0.stage0_crate_partition_generated), so the module
 // names below are real members of real crates: v1_rt in the runtime foundation, std_types in
 // std-core, v1_compiler_infer in v1-infer. The edges are supplied, because the claim is about the
 // admission, not about what one emission happened to produce. The real producer is exercised by the

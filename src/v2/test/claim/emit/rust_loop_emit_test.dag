@@ -1,6 +1,6 @@
-module v2.test.emit.rust_loop_emit
+module v2.test.claim.emit.rust_loop_emit_test
 
-import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
 }

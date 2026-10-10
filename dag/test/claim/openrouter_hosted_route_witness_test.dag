@@ -30,7 +30,7 @@ import gunbc.harness.harness_hosted_route {
 }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
 import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
-import gunbc.fabric_quota {
+import gunbc.fabric.fabric_quota {
   quota_term_to_window_end, quota_window_start, fabric_quota_lease_for, fabric_quota_settle_at, QuotaTermToWindowEnd,
   QuotaSettled, QuotaSettleRefused,
 }
@@ -45,10 +45,10 @@ import product.capacity.pool {
 }
 import std.measure { Measure, Count, One, second_count }
 import extdeps.api_rate_limit { UpstreamRateLimit }
-import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
+import gunbc.fabric.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
-import gunbc.fabric_storage_client { FabricStorageServed }
+import gunbc.fabric.fabric_storage_client { FabricStorageServed }
 import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedFailure, harness_outcome_label, harness_outcome_detail }
 import gunbc.harness.hosted_failure { HostedRateLimited }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
@@ -58,7 +58,7 @@ import std.measure { token_count }
 // ── THE QUOTA REFUSAL: a full pool stops the request before it is sent ──────────────────────
 //
 // Supplied lease answers at the decision's own interface (DESIGN section 3, a witness discriminates at one
-// interface): the leases are gunbc.fabric_quota's subject and are witnessed there.
+// interface): the leases are gunbc.fabric.fabric_quota's subject and are witnessed there.
 
 fn w_leased(reference: String) -> QuotaLease {
   QuotaLeased {
@@ -257,7 +257,7 @@ test fn a_request_above_the_completion_ceiling_selects_no_level() -> Bool {
 // ── THE CHARGE FITS ITS WINDOW AT EVERY INSTANT, THROUGH THE REAL POOL ADMISSION ──────────────
 //
 // The pools are the production pools (product.capacity.quota quota_root_pool over the real OpenRouter
-// rows the hosted route carries), the term is the production derivation (gunbc.fabric_quota
+// rows the hosted route carries), the term is the production derivation (gunbc.fabric.fabric_quota
 // quota_term_to_window_end), and admission is product.capacity.pool pool_acquire -- the function a
 // partition append adjudicates with. Only the clock is supplied: an instant one second into a UTC day
 // that is also one second into its minute, and instants one second before the minute and the day end.
@@ -366,7 +366,7 @@ test fn a_partial_upstream_remainder_is_the_headroom_and_later_readings_never_re
 
 // ── A TRANSITION IS CHECKED AGAINST THE FOLDED POOL BEFORE IT IS WRITTEN ─────────────────────────
 //
-// gunbc.fabric_event_log fabric_pool_transition appends only what product.capacity.pool_events
+// gunbc.fabric.fabric_event_log fabric_pool_transition appends only what product.capacity.pool_events
 // pool_apply_payload advances on the folded pool -- the same function replay applies. These supply the
 // folded pool and ask that function, which is the decision the carrier makes before any write.
 fn w_env(id: String, at: Int, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
@@ -672,7 +672,7 @@ test fn only_a_zero_credit_key_on_a_published_tier_builds_a_binding() -> Bool {
 // ── THE REAL LEASE PRODUCER IS EXECUTED, THROUGH THE PRODUCTION CHARGE ───────────────────────────
 //
 // The constructed leases above are for the decision's own boundary. This runs the PRODUCTION charge
-// (harness_hosted_round_charge -> gunbc.fabric_quota fabric_quota_lease_for) for a host the fleet declares no
+// (harness_hosted_round_charge -> gunbc.fabric.fabric_quota fabric_quota_lease_for) for a host the fleet declares no
 // dashboard instance for: the real producer answers with its typed refusal, the charge turns it into
 // HostedRoundUnleasable naming the host, and nothing is leased, charged or sent. Deleting the producer, or
 // the charge's call to it, turns this red.

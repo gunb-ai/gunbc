@@ -36,7 +36,7 @@ import std.types { Bool, String }
 // Saying so here keeps a green hermetic file from reading as evidence about the wet one.
 
 data placement_probe_subject: DeclarationRef = DeclarationRef {
-  module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
+  module_path: "gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport",
   decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
   field: WholeDeclaration,
 }

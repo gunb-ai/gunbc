@@ -1,10 +1,10 @@
-module test.claim.floor_demand_witness_test
+module test.claim.floor.floor_demand_witness_test
 
 import std.types { Bool, String, List, Int }
 import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count, MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max, CheckedIntReady, CheckedIntOverflow }
 import extdeps.toolchain.types { Aarch64, X86_64 }
-import gunbc.floor_demand {
+import gunbc.floor.floor_demand {
   floor_execution_requirements, FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured,
   FloorRunCgroupPeakUnmeasured, floor_peak_reading_kind, UncensoredPeak, ThrottlePin,
   PeakUnmeasured, floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
@@ -275,8 +275,8 @@ test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readi
   !r.run_completed && r.beats_sampled > 0 && count(r.beats) == 4 && peak_ok && thrash_beat_ok && unstalled_ok
 }
 
-// THE PIN WAS TAKEN UNDER THE ROW OF ITS DAY, which gunbc.floor_demand now carries as its own
-// envelope rows: the live gunbc.runner_slot_desired moved on 2026-10-09 with the v1 withdrawal, and
+// THE PIN WAS TAKEN UNDER THE ROW OF ITS DAY, which gunbc.floor.floor_demand now carries as its own
+// envelope rows: the live gunbc.runner.runner_slot_desired moved on 2026-10-09 with the v1 withdrawal, and
 // the floor no longer runs in any slot, so joining its receipts to the live row would assert a
 // relation between a dead instrument and a slot it never inhabited.
 test fn the_pin_receipt_was_armed_at_the_declared_throttle_line() -> Bool {

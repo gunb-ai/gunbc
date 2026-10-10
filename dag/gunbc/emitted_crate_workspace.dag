@@ -38,7 +38,7 @@ import gunbc.crate_partition {
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Optional, Present, optional_present }
-import extdeps.cargo { Bin, cargo_target_source_path }
+import extdeps.rust.cargo { Bin, cargo_target_source_path }
 import gunbc.rust_emitted_edge {
   EmittedEdge,
   EmittedModuleTarget,
@@ -52,7 +52,7 @@ import gunbc.rust_emitted_edge {
   rust_module_emit_filename,
   rust_runtime_prelude_module
 }
-import gunbc.stage0_crate_partition_generated {
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
@@ -337,7 +337,7 @@ fn emitted_workspace_plan_from_emission(
 // are the emission's demand (v1.compiler.stage0_crates emitted_crate_dependencies), which the
 // renderer reads straight from the emission. The binary's name is the caller's (one target
 // directory serves several entries, so each names its own), and its source path is Cargo's
-// convention for that name (extdeps.cargo cargo_target_source_path), never a path chosen here.
+// convention for that name (extdeps.rust.cargo cargo_target_source_path), never a path chosen here.
 type EmittedWorkspaceBuild {
   layout: EmittedWorkspacePlan
   rows: List<GeneratedPartitionCrateRow>

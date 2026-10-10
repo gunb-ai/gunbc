@@ -13,8 +13,8 @@ import extdeps.time.rfc3339 {
   Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
 }
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
-import gunbc.runner_provider_survey { runs_on_label_rows }
-import gunbc.runner_label_resolution {
+import gunbc.runner.runner_provider_survey { runs_on_label_rows }
+import gunbc.runner.runner_label_resolution {
   SnapshotStanding, SnapshotPredatesObservation, SnapshotOrderUndecidable, SnapshotPostdatesObservation,
   SnapshotAssessment, snapshot_standing_for, assessment_is_untrusted, assessment_is_undecidable,
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
@@ -346,7 +346,7 @@ data control_catalog_one: DeclarationRef = decl_ref(
   module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog")
 
 data control_catalog_two: DeclarationRef = decl_ref(
-  module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog")
+  module_path: "gunbc.runner.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog")
 
 fn control_match(row: RunnerLabelRow) -> LabelMatch {
   control_match_from(row: row, catalog: control_catalog_one)
@@ -366,7 +366,7 @@ fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
 // TWO CATALOGS SHARING ONE PROVIDER MUST READ AS TWO CATALOGS. Both rows below carry GitHub as
 // their provider and differ only in which catalog matched, which is exactly the pair the old
 // provider-keyed check collapsed. The claim asserts the refusal names the ROSTER rather than a
-// provider's own projection - the difference between "gunbc.runner_provider_survey enrolled it
+// provider's own projection - the difference between "gunbc.runner.runner_provider_survey enrolled it
 // twice" and "extdeps.ci_runner.github_actions listed it twice", which are different repairs.
 data github_row_larger: RunnerLabelRow = RunnerLabelRow {
   provider: github_actions_provider_identity,

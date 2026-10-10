@@ -1,4 +1,4 @@
-module test.claim.ci_exclusion_proof
+module test.claim.ci.ci_exclusion_proof_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

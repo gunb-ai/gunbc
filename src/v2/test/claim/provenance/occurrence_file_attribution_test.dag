@@ -1,4 +1,4 @@
-module v2.test.provenance.occurrence_file_attribution
+module v2.test.claim.provenance.occurrence_file_attribution_test
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.compile { native_test_context_from_ingest }

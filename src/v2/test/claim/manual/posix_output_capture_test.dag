@@ -1,4 +1,4 @@
-module v2.test.manual.posix_output_capture
+module v2.test.claim.manual.posix_output_capture_test
 
 import v2.extdeps.posix { CapturedOutputPipes }
 import std.algebra { FreeMonoid }

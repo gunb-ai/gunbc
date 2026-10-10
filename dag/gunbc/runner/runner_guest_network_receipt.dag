@@ -58,7 +58,7 @@ type GuestReachability {
 
 // THE PREFIX IS /30: two usable addresses, host and guest, with no room for a third party on the
 // segment. These 172.16.0.x values and the MAC that embeds them are the Mt. Collins probe
-// observation, not gunbc.runner_microvm_network's slot-derived 172.30.slot.{1,2} -- that module is
+// observation, not gunbc.runner.runner_microvm_network's slot-derived 172.30.slot.{1,2} -- that module is
 // the fleet authority; this row records what the probe actually used.
 //
 // §3b DIVERGENCE, MEASURED RATHER THAN CAUSED. This row has zero consuming files on the
@@ -124,7 +124,7 @@ data corrected_claim: EarlierClaimCorrection = InventedReasonWithdrawn {
 // The on-disk digest matched what was built, so the file was intact and the controller's cached view
 // was not. Publishing under a fresh name fixed it on the next boot.
 //
-// THIS LANE ALREADY HAD THE RULE AND I WENT AROUND IT. gunbc.machine_intake_boot_image_fetch
+// THIS LANE ALREADY HAD THE RULE AND I WENT AROUND IT. gunbc.machine_intake.boot_image_fetch
 // publishes by atomic rename precisely so a reader never observes a path mid-write; a convenience
 // `cp` in a build script reintroduced the hazard that design exists to remove. Content-addressed
 // names would have made it structurally impossible rather than merely avoidable.
@@ -142,7 +142,7 @@ data defect_publish_over_live_path: ImagePublishDefect = PublishedOverALiveReade
   on_disk_digest_matched_built: true,
   reader_view: "stale -- two boots failed with Boot option loading failed after a 302 MiB copy onto the mounted path",
   repair_that_worked: "publish under a fresh name",
-  construction_that_would_prevent: "atomic rename, as gunbc.machine_intake_boot_image_fetch already does, or a content-addressed name",
+  construction_that_would_prevent: "atomic rename, as gunbc.machine_intake.boot_image_fetch already does, or a content-addressed name",
 }
 
 // DEFINITIONS PLACED AFTER THEIR USE. $TAP and $GUEST_MAC were assigned below the heredoc that

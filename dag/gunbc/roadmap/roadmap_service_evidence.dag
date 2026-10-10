@@ -1,4 +1,4 @@
-module gunbc.roadmap_service_evidence
+module gunbc.roadmap.roadmap_service_evidence
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
@@ -10,16 +10,16 @@ import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, 
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed }
 import std.content_hash { content_hash_of_value, lower_hex_40 }
 import std.materialization_provider { wire_content_hash_to_hex }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, second, second_count, TokenCount, token_count, token_count_value }
-import gunbc.roadmap_session_placement {
+import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
   session_placement_observe_for_attempt,
 }
-import gunbc.roadmap_attempt_metering {
+import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringObservation, AttemptMeteringRecord, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
   MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
   metering_token_total, metering_seat_time_total, metering_observe_for_attempt,
@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_result_returned {
 }
 import gunbc.roadmap.roadmap_event_carrier { CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, attempt_result_outcome_word, attempt_result_outcome_members, attempt_result_outcome_decode }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
   launch_identity_node_id_text, launch_identity_instance_text, launch_identity_revision_hex,
 }
@@ -41,7 +41,7 @@ import gunbc.roadmap_launch_admission {
 // record is already durable in attempt state, so persisting the join would give those facts a
 // second home (DESIGN §2/§3), and a write on an early tick would freeze fields that mature later
 // (ruling relayed by bold-bee-114, 2026-10-03). The immutable artifact is the dogfood START receipt
-// (gunbc.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
+// (gunbc.roadmap.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
 // standing once, when the start is recorded.
 //
 // THE SHAPE (side-chat NO-LAND ruling on c8b743d, relayed by bold-bee-114):
@@ -53,13 +53,13 @@ import gunbc.roadmap_launch_admission {
 //   3. every field's reading is DERIVED from the bundle into one closed product
 //      (ServiceEvidenceReadings, 21 named fields), which the wire and the closing contract both
 //      read. An Observed reading exists only as the projection of a landed reader's typed
-//      observation (today G5 gunbc.roadmap_session_placement, G3 gunbc.roadmap_attempt_metering and
+//      observation (today G5 gunbc.roadmap.roadmap_session_placement, G3 gunbc.roadmap.roadmap_attempt_metering and
 //      G4 gunbc.roadmap.roadmap_result_returned); every other reader is pending.
 //   The ordered view (service_evidence_entries) is WITNESSED against the node's list, not
 //   structurally guaranteed: the language has no record-member iteration (rung 2).
 
 // ── 1. THE ATTEMPT BINDING ──
-// Admitted only when the attempt's launch record (gunbc.roadmap_launch_admission
+// Admitted only when the attempt's launch record (gunbc.roadmap.roadmap_launch_admission
 // AttemptLaunchRecordDecode) names the expected node, the expected dashboard instance AND the
 // expected attempt. A legacy record that carries no attempt key is unbound and refuses: it cannot
 // say which attempt it belongs to, and such attempts never qualify for the dogfood clock.
@@ -160,9 +160,9 @@ type ServiceEvidenceReader
 
 fn service_evidence_reader_wire(r: ServiceEvidenceReader) -> String {
   match r {
-    MeteringReader => "gunbc.roadmap_attempt_metering metering_observe_for_attempt"
-    SessionPlacementReader => "gunbc.roadmap_session_placement session_placement_observe_for_attempt"
-    SharedComputationReader => "gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt"
+    MeteringReader => "gunbc.roadmap.roadmap_attempt_metering metering_observe_for_attempt"
+    SessionPlacementReader => "gunbc.roadmap.roadmap_session_placement session_placement_observe_for_attempt"
+    SharedComputationReader => "gunbc.roadmap.roadmap_belt_actuate shared_computation_observe_for_attempt"
     ResultReturnedReader => "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt"
   }
 }
@@ -263,7 +263,7 @@ fn refusal_reason(reason: String) -> NonEmptyStr {
   if reason == "" { "the reader refused without a reason" as NonEmptyStr } else { reason as NonEmptyStr }
 }
 
-// G5 (gunbc.roadmap_session_placement). What its grant record ESTABLISHES, and nothing else:
+// G5 (gunbc.roadmap.roadmap_session_placement). What its grant record ESTABLISHES, and nothing else:
 //   placement        -- host, capacity partition and unit of the granted session;
 //   workload_class   -- the work-class grant the session was admitted under;
 //   resource_request -- the amount the grant admitted (the request as granted), as Kibibyte.
@@ -335,7 +335,7 @@ fn resource_request_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<
   }
 }
 
-// G3 (gunbc.roadmap_attempt_metering). Only a FINAL record (MeteringObserved) is the attempt's meter.
+// G3 (gunbc.roadmap.roadmap_attempt_metering). Only a FINAL record (MeteringObserved) is the attempt's meter.
 // A Provisional record exists but can still change: it is pending, never observed and never absent.
 // A record not yet written is record-absent; Refused is refused. What a final record ESTABLISHES, and nothing else:
 //   execution_time -- the seat time its launches held, summed (metering_seat_time_total), as Second;
@@ -882,7 +882,7 @@ fn service_evidence_capture_acceptance_holds() -> Bool {
 
 // ── THE PINNED SNAPSHOT: one immutable copy of the canonical wire, and what it establishes ──
 //
-// A consumer that pins this evidence (gunbc.roadmap_dogfood_route's start receipt) persists the
+// A consumer that pins this evidence (gunbc.roadmap.roadmap_dogfood_route's start receipt) persists the
 // canonical wire itself and reads it back only through this decoder, so the digest, the binding and
 // every field's standing are derived from one persisted snapshot and can never be authored apart.
 // The field population is the module's own ordered view, read from the closing probe -- the same

@@ -1,8 +1,8 @@
-module tools.self_host_logic_seed_unavailable_transport
+module gunbc.instruments.self_host_logic_seed_unavailable_transport
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -11,13 +11,13 @@ import std.logic { Bool }
 import std.integer { Int }
 import v2.std.algebra { fold_list }
 import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
-import tools.emitted_crate_harness_manifest {
+import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   harness_manifest_derived,
   WitnessBinTarget,
   SeedAbsent
 }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
   WitnessBinReady,
@@ -123,7 +123,7 @@ fn slbu_check_no_seed_crate_refs(src_dir: String, writes_ok: Bool) -> Bool {
 // false (fail-closed). The stronger half is the manifest: no v1-compiler dependency means seed
 // linkage is structurally impossible at link time.
 //
-// THE MANIFEST IS DERIVED, NOT AUTHORED: tools.emitted_crate_harness_manifest appends the witness
+// THE MANIFEST IS DERIVED, NOT AUTHORED: gunbc.instruments.emitted_crate_harness_manifest appends the witness
 // target to the Cargo.toml the emission wrote, with SeedAbsent linkage, so the dependency set is
 // the emitted crate's own and no table names v1-compiler.
 //

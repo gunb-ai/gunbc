@@ -1,4 +1,4 @@
-module test.claim.scm_role_requirement_integration_witness
+module test.claim.scm.scm_role_requirement_integration_witness_test
 
 import std.types { Bool, Int, String, List }
 
@@ -684,9 +684,9 @@ fn integration_witness_source_fixture() -> Fixture {
 // position into a non-node entry.
 //
 // That producer is now the OBJECT TABLE, not the commit closure. This note used to send a reader to
-// test.claim.scm_commit_closure_json_v2_witness, which was right while a closure document carried a
+// test.claim.scm.scm_commit_closure_json_v2_witness_test, which was right while a closure document carried a
 // mixed table; under v4 that document admits nodes only and cannot construct the input at all. The
-// claims live in test.claim.scm_object_table_json_witness, where the mixed table is the subject --
+// claims live in test.claim.scm.scm_object_table_json_witness_test, where the mixed table is the subject --
 // rather than here, where they would need a constructor the model correctly does not offer.
 fn integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
   match o {

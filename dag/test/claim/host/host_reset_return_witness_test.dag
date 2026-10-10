@@ -1,11 +1,11 @@
-module test.claim.host_reset_return_witness_test
+module test.claim.host.host_reset_return_witness_test
 
 import std.logic { Bool }
 import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural, Sha256Digest, Sha256Hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host_reset_return {
+import gunbc.host.host_reset_return {
   AttemptIdentitiesNotDistinct,
   AttemptTimingUnavailable,
   ControllerDidNotAccept,

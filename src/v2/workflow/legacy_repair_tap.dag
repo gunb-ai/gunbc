@@ -33,11 +33,11 @@ import v2.workflow.legacy_baseline_capture {
   capture_legacy_baseline,
   capture_legacy_baseline_from_observed_transport
 }
-import tools.reference_occurrence_binding_census {
+import gunbc.instruments.reference_occurrence_binding_census {
   ReferenceOccurrenceBindingRow,
   ReferenceOccurrenceBindingDisposition
 }
-import gunbc.reference_derived_candidate {
+import gunbc.namespace.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   ReferenceDerivedCandidateRow
 }

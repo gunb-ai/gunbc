@@ -1,4 +1,4 @@
-module test.claim.roadmap_dashboard_instance_apply_witness
+module test.claim.roadmap.roadmap_dashboard_instance_apply_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
 import extdeps.git {
@@ -17,8 +17,8 @@ import extdeps.llm.cli {
   shape_codex_version_env_args_for_program,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
-import gunbc.host_layout { srv1_codex_bundled_executable }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.host.host_layout { srv1_codex_bundled_executable }
+import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
@@ -27,7 +27,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provision_plan_rows,
   dashboard_instance_dispatch_platform_executables,
 }
-import gunbc.roadmap_dashboard_instance_apply {
+import gunbc.roadmap.roadmap_dashboard_instance_apply {
   DashboardProductionPeer,
   ProductionPeer,
   NoProductionPeer,
@@ -63,14 +63,14 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_bootstrap_preflight_decision,
   dashboard_required_target_executables,
 }
-import gunbc.roadmap_dashboard_instance_observe {
+import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
   PathObservationRefused,
 }
-import gunbc.roadmap_serve { dashboard_instance_json }
+import gunbc.roadmap.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
 
 // The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is

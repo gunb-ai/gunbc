@@ -1,4 +1,4 @@
-module v2.test.emit.type_alias_emit
+module v2.test.claim.emit.type_alias_emit_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

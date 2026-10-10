@@ -21,7 +21,7 @@ import v2.std.algebra { any }
 //
 // IT LIVES IN ITS OWN LEAF MODULE FOR A STRUCTURAL REASON. Putting it beside the emitter and
 // importing that from candidate closes a real cycle — candidate is reached from
-// gunbc.hostname_read, which gunbc.host_effect reaches, which the emitter's own closure reaches —
+// gunbc.hostname_read, which gunbc.host.host_effect reaches, which the emitter's own closure reaches —
 // and acyclicity is the import graph's one structural law (DESIGN §3). A fact needed by two modules
 // on opposite sides of a dependency chain belongs beneath both, not inside either.
 // WHY THIS LIST IS NOT JUST target AND .git, AND WHY IT IS STILL NOT EVERY IGNORED PATH.

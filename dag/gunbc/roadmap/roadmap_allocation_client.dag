@@ -1,4 +1,4 @@
-module gunbc.roadmap_allocation_client
+module gunbc.roadmap.roadmap_allocation_client
 
 import std.types { String, List }
 import extdeps.languages.typescript.program {
@@ -7,8 +7,8 @@ import extdeps.languages.typescript.program {
   ts_prefix, ts_binop, ts_cond, ts_object, ts_field, ts_quoted_field, ts_spread, ts_for_of,
 }
 
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
-import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
+import gunbc.roadmap.workspace_allocation_wire { workspace_write_unavailable_wire }
 
 fn js_id(name: String) -> TsExpr { ts_ident(name: name) }
 fn js_get(object: TsExpr, property: String) -> TsExpr { ts_member(object: object, property: property) }
@@ -151,7 +151,7 @@ fn js_row(term: String, value: TsExpr) -> TsStmt {
 fn js_field(name: String) -> TsExpr { js_get(object: js_id(name: "a"), property: name) }
 
 // ONE CARD PER ALLOCATION, keyed by its id, rendered only from the server snapshot of
-// gunbc.workspace_allocation_http workspace_http_snapshot. Every value is set as text. The
+// gunbc.roadmap.workspace_allocation_http workspace_http_snapshot. Every value is set as text. The
 // connection is the backend-produced command, shown verbatim and only when the server sent one --
 // this client never assembles a guest address or an SSH command from host, id or anything else.
 fn allocation_render_statements() -> List<TsStmt> {

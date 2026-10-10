@@ -1,4 +1,4 @@
-module test.claim.parse_test_go_grammar
+module v2.test.claim.parse.parse_test_go_grammar_test
 
 fn go_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
@@ -22,7 +22,7 @@ fn go_tokenize_and_parse() -> Outcome<ParseTree> {
 // Go corpus symmetry accepts the current add-function source through the Go lex/grammar.
 // Formerly the data row `claim_go_add_function_parses: TestClaim = EqualsClaim`, which no runner executes (the
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
-// v2.test.parse census (gunbc#13372).
+// v2.test.claim.parse census (gunbc#13372).
 test fn claim_go_add_function_parses_holds() -> Bool {
   (go_parse_accepted(out: go_tokenize_and_parse())) == true
 }

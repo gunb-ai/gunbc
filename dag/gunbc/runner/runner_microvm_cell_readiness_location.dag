@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_cell_readiness_location
+module gunbc.runner.runner_microvm_cell_readiness_location
 
 import std.types { String }
 

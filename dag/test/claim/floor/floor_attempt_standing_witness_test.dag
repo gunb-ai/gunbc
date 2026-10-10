@@ -1,9 +1,9 @@
-module test.claim.floor_attempt_standing_witness_test
+module test.claim.floor.floor_attempt_standing_witness_test
 
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.floor_attempt_standing {
+import gunbc.floor.floor_attempt_standing {
   FloorAttemptSubject,
   FloorHeadCurrent,
   FloorHeadSuperseded,
@@ -51,7 +51,7 @@ import gunbc.floor_attempt_standing {
   floor_attribution_unestablished_name,
   class_wire_is_environment
 }
-import gunbc.ci_failure_class {
+import gunbc.ci.ci_failure_class {
   FloorFailed,
   Infra,
   Structural,
@@ -59,7 +59,7 @@ import gunbc.ci_failure_class {
   floor_outcome_wire_infra,
   floor_outcome_wire_structural
 }
-import gunbc.witness_floor_workflow {
+import gunbc.witness.witness_floor_workflow {
   expected_witness_floor_yml,
   WitnessFloorGenerated,
   WitnessFloorGenerationRefused
@@ -67,7 +67,7 @@ import gunbc.witness_floor_workflow {
 
 // THE COMPOSITION IS EXERCISED HERE, NOT DESCRIBED IN A HEADER.
 //
-// `gunbc.floor_attempt_standing` makes two claims a reader would otherwise have to take on
+// `gunbc.floor.floor_attempt_standing` makes two claims a reader would otherwise have to take on
 // trust: that head-standing and lane-terminality compose independently, and that the superseded
 // arm is a healthy quiet guard rather than a decoration. The second is the one that needs care.
 //

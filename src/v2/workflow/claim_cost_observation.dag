@@ -47,7 +47,7 @@ import std.algebra { Cons, Empty }
 // host calibration authored on that reading was merged and is retracted on main by gunbc#10205.
 //
 // THE MECHANISM IS ALREADY STATED IN THE TREE AND IS CITED RATHER THAN RESTATED:
-// `gunbc.witness_row_cost`, on `witness_cost_seed_timed_out_event`.
+// `gunbc.witness.witness_row_cost`, on `witness_cost_seed_timed_out_event`.
 
 // The exact arm. Both clocks measure the whole of what the subject spent, because the subject
 // reached its own end. The `exact_` prefix is on the FIELD, not merely in a comment, so a bound

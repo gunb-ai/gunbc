@@ -65,7 +65,7 @@ import std.types { NonEmptyStr, List }
 // instrument, never transcribe its output, because a copied number is unreachable from the thing
 // that owns it and rots without anyone touching either end. `measured_by` IS that citation: it names
 // the producing run and artifact. Whether a member still overruns is read from a LIVE floor's
-// `required_floor_claim_cost.tsv`, out of band, with `tools.floor_cost_distribution_instrument`.
+// `required_floor_claim_cost.tsv`, out of band, with `gunbc.instruments.floor_cost_distribution_instrument`.
 //
 // THE ROADMAP LIST MAY ONLY SHRINK. A row leaves when its identity measures inside the new-witness
 // budget on the acceptance path and the prepared-input capability THAT drop's trigger names has
@@ -78,11 +78,11 @@ type EvalStepCostDropMeasurement {
 
 data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges" as NonEmptyStr,
+    identity: "test.claim.roadmap.roadmap_authority_test.witness_projected_dependency_edges_include_active_edges" as NonEmptyStr,
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
+    identity: "test.claim.roadmap.roadmap_program_view_live_corpus_receipt_test.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
 ]
@@ -121,15 +121,15 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
 // pull request, which is the whole reason this list and not a relocation.
 data floor_eval_step_cost_drop_live_forecast_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub" as NonEmptyStr,
-    measured_by: "required floor run 35408358503, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is one sizing derivation per ACTIVE NODE of the live graph, which is what the claim asserts: while gunbc.roadmap_sizing derive_task_sizing is a stub the fold mints a NodeUnsized refusal for every active node and the claim joins that set to the active set in both directions, so the cost IS the assertion rather than reach around it. The reductions that were tried are recorded in the drop row rather than here; the standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
+    identity: "test.claim.roadmap.roadmap_forecast_witness_test.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub" as NonEmptyStr,
+    measured_by: "required floor run 35408358503, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is one sizing derivation per ACTIVE NODE of the live graph, which is what the claim asserts: while gunbc.roadmap.roadmap_sizing derive_task_sizing is a stub the fold mints a NodeUnsized refusal for every active node and the claim joins that set to the active set in both directions, so the cost IS the assertion rather than reach around it. The reductions that were tried are recorded in the drop row rather than here; the standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
   },
 ]
 
 data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.long.roadmap_page_witness.witness_ready_node_doc_emits_button_and_external_script" as NonEmptyStr,
-    measured_by: "required floor run 35428496562, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real derivation of gunbc.roadmap_style roadmap_css inside the claim frame, which this claim is the page's only inhabitance route for" as NonEmptyStr,
+    measured_by: "required floor run 35428496562, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real derivation of gunbc.roadmap.roadmap_style roadmap_css inside the claim frame, which this claim is the page's only inhabitance route for" as NonEmptyStr,
   },
 ]
 
@@ -236,14 +236,14 @@ data floor_eval_step_cost_drop_approval_intent_digest_rows: List<EvalStepCostDro
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision" as NonEmptyStr,
-    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.fabric_storage_state_provision fabric_state_provision_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
+    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.fabric.fabric_storage_state_provision fabric_state_provision_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
   },
 ]
 
 data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "v2.test.long.inhabitant_neutralization_e2e_witness.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds" as NonEmptyStr,
-    measured_by: "gunbc#12374, the required floor's COMPLETED-OVER-COST-REQUIREMENT line for this identity (planned_as_changed_witness, verdict pass, over the new-witness budget), and claim_batch --hermetic over src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag. The billed work is the one real python->typescript compile of the python add fixture (parse, bridge, neutralize, infer, translate, emit), which this claim is the only execution of; the interface claims in v2.test.manual.cross_language_add_python_to_typescript start from its supplied core" as NonEmptyStr,
+    identity: "v2.test.claim.long.inhabitant_neutralization_e2e_witness_test.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds" as NonEmptyStr,
+    measured_by: "gunbc#12374, the required floor's COMPLETED-OVER-COST-REQUIREMENT line for this identity (planned_as_changed_witness, verdict pass, over the new-witness budget), and claim_batch --hermetic over src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag. The billed work is the one real python->typescript compile of the python add fixture (parse, bridge, neutralize, infer, translate, emit), which this claim is the only execution of; the interface claims in v2.test.claim.manual.cross_language_add_python_to_typescript_test start from its supplied core" as NonEmptyStr,
   },
 ]
 
@@ -378,10 +378,10 @@ data floor_eval_step_cost_drop_dark_install_render_rows: List<EvalStepCostDropMe
 
 // TENTH DROP, SAME MEMBERSHIP TEST, OPERATOR-ADMITTED (eager-owl-205, 2026-09-30, on gunbc#12800,
 // escalation msg_00eaf0e6). One identity: the ONLY claim that runs the real build-job producer,
-// gunbc.fleet_converge_workflow fleet_converge_build_job_own_steps, to hold that the reset-observer
+// gunbc.fleet.fleet_converge_workflow fleet_converge_build_job_own_steps, to hold that the reset-observer
 // dispatch admission is one of its steps. The admission step itself is cheap; the bill is the
 // construction of the sibling release-bins steps, which the claim never inspects and which
-// gunbc.fleet_workflow_steps builds whole whenever the list is demanded. The cost PREDATES
+// gunbc.fleet.fleet_workflow_steps builds whole whenever the list is demanded. The cost PREDATES
 // gunbc#12800: it was paid before gunbc#12437 and first re-adjudicated when that change touched the
 // claim. The step's content is held by its own claim under the budget, with no drop.
 data floor_eval_step_cost_drop_build_job_membership_rows: List<EvalStepCostDropMeasurement> = [
@@ -396,10 +396,10 @@ data floor_eval_step_cost_drop_build_job_membership_rows: List<EvalStepCostDropM
 // real ingest -> emit -> re-ingest path for the dag target. A round trip is two real parses by
 // construction, and one parse of even this one-line module is about half the budget, so the bill
 // is the parser's per-token cost paid twice, not the emit. Every other dag-emit claim supplies its
-// input and measures under the budget (v2.test.execution.dag_emit_interface).
+// input and measures under the budget (v2.test.claim.execution.dag_emit_interface_test).
 data floor_eval_step_cost_drop_dag_emit_round_trip_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "v2.test.execution.dag_grammar_backward_round_trip.a_data_declaration_round_trips_holds" as NonEmptyStr,
+    identity: "v2.test.claim.execution.dag_grammar_backward_round_trip_test.a_data_declaration_round_trips_holds" as NonEmptyStr,
     measured_by: "gunbc#12878, required floor run 36844213690 (D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget), re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/dag_grammar_backward_round_trip_test.dag --function a_data_declaration_round_trips_holds. The billed work is two real parses (ingest and re-ingest) of a one-line data declaration" as NonEmptyStr,
   },
 ]
@@ -412,32 +412,32 @@ data floor_eval_step_cost_drop_dag_emit_round_trip_rows: List<EvalStepCostDropMe
 // measure under the budget on their own and are not here.
 data floor_eval_step_cost_drop_dag_text_round_trip_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_body_round_trips_as_text" as NonEmptyStr,
+    identity: "v2.test.claim.emit.dag_target_text_round_trip_test.a_bind_with_a_bind_body_round_trips_as_text" as NonEmptyStr,
     measured_by: "gunbc#13233, PR required floor run 37210735827 at 9929145faf (main merged after gunbc#13244), D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget; re-derived by claim_batch --hermetic --source-root dag --source-root src/v2 --entry src/v2/test/claim/emit/dag_target_text_round_trip_test.dag --function a_bind_with_a_bind_body_round_trips_as_text. The billed work is one render, one lex and one real parse at fn_body of a two-Bind text, and the parse carries most of it" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_value_round_trips_as_text" as NonEmptyStr,
+    identity: "v2.test.claim.emit.dag_target_text_round_trip_test.a_bind_with_a_bind_value_round_trips_as_text" as NonEmptyStr,
     measured_by: "gunbc#13233, PR required floor run 37210735827 at 9929145faf (main merged after gunbc#13244), D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget; re-derived by claim_batch --hermetic --source-root dag --source-root src/v2 --entry src/v2/test/claim/emit/dag_target_text_round_trip_test.dag --function a_bind_with_a_bind_value_round_trips_as_text. The billed work is one render, one lex and one real parse at fn_body of a two-Bind text, and the parse carries most of it" as NonEmptyStr,
   },
 ]
 
-// THE FOREIGN-GRAMMAR EXTENDED-FUNCTION PARSE CLAIMS (v2.test.parse census phase 4; `gunbc.rung_drop`
+// THE FOREIGN-GRAMMAR EXTENDED-FUNCTION PARSE CLAIMS (v2.test.claim.parse census phase 4; `gunbc.rung_drop`
 // `foreign_grammar_extended_parse_new_witness_eval_step_cost`). Two identities, the kotlin and rust
 // extended-function parses, each one tokenize and one real parse of a function exercising let/val, if,
 // return and binary expressions through that language's grammar. Their grammar preparation is billed
 // apart; the parse alone exceeds the budget.
 data floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_kotlin_grammar.claim_kotlin_extended_function_parses_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_kotlin_grammar_test.dag --functions claim_kotlin_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
+    identity: "v2.test.claim.parse.parse_test_kotlin_grammar_test.claim_kotlin_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.claim.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_kotlin_grammar_test.dag --functions claim_kotlin_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_rust_grammar.claim_rust_extended_function_parses_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_rust_grammar_test.dag --functions claim_rust_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
+    identity: "v2.test.claim.parse.parse_test_rust_grammar_test.claim_rust_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.claim.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_rust_grammar_test.dag --functions claim_rust_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
     },
   ]
 
-// THE COPRODUCT FRAGMENT-LOWERING CLAIMS (v2.test.parse census phase 3; `gunbc.rung_drop`
+// THE COPRODUCT FRAGMENT-LOWERING CLAIMS (v2.test.claim.parse census phase 3; `gunbc.rung_drop`
 // `coproduct_fragment_normalize_new_witness_eval_step_cost`). Three identities, each parsing ONE type
 // declaration fragment at its production and lowering it with normalize_node (two, for the two
 // equality claims). The fragment is the smallest text carrying the construct each claim names, so it
@@ -445,22 +445,22 @@ data floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows: List<EvalSte
 // not here; its four fn-fragment claims exceed the CPU enrolment margin and are not gated at all.
 data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.positional_payload_variants_parse_and_normalize_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions positional_payload_variants_parse_and_normalize_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
+    identity: "v2.test.claim.parse.parse_test_coproduct_leading_pipe_test.positional_payload_variants_parse_and_normalize_holds" as NonEmptyStr,
+    measured_by: "v2.test.claim.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions positional_payload_variants_parse_and_normalize_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.leading_pipe_normalizes_to_the_same_alternatives_as_without_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions leading_pipe_normalizes_to_the_same_alternatives_as_without_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
+    identity: "v2.test.claim.parse.parse_test_coproduct_leading_pipe_test.leading_pipe_normalizes_to_the_same_alternatives_as_without_holds" as NonEmptyStr,
+    measured_by: "v2.test.claim.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions leading_pipe_normalizes_to_the_same_alternatives_as_without_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.distinct_alternatives_do_not_normalize_to_the_same_tree_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions distinct_alternatives_do_not_normalize_to_the_same_tree_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
+    identity: "v2.test.claim.parse.parse_test_coproduct_leading_pipe_test.distinct_alternatives_do_not_normalize_to_the_same_tree_holds" as NonEmptyStr,
+    measured_by: "v2.test.claim.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions distinct_alternatives_do_not_normalize_to_the_same_tree_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
   },
 ]
 
 data floor_eval_step_cost_drop_bmc_secure_apply_converge_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world" as NonEmptyStr,
+    identity: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world" as NonEmptyStr,
     measured_by: "claim_batch --hermetic --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_arrival_converge_witness_test.dag --function w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world (BuildBuddy, GUNBC_BIND_MEMORY_CGROUP_BYTES=30064771072): PASS, eval_steps over the new-witness budget. The billed work is converge_arrival_through_bmc_secure over the production prefix captures plus dry Apply+grant, which this claim is the only Apply execution of" as NonEmptyStr,
   },
 ]

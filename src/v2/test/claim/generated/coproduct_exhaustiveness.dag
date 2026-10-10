@@ -1,4 +1,4 @@
-module v2.test.generated.coproduct_exhaustiveness
+module v2.test.claim.generated.coproduct_exhaustiveness
 
 import std.types { List }
 import v2.lens.testgen {

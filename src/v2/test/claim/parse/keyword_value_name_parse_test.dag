@@ -1,10 +1,10 @@
-module v2.test.parse.keyword_value_name_parse
+module v2.test.claim.parse.keyword_value_name_parse_test
 
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.compilers.lexing { StreamLayout, Token, TokenStream, stream_layout_empty, stream_layout_with_break, token_stream_lexed }
-import v2.test.parse.expression_bodied_fn_decl_parse { g_fatal_at, g_tokenize_parse }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.test.claim.parse.expression_bodied_fn_decl_parse_test { g_fatal_at, g_tokenize_parse }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_parse }
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List, Map, map_lookup }
 import v2.std.integer { Int }
@@ -213,7 +213,7 @@ test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
 }
 
 // THE INPUT IS SUPPLIED AT THE PARSE INTERFACE, AND THE TEXT ROUTE STILL RUNS ONCE. Every claim above
-// except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.parse.supplied_token_stream_support
+// except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.claim.parse.supplied_token_stream_support
 // supplied_stream_parse), because its subject is the grammar's binder guard, not the tokenizer: deriving the
 // stream re-ran tokenize in every claim, and the floor's enrolment margin refused seven of them on that cost.
 // kvn_param_refuses_at_the_keyword stays on the real text route (tokenize, prepared parse) as the

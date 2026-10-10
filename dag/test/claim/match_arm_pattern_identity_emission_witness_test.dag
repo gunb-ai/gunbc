@@ -21,7 +21,7 @@ module test.claim.match_arm_pattern_identity_emission_witness_test
 // in single-shot emitted Rust text, since compile_dag_rust_emit_check observes one compiled
 // program's output and not the incremental artifact table's membership. Those two are RETIRED with
 // this note as their receipt rather than migrated: v1 is semantics-frozen with active maintenance
-// per gunbc.v1_maintenance_standing, and a v1-compiler-local cargo test remains the correct
+// per gunbc.v1.v1_maintenance_standing, and a v1-compiler-local cargo test remains the correct
 // restoration path if that registration surface needs a live regression check again.
 
 fn arm_reaches_emission(source: String, path: String, markers: List<String>) -> Bool {

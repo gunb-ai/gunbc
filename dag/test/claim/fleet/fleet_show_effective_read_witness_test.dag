@@ -1,4 +1,4 @@
-module test.claim.fleet_show_effective_read_witness
+module test.claim.fleet.fleet_show_effective_read_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -117,7 +117,7 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
 // which is also why srv2 never needed converging on this axis and never got it.
 //
 // THE DISCIPLINE HELD IN BOTH DIRECTIONS: at no point was the fixture edited to keep a test green,
-// and at no point was the declaration reconciled toward the readback (gunbc.runner_slot_allocation
+// and at no point was the declaration reconciled toward the readback (gunbc.runner.runner_slot_allocation
 // forbids that in terms). The declaration moved on a floor-peak measurement; agreeing with srv2's
 // slice is a consequence, not a motive. Dissolve-on: a fresh readback of srv2's slice replaces the
 // 2026-07-03 row, at which point this witness asserts against an observation contemporary with the
@@ -178,7 +178,7 @@ test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
 }
 
 // The 2026-07-03 srv1 snapshot (10 active runner units) CONVERGED against the pre-carve
-// declaration; the 2026-07-11 slot re-carve (16GiB memory.max slots, gunbc.ci_floor_measurement
+// declaration; the 2026-07-11 slot re-carve (16GiB memory.max slots, gunbc.ci.ci_floor_measurement
 // live row) shrank declared_runner_count to floor(pool/16GiB) = 5, so the same observation now
 // DRIFTS - and that drift is the real fact: the hosts still run the pre-carve width, the same
 // oversubscription the falsifier exit-137 receipts located. The parse-typing claim above
@@ -192,7 +192,7 @@ test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
     Present { value: read } =>
       live_derived_width_or_fail(host: operator_host_srv1, k: w =>
         runner_width_converge_verdict(observed: read.active_count, desired: w)
-          == gunbc.host_converge.Drifted)
+          == gunbc.host.host_converge.Drifted)
     Absent => false
   }
 }
@@ -209,9 +209,9 @@ test fn witness_srv2_width_has_no_declared_count_to_drift_from() -> Bool {
         RunnerWidthDerived { slots: _ } => false
         RunnerWidthUnresolved { cause: _ } =>
           runner_width_converge_verdict(observed: read.active_count, desired: read.active_count + 1)
-            == gunbc.host_converge.Drifted
+            == gunbc.host.host_converge.Drifted
             && runner_width_converge_verdict(observed: read.active_count, desired: read.active_count)
-                 != gunbc.host_converge.Drifted
+                 != gunbc.host.host_converge.Drifted
       }
     Absent => false
   }

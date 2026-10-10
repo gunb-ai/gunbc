@@ -1,4 +1,4 @@
-module v2.test.emit.c_semantic_decl_routing
+module v2.test.claim.emit.c_semantic_decl_routing_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }

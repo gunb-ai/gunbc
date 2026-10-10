@@ -1,4 +1,4 @@
-module v2.test.long.meta_exec_confinement_clean_tree
+module v2.test.claim.long.meta_exec_confinement_clean_tree_test
 
 import std.types { List }
 import v2.lens.meta_exec_confinement {
@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // already-warmed scan in the same process it reports 1852ms — borrowed warmth from whichever
 // witness paid the cold scan first, never a cost this row may declare as its own. Its per-PR
 // counterpart is the empty-roster construction wall in
-// v2.test.meta_exec_confinement.roster_soundness, which needs no scan because stale_count is
+// v2.test.claim.meta_exec_confinement.roster_soundness_test, which needs no scan because stale_count is
 // bounded above by roster length. This lane is still the DARK one — NOT roster-enrolled on
 // GithubActionsCiJob — so it is a backstop, not the enforcement; the enforcement is the wall. Local
 // recipe: claim_batch --source-root dag --source-root src/v2 --entry

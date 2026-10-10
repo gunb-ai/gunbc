@@ -1,10 +1,10 @@
-module test.claim.ci_budget_tree_witness
+module test.claim.ci.ci_budget_tree_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.session_reservation_policy { session_reservation_bytes, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished }
-import gunbc.ci_runner_placement { resolve_session_slice }
-import gunbc.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }
-import gunbc.ci_budget_tree {
+import gunbc.ci.ci_runner_placement { resolve_session_slice }
+import gunbc.ci.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }
+import gunbc.ci.ci_budget_tree {
   srv1_budget_tree,
   srv1_gha_runner_pool_budget,
   srv1_ci_run_container_hard_cap,
@@ -146,7 +146,7 @@ test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
 // FreshStandup host is budgeted identically to an established one rather than getting a special
 // case.
 //
-// What changed is not the claim's importance but its truth. gunbc.ci_floor_measurement now carries
+// What changed is not the claim's importance but its truth. gunbc.ci.ci_floor_measurement now carries
 // a MEASURED overhead bound for the managed hosts (srv3/srv4) and an operator ALLOWANCE for the
 // legacy pair (srv1/srv2), because srv1 and srv2 host hand-built deployments the corpus does not
 // model and srv3 does not. Same board, same RAM, same per-slot row — different unmodeled residents,

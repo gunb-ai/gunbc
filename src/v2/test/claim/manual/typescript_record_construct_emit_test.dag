@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_record_construct_emit
+module v2.test.claim.manual.typescript_record_construct_emit_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

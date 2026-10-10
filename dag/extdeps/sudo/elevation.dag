@@ -40,7 +40,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 fn sudo_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/sudo")
 
 // ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
-// Every privileged leaf in gunbc.host_effect_realize carried `bin_path: "/usr/bin/sudo"` beside an
+// Every privileged leaf in gunbc.host.host_effect_realize carried `bin_path: "/usr/bin/sudo"` beside an
 // args list whose first element was a bare "-n", so sudo's own calling convention -- which binary,
 // which flag, in which position -- was duplicated into each caller's argv, and the flag's meaning
 // (never prompt; fail instead of blocking on a tty that CI does not have) survived only as two
@@ -122,7 +122,7 @@ fn sudo_elevate_argv(command: List<String>) -> List<String> {
 // before sudo to survive it must say so; a caller that does not must not silently get it.
 //
 // IT DOES NOT ADD -n, AND THAT IS PRESERVED RATHER THAN CHOSEN. Its one caller
-// (gunbc.runner_host_deploy) emits an operator-run installer command that has always been able to
+// (gunbc.runner.runner_host_deploy) emits an operator-run installer command that has always been able to
 // prompt on a tty. Adding non-interactive refusal here would be a live behaviour change shipped
 // inside an argv refactor, which is exactly what this lane refuses to do silently; if that command
 // should fail instead of prompting, that is its own change with its own witness.

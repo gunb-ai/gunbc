@@ -1,4 +1,4 @@
-module v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli
+module v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli_test
 
 // THE NEGATIVE FALSIFIER FOR THE REST/CLI BOUNDARY.
 //

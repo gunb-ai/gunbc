@@ -1,8 +1,8 @@
-module test.claim.scm_object_table_json_witness
+module test.claim.scm.scm_object_table_json_witness_test
 
 // THE OBJECT TABLE'S OWN EVIDENCE, AT THE GRAIN THAT OWNS IT.
 //
-// Every claim here used to live in test.claim.scm_commit_closure_json_v2_witness, driving a whole
+// Every claim here used to live in test.claim.scm.scm_commit_closure_json_v2_witness_test, driving a whole
 // commit-closure document in order to reach one object-table entry. That was never a fact about
 // closures: the closure was a scaffold around the subject. The v4 cut made the mismatch impossible
 // to keep -- a commit-closure table holds NODES ONLY, so a {source} or {manifest} entry cannot
@@ -583,7 +583,7 @@ test fn ot_a_manifest_survives_the_table() -> Bool {
 // decoder, then classifier, then the permission table -- because constructing the standing by hand
 // would exercise the policy while skipping the classifier that selects the wrong one.
 //
-// Its pair lives in test.claim.scm_repository_envelope_witness, over the uncontained spelling of the
+// Its pair lives in test.claim.scm.scm_repository_envelope_witness_test, over the uncontained spelling of the
 // same two predicaments; both assert this standing and this refusal.
 fn ot_wrong_kind_barred(entries: List<JsonValue>) -> Bool {
   match ot_decoded(entries: entries).refusal {

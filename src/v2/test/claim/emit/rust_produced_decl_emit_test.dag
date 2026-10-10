@@ -1,6 +1,6 @@
-module v2.test.emit.rust_produced_decl_emit
+module v2.test.claim.emit.rust_produced_decl_emit_test
 
-import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.compiler.emit_produced { emit_produced_decl }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }

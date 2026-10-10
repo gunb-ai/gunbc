@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_bind_let_iife_emit
+module v2.test.claim.manual.typescript_bind_let_iife_emit_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

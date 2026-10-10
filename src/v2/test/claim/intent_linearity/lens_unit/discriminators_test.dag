@@ -1,4 +1,4 @@
-module v2.test.intent_linearity.lens_unit.discriminators
+module v2.test.claim.intent_linearity.lens_unit.discriminators_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

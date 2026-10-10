@@ -1,12 +1,12 @@
 module gunbc.workspace_commissioning_observe
 
 import std.types { NonEmptyStr, String }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.workspace_commissioning { WorkspaceObligationCensus, WorkspaceNoPriorObligations, WorkspacePriorObligationsRemain, WorkspaceObligationHistoryUnreadable }
-import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, record_cell }
-import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, record_cell }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotHeld, HoldSlotFree }
 
 // Observe both existing authorities. Only an explicitly commissioned new lineage may use the

@@ -43,7 +43,7 @@ import v2.std.text { String }
 // row cannot silence a live comparison). The census is a pure function of the two observed
 // populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in
 // the required floor; wiring the live observation is a separate arm and is deliberately not what
-// this roster's evidence rests on. The generated projection (gunbc.seed_retention_frontier_emit)
+// this roster's evidence rests on. The generated projection (gunbc.stage0.seed_retention_frontier_emit)
 // is a skip in required_regen_host for a retained basename that committed_generated_basenames
 // presents. Today HAND_MAINTAINED_STAGE0_FILES subtracts every such basename first, so that skip
 // does not fire on the merge path; the off-path #[test] pair is not a live-observation consumer

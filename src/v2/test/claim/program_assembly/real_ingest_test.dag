@@ -1,4 +1,4 @@
-module v2.test.program_assembly.real_ingest
+module v2.test.claim.program_assembly.real_ingest_test
 import v2.compiler.source_authority {
   SourceRootIngest,
   source_root_coverage_is_complete
@@ -15,7 +15,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.text { string_is_empty }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   host_source_root_closure_refs,
   host_source_root_ingest_content_hash,
   host_source_root_ingest_coverage_receipt

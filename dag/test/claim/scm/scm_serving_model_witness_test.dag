@@ -1,4 +1,4 @@
-module test.claim.scm_serving_model_witness
+module test.claim.scm.scm_serving_model_witness_test
 
 import extdeps.pricing.object_storage {
   BinaryGibibyte,

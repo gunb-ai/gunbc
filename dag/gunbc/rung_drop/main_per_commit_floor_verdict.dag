@@ -13,7 +13,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // fe85902a07b...) is the sha main carries afterwards. The group those runs occupy is mg-<sha>
 // (gunbc#10981 / gunbc#11052), one member per landing, so no landing's verdict can be replaced by
 // another's. The population itself is then removed rather than merely emptied: the push-on-main
-// trigger is cut from gunbc.witness_floor_workflow witness_floor_triggers, so a push event on
+// trigger is cut from gunbc.witness.witness_floor_workflow witness_floor_triggers, so a push event on
 // refs/heads/main starts no run of this workflow and there is nothing left to supersede.
 // The 2026-08-17 unique-run_id grouping stated that every push to main must finish, because sharing
 // one main group drops queued observations. The 2026-09-10 occupancy ruling replaces that key with

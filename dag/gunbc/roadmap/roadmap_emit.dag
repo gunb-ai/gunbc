@@ -1,18 +1,18 @@
-module gunbc.roadmap_emit
+module gunbc.roadmap.roadmap_emit
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, ParagraphBlock, TaskListBlock,
   UnorderedListBlock, MarkdownListItem,
   MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
 }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   roadmap_parent_index, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
 import v2.std.collection { Map }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 12 }
 
@@ -132,7 +132,7 @@ fn node_inlines(rn: RoadmapNode, graph: MarkdownTreeGraph) -> List<MarkdownInlin
 // A group's tree, indexed once where the group is projected: every node's parents (its dependency
 // line, and whether it is top-level) and every node's primary children (its nested list). The walk
 // below asked both questions of the whole edge list per node, which made the projection nodes x
-// edges (gunbc.roadmap_model roadmap_parent_index, roadmap_primary_children_index).
+// edges (gunbc.roadmap.roadmap_model roadmap_parent_index, roadmap_primary_children_index).
 type MarkdownTreeGraph {
   parents: Map<String, List<RoadmapNodeId>>
   children: Map<String, List<RoadmapNode>>

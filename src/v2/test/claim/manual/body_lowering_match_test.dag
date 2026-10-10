@@ -1,4 +1,4 @@
-module v2.test.manual.body_lowering_match
+module v2.test.claim.manual.body_lowering_match_test
 
 import v2.compiler.body_lowering_fold {
   body_lower_match_arms_optional,

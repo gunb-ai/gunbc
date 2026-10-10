@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `tools.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
 
 ---
 
@@ -79,7 +79,7 @@ Two carve-outs:
 
 **Atomic describes the authority transition, not the effort:** X's authority ends in one motion, Y never falls back to, resolves through or derives from X (X may serve as an offline differential oracle), and the minimum Y preserves every required refusal.
 
-Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is `gunbc.v1_maintenance_standing v1_seed_standing`, which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate.
+Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is `gunbc.v1.v1_maintenance_standing v1_seed_standing`, which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate.
 
 The full doctrine (operative loop, consumer-relative root, disposition census, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md); cut programs → [floor-cut](docs/plans/floor-cut-replacement-plan.md) · [namespace-cut](docs/plans/namespace-cut-replacement-plan.md).
 
@@ -190,12 +190,12 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `gunbc.compute.work_request::WorkOperation`
 - **Compute cells** — layout, reservation and admission
   - `gunbc.compute.work_provider_local::ComputeLayout`
-  - `gunbc.fabric_control_plane::CellReservation`
-  - `gunbc.fabric_executor_class::CapacityClassAdmission`
+  - `gunbc.fabric.fabric_control_plane::CellReservation`
+  - `gunbc.fabric.fabric_executor_class::CapacityClassAdmission`
 - **Seats and serving** — seat demand, grants and occupancy
   - `product.capacity.lease::LeaseGrant`
   - `product.capacity.pool_events::SeatRequest`
-  - `gunbc.fabric_event_log::fabric_seat_acquire`
+  - `gunbc.fabric.fabric_event_log::fabric_seat_acquire`
   - `gunbc.harness.harness_seat::harness_bind_seat`
   - `gunbc.serving.turn_admission::serving_group_admission`
 
@@ -423,8 +423,8 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 The CI contract. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
-- **CI is one required job.** `gunbc.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
-- **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.memory_envelope`; slot shape `gunbc.runner_slot_desired`).
+- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
+- **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`).
 - **What a green `witnesses` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
 - **The job roster is closed to growth** (ruling `gunbc.design_ruling job_roster_closed_to_growth`): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`.
 - **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).

@@ -5,12 +5,12 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_ssh_locus {
+import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
   FleetSshContextReady,
   FleetSshContextRefused,
 }
-import gunbc.fleet_multi_principal_probe {
+import gunbc.fleet.fleet_multi_principal_probe {
   spark_converge_target_selection,
   SparkConvergeTargetSingle,
   SparkConvergeTargetAllObserveOnly,
@@ -26,7 +26,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
@@ -37,7 +37,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantAbsent,
   GrantProbeRefused,
 }
-import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.host.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
 import gunbc.spark.credential_workflow {
@@ -96,16 +96,16 @@ import gunbc.spark.managed_grant_reconcile {
   SharedInspectDropinShape, PerContainerInspectDropinShape,
 }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.host_effect_realize { HostEffectTransport, FleetSsh }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.host.host_effect_realize { HostEffectTransport, FleetSsh }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
   remote_step_sequence_failed,
   remote_step_sequence_wire,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // ── The entry ───────────────────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-module gunbc.test.claim.workspace_launch_directive_witness_test
+module test.claim.workspace_launch_directive_witness_test
 
 import std.types { Bool, NonEmptyStr, Int, String }
 import std.measure { money_amount_micro }
@@ -9,16 +9,16 @@ import extdeps.accounting.budget { Appropriation }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
 import product.fabric.budget { MoneyAccount }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, DemandKey, OfferKey }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.host_identity { HostIdentity }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_work, workspace_memory_grant, workspace_reservation_json }
-import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+import gunbc.fabric.fabric_memory_grant_policy { MemoryGrantIssued }
 import gunbc.workspace_reservation_record { workspace_reservation_plan_from_json, workspace_reservation_plan_json }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRecorded, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_owner_key }
 import gunbc.workspace_allocation_launch_directive { WorkspaceLaunchDirectiveRead, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused, workspace_launch_directive_from_text, workspace_launch_directive_matches }
-import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
+import test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
 import product.fabric.budget { reserve_money, MoneyReservationRequest, AccountAdvanced }
-import gunbc.fabric_control_plane { fabric_money_reservation_ref }
+import gunbc.fabric.fabric_control_plane { fabric_money_reservation_ref }
 import gunbc.workspace_allocation_release { workspace_release_derive, workspace_release_wire, workspace_release_decode, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
 import gunbc.workspace_money_codec { workspace_money_json }
 

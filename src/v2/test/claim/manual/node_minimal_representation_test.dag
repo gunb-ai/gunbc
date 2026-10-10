@@ -1,4 +1,4 @@
-module v2.test.manual.node_minimal_representation_test
+module v2.test.claim.manual.node_minimal_representation_test
 
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.node { Node, TypeNode, Atom }

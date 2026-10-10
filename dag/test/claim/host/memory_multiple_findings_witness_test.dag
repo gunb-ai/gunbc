@@ -1,4 +1,4 @@
-module test.claim.memory_multiple_findings_witness
+module test.claim.host.memory_multiple_findings_witness_test
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.integer { UInt8 }
@@ -9,26 +9,26 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
 }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   MemoryConfiguration, MemoryPlatform, PositionedMemoryModule, MemoryDeliveryVariant, MemoryPackageEvidence, ObservedMemoryModule,
   MemoryOperatingObligation, MemoryPackageMixture, MemoryCatalogBinding, MemorySocketCapacity, MemoryBoot, MemoryClassSupport, MemorySpecificPartQualification, MemoryTraining, MemoryFirmwareScopeCoverage,
   memory_module_label,
 }
-import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, ConfigurationQualificationReceipt }
-import gunbc.memory_configuration_evaluation {
+import gunbc.host.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, ConfigurationQualificationReceipt }
+import gunbc.host.memory_configuration_evaluation {
   MemoryConfigurationAssessment, evaluate_memory_configuration, memory_read_mixture_findings,
   MemoryCapturedMixtureConflict, MemoryProcurementCondition,
 }
-import gunbc.mtcollins_memory_change { mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_training_mixture_finding }
-import gunbc.mtcollins_3ds_memory_change {
+import gunbc.host.mtcollins_memory_change { mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_training_mixture_finding }
+import gunbc.host.mtcollins_3ds_memory_change {
   mtcollins_3ds_configuration, mtcollins_3ds_collector, mtcollins_two_capture_evidence, mtcollins_samsung_observed_part,
 }
-import test.claim.memory_change_evaluation_witness { memory_test_payload, memory_test_has_unknown, memory_test_recipe, memory_test_market }
+import test.claim.host.memory_change_evaluation_witness_test { memory_test_payload, memory_test_has_unknown, memory_test_recipe, memory_test_market }
 import product.build_fulfillment { SupplyRow, CompatibilityRefutedForPlatform, memory_screened_rows, NodeRecipe, resolve_build, LineRefused, MemoryProposalNotAdmitted }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, File }
-import gunbc.host_memory_qualification { HostMemoryStanding, ClassSupportedByBoard, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem }
+import gunbc.host.host_memory_qualification { HostMemoryStanding, ClassSupportedByBoard, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -64,7 +64,7 @@ fn multiple_test_package(configuration: MemoryConfiguration, byte: UInt8, option
         alternatives: map(if optional_zero { [byte, 0] } else { [byte] }, b => MemoryDeliveryVariant {
           identity: concat("hypothetical SPD ", to_string(b)) as NonEmptyStr,
           package: Present { value: MemoryPackageEvidence { value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: b },
-            source: decl_ref(module_path: "test.claim.memory_multiple_findings_witness", decl_name: "multiple_test_package") } }, register_vendor: none,
+            source: decl_ref(module_path: "test.claim.host.memory_multiple_findings_witness_test", decl_name: "multiple_test_package") } }, register_vendor: none,
         }),
       }
     } else { dimm }

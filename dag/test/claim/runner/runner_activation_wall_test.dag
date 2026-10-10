@@ -1,4 +1,4 @@
-module test.claim.runner_activation_wall
+module test.claim.runner.runner_activation_wall_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,7 +22,7 @@ fn srv1_deploy_fixture() -> RunnerHostDeploy {
 //
 // Declaring the pool on the fixture restores the intended subject without weakening the wall: the
 // refusal paths are asserted by the negative witnesses beside these, and the live-topology answer
-// has its own tripwire (test.claim.host_compile_pool live_topology_doc, and the fleet-wide refusal
+// has its own tripwire (test.claim.host.host_compile_pool_test live_topology_doc, and the fleet-wide refusal
 // witness below) rather than being asserted here by accident.
 fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
   let base = ci_cache_instance(host: host)
@@ -46,8 +46,8 @@ fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
 
 // THE LIVE ANSWER, ASSERTED ON PURPOSE RATHER THAN INHERITED BY ACCIDENT. On this fleet
 // gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so no instance declares a managed pool
-// and activation refuses for every host. That is the designed state -- gunbc.host_compile_pool's
-// producer note and gunbc.runner_activation's pool-readiness note both say so -- previously
+// and activation refuses for every host. That is the designed state -- gunbc.host.host_compile_pool's
+// producer note and gunbc.runner.runner_activation's pool-readiness note both say so -- previously
 // invisible here because the fixture read the production row without anyone noticing it had become
 // the subject.
 test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool {
@@ -61,8 +61,8 @@ test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool {
   ) == false
 }
 
-fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
-  gunbc.build_cache_instance.ProcessIdentity {
+fn owner_fixture() -> gunbc.build_cache.build_cache_instance.ProcessIdentity {
+  gunbc.build_cache.build_cache_instance.ProcessIdentity {
     boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
     pid: 4242,
     start_time: "80000000" as NonEmptyStr,

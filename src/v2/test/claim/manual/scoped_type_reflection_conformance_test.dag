@@ -1,4 +1,4 @@
-module v2.test.manual.scoped_type_reflection_conformance
+module v2.test.claim.manual.scoped_type_reflection_conformance_test
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { any, for_all, length }
@@ -164,7 +164,7 @@ test fn cited_forked_spelling_resolves_to_the_other_module_named() -> Bool {
 // tells them apart from a caller's position.
 //
 // The contrast is stated in the past tense deliberately. It used to be carried by an enrolled claim,
-// v2.test.manual.coproduct_reflection_conformance
+// v2.test.claim.manual.coproduct_reflection_conformance_test
 // witness_uri_scheme_reflected_arm_keys_are_non_empty, which asserted a non-empty arm list for a
 // BARE UriScheme -- and this change rewrites that claim to cite extdeps.uri, because the bare
 // spelling it rested on is exactly what is being removed. Citing it here as present evidence would

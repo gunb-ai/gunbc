@@ -120,7 +120,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap
 // analysis sec 11 item 9 dispositions them — this file is the durable enrolled copy keyed by
 // identity, not a second test family. v2 InferToEval executing evidence joins the registry from
-// src/v2/test/claim/infer_self_grounding_wall_test.dag.
+// src/v2/test/claim/infer_self_grounding_wall.dag.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)

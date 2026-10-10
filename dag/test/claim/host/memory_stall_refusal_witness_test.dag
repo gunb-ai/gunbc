@@ -1,4 +1,4 @@
-module test.claim.memory_stall_refusal_witness
+module test.claim.host.memory_stall_refusal_witness_test
 
 import std.logic { Bool }
 import std.types { String, Int }
@@ -11,7 +11,7 @@ import std.measure {
   basis_point_count,
   events_per_minute_count,
 }
-import gunbc.memory_stall_refusal {
+import gunbc.host.memory_stall_refusal {
   MemoryStallObservation,
   MemoryStallVerdict,
   StallWindowOpen,
@@ -29,7 +29,7 @@ import gunbc.memory_stall_refusal {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape, MEASURED on the reproduction trace (gunbc.memory_stall_refusal memory_stall_progress_cpu_share_floor's receipt, invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4): a swapless machine smaller than the working set sustained 178795 major faults/minute with user CPU flat at 0.8% of wall, because the wall is disk wait; the fixture's 60000/minute at 4% is the same shape at conservative magnitude -- a verdict that needs the full measured extremity to fire would be tuned to one specimen. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
+data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape, MEASURED on the reproduction trace (gunbc.host.memory_stall_refusal memory_stall_progress_cpu_share_floor's receipt, invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4): a swapless machine smaller than the working set sustained 178795 major faults/minute with user CPU flat at 0.8% of wall, because the wall is disk wait; the fixture's 60000/minute at 4% is the same shape at conservative magnitude -- a verdict that needs the full measured extremity to fire would be tuned to one specimen. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
 
 fn treadmill_window() -> MemoryStallObservation {
   MemoryStallObservation {

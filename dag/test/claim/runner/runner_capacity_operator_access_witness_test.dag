@@ -1,10 +1,10 @@
-module test.claim.runner_capacity_operator_access_witness
+module test.claim.runner.runner_capacity_operator_access_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
-import gunbc.host_effect { LocalShell, SshShell }
-import gunbc.runner_capacity_operator_access {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_effect { LocalShell, SshShell }
+import gunbc.runner.runner_capacity_operator_access {
   runner_capacity_host_in_band_admission_requirement,
   runner_capacity_host_admission_verdict,
   runner_capacity_managed_host_admission_verdicts,

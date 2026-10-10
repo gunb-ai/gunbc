@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_all_lex_parity
+module v2.test.claim.emit.semantic_decl_all_lex_parity_test
 
 import v2.extdeps.languages.rust { rust_decl_general_lex }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }

@@ -1,4 +1,4 @@
-module dag.test.claim.lifecycle_survivor_scan_witness
+module test.claim.lifecycle_survivor_scan_witness_test
 
 import gunbc.lifecycle_survivor_scan {
   fact_is_raw_lifecycle_survivor,

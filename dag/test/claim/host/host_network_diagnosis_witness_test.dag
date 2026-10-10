@@ -1,4 +1,4 @@
-module test.claim.host_network_diagnosis
+module test.claim.host.host_network_diagnosis_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

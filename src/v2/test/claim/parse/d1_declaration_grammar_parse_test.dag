@@ -1,4 +1,4 @@
-module v2.test.parse.d1_declaration_grammar_parse
+module v2.test.claim.parse.d1_declaration_grammar_parse_test
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }

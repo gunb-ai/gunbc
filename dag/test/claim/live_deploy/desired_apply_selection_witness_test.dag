@@ -10,9 +10,9 @@ import gunbc.live_deploy.apply {
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_member }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories }
-import gunbc.ci_deploy_access { ci_deploy_srv1_operator_local_access }
-import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv2_deploy_dashboard_id }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_store_directories }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_operator_local_access }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv2_deploy_dashboard_id }
 
 // THE ONE APPLY ROUTE SELECTS BY INSTANCE ID (gunbc.live_deploy.apply
 // live_deploy_desired_apply_selection). This claim's subject is the SELECTION: the lab id yields
@@ -78,7 +78,7 @@ test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
   }
 }
 
-// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.fabric_storage_placement fabric_storage_directory_demands).
+// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands).
 // Directories are owned-directory demands (gunbc.live_deploy.spec deployment_directory_demands), not
 // step kinds: the lab row demands none of the fabric store's directories; production's does.
 fn is_fabric_store_demand(t: OwnedDirectoryTarget) -> Bool {

@@ -202,7 +202,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
     let glyph = if emoji { "⏳" } else { "◷" };
     format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
-/// SEED MIRROR of `gunbc.runner_slot_desired` `gunbc_runner_slot_desired` — the declared
+/// SEED MIRROR of `gunbc.runner.runner_slot_desired` `gunbc_runner_slot_desired` — the declared
 /// per-slot throttle line (field `memory_high`). A mirror, not an independent value: it may only
 /// move toward its authority row. Joined by `test.claim.seed_mirror_constant_lens_witness_test`.
 ///
@@ -212,17 +212,17 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 /// party's executor; on BuildBuddy (whose slot exposes no cgroup limit file) the resulting budget
 /// got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared constant may bound a
 /// refusal, never stand in for a reading. Remaining uses: fixtures about the fleet's own slots.
-/// Authority: `gunbc.host_budget_source` the `host_budget_declared_slot_is_not_a_reading_note` annotation.
+/// Authority: `gunbc.host.host_budget_source` the `host_budget_declared_slot_is_not_a_reading_note` annotation.
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 26843545600;
 
-/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
+/// SEED MIRROR of `gunbc.runner.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
 /// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
 /// footprint, else a crowded slot with a genuinely low cgroup limit starts a doomed ~30min walk
 /// (runs 29834380839, 29845210061). Its witnesses were taken when an uncapped host could still
 /// be admitted on a low MemAvailable reading; that arm is gone (such a host refuses outright),
 /// so it now guards a small but READABLE bound — a tight cgroup limit or a low operator override.
-/// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
+/// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers); re-measure when
 /// bright-seal #6999 fill-deferral cuts mature index residency.
 pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = 12884901888;
@@ -237,7 +237,7 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
     let budget = budget?;
     if budget < DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES {
         Some(format!(
-            "FloorBudgetBelowMinimumFootprint: armed budget={budget} bytes < minimum viable {} bytes (gunbc.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget; doomed witnesses 29834380839, 29845210061) — requeue on a less-crowded runner (fail-fast, not a doomed walk)",
+            "FloorBudgetBelowMinimumFootprint: armed budget={budget} bytes < minimum viable {} bytes (gunbc.runner.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget; doomed witnesses 29834380839, 29845210061) — requeue on a less-crowded runner (fail-fast, not a doomed walk)",
             DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES
         ))
     } else {
@@ -888,19 +888,19 @@ pub fn whole_corpus_compile_refusal_diagnostic(
     }
 }
 
-/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_major_fault_rate_per_minute_threshold`.
+/// SEED MIRROR of `gunbc.host.memory_stall_refusal` `memory_stall_major_fault_rate_per_minute_threshold`.
 /// POLICY, like the AIMD thresholds above: two orders of magnitude over healthy background
 /// (a warm resolve sustains ~0 majflt/min), an order under the measured treadmill (a
 /// thrashing swapless VM refaults thousands per second — the 2026-08-30 default-VM
 /// specimens, `memory_stall_observed_receipt_note`).
 pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = 6000;
 
-/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_verdict_window_minimum_wall_ms`.
+/// SEED MIRROR of `gunbc.host.memory_stall_refusal` `memory_stall_verdict_window_minimum_wall_ms`.
 /// What makes the rate a rate rather than a spike detector: no verdict below this much wall,
 /// so a cold-start refault burst can never refuse a run that then progresses.
 pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
 
-/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_progress_cpu_share_floor`.
+/// SEED MIRROR of `gunbc.host.memory_stall_refusal` `memory_stall_progress_cpu_share_floor`.
 /// The progress half of the refusal's conjunction, forced by this verdict's own first CI
 /// execution (`memory_stall_admitted_under_pressure_receipt_note`): the floor runner
 /// sustained 12431 majflt/min through a 13-minute CPU-bound typecheck under a memory.high
@@ -914,7 +914,7 @@ pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
 /// uses): 2000 bp = 20%.
 pub const MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS: u64 = 2000;
 
-/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallObservation`: one windowed
+/// Seed mirror of `gunbc.host.memory_stall_refusal` `MemoryStallObservation`: one windowed
 /// sample of the process's own eviction/readmission behaviour — its major-fault counter
 /// (the kernel's record of this process re-reading its own evicted pages) and its own CPU
 /// time for the same wall, beside the typed cache's own eviction and readmission counts.
@@ -927,7 +927,7 @@ pub struct MemoryStallObservation {
     pub cache_readmissions_in_window: u64,
 }
 
-/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallVerdict`. Three states, none
+/// Seed mirror of `gunbc.host.memory_stall_refusal` `MemoryStallVerdict`. Three states, none
 /// conflated: an open window is not evidence in either direction, a computable window with
 /// the fault counter flat is progress however slow the arithmetic (time enters only as the
 /// rate's denominator — never a refusal condition), and a computable window over the line
@@ -963,7 +963,7 @@ pub fn memory_stall_self_cpu_share_basis_points(o: &MemoryStallObservation) -> u
     o.self_user_cpu_ms_in_window.saturating_mul(10_000) / o.window_wall_ms.max(1)
 }
 
-/// Mirror of `gunbc.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
+/// Mirror of `gunbc.host.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
 /// CONJUNCTION — fault rate above its line AND the process's own CPU share of the window
 /// below its floor. Rate alone over-refuses (the CI floor runner sustains 12431 majflt/min
 /// through a CPU-bound typecheck under a memory.high reclaim throttle and completes —
@@ -1064,7 +1064,7 @@ pub fn self_user_cpu_ms() -> Option<u64> {
         .map(|t| t * 1000 / 100)
 }
 
-/// The typed budget SOURCE — seed mirror of `gunbc.host_budget_source` `HostBudgetSource`.
+/// The typed budget SOURCE — seed mirror of `gunbc.host.host_budget_source` `HostBudgetSource`.
 /// Consumers ask the discriminant rather than scanning the display label:
 /// `cli_run::entry_resolve::typed_module_cache_cap_derivation` decided "degraded" with
 /// `label.contains("memory.max") || label.contains("memory.high")` — one string doing two jobs,
@@ -1129,7 +1129,7 @@ impl HostBudgetSource {
     }
 }
 
-/// The seed mirror of `gunbc.host_budget_source` `HostBudgetResolution`. `Unreadable` is NOT
+/// The seed mirror of `gunbc.host.host_budget_source` `HostBudgetResolution`. `Unreadable` is NOT
 /// a source: it carries a reason and no number, and no consumer may turn it into one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostBudgetResolution {
@@ -1212,14 +1212,14 @@ pub fn host_budget_unreadable_reason() -> String {
          admitting against the widest signal available: a host-shared reading is a number \
          about the MACHINE, not about this slot, and admitting against one is the rc=137 \
          SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
-         gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
+         gunbc.host.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
          expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
         std::env::consts::OS
     )
 }
 
 /// Typed view of `v1_rt::resolve_host_budget_join`. That function is the one composer
-/// (`gunbc.host_budget_source`); this maps its result onto `HostBudgetResolution` so
+/// (`gunbc.host.host_budget_source`); this maps its result onto `HostBudgetResolution` so
 /// existing governor consumers keep a typed source. Tests plant observations here
 /// and still exercise the runtime join.
 pub fn resolve_host_budget(
@@ -1536,7 +1536,7 @@ pub fn darwin_physical_memory_bytes() -> Option<u64> {
 /// consults it. One is a wish and the other is a wall; reading both from one variable would
 /// make a run's boundedness depend on which reader looked.
 ///
-/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRequest`.
+/// Authority: `gunbc.host.memory_cgroup_binding` `CgroupBindRequest`.
 pub const BIND_MEMORY_CGROUP_ENV: &str = "GUNBC_BIND_MEMORY_CGROUP_BYTES";
 
 /// The cgroup this executor creates for itself when it binds. One fixed leaf under the tree
@@ -1544,7 +1544,7 @@ pub const BIND_MEMORY_CGROUP_ENV: &str = "GUNBC_BIND_MEMORY_CGROUP_BYTES";
 /// reused runner and nothing in this repository would own deleting them.
 pub const BIND_MEMORY_CGROUP_LEAF: &str = "gunbc.bound";
 
-/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRefusalCause`.
+/// Authority: `gunbc.host.memory_cgroup_binding` `CgroupBindRefusalCause`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CgroupBindRefusalCause {
     MemoryControllerUnavailable,
@@ -1556,7 +1556,7 @@ pub enum CgroupBindRefusalCause {
     CurrentUsageUnreadable,
 }
 
-/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRequest`. Absent and unreadable are
+/// Authority: `gunbc.host.memory_cgroup_binding` `CgroupBindRequest`. Absent and unreadable are
 /// different answers: silence is the correct response to a question nobody asked and never to one
 /// asked badly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1565,7 +1565,7 @@ pub enum CgroupBindRequest {
     Unreadable { raw: String },
 }
 
-/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindDecision`. Four outcomes and only one of
+/// Authority: `gunbc.host.memory_cgroup_binding` `CgroupBindDecision`. Four outcomes and only one of
 /// them writes; `Refused` is the only one that stops the line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CgroupBindDecision {
@@ -1575,7 +1575,7 @@ pub enum CgroupBindDecision {
     Refused { cause: CgroupBindRefusalCause },
 }
 
-/// The pure decision, mirroring `gunbc.memory_cgroup_binding` `cgroup_bind_decision`. Every
+/// The pure decision, mirroring `gunbc.host.memory_cgroup_binding` `cgroup_bind_decision`. Every
 /// input is a parameter so the discriminating cases are reachable from a test on any machine —
 /// the same shape `resolve_host_budget` uses, and for the same reason: the states worth walling
 /// are ones the CI machine does not have.
@@ -1666,7 +1666,7 @@ pub fn self_resident_bytes() -> Option<u64> {
     })
 }
 
-/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_refusal_cause_text`.
+/// Authority: `gunbc.host.memory_cgroup_binding` `cgroup_bind_refusal_cause_text`.
 pub fn cgroup_bind_refusal_cause_text(cause: &CgroupBindRefusalCause) -> String {
     match cause {
         CgroupBindRefusalCause::MemoryControllerUnavailable => {
@@ -1714,7 +1714,7 @@ pub fn cgroup_bind_refusal_cause_text(cause: &CgroupBindRefusalCause) -> String 
 
 /// The refusal rendering. `None` on every non-refusing arm, so a caller that logs a cause
 /// unconditionally cannot fabricate one for a decision that did not refuse.
-/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_decision_refusal_text`.
+/// Authority: `gunbc.host.memory_cgroup_binding` `cgroup_bind_decision_refusal_text`.
 pub fn cgroup_bind_refusal_diagnostic(decision: &CgroupBindDecision) -> Option<String> {
     match decision {
         CgroupBindDecision::Refused { cause } => Some(format!(
@@ -1728,7 +1728,7 @@ pub fn cgroup_bind_refusal_diagnostic(decision: &CgroupBindDecision) -> Option<S
 /// The announcement, so a log distinguishes a run that bound itself from one that was already
 /// bounded from one that asked for neither — three states that all continue and are otherwise
 /// indistinguishable downstream.
-/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_decision_note`.
+/// Authority: `gunbc.host.memory_cgroup_binding` `cgroup_bind_decision_note`.
 pub fn cgroup_bind_note(decision: &CgroupBindDecision) -> String {
     match decision {
         CgroupBindDecision::NotRequested => "memory-cgroup-bind: not requested".to_string(),
@@ -1811,7 +1811,7 @@ fn cgroup_leaf_remove_if_created(dir: &Path, created: bool) {
 /// created, so a refusal leaves the tree exactly as it found it; and afterwards every consumer
 /// still reads its budget through `read_host_budget_resolution` exactly as before. This
 /// function supplies no number to anybody — a successful bind is invisible except as an
-/// observation that now exists, which is what keeps `gunbc.host_budget_source` the single
+/// observation that now exists, which is what keeps `gunbc.host.host_budget_source` the single
 /// authority for what the limit IS.
 ///
 /// AND IT DOES NOT DISARM ANY REFUSAL. The stall verdict still watches this process's own major
@@ -1819,7 +1819,7 @@ fn cgroup_leaf_remove_if_created(dir: &Path, created: bool) {
 /// against measured demand. A bound that is too small refuses through those arms, loudly, which
 /// is the correct ending — this function's job is to make a bound EXIST, never to make one fit.
 ///
-/// Authority: `gunbc.memory_cgroup_binding`.
+/// Authority: `gunbc.host.memory_cgroup_binding`.
 pub fn apply_memory_cgroup_bind() -> CgroupBindDecision {
     // ABSENT AND UNREADABLE ARE DIFFERENT ANSWERS. The first revision read this through
     // `.ok().and_then(|s| s.trim().parse().ok())`, so an empty, nonnumeric or overflowing value
@@ -2312,7 +2312,7 @@ mod tests {
 
         // THE DECLARED ROW NOW ADMITS, AND THAT IS A STATEMENT ABOUT A DESIRED CONFIGURATION
         // RATHER THAN ABOUT ANY HOST. `DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES` mirrors
-        // `gunbc.runner_slot_allocation`'s desired row, which moved to 25 GiB; 25 GiB clears the
+        // `gunbc.runner.runner_slot_allocation`'s desired row, which moved to 25 GiB; 25 GiB clears the
         // 16 GiB measured demand, so the admission flips from refusal to admission BY POLICY.
         //
         // THE THRESHOLD IS NOT TOUCHED. Lowering it to keep the old assertion green would be

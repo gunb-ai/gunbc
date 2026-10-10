@@ -1,10 +1,10 @@
-module test.claim.floor_materialization_witness
+module test.claim.floor.floor_materialization_witness_test
 
 import std.types { Bool, Int, List, String }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_gate { Gate }
+import gunbc.ci.ci_gate { Gate }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
-import gunbc.floor_materialization {
+import gunbc.floor.floor_materialization {
   floor_index_build_identity,
   floor_index_build_share_provider_id,
   floor_index_build_materialization,
@@ -58,7 +58,7 @@ test fn floor_index_build_reds_without_reference_provider() -> Bool {
 // C3 — the cross-process demand set: two sibling PROCESSES over one corpus under one built binary
 // (the witness fold and the generated-artifact drift gate), whose obligation LCA is the runner
 // host. Only a store tier can discharge it, and since 2026-10-03 none does: the host-persisted
-// provider was deleted after measurement (see gunbc.floor_materialization). The live verdict is
+// provider was deleted after measurement (see gunbc.floor.floor_materialization). The live verdict is
 // therefore the no-provider refusal below. The provider's discharge claim and its three per-
 // obligation reds were deleted with it; the replacement store re-adds all four.
 

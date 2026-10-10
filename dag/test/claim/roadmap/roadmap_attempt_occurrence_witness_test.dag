@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
   occurrence_population, occurrence_population_conserved, occurrence_unit_identity,
   OccurrenceIdentityParsed, OccurrenceIdentityUnparseable,
 }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchSessionsObserved, LaunchGateVerdict, GatePassed, GateRefused,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   launch_gate_live, launch_occupying_count, occurrence_census_row, LaunchCensusRow,

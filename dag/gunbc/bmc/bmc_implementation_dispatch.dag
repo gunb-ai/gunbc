@@ -1,4 +1,4 @@
-module gunbc.bmc_implementation_dispatch
+module gunbc.bmc.bmc_implementation_dispatch
 
 import std.types { List }
 import std.credentials { FactoryLogin }
@@ -23,7 +23,7 @@ import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_
 // committed evidence contradicts any family-grain answer (an IPMI user-management rotation executed
 // on one MegaRAC build, a Redfish read and no account write on another), so it is a sealed standing
 // bound to one controller, one firmware build and its evidence, in
-// gunbc.machine_intake_bmc_rotation_route BmcRotationRouteStanding. Every arm returns what its implementation module CITES at the
+// gunbc.machine_intake.bmc_rotation_route BmcRotationRouteStanding. Every arm returns what its implementation module CITES at the
 // family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from
 // extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact
 // carried on the build binding, never here.

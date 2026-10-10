@@ -1,4 +1,4 @@
-module test.claim.roadmap_status
+module test.claim.roadmap.roadmap_status_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

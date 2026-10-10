@@ -1,6 +1,6 @@
-module test.claim.host_standup_assimilation_deduction
+module test.claim.host.host_standup_assimilation_deduction_witness_test
 
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.logic { Bool }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -19,8 +19,8 @@ import std.upsert_decision {
 }
 import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
-import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.host_standup {
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.host.host_standup {
   host_standup_spine,
   Prefix,
   Assimilation,
@@ -29,7 +29,7 @@ import gunbc.host_standup {
   host_standup_gap_count_at_actuation_verdict,
   host_standup_step_is_effective_gap_at_actuation_verdict,
 }
-import gunbc.host_standup_assimilation_deduction {
+import gunbc.host.host_standup_assimilation_deduction {
   StallTransitionProbe,
   StallCauseBootModeLegacyUefiRequired,
   StallCauseConsoleRedirectOff,

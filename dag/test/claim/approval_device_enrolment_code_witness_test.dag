@@ -22,12 +22,12 @@ import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_re
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import std.measure { byte_size_count }
 import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
-import gunbc.fleet_converge_workflow {
+import gunbc.fleet.fleet_converge_workflow {
   ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
 }
 

@@ -1324,7 +1324,7 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
 // Every roster row used to name a TARGET — `(module, decl, field)` — so one row suppressed
 // every citation of that target, corpus-wide, as long as it stood. On the live tree the 70 rows
 // covered 75 refusing sites and six targets were cited from more than one module
-// (`gunbc.host_effect` `host_effect_apply` from three, `std.bytes` `builtin_function_registry`
+// (`gunbc.host.host_effect` `host_effect_apply` from three, `std.bytes` `builtin_function_registry`
 // from three). So a patch could author a BRAND NEW dangling citation to any enrolled target,
 // from any module, and the wall would silently decline to judge it — citation rot admitted by
 // the mechanism built to refuse it, decidable from the patch alone.

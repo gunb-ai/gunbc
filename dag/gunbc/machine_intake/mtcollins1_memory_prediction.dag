@@ -1,11 +1,11 @@
-module gunbc.machine_intake_mtcollins1_memory_prediction
+module gunbc.machine_intake.mtcollins1_memory_prediction
 
 import std.types { Bool, List, Milliseconds, NonEmptyStr }
 import std.nat { Nat }
 import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.cli_wire { CliWireResponse }
-import gunbc.machine_intake_predictive_review_render { predictive_review_cli }
+import gunbc.machine_intake.predictive_review_render { predictive_review_cli }
 import std.predictive_claim {
   AdversarialTestingObligation, Prediction, PredictionRestriction,
   PredictionWindowNotRecorded, ConfoundedMechanisms,
@@ -66,7 +66,7 @@ data memory_experiment_configuration: MemoryTestConfiguration = MemoryTestConfig
 }
 
 data memory_prediction_testing_obligation: AdversarialTestingObligation = AdversarialTestingObligation {
-  owner: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "memory_prediction_review"),
+  owner: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_memory_prediction", decl_name: "memory_prediction_review"),
   next_discriminator: "Before the operator touches the next population, commit its exact configuration, predicted observation, falsifier, observation window and confound assessment. Retain an independent receipt that publication preceded power-up. A full-population training receipt falsifies the unconditional failure prediction; a restart alone cannot attribute a cause. Continue testing edges after every surviving test and every narrowed revision.",
 }
 
@@ -80,8 +80,8 @@ fn memory_training_prediction() -> Prediction<MemoryTestConfiguration, MemoryTra
   Prediction {
     claim: Claim {
       id: "mtcollins1-same-channel-mixing-training-v1" as ClaimId,
-      subject: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity"),
-      target: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "MemoryTrainingObservation"),
+      subject: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_access_observation", decl_name: "mtcollins1_identity"),
+      target: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_memory_prediction", decl_name: "MemoryTrainingObservation"),
       proposition: RestartWithoutTrainingReceipt,
       scope: [PredictionRestriction {
         reason: "Reported fully populated specimen with simultaneous same-channel violations; this is a derived prediction, not what Table 3 asserts.",
@@ -107,7 +107,7 @@ fn memory_experiment_model() -> PredictiveModelResult<MemoryTestConfiguration, M
         id: "msg_4ec94836-32-dimm-restart" as RecordedFactId,
         value: RestartWithoutTrainingReceipt,
       },
-      report: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "memory_experiment_conversation_report"),
+      report: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_memory_prediction", decl_name: "memory_experiment_conversation_report"),
       discrimination: ConfoundedMechanisms {
         first_confound: "At least seven simultaneous same-channel violations; the restart does not identify which caused it.",
         further_confounds: [

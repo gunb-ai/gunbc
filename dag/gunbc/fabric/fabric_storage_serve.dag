@@ -1,11 +1,11 @@
-module gunbc.fabric_storage_serve
+module gunbc.fabric.fabric_storage_serve
 
-import gunbc.fabric_storage_protocol { fabric_storage_closure_bound_cap, text_response, ok, words, trim_line, word, head_name, malformed, fabric_storage_respond, AdvanceRequest, advance_request }
-import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
+import gunbc.fabric.fabric_storage_protocol { fabric_storage_closure_bound_cap, text_response, ok, words, trim_line, word, head_name, malformed, fabric_storage_respond, AdvanceRequest, advance_request }
+import gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }
 
-import gunbc.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
-import gunbc.fabric_storage_state_auth_io { fabric_state_verified_request }
-import gunbc.fabric_storage_placement { fabric_storage_state_suffix, fabric_storage_state_file_root }
+import gunbc.fabric.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
+import gunbc.fabric.fabric_storage_state_auth_io { fabric_state_verified_request }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_state_suffix, fabric_storage_state_file_root }
 
 import std.types { String, NonEmptyStr, Int, List, CommitSha, Bool }
 import extdeps.http.server { ServeWireResponse }
@@ -14,17 +14,17 @@ import std.fabric_storage {
   FabricReplyUndecodable, FabricHeadNameRefused, FabricWriterRefused,
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
-import gunbc.fabric_storage_file_store {
+import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
-import gunbc.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
+import gunbc.fabric.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
+import gunbc.fabric.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
 // `gunbc serve` process on the placed host, compiled once, answers each request by running the
-// file store (gunbc.fabric_storage_file_store) against local disk and writing the outcome in the one
-// wire form (gunbc.fabric_storage_wire). This module decides nothing about the log: it realizes four
+// file store (gunbc.fabric.fabric_storage_file_store) against local disk and writing the outcome in the one
+// wire form (gunbc.fabric.fabric_storage_wire). This module decides nothing about the log: it realizes four
 // store operations and nothing else.
 //
 // SINGLE WRITER BY CONSTRUCTION. Every append reaches this process on the one host holding the
@@ -35,11 +35,11 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 // NOTHING LIVES IN MEMORY. Each request reads and writes the files; a restart loses nothing and
 // there is no cache to rebuild or to go stale.
 //
-// ACCESS: THE DOOR IS A UNIX SOCKET (gunbc.fabric_storage_placement fabric_storage_door_socket),
+// ACCESS: THE DOOR IS A UNIX SOCKET (gunbc.fabric.fabric_storage_placement fabric_storage_door_socket),
 // reached two ways: through `tailscale serve`, which proxies to it as root and names the tailnet
 // user in Tailscale-User-Login, and directly by the placed host's own writers, whose account the
 // kernel attests (`gunbc serve --unix-socket` hands the handler `peer_user`). THE WRITER WALL: a
-// put or advance is admitted only for a proxied login in gunbc.fabric_writer_roster's served roster
+// put or advance is admitted only for a proxied login in gunbc.fabric.fabric_writer_roster's served roster
 // or a local peer in the door directory's roster -- the header is believed only from the proxy --
 // and an absent login, an unrostered login or account, and an unattested peer are refused as a
 // typed store outcome (FabricWriterRefused) that touches no file. Reads (head, closure) and the
@@ -96,7 +96,7 @@ fn fabric_storage_operation_of(path: String) -> String? {
   if starts_with(s: path, prefix: prefix) { Present { value: substring(s: path, start: length(prefix), end: length(path)) } } else { none }
 }
 
-// THE TWO ROSTERS THE DOOR ADMITS AGAINST: proxied logins (gunbc.fabric_writer_roster
+// THE TWO ROSTERS THE DOOR ADMITS AGAINST: proxied logins (gunbc.fabric.fabric_writer_roster
 // fabric_served_writer_roster) and local peers (fabric_door_local_roster). A parameter, so a claim
 // can supply both; the served entry below binds the derived ones.
 type FabricDoorRosters {

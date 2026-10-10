@@ -18,7 +18,7 @@ import extdeps.github.actions {
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, upload_artifact_action, google_auth_action }
 import extdeps.github.action_release { ActionRelease, action_release_same_producer }
-import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
   workflow_job_capability_closure, capability_closure_is_closed
@@ -27,11 +27,11 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.repo_self_build { repo_self_build_command }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.ci_spec {
+import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.ci.ci_spec {
   gunbc_ci_heal_regen_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
   gunbc_ci_heal_candidate_invoke
@@ -337,7 +337,7 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 
 // THIS WORKFLOW NO LONGER RUNS ON A PULL REQUEST. Its work -- declare, regenerate, seal the
 // candidate -- is the repair path of the consolidated required job
-// (gunbc.compiler_gate_workflow), which runs it only on the push where the drift gate refused.
+// (gunbc.witness.compiler_gate_workflow), which runs it only on the push where the drift gate refused.
 // Leaving the pull_request trigger here would pay heal's four whole-corpus invocations (22.7 of
 // its 26.4 minutes, measured on run 35475373850) again on every push, for the same repair.
 // The workflow stays registered, committed and dispatchable so an operator can still run a repair

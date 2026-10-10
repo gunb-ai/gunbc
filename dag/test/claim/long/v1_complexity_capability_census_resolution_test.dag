@@ -1,6 +1,6 @@
 module test.claim.long.v1_complexity_capability_census_resolution_test
 
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.lens.complexity { complexity_variables_admits, complexity_variables_vacuous_validation }
 import v2.std.refinement { VacuousValidation, VacuousAdmits, vacuous_admits_marker }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
@@ -16,7 +16,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefDeclarationAbsent,
   DeclarationRefAmbiguous,
 }
-import gunbc.v1_complexity_capability_census {
+import gunbc.v1.v1_complexity_capability_census {
   v1_complexity_inventory_roster,
   capability_all_declaration_refs,
   capability_cited_carrier,

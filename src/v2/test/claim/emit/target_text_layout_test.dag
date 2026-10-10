@@ -1,4 +1,4 @@
-module v2.test.emit.target_text_layout
+module v2.test.claim.emit.target_text_layout_test
 
 import std.layout { DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest, doc_nest_by }
 import v2.std.node { Node, Symbol }

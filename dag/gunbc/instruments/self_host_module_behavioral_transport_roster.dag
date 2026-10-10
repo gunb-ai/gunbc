@@ -1,7 +1,7 @@
-module tools.self_host_module_behavioral_transport_roster
+module gunbc.instruments.self_host_module_behavioral_transport_roster
 
 import std.types { List }
-import tools.self_host_curated_seed_linked_harness {
+import gunbc.instruments.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
   CsslWitnessDriver,
   CsslReceiptOutcome,
@@ -40,10 +40,10 @@ import v2.std.text { String }
 // rows once carried are deleted with the fields that held them (see
 // gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module), so every row links the whole
 // emitted closure. The emit/assemble/cargo/witness execution stays entirely in the shared kernel
-// (tools.self_host_curated_seed_linked_harness), so a new frontier row's receipt is one roster row,
+// (gunbc.instruments.self_host_curated_seed_linked_harness), so a new frontier row's receipt is one roster row,
 // not a new file. Fail-closed: an unrecognized module_path returns false (never a fabricated pass)
-// — see compiler_module_behavioral_receipt_for. tools.self_host_logic_behavioral_transport and
-// tools.namespace_import_closure_behavioral_transport are deliberately NOT migrated here: neither
+// — see compiler_module_behavioral_receipt_for. gunbc.instruments.self_host_logic_behavioral_transport and
+// gunbc.instruments.namespace_import_closure_behavioral_transport are deliberately NOT migrated here: neither
 // is keyed by a frontier row (logic predates the frontier; namespace_import_closure proves an
 // emitter CLASS property, not a per-module fact — see falsifier_self_host_wet_emit_class_note in
 // v2.compiler.self_host.wet_receipt_enrollment).
@@ -57,9 +57,9 @@ type ModuleBehavioralTransportConfig {
 
 data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransportConfig> = [
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/00_compile.dag",
+    module_path: "src/v2/compiler/compile.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/compile_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/compile_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.compile_emitted_contract",
       contract_function: "compile_emitted_contract_holds"
     },
@@ -67,9 +67,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/01_tokenize.dag",
+    module_path: "src/v2/compiler/tokenize.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/tokenize_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/tokenize_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.tokenize_emitted_contract",
       contract_function: "tokenize_emitted_contract_holds"
     },
@@ -77,9 +77,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/02_parse.dag",
+    module_path: "src/v2/compiler/parse.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/parse_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/parse_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.parse_emitted_contract",
       contract_function: "parse_emitted_contract_holds"
     },
@@ -87,9 +87,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/03_body_producer.dag",
+    module_path: "src/v2/compiler/body_producer.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/body_producer_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/body_producer_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.body_producer_emitted_contract",
       contract_function: "body_producer_emitted_contract_holds"
     },
@@ -102,9 +102,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     ]
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/03_ingest.dag",
+    module_path: "src/v2/compiler/ingest.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/ingest_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/ingest_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.ingest_emitted_contract",
       contract_function: "ingest_emitted_contract_holds"
     },
@@ -112,9 +112,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/03_normalize.dag",
+    module_path: "src/v2/compiler/normalize.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/normalize_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/normalize_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.normalize_emitted_contract",
       contract_function: "normalize_emitted_contract_holds"
     },
@@ -122,9 +122,9 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/03_resolve.dag",
+    module_path: "src/v2/compiler/resolve.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/resolve_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/resolve_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.resolve_emitted_contract",
       contract_function: "resolve_emitted_contract_holds"
     },
@@ -132,24 +132,24 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/04_infer.dag",
+    module_path: "src/v2/compiler/infer.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/infer_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/infer_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.infer_emitted_contract",
       contract_function: "infer_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
-        entry_rel: "src/v2/test/compiler/pipeline/infer_stage_test.dag",
+        entry_rel: "src/v2/test/compiler/pipeline/infer_stage.dag",
         function: "pipeline_infer_add_fixture_relationship_green"
       }
     ]
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/07_target_carriers.dag",
+    module_path: "src/v2/compiler/target_carriers.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/target_carriers_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/target_carriers_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.target_carriers_emitted_contract",
       contract_function: "target_carriers_emitted_contract_holds"
     },
@@ -164,7 +164,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/discovery_enumeration.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/discovery_enumeration_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/discovery_enumeration_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.discovery_enumeration_emitted_contract",
       contract_function: "discovery_enumeration_emitted_contract_holds"
     },
@@ -179,7 +179,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/materialization_carriers.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/materialization_carriers_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/materialization_carriers_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.materialization_carriers_emitted_contract",
       contract_function: "materialization_carriers_emitted_contract_holds"
     },
@@ -199,7 +199,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_partition.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_partition_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_partition_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.program_partition_emitted_contract",
       contract_function: "program_partition_emitted_contract_holds"
     },
@@ -209,7 +209,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/source_authority.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/source_authority_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/source_authority_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.source_authority_emitted_contract",
       contract_function: "source_authority_emitted_contract_holds"
     },
@@ -219,7 +219,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/use_site_verdict.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/use_site_verdict_emitted_contract_test.dag",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/use_site_verdict_emitted_contract.dag",
       contract_module: "v2.test.claim.self_host_contract.use_site_verdict_emitted_contract",
       contract_function: "use_site_verdict_emitted_contract_holds"
     },

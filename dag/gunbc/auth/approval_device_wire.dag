@@ -121,7 +121,7 @@ fn redemption_challenge_message(escalation_id: NonEmptyStr, request_revision: No
 }
 
 data approval_redemption_protocol: NonEmptyStr = "gunbc.approval-redemption.v1" as NonEmptyStr
-data approval_device_audience: NonEmptyStr = "gunbc.roadmap_serve/device-redemption" as NonEmptyStr
+data approval_device_audience: NonEmptyStr = "gunbc.roadmap.roadmap_serve/device-redemption" as NonEmptyStr
 
 // stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
 // app displayed, byte for byte; capability_text is approval_capability_signing_input of the

@@ -319,7 +319,7 @@ data justified_addition_item: DeclarationRef = DeclarationRef {
 }
 
 data justified_addition_authority: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_rust_host_observation" as NonEmptyStr,
+  module_path: "gunbc.stage0.stage0_rust_host_observation" as NonEmptyStr,
   decl_name: "stage0_rust_observation_seed_growth_justification" as NonEmptyStr,
   field: WholeDeclaration
 }

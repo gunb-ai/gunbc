@@ -1,4 +1,4 @@
-module test.claim.spark_bootstrap_provision_witness
+module test.claim.spark.spark_bootstrap_provision_witness_test
 
 // Adding ANY explicit import scopes this witness's resolution, so the subject module -- previously
 // reached by bare reference through pool coincidence -- must now be named too. That is the correct

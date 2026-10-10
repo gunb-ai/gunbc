@@ -3,11 +3,11 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
-import gunbc.witness_floor_lanes { build_lane_job_id, floor_lane_job_id, required_lanes_roster }
-import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
+import gunbc.witness.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
+import gunbc.witness.witness_floor_lanes { build_lane_job_id, floor_lane_job_id, required_lanes_roster }
+import gunbc.fabric.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string, workflow_triggers_yaml }
@@ -258,7 +258,7 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
 // which workflow the job belongs to is not part of it. So two workflows publishing a job
 // called `build` publish ONE context name, and a rule naming it is answered by whichever
 // green arrives. That is why the lane jobs cannot be enforced directly under bare lane words,
-// and it is not hypothetical: `gunbc.fleet_converge_workflow` declares a job whose id is
+// and it is not hypothetical: `gunbc.fleet.fleet_converge_workflow` declares a job whose id is
 // exactly `build`, which is the collision this row measures.
 //
 // THE JOIN IS AGAINST THE OTHER WORKFLOW'S OWN AUTHORITY rather than a spelled string, so the
@@ -360,7 +360,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // re-pointing unchanged. It proves the job condition and the live-attempt refusal are present at
 // their distinct YAML grains. It does not prove what GitHub does with a required context on a
 // cancelled run, nor what branch protection does with a skipped one.
-// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
+// `gunbc.floor.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
 // that is still unobserved; a string_contains witness must not be cited as having closed it.
 test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
   match expected_witness_floor_yml() {

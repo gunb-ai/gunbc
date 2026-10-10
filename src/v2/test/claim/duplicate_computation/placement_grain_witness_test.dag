@@ -1,4 +1,4 @@
-module v2.test.duplicate_computation.placement_grain_witness
+module v2.test.claim.duplicate_computation.placement_grain_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

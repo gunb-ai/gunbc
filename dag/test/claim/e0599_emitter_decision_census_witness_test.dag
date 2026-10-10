@@ -1,7 +1,7 @@
 module test.claim.e0599_emitter_decision_census_witness_test
 
 import std.types { list_length }
-import tools.e0599_emitter_decision_census {
+import gunbc.instruments.e0599_emitter_decision_census {
   TargetApiRequirement,
   OwnedDeconstructionRequirement,
   CloneSharedRequirement,
@@ -21,9 +21,9 @@ import tools.e0599_emitter_decision_census {
   e0599_row_for_operation,
   e0599_rollup_cause_labels_blob,
 }
-import tools.e0599_probe_census { e0599_mechanistic_root_family_labels_blob }
+import gunbc.instruments.e0599_probe_census { e0599_mechanistic_root_family_labels_blob }
 
-// Witness for tools.e0599_emitter_decision_census: the operation selection and operation->cause
+// Witness for gunbc.instruments.e0599_emitter_decision_census: the operation selection and operation->cause
 // decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over
 // the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape from the
 // P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the

@@ -1,4 +1,4 @@
-module test.claim.fleet_converge_receipt_witness
+module test.claim.fleet.fleet_converge_receipt_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

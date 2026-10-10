@@ -5,17 +5,17 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrTypeLine, sdr_decode_lines }
-import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
-import gunbc.machine_intake_megarac_sensor_observation {
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake.megarac_sensor_observation {
   MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming,
   megarac_sensor_socket, megarac_socket_sensor_lines, megarac_socket_unstructured_lines,
   megarac_sensor_anomalies, megarac_sensor_table_text,
 }
-import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
-import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach }
-import gunbc.machine_intake_mtcollins1_power_on_account { SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
+import gunbc.machine_intake.mtcollins1_power_on_account { BmcAnomaly }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach }
+import gunbc.machine_intake.mtcollins1_power_on_account { SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.measure { byte_size_count }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -28,7 +28,7 @@ fn table_text() -> String {
   Filesystem.Read(path: mtcollins1_sdr_capture.artifact_path as String).content
 }
 
-// THE NAMING IS READ THROUGH THE REAL ADMISSION OF THE MANAGED HOST mtcollins1 (gunbc.megarac_managed_host,
+// THE NAMING IS READ THROUGH THE REAL ADMISSION OF THE MANAGED HOST mtcollins1 (gunbc.host.megarac_managed_host,
 // operation MegaRacSdrSocketNaming): its observed build is the one the prefix was read on. Every claim
 // below reads through it, so a host that stopped admitting would turn each of them red.
 fn rule() -> MegaRacSdrSocketNamingRule? {

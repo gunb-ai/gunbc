@@ -1,4 +1,4 @@
-module test.claim.roadmap_provider_events_witness_test
+module test.claim.roadmap.roadmap_provider_events_witness_test
 
 import std.types { Bool, String, Int, List }
 import extdeps.languages.json.emit { json_object }
@@ -14,7 +14,7 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeResultLine,
   ClaudeCodeTurnResult,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
   UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
   HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,

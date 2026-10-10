@@ -1,4 +1,4 @@
-module v2.test.formats.spice_rc_ngspice_oracle
+module v2.test.claim.extdeps.spice_rc_ngspice_oracle_test
 
 import v2.extdeps.formats.spice { spice_emit_ngspice }
 import v2.test.fixture.spice_rc_tran_deck {

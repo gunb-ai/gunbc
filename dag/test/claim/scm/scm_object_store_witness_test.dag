@@ -1,4 +1,4 @@
-module test.claim.scm_object_store_witness
+module test.claim.scm.scm_object_store_witness_test
 
 // Slice 1 of NATIVE-COMMIT-0 (docs/plans/dag-native-scm-design.md §7): a commit is a root object id
 // plus the closure reachable from it, and checking one out either reconstructs the exact program or

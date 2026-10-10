@@ -1,4 +1,4 @@
-module v2.test.long.fallback_arm_census_witness
+module v2.test.claim.long.fallback_arm_census_witness_test
 
 import v2.lens.fallback_arm_census {
   fallback_arm_census_class_count_live,

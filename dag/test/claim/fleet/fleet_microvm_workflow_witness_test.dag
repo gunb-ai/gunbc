@@ -1,7 +1,7 @@
-module test.claim.fleet_microvm_workflow_witness
+module test.claim.fleet.fleet_microvm_workflow_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.fleet_converge_workflow { fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import extdeps.github.actions { Step, RunStep }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -9,7 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE BINDING IS ONLY A WALL IF THE STEP TELLS IT WHICH HOST WAS SELECTED, and for one revision it
-// did not. gunbc.runner_microvm_host_ready seals the operator's choice against the machine's own
+// did not. gunbc.runner.runner_microvm_host_ready seals the operator's choice against the machine's own
 // hostname before any fetch, install or receipt write, reading that choice from
 // FLEET_CONVERGE_EXPECTED_HOST -- and both micro-VM steps carried `env: none`, so every dispatch of
 // either mode would have exited ExpectedHostAbsent having done nothing. The readback the repair

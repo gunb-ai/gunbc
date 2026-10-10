@@ -20,7 +20,7 @@ data infer_child_context_cannot_depend_on_a_sibling_result: RecurringFailureMode
     DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node_topdown", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "fold_recurrence_encoding", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.parse.expression_bodied_fn_decl_parse", decl_name: "g_tree_has_arrow_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.expression_bodied_fn_decl_parse_test", decl_name: "g_tree_has_arrow_body", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_lexical_reference_facts", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_projection_receiver", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.anonymous_binder", decl_name: "fresh_type_variable", field: WholeDeclaration },

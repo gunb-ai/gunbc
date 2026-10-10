@@ -1,4 +1,4 @@
-module test.claim.fleet_host_budget
+module test.claim.fleet.fleet_host_budget_test
 
 import product.fabric.envelope { memory_envelope }
 import std.types { Int, List, String, Bool }
@@ -12,7 +12,7 @@ import extdeps.jobserver {
   jobserver_config,
   derive_jobserver_tokens,
 }
-import gunbc.fleet_container {
+import gunbc.fleet.fleet_container {
   FleetContainerType,
   GhaRunnerContainer,
   ContainerBaseline,
@@ -24,7 +24,7 @@ import gunbc.fleet_container {
   container_baseline_bytes,
   gha_runner_container,
 }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   HeadroomPolicy,
   HeadroomSet,
   HeadroomUnset,
@@ -43,7 +43,7 @@ import gunbc.fleet_host_budget {
   runner_slice_cap_drifted,
   gunbc_fleet_oomd_floor_basis,
 }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,

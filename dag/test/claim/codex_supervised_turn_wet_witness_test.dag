@@ -50,7 +50,7 @@ import gunbc.codex_app_server_press {
   CodexPressRefused,
 }
 import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
-import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.roadmap.roadmap_workflow_command { WorkerTurn }
 import gunbc.codex_supervised_turn {
   CodexSupervisedTurnOk,
   CodexSupervisedTurnRefused,

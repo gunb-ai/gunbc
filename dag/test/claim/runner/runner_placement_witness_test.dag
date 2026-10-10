@@ -1,4 +1,4 @@
-module test.claim.runner_placement_witness
+module test.claim.runner.runner_placement_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -196,7 +196,7 @@ test fn the_live_manifest_json_reports_incompleteness_and_names_the_refused_host
 
 // THE DISCRIMINATING PAIR FOR THE CONTROL-PLANE CHARGE'S TWO REFUSALS, AND WHY A SINGLE WITNESS
 // WOULD NOT HAVE CAUGHT WHAT THIS ONE CATCHES. host_allocation_verdict distinguishes an
-// OVERSUBSCRIBED host from an UNCHARGEABLE one, and gunbc.ci_runner_placement previously projected
+// OVERSUBSCRIBED host from an UNCHARGEABLE one, and gunbc.ci.ci_runner_placement previously projected
 // both to false through host_allocation_conserves and rendered one string for the pair: "host
 // allocation over-committed ... exceeds host RAM". Both paths refuse, so the collapse read as
 // cautious -- but the two have OPPOSITE remedies: over-committed means take capacity away;

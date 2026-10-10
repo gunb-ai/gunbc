@@ -1,4 +1,4 @@
-module test.claim.bmc_netboot_serve
+module test.claim.bmc.bmc_netboot_serve_witness_test
 
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr, Int, String, List }
@@ -11,7 +11,7 @@ import extdeps.exec.command {
   scp_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at }
-import gunbc.bmc_netboot_serve {
+import gunbc.bmc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
   bmc_transport,
   bmc_path_resolved_mkdir_applet,

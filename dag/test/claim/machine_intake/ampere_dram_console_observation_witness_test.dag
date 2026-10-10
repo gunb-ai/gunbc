@@ -2,11 +2,11 @@ module test.claim.machine_intake.ampere_dram_console_observation_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
-import gunbc.machine_intake_ampere_dram_console_observation {
+import gunbc.machine_intake.ampere_dram_console_observation {
   AmpereDramBlockNotPrinted, AmpereDramBlockObserved, RosterNotObserved, RosterOpen, RosterClosed,
   ampere_dram_console_observation, ampere_dram_untrained_sockets, ampere_dram_console_text, ampere_dram_dimms_on_socket,
 }
-import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -444,7 +444,7 @@ fn all_removals_have_left(removals: List<GrandfatheredRemoval>) -> Bool {
 
 // THE SPECIMEN PIN'S JOIN DISCRIMINATES, exercised here on both arms so the classifier is on the
 // acceptance path (review 5190625335). The LIVE join -- against the step count the floor actually
-// observed -- runs in `tools.floor_cost_distribution_instrument`
+// observed -- runs in `gunbc.instruments.floor_cost_distribution_instrument`
 // `calibration_specimen_grounding`, because its input is an artifact written after the run and no
 // claim can read its own step count. What these two witness is the decision the instrument feeds.
 test fn the_observed_specimen_step_count_matching_the_pin_holds() -> Bool {

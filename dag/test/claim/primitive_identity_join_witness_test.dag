@@ -45,7 +45,7 @@ import std.primitive_identity {
   surface_row,
 }
 import std.decl_ref { decl_ref }
-import gunbc.v1_interpreter_primitive_surface {
+import gunbc.v1.v1_interpreter_primitive_surface {
   authored_spelling_count,
   distinct_arm_identity_count,
   v1_interpreter_row_count,
@@ -56,7 +56,7 @@ import std.types { Bool, List, String }
 // D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors
 // executing on census plus two scaffold detectors on planted RED inputs
 // (primitive_d0_refusal_execution_note); subject universe derived across all five surfaces
-// including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1: measurement
+// including InterpreterDispatch from gunbc.v1.v1_interpreter_primitive_surface. D1: measurement
 // scaffold deleted, primitive_surface_census_derived absorbs interpreter roster. Open denominator
 // counted by primitive_d0_open_denominator_receipt_holds and
 // primitive_d0_derived_rows_missing_identity_count.

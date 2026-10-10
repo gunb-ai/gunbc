@@ -347,7 +347,7 @@ fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<S
 // SO THE CHOICE IS THE CALLER'S AND IT IS NAMED. A fire-and-forget start that nobody will interrogate
 // keeps --collect and leaves no residue. A caller that must later say WHY the unit ended, or which
 // attempt it was started for, takes the retained form and owes an explicit reset of the unit when it
-// is done with it -- gunbc.runner_microvm_lifecycle_realize does exactly that after its teardown
+// is done with it -- gunbc.runner.runner_microvm_lifecycle_realize does exactly that after its teardown
 // readbacks. Making it a flag on one operation would have hidden that obligation.
 // ITS RunTransientAndWait OPERATION CANNOT SERVE PEAK OBSERVATION, AND THE REASON IS ITS --quiet.
 // run.c at v255 prints "Finished with result:" and "Memory peak:" only under

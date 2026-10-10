@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_slot_reserve
+module gunbc.runner.runner_microvm_slot_reserve
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second }
@@ -19,22 +19,22 @@ import product.fabric.selection {
   DispatchInputs, AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
   OperatingCostMeasured, NoFeasibleAlternativeUse,
 }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
-import gunbc.runner_fleet_ci_posture {
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_fleet_ci_posture {
   fleet_ci_posture, fleet_ci_posture_ref, fleet_ci_github_terms_ref, fleet_ci_customer_profile_ref,
   fleet_ci_data_handling_profile_ref, fleet_ci_prohibited_use_disposition, fleet_ci_sanctions_disposition,
   fleet_ci_export_disposition,
 }
-import gunbc.runner_microvm_slot_controller { environment_value, systemd_invocation_id_env_name }
+import gunbc.runner.runner_microvm_slot_controller { environment_value, systemd_invocation_id_env_name }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { Usd }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.fabric.candidate_field { CandidateField }
 import product.fabric.selection { CandidateOffer }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_executor_class { fleet_cell_sanction, capacity_admission_wire }
-import gunbc.fabric_control_plane {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_executor_class { fleet_cell_sanction, capacity_admission_wire }
+import gunbc.fabric.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, BudgetRefused,
   ReservationLost, PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
@@ -42,16 +42,16 @@ import gunbc.fabric_control_plane {
   fabric_hold_owner, fabric_money_reservation_ref,
   permit_standing_wire, money_refusal_wire, cas_store_failure_wire, offer_candidacy_wire,
 }
-import gunbc.runner_microvm_shakedown {
+import gunbc.runner.runner_microvm_shakedown {
   microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account,
   microvm_shakedown_maximum_buy_order, microvm_shakedown_route, microvm_shakedown_work,
   microvm_shakedown_demand_id,
 }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
   microvm_slot_reserve_receipt_path, microvm_unit_receipt_path,
 }
-import gunbc.runner_microvm_slot_start {
+import gunbc.runner.runner_microvm_slot_start {
   MicrovmUnitStartSubject, MicrovmSlotStartRun, microvm_unit_start_run, microvm_slot_start_text,
   microvm_slot_start_admitted,
 }
@@ -60,21 +60,21 @@ data runner_microvm_slot_reserve_disposition: ConstructionMechanism = SingleAuth
 
 // THE SHAKEDOWN CELL IS RESERVED BY A BROKER, AND THE SLOT CONTROLLER ONLY OBSERVES IT.
 //
-// The slot controller (gunbc.runner_microvm_slot_controller observe_reservation) re-reads the
+// The slot controller (gunbc.runner.runner_microvm_slot_controller observe_reservation) re-reads the
 // allocation store for the shakedown demand and offer and refuses every attempt as
-// ReservationNotObserved when nothing holds the cell. Nothing did: gunbc.fabric_control_plane's
+// ReservationNotObserved when nothing holds the cell. Nothing did: gunbc.fabric.fabric_control_plane's
 // route -- partition, priced selection, money encumbrance, hold CAS -- had no production caller.
 // This module is that caller, and it calls the route as it stands: broker_reserve_for_demand, with
 // no second reservation path and no hand-written slot file.
 //
 // THE BROKER IS NOT THE CONTROLLER (DESIGN 3b keeps broker and tenant distinct parties on the
 // fabric route): it runs as its own root unit, gunbc-microvm-slot-reserve.service
-// (gunbc.runner_microvm_slot_unit), started by the fleet-converge mode microvm_slot_reserve BEFORE
-// microvm_slot_start. It is root because the store is root-only (gunbc.fabric_allocation_store_substrate)
+// (gunbc.runner.runner_microvm_slot_unit), started by the fleet-converge mode microvm_slot_reserve BEFORE
+// microvm_slot_start. It is root because the store is root-only (gunbc.fabric.fabric_allocation_store_substrate)
 // and a job-user-writable reservation would be one the root controller believes.
 //
 // EVERYTHING IT RESERVES IS DERIVED HERE, INSIDE THE ROOT PROCESS: the slot from the shakedown slot
-// row, the demand and the offer from gunbc.runner_microvm_shakedown -- the same authority the
+// row, the demand and the offer from gunbc.runner.runner_microvm_shakedown -- the same authority the
 // controller reads, so the hold owner written here is the one the controller compares against -- the
 // sanction from the slot, the account from the demand. The starter supplies nothing but the request
 // to start one fixed unit.
@@ -146,7 +146,7 @@ fn microvm_shakedown_broker_decide(
 // spills or is never backed up, so those paths take the host location, which is where they would be.
 fn fleet_ci_on_host_path() -> ProviderPathStanding {
   ProviderPathLocated {
-    operator: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "fabric_execution_slot_identities"),
+    operator: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "fabric_execution_slot_identities"),
     jurisdiction: fleet_ci_posture_ref(),
     evidence: fleet_ci_posture_ref(),
   }
@@ -212,7 +212,7 @@ fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmpt
 }
 
 // THE DISPATCH COSTS ARE THE OFFER'S OWN PRICING, NOT NEW OBSERVATIONS. The fleet prices its own cells
-// at nothing (gunbc.runner_microvm_shakedown microvm_shakedown_offer quotes zero), so every cost
+// at nothing (gunbc.runner.runner_microvm_shakedown microvm_shakedown_offer quotes zero), so every cost
 // component is zero and cites the same slot observation the offer does. THE SHAKEDOWN IS THE FIRST
 // EXERCISE OF ITS ROUTE (product.fabric.route_readiness ExerciseOfRoute): a route that could only be
 // used once already exercised could never be exercised, so readiness admits it for this one work, and
@@ -226,7 +226,7 @@ fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField
     sanctions: microvm_shakedown_sanctions(),
     active: fleet_ci_posture,
     scope: microvm_shakedown_scope(slot: slot),
-    decision_receipt: decl_ref(module_path: "gunbc.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
+    decision_receipt: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
     exercises: [],
     readiness: ExerciseOfRoute { route: microvm_shakedown_route(), work: work.id },
     at: 0,
@@ -357,7 +357,7 @@ fn shakedown_broker_reserved(outcome: ShakedownBrokerOutcome) -> Bool {
 
 // ── the start, from the job ─────────────────────────────────────────────────────────────────────
 
-// THE STARTER IS THE SLOT START'S DISCIPLINE OVER THE BROKER UNIT (gunbc.runner_microvm_slot_start
+// THE STARTER IS THE SLOT START'S DISCIPLINE OVER THE BROKER UNIT (gunbc.runner.runner_microvm_slot_start
 // microvm_unit_start_run): refuse if the unit is already active, bind to the NEW InvocationID the start
 // produced, wait bounded, and read the receipt that invocation wrote. It checks the job is on the
 // shakedown slot's host first, because the unit exists only there.
@@ -393,7 +393,7 @@ fn microvm_slot_reserve_ci_wet() -> ProcessExit {
 // ── how the reservation ends ────────────────────────────────────────────────────────────────────
 
 // THE RESERVATION IS NOT RELEASED BY THIS CHANGE, AND THE REASON IS A MISSING FACT, NOT A MISSING CALL.
-// gunbc.fabric_control_plane release_reserved_cell_at releases the money encumbrance before it frees
+// gunbc.fabric.fabric_control_plane release_reserved_cell_at releases the money encumbrance before it frees
 // the cell, and it must be handed the account the reservation ADVANCED -- the one carrying this
 // reservation's encumbrance entry. No ledger for the fleet-ci account is persisted anywhere: the
 // broker's advanced account lives in its receipt and dies with its process. A release run in a later
@@ -403,5 +403,5 @@ fn microvm_slot_reserve_ci_wet() -> ProcessExit {
 // same demand and offer, so the controller recognises the one standing hold for each attempt, and
 // re-use of the cell is re-use of the hold.
 data microvm_shakedown_reservation_release_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the slot controller's teardown (gunbc.runner_microvm_slot_controller, after run_controller settles the cell) or an operator release mode, calling gunbc.fabric_control_plane release_reserved_cell_at -- or settle_reserved_cell_at once an attempt produces a SettlementReceipt -- for the shakedown reservation this module commits. WHAT REMAINS: the fleet-ci money account is not persisted, so no later process can present the account carrying this reservation's encumbrance, and release_money refuses a fresh one. TRIGGER: a persisted fleet-ci account ledger that the broker writes on commit and the releaser reads back, and a release path that calls release_reserved_cell_at with that account and the acquired generation, executed on srv1 with a receipt showing the cell freed. SUFFICIENT FOR deleting this row. NOT satisfied by a release that frees the cell without the money step, by a hand-deleted slot file, or by a witness over a supplied account." as NonEmptyStr,
+  description: "NAMED CONSUMER: the slot controller's teardown (gunbc.runner.runner_microvm_slot_controller, after run_controller settles the cell) or an operator release mode, calling gunbc.fabric.fabric_control_plane release_reserved_cell_at -- or settle_reserved_cell_at once an attempt produces a SettlementReceipt -- for the shakedown reservation this module commits. WHAT REMAINS: the fleet-ci money account is not persisted, so no later process can present the account carrying this reservation's encumbrance, and release_money refuses a fresh one. TRIGGER: a persisted fleet-ci account ledger that the broker writes on commit and the releaser reads back, and a release path that calls release_reserved_cell_at with that account and the acquired generation, executed on srv1 with a receipt showing the cell freed. SUFFICIENT FOR deleting this row. NOT satisfied by a release that frees the cell without the money step, by a hand-deleted slot file, or by a witness over a supplied account." as NonEmptyStr,
 )

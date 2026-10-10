@@ -15,7 +15,7 @@
 //! `gate_reported_success_on_a_phase_it_refused`). A relation whose defect is invisible needs a
 //! discriminating control that EXECUTES it, and the only Rust the repository documents a local
 //! execution route for is the library: `cargo test --release -p v1-compiler --lib`
-//! (`gunbc.repo_self_build` `repo_self_test_command`). A `#[cfg(test)]` module beside the
+//! (`gunbc.repo.repo_self_build` `repo_self_test_command`). A `#[cfg(test)]` module beside the
 //! binary would compile on the merge path and run on no route at all.
 
 use serde::{Deserialize, Serialize};

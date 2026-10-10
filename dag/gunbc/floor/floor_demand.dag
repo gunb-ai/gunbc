@@ -1,4 +1,4 @@
-module gunbc.floor_demand
+module gunbc.floor.floor_demand
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
@@ -24,17 +24,17 @@ data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THE FLOOR JOB DEMANDS OF A MACHINE, IN ONE PLACE, AS RECEIPTS RATHER THAN AS PROSE.
 //
-// Three authorities each carried a piece of this before: gunbc.runner_slot_allocation held the
-// measured peak the cell wall gates on, gunbc.ci_floor_measurement held the per-run cgroup peak
+// Three authorities each carried a piece of this before: gunbc.runner.runner_slot_allocation held the
+// measured peak the cell wall gates on, gunbc.ci.ci_floor_measurement held the per-run cgroup peak
 // carrier, and the 2026-09-12 uncensored measurement that sized the 26/25 GiB cell lived only in a
-// comment beside the literal it justified. The floor's Work (gunbc.fabric_witness_run) stated eight
+// comment beside the literal it justified. The floor's Work (gunbc.fabric.fabric_witness_run) stated eight
 // threads and nothing else, so anything sizing a machine for it -- the cell, a microVM guest --
 // had to read the demand out of a paragraph. This module is the demand's home: the receipts are
 // typed, the lower bound is a fold over them, and the Work's envelope and the guest shape both read
 // it from here. It is a leaf on purpose, so that the slot allocation, the CI measurement module and
 // the floor's Work can all import it without a cycle.
 
-// ── the per-run cgroup peak carrier (moved here from gunbc.ci_floor_measurement) ────────────────
+// ── the per-run cgroup peak carrier (moved here from gunbc.ci.ci_floor_measurement) ────────────────
 //
 // AN OBSERVATION IS EVIDENCE ONLY TOGETHER WITH THE CONDITIONS IT WAS TAKEN UNDER. armed_memory_high
 // is what the cgroup's memory.high WAS for that run, so a peak stays decidable against the line it
@@ -107,7 +107,7 @@ fn floor_run_peak_within_throttle_overshoot(peak: ByteSize, high: ByteSize) -> B
 // that and says nothing about how far past it the workload wanted to go. Both bound the CHARGE the
 // cgroup reached, so both feed the charge-ceiling fold. Only an uncensored reading may SIZE anything, which is why
 // gunbc_floor_measured_peak_observation is drawn from the uncensored receipt alone and
-// gunbc.runner_slot_allocation's wall guards its input with gunbc_floor_measured_peak_is_uncensored.
+// gunbc.runner.runner_slot_allocation's wall guards its input with gunbc_floor_measured_peak_is_uncensored.
 type FloorPeakReadingKind
   = UncensoredPeak { peak: ByteSize }
   | ThrottlePin { peak: ByteSize, armed_line: ByteSize }
@@ -140,7 +140,7 @@ fn floor_peak_reading_kind(receipt: FloorRunCgroupPeakReceipt) -> FloorPeakReadi
 // the scope's 22.74 GiB memory.peak, the ruling could not say which level the larger reading named,
 // and it sized the cell to the larger one in the fail-closed direction. The heartbeat figure
 // survives only as a rounded rendering, so the PRECISE byte count typed here is the scope's, and
-// the ruling's rounding to 25 GiB is carried by gunbc.runner_slot_allocation's memory_high row,
+// the ruling's rounding to 25 GiB is carried by gunbc.runner.runner_slot_allocation's memory_high row,
 // where it always was. Nothing here re-derives that row; the receipt is what it rested on.
 data gunbc_floor_uncensored_demand_receipt: FloorRunCgroupPeakReceipt = FloorRunCgroupPeakMeasured {
   run_id: "srv1 systemd-run scope, 2026-09-12, commit 975706293d0f",
@@ -163,7 +163,7 @@ data gunbc_floor_uncensored_demand_receipt: FloorRunCgroupPeakReceipt = FloorRun
 // about demand growth, and the fold below carries it into every consumer as the lower bound it is.
 // THE SLOT ENVELOPE THESE RECEIPTS WERE TAKEN UNDER, carried here because the live row moved. On
 // 2026-10-09 the v1 withdrawal (gunbc.rung_drop v1_required_lanes_withdrawn) deleted the floor from
-// the required gate and the operator re-ruled gunbc.runner_slot_desired to 22 GiB MemoryMax / 21 GiB
+// the required gate and the operator re-ruled gunbc.runner.runner_slot_desired to 22 GiB MemoryMax / 21 GiB
 // MemoryHigh / no swap for the native emit-and-build job. The receipts below are findings about the
 // 2026-09-12 envelope (26 GiB max, 25 GiB high) the floor ran in, and a claim that joined them to
 // the live row would from that day assert a relation between a dead instrument and a slot it never
@@ -184,7 +184,7 @@ fn gunbc_floor_demand_receipts() -> List<FloorRunCgroupPeakReceipt> {
 }
 
 // THE SIZING INPUT IS THE UNCENSORED RECEIPT AND NOTHING ELSE. These two rows keep the names
-// gunbc.runner_slot_allocation has gated on since 2026-08-17 (they moved here; they did not
+// gunbc.runner.runner_slot_allocation has gated on since 2026-08-17 (they moved here; they did not
 // change meaning), and they are DERIVED from the receipt rather than typed beside it, so the
 // wall's input and the receipt cannot disagree. The armed line is not re-exported as a third
 // row: the reading kind below carries it inside ThrottlePin, and nothing reads it as a bare figure.
@@ -237,7 +237,7 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // than a sentence, and so the derivation below can be checked against the components it folds.
 // Every field is the kernel's own counter as the heartbeat printed it, in bytes; nothing is summed
 // here. The stall rate is the heartbeat's own stall clause beside the memory_stat line, and it rides
-// the carrier that clause's producer returns -- gunbc.memory_stall_refusal
+// the carrier that clause's producer returns -- gunbc.host.memory_stall_refusal
 // memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
 // instrument hold one representation of one quantity.
 // THE SEAM A BEAT WAS SAMPLED IN, AS A CLOSED VOCABULARY, so which phase established the peak is
@@ -516,7 +516,7 @@ type RunSwapPolicy
 // the dangling declaration DESIGN 3c refuses, and this module already carries one declared
 // frontier for exactly that reason.
 data floor_receipt_uncarried_observation_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: receipt_peak_reading_standing, or the fit fold in gunbc.runner_microvm that judges demand plus allowance against the cell remainder -- whichever of the two is the first to need a fact this receipt cannot currently state. TRIGGER: the field is CARRIED on FloorMemoryStatBeat or FloorHeldSetReceipt and READ by one of those folds, per field; a field carried and unread does not retire its line. SUFFICIENT FOR deleting the corresponding line above, and the row retires when every line has gone. NOT satisfied by printing the value in the job log -- PSI and oom_kill are printed today and that is precisely the state this row records. Process overlap's instrument now exists (floor_cgroup_stat_beat procs=), so its line is a transcription obligation like the others." as NonEmptyStr,
+  description: "NAMED CONSUMER: receipt_peak_reading_standing, or the fit fold in gunbc.runner.runner_microvm that judges demand plus allowance against the cell remainder -- whichever of the two is the first to need a fact this receipt cannot currently state. TRIGGER: the field is CARRIED on FloorMemoryStatBeat or FloorHeldSetReceipt and READ by one of those folds, per field; a field carried and unread does not retire its line. SUFFICIENT FOR deleting the corresponding line above, and the row retires when every line has gone. NOT satisfied by printing the value in the job log -- PSI and oom_kill are printed today and that is precisely the state this row records. Process overlap's instrument now exists (floor_cgroup_stat_beat procs=), so its line is a transcription obligation like the others." as NonEmptyStr,
 )
 
 // run_completed MEANS THE MEASURED WORKLOAD RAN TO ITS END, NOT THAT THE FLOOR RETURNED CLEAN,
@@ -609,7 +609,7 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // ReceiptTorn carries the overflow from the beat whose held set does not sum. Different facts,
 // different remedies, no prose to parse.
 data floor_peak_attribution_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- DESIGN 3c asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
+  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- DESIGN 3c asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
 )
 
 type PeakUnattributableCause
@@ -763,7 +763,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
   run_completed: false,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -799,14 +799,14 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 //
 // SWITCHING THE STANDING MOVES TWO DERIVED QUANTITIES, NOT ONE, and the second is easy to miss
 // because nothing reds when it changes. The demand is the obvious one: floor_memory_requirement
-// reads this receipt's peak. The other is the GUEST CACHE ALLOWANCE -- gunbc.runner_microvm
+// reads this receipt's peak. The other is the GUEST CACHE ALLOWANCE -- gunbc.runner.runner_microvm
 // gunbc_runner_microvm_guest_cache_allowance derives it from receipt_last_unstalled_beat, which
 // selects a different beat on this receipt than on its predecessor, so the allowance moves with
 // the standing and in the opposite direction to the demand.
 //
 // THE PRODUCERS ARE NAMED AND THE FIGURES ARE NOT COPIED HERE (DESIGN 6; review 69874). An earlier
 // revision of this note carried both moves as byte counts, which is the same defect this change
-// REMOVES from gunbc.runner_microvm's allowance note one file over -- deleting a transcribed beat
+// REMOVES from gunbc.runner.runner_microvm's allowance note one file over -- deleting a transcribed beat
 // figure there and minting transcribed figures here would have moved the rot rather than ending
 // it, and the next standing switch would falsify these sentences exactly as it falsified that one.
 // Each quantity lives in its one home: the demand in this receipt's rows through
@@ -824,7 +824,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // floor executed preparation and the whole claim-evaluation fold -- twenty-three beats, the
 // anonymous set rising to its peak and falling again as the fold released scopes -- and the
 // refusal came afterwards, from an unrelated lane (a local-repo wet terminal in
-// test.claim.mtcollins1_census_image_local_wet, a module this change does not touch). The peak is
+// test.claim.machine_intake.mtcollins1_census_image_local_wet_test, a module this change does not touch). The peak is
 // therefore not truncated, which is the only question that field's consumer asks.
 //
 // STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26/25 GiB row with swap available,
@@ -835,7 +835,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // PeakIsLowerBound with the stalling peak beat as its cause rather than leaving a reader to
 // compare stall figures by eye. A cell whose MemoryHigh sits under the workload cannot
 // produce an uncensored demand reading by construction; only a run with no throttle line and no
-// swap can, which is the shape gunbc.runner_slot_allocation's shakedown slot declares and which
+// swap can, which is the shape gunbc.runner.runner_slot_allocation's shakedown slot declares and which
 // nothing can dispatch yet.
 data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeldSetReceipt {
   run_id: "35652545009",
@@ -1008,7 +1008,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -1104,7 +1104,7 @@ fn peak_standing_from_swap_policy(policy: RunSwapPolicy) -> PeakReadingStanding 
 // 35815214135, job 107035188664, runner unit actions-runner@srv4-14.service, a pull_request run of
 // gunbc#12088 at 7c97cb2b62). WHAT IT MEASURES IS A COMBINED BASE, and the base is named so a reader
 // cannot credit either change with the other's share: main after gunbc#12081 (the floor reads the
-// corpus once for both prepares) plus gunbc#12088 (the diff observer resolves gunbc.ci_diff_policy
+// corpus once for both prepares) plus gunbc#12088 (the diff observer resolves gunbc.ci.ci_diff_policy
 // instead of the whole CI spec), with gunbc#12078's instrument.
 //
 // ROWS ARE EVERY stat beat the run printed, in the order printed, and `beat` is the SAMPLE'S ORDINAL in
@@ -1134,7 +1134,7 @@ fn peak_standing_from_swap_policy(policy: RunSwapPolicy) -> PeakReadingStanding 
 //
 // WHAT IT DOES NOT ESTABLISH. It is ONE WARM REPEATED run on a CI host slot -- the job's toolchain
 // build hit the shared compilation cache -- so it says nothing about a cold attempt, whose accounting
-// is gunbc.floor_cold_build_receipt's and is not mixed in here. It ran at the host slot's 26 GiB row,
+// is gunbc.floor.floor_cold_build_receipt's and is not mixed in here. It ran at the host slot's 26 GiB row,
 // not at the 28 GiB shakedown slot, and not in a fresh attempt cgroup: the leaf is the runner
 // service's own, whose memory.peak is history, which is why this receipt carries memory.stat beats
 // and never that peak. The slot's MemorySwapMax is declared, not read, and stated as such below --
@@ -1430,13 +1430,13 @@ data gunbc_floor_memory_stat_receipt_2026_09_23: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
 // THE WORK STATES WHAT IT MUST HOLD AND NOTHING MORE. The cache a guest is granted above this is a
 // fact about the GUEST -- how much room its kernel gets for file pages before it starts to thrash
-// -- and it lives with the guest shape (gunbc.runner_microvm
+// -- and it lives with the guest shape (gunbc.runner.runner_microvm
 // gunbc_runner_microvm_guest_cache_allowance), derived from the receipt's last unstalled beat.
 // Putting it here would make every offer in the fleet answer for a policy about one realization.
 fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirement? {
@@ -1465,7 +1465,7 @@ fn floor_memory_requirement() -> MemoryRequirement? {
 //
 // THE FLOOR'S STORAGE DEMAND WAS NEVER STATED ANYWHERE, and on a shared host slot nothing forced
 // the question: the slot writes into a filesystem with hundreds of gibibytes free and the disk
-// axis "admits nothing numeric" in gunbc.runner_slot_allocation. A microVM guest has exactly the
+// axis "admits nothing numeric" in gunbc.runner.runner_slot_allocation. A microVM guest has exactly the
 // workspace image it is handed, so the question has to be answered before one is sized. It is
 // answered as a SUM OF MEASURED COMPONENTS, each carrying the architecture it was measured on,
 // because the components come from different places and only some of them are arm64 readings:
@@ -1487,7 +1487,7 @@ fn floor_memory_requirement() -> MemoryRequirement? {
 // The sum is a LOWER BOUND on the guest's working set for the same reason the memory figure is:
 // it counts what the job materialises and not the transient it passes through (rustup extracts
 // each component beside its tarball, cargo unpacks beside its .crate). The arm64 cold-build receipt
-// planned in gunbc.floor_cold_build_receipt replaces the proxy components with readings from the
+// planned in gunbc.floor.floor_cold_build_receipt replaces the proxy components with readings from the
 // guest itself, and this note's "proxy" rows delete when it lands.
 type StorageComponentReceipt {
   component: NonEmptyStr
@@ -1510,7 +1510,7 @@ fn storage_components_total(components: List<StorageComponentReceipt>) -> Checke
 }
 
 // ROUNDED UP TO WHOLE-GIBIBYTE GRAIN, in the fail-closed direction the corpus already applies to
-// demand figures (gunbc.whole_corpus_compile_admission, gunbc.runner_slot_allocation): rounding
+// demand figures (gunbc.whole_corpus_compile_admission, gunbc.runner.runner_slot_allocation): rounding
 // down would admit a workspace the measured sum does not fit. THE ROUNDER IS std.measure
 // round_up_to_grain AND THIS IS ITS GIBIBYTE BINDING, not a second rounder: the checked
 // `n + (g - 1)` this function used to carry fixed the grain, so a policy with a declared grain
@@ -1776,7 +1776,7 @@ fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttrib
   }
 }
 
-// Moved here from gunbc.fabric_witness_run (gunbc#12788): the floor's execution demand is a fact
+// Moved here from gunbc.fabric.fabric_witness_run (gunbc#12788): the floor's execution demand is a fact
 // about floor demand. Each declaration below keeps its own rationale.
 //
 // WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
@@ -1793,14 +1793,14 @@ fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttrib
 // CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
 // has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
 // the modeled decision the broker will consume, not a live wall; calling it enforcement would be
-// the rung inflation recorded on gunbc.fabric_witness_run floor_work_contract (whose leading block covers affordability and the module's other unconsumed functions). NEXT-RUNG TRIGGER is the same: a broker
+// the rung inflation recorded on gunbc.fabric.fabric_witness_run floor_work_contract (whose leading block covers affordability and the module's other unconsumed functions). NEXT-RUNG TRIGGER is the same: a broker
 // fold that selects an Offer for this Demand.
 fn floor_isolation_requirement() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
 }
 
 // THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
-// decides on it: gunbc.runner_attempt_launch admits the reservation-authorized planner arm only for
+// decides on it: gunbc.runner.runner_attempt_launch admits the reservation-authorized planner arm only for
 // a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
 // reach that arm by construction. Two spellings of the domain would let the two drift apart and
 // the selection silently widen or narrow.
@@ -1836,27 +1836,27 @@ data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-f
 // THE ENVELOPE STATES MEMORY AND NOTHING ELSE, AND EACH ABSENCE HAS A REASON.
 //
 // Memory was unstated while the runner cells were sized to this very Work's
-// demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
+// demand (gunbc.runner.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
 // what the floor needed and the floor's own Work did not say, so a microVM guest
-// sized for it had nothing to read. It now reads gunbc.floor_demand: the
+// sized for it had nothing to read. It now reads gunbc.floor.floor_demand: the
 // resident held-set lower bound derived from raw memory.stat beats on the host
 // slot, and NOTHING while that is unmeasured -- a cgroup peak charges reclaimable
 // cache, so it is a ceiling rather than a demand, and stating it here would size
 // every consumer to a bet. The guest's cache allowance is the guest shape's own
-// fact (gunbc.runner_microvm), not this Work's. Stating memory has a
+// fact (gunbc.runner.runner_microvm), not this Work's. Stating memory has a
 // consequence on the offer side that is the point rather than a cost: an offer
 // that does not state memory no longer covers this Work (product.fabric.supply
 // MemoryNotOffered), so every offer that claims to run the floor must say how
 // much memory it runs it in.
 //
-// Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
+// Storage is a DECLARED FRONTIER, stated in gunbc.floor.floor_demand
 // floor_storage_demand and consumed there by the microVM shape's
 // workspace fit and the cold-build receipt plan, but NOT placed on this
 // envelope yet. product.fabric.supply compares no storage axis, so a stated
 // requirement here would be silently unchecked -- the fail-open absence of
 // observation the envelope exists to prevent -- and adding the axis to the
 // fold would make every host-slot offer refuse, because a shared host slot has
-// no storage number to offer (gunbc.runner_slot_allocation: disk admits
+// no storage number to offer (gunbc.runner.runner_slot_allocation: disk admits
 // nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
 // the floor runs on, at which point the axis joins the fold and this field
 // reads floor_storage_demand.

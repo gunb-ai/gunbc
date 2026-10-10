@@ -1,14 +1,14 @@
-module gunbc.runner_lifecycle_realize
+module gunbc.runner.runner_lifecycle_realize
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffectIntent,
   HostEffectEvidence,
   HostEffectTransport,
 }
 import std.realization_reconcile { Reconciliation, NotConverged }
-import gunbc.runner_lifecycle { RunnerSlotIdentity }
+import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -25,7 +25,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

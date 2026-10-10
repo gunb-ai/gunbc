@@ -3,8 +3,8 @@ module gunbc.fleet.printer_selection
 import std.types { String, Bool }
 import std.content_hash { sha256_hex_digest }
 import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
-import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
-import gunbc.fleet_printer_access { printer_access_code_loci }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_printer_access { printer_access_code_loci }
 
 type PrinterWorkflowSelection = PrinterSelected { printer: PhysicalAssetIdentity } | PrinterSelectionRefused
 fn select_printer(name: String) -> PrinterWorkflowSelection {

@@ -1,4 +1,4 @@
-module extdeps.cargo_config
+module extdeps.rust.cargo_config
 
 import std.types { Bool, String, List, Int }
 import extdeps.external_authority { ExternalAuthority }

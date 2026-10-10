@@ -1,4 +1,4 @@
-module v2.test.long.a4_opacity
+module v2.test.claim.long.a4_opacity_test
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile { compile_ingest_staging }

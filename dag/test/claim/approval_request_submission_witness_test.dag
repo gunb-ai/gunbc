@@ -74,7 +74,7 @@ test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
     && match parse_submission_envelope(text: "nope") { SubmissionEnvelopeUnreadable { detail: _ } => true  _ => false }
 }
 
-// THE ROUTE THE SERVER RUNS, composed the way gunbc.roadmap_serve composes it: parse, then admit
+// THE ROUTE THE SERVER RUNS, composed the way gunbc.roadmap.roadmap_serve composes it: parse, then admit
 // the parsed envelope. A wrapper doing this in the production module had no production caller.
 fn admit(text: String, keyring: ApprovalKeyringRead) -> SubmissionVerdict {
   match parse_submission_envelope(text: text) {

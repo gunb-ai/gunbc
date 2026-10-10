@@ -1,18 +1,18 @@
-module gunbc.host_converge
+module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.runner_unit {
+import gunbc.runner.runner_unit {
   runner_unit_template_name,
   runner_all_slots_unit_glob,
   runner_unit_dropin_path,
   runner_host_slots_unit_glob,
 }
 import gunbc.package_delivery { codex_runtime_version_identity_marker }
-import gunbc.ci_runner_placement {
+import gunbc.ci.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   RunnerHostDeployment,
@@ -30,8 +30,8 @@ import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
 }
-import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice, pressure_is_kill }
 import extdeps.systemd {
@@ -53,7 +53,7 @@ import extdeps.systemd.oomd {
 data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
 data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
-// THE UNIT NAME AND ITS DROP-IN DIRECTORY COME FROM gunbc.runner_unit AND ARE NO LONGER SPELLED
+// THE UNIT NAME AND ITS DROP-IN DIRECTORY COME FROM gunbc.runner.runner_unit AND ARE NO LONGER SPELLED
 // HERE. Each of these six rows carried the template name as a literal -- four by embedding it in a
 // path -- so the drop-in directory agreed with its unit by convention across six independent
 // strings. Renaming the unit would have left four drop-ins writing into a directory systemd no
@@ -108,7 +108,7 @@ data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHO
 data gunbc_fleet_pinned_binary_digest_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_converge",
+    module_path: "gunbc.host.host_converge",
     decl_name: "gunbc_fleet_pinned_binary_digest",
     field: WholeDeclaration
   }
@@ -240,7 +240,7 @@ type GunbcBinaryProvenancePolicy {
 
 // PerSlotMemoryCap is the per-slot systemd drop-in/property mechanism (dropin_path x
 // instance_glob x property x value), and the per_slot_tasks_max knob (a pids-controller
-// count; desired value owned by gunbc.runner_slot_allocation) rides it because the mechanism is property-generic — forking a
+// count; desired value owned by gunbc.runner.runner_slot_allocation) rides it because the mechanism is property-generic — forking a
 // parallel variant per property class would be the §2 duplication the shape exists to
 // avoid. The variant name and its bytes_value field over-narrow to the memory axis that
 // landed first: a §3 mislabel carried knowingly rather than a ~96-site mechanical rename
@@ -277,7 +277,7 @@ type ConvergeKnob {
 data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_converge",
+    module_path: "gunbc.host.host_converge",
     decl_name: "ConvergeKnob",
     field: WholeDeclaration
   }
@@ -286,7 +286,7 @@ data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
 data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_converge",
+    module_path: "gunbc.host.host_converge",
     decl_name: "HostConverge",
     field: WholeDeclaration
   }
@@ -527,7 +527,7 @@ fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 
 // RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong
 // identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy;
-// EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt
+// EXECUTION AUTHORITY is gunbc.fleet.fleet_converge_cli converge_provider_runtime_codex_receipt
 // (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize
 // interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup
 // P1c remains assimilation-time ensure.
@@ -562,9 +562,9 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 //
 // A KNOB IS THE DESIRED REPRESENTATION, NOT ITS APPLICATION OR READBACK (review F-R2, 2026-09-19).
 // Nothing in production carries this CPU drop-in through to a host today, for either arm:
-// gunbc.host_axis_caps caps_managed_dropin_paths enrols the memory, swap, high-water and tasks
-// drop-ins and not gunbc_runner_per_slot_cpu_dropin_path; gunbc.host_runner_memory_provision
-// selects its three memory knobs and has no live apply; and gunbc.runner_unit_live_read
+// gunbc.host.host_axis_caps caps_managed_dropin_paths enrols the memory, swap, high-water and tasks
+// drop-ins and not gunbc_runner_per_slot_cpu_dropin_path; gunbc.host.host_runner_memory_provision
+// selects its three memory knobs and has no live apply; and gunbc.runner.runner_unit_live_read
 // converge_target_live_verdict answers a verdict only for the memory properties, so a CPUQuota
 // target has no effective-value reader. This knob therefore does NOT clear a previously installed
 // per-slot quota by production convergence; it declares what a converged unit must carry.

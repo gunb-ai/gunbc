@@ -15,7 +15,7 @@ import extdeps.bmc.ipmi_chassis_control {
 // THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
 // their response shapes are interface facts owned by extdeps.bmc (ipmi, ipmi_chassis_control,
 // megarac, ipmitool_observed_output); this module never re-declares one. It is consumed by the dry
-// operation realizations (gunbc.bmc_dry_realization, gunbc.machine_intake_mtcollins1_boot_dry_realization)
+// operation realizations (gunbc.bmc_dry_realization, gunbc.machine_intake.mtcollins1_boot_dry_realization)
 // and is written to be consumed unchanged by a protocol-speaking simulator later: every transition is
 // pure, time is an INPUT, and persistence is the world value.
 type BmcPower
@@ -60,7 +60,7 @@ type BmcSelRecord {
 
 // THE READ-ONLY RECORD SURFACES A CONTROLLER SERVES BESIDE ITS STATE, one field per upstream surface
 // and only the ones a prior-life archive reads (docs/plans/machine-intake-design.md §5; consumed by
-// gunbc.machine_intake_prior_life_boundary). Each is Absent when a world does not model it, so a
+// gunbc.machine_intake.prior_life_boundary). Each is Absent when a world does not model it, so a
 // reader that needs a surface refuses rather than reading an unmodeled surface as an empty record;
 // bmc_world() leaves all five unmodeled, and no transition in this module changes any of them.
 // - manager_date_time: the Redfish Manager resource's DateTime property (Manager.v1_0_0), as the

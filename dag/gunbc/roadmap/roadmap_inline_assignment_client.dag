@@ -1,4 +1,4 @@
-module gunbc.roadmap_inline_assignment_client
+module gunbc.roadmap.roadmap_inline_assignment_client
 
 import extdeps.languages.typescript.program {
   ts_quoted_field, TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_index, ts_call,

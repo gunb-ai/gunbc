@@ -1,4 +1,4 @@
-module v2.test.manual.sg_rc_layering
+module v2.test.claim.manual.sg_rc_layering_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

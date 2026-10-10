@@ -1,8 +1,8 @@
-module test.claim.provider_guest_incarnation_witness
+module test.claim.runner.provider_guest_incarnation_witness_test
 
 import std.types { Bool, List, String }
 import product.fabric.isolation { IsolationGuarantee, AttemptScopedSecrets, DefaultDenyEgress }
-import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
 import gunbc.runner.runner_isolation_admission { SandboxOffer, DedicatedKernelSandboxProvider, GeneralCiWorkload }
 import gunbc.runner.provider_guest_incarnation {
   IncarnationAdmitted, IncarnationAdmissionRefused, admit_offer_on_host, excuse_covers,
@@ -14,7 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // NO INCARNATION IS ESTABLISHED IN THIS TREE: its rebuild receipt has no producer until the reset loop
-// lands, and test.claim.provider_rebuild_receipt_forged_probe_witness is the executed red that one
+// lands, and test.claim.runner.provider_rebuild_receipt_forged_probe_witness_test is the executed red that one
 // cannot be written instead. What can be exercised is what an incarnation WOULD offer once one
 // exists, read from the launch's own guarantee lists, against the production admission.
 

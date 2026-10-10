@@ -1,8 +1,8 @@
-module test.claim.srv3_host_effect_realize_witness
+module test.claim.srv3.srv3_host_effect_realize_witness_test
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, FilePath }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   OsInstallActuatorToolchainEnsure,
   HostOs,
   BmcController,
@@ -12,16 +12,16 @@ import gunbc.host_effect {
   BootstrapFragment,
   ThinInvocation,
 }
-import gunbc.host_effect_realize {
+import gunbc.host.host_effect_realize {
   host_effect_apply,
   srv3_argv_with_bin,
 }
-import gunbc.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_intent { srv1_host }
 import std.realization_reconcile { NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
-import extdeps.apt { apt_installed_bin_path, apt_bin_dir }
-import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import extdeps.package_managers.apt { apt_installed_bin_path, apt_bin_dir }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

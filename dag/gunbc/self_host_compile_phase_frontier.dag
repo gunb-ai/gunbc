@@ -6,7 +6,7 @@ import extdeps.git.inspect { CommitSha }
 import extdeps.git.object_store { GitSha1ObjectId }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id, floor_discovery_tree_identity }
-import extdeps.cargo_diagnostic {
+import extdeps.rust.cargo_diagnostic {
   RustcCodedDiagnostic,
   RustcDiagnosticIdentity,
   RustcCoded,
@@ -29,7 +29,7 @@ import extdeps.languages.rust.compiler_phases {
   rustc_error_code_phase,
   rustc_phase_classification_policy_digest
 }
-import tools.emission_entry_instrument {
+import gunbc.instruments.emission_entry_instrument {
   EmissionMeasurement,
   EmissionMeasured,
   RustfmtParseObservation,
@@ -1337,7 +1337,7 @@ fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
 // measuring a whole-closure entry, which gunbc.whole_corpus_compile_admission refuses on budget --
 // so an execution surface exposing a real, readable cgroup memory limit makes the measurement
 // TAKEABLE and leaves the epoch condition standing. The figures behind that refusal belong to that
-// authority and to gunbc.host_budget_source memory_stall_refusal and are not transcribed here.
+// authority and to gunbc.host.host_budget_source memory_stall_refusal and are not transcribed here.
 //
 // AND THE CONSUMER IS BUILT, NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate
 // -- the live measured population joined to the latest receipt through this module's own fold and
@@ -1690,14 +1690,14 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
     regression_repairs: [],
     reclassified_predecessor_board: none,
     producer: PhaseBoardProducer {
-      module_path: "tools.emission_entry_instrument",
+      module_path: "gunbc.instruments.emission_entry_instrument",
       function: "measure_entry_emission",
-      entry: "src/v2/compiler/00_compile.dag"
+      entry: "src/v2/compiler/compile.dag"
     }
   )
 }
 
-// Receipt 1 was produced by the same one-entry instrument (tools.emission_entry_instrument
+// Receipt 1 was produced by the same one-entry instrument (gunbc.instruments.emission_entry_instrument
 // measure_entry_emission) in BuildBuddy invocation 44d90e35-ccba-41d1-9a90-928a914b26a2, over the
 // merged main tree at eced9d24c599 -- the first tree carrying the #9828 + #9813 + #9829
 // composition. That composition was never branch-verified: main's own green required run at this
@@ -1929,20 +1929,20 @@ fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
     regression_repairs: [],
     reclassified_predecessor_board: none,
     producer: PhaseBoardProducer {
-      module_path: "tools.emission_entry_instrument",
+      module_path: "gunbc.instruments.emission_entry_instrument",
       function: "measure_entry_emission",
-      entry: "src/v2/compiler/00_compile.dag"
+      entry: "src/v2/compiler/compile.dag"
     }
   )
 }
 
-// Receipt 2 was produced by the same one-entry instrument (tools.emission_entry_instrument
+// Receipt 2 was produced by the same one-entry instrument (gunbc.instruments.emission_entry_instrument
 // measure_entry_emission) in a local invocation over the branch tree at 66765317ec, the tip of the
 // XL-N String-carrier lane. TWO things change at this receipt and they are recorded separately
 // because the design requires it.
 //
 // THE EPOCH CHANGES, AND THE CAUSE IS THE INSTRUMENT, NOT THE TOOLCHAIN. The measured
-// `cargo check` now PINS the host triple on the invocation (tools.emission_entry_instrument
+// `cargo check` now PINS the host triple on the invocation (gunbc.instruments.emission_entry_instrument
 // measure_cargo_half, found by review on gunbc#9857), where both prior receipts recorded
 // TargetDefaultedToHost. comparison_inputs_same therefore answers false against receipt_1 even
 // though cargo, rustc, the triple, the profile and the classification policy are all unchanged,
@@ -2047,9 +2047,9 @@ fn receipt_2_66765317_receipt() -> CompilePhaseFrontierReceipt {
     regression_repairs: [],
     reclassified_predecessor_board: Present { value: receipt_1.board },
     producer: PhaseBoardProducer {
-      module_path: "tools.emission_entry_instrument",
+      module_path: "gunbc.instruments.emission_entry_instrument",
       function: "measure_entry_emission",
-      entry: "src/v2/compiler/00_compile.dag"
+      entry: "src/v2/compiler/compile.dag"
     }
   )
 }
@@ -2064,7 +2064,7 @@ fn receipt_2_66765317_receipt() -> CompilePhaseFrontierReceipt {
 //
 // THE EPOCH DOES NOT CHANGE, AND THE INSTRUMENT CHANGE UNDER THIS RECEIPT IS WHY THAT CLAIM IS
 // CHECKABLE. The cargo half now copies the repo's rust-toolchain.toml into the scratch crate
-// before invoking cargo (tools.emission_entry_instrument measure_cargo_half), so the measured
+// before invoking cargo (gunbc.instruments.emission_entry_instrument measure_cargo_half), so the measured
 // channel is pinned by construction rather than by host default. Every recorded comparison field
 // is nevertheless IDENTICAL to receipt_2 -- cargo 1.93.0, rustc 1.93.0, the pinned triple, the
 // check/dev profile, the classification policy digest -- because receipt_2's census was already
@@ -2141,9 +2141,9 @@ fn receipt_3_5ee4892b_receipt() -> CompilePhaseFrontierReceipt {
     regression_repairs: [],
     reclassified_predecessor_board: none,
     producer: PhaseBoardProducer {
-      module_path: "tools.emission_entry_instrument",
+      module_path: "gunbc.instruments.emission_entry_instrument",
       function: "measure_entry_emission",
-      entry: "src/v2/compiler/00_compile.dag"
+      entry: "src/v2/compiler/compile.dag"
     }
   )
 }
@@ -2214,9 +2214,9 @@ fn receipt_4_e0d0e01e_receipt() -> CompilePhaseFrontierReceipt {
     regression_repairs: [],
     reclassified_predecessor_board: none,
     producer: PhaseBoardProducer {
-      module_path: "tools.emission_entry_instrument",
+      module_path: "gunbc.instruments.emission_entry_instrument",
       function: "measure_entry_emission",
-      entry: "src/v2/compiler/00_compile.dag"
+      entry: "src/v2/compiler/compile.dag"
     }
   )
 }

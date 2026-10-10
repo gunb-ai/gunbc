@@ -525,7 +525,7 @@ test fn an_exit_failure_tag_reads_back_to_the_fail_dispositions() -> Bool {
 }
 
 // THE TYPED-REFUSAL ROW RENDERS END TO END, AND ITS REASON SURVIVES INTO THE PUBLISHED BYTES.
-// This is the read side of the dissolve: `tools.emit_host_gate` deleted its printf narration
+// This is the read side of the dissolve: `gunbc.instruments.emit_host_gate` deleted its printf narration
 // because the claim path now carries the verdict line — so the ledger row is where a reader of
 // the artifact finds it, not a shell channel beside the FAIL line.
 test fn an_exit_failure_seed_row_renders_with_its_reason_as_detail() -> Bool {

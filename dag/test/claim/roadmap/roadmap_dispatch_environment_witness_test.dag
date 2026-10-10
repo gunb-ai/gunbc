@@ -1,4 +1,4 @@
-module test.claim.roadmap_dispatch_environment_witness_test
+module test.claim.roadmap.roadmap_dispatch_environment_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.ensure {
@@ -7,7 +7,7 @@ import gunbc.ensure {
   EnsureObserved,
   EnsureAbsent,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   GitWorkspaceCapability,
   TmuxSessionCapability,
   TmuxPipeShellCapability,
@@ -28,7 +28,7 @@ import gunbc.roadmap_execution_contract {
   execution_capability_label,
 }
 import std.upsert_decision { Noop, upsert_decision_label }
-import gunbc.roadmap_dispatch_environment {
+import gunbc.roadmap.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,
@@ -64,7 +64,7 @@ fn claim_realization() -> CapabilityRealization {
   }
 }
 
-fn admitted_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn admitted_contract() -> gunbc.roadmap.roadmap_execution_contract.WorkItemExecutionContract {
   ExecutionContract {
     validations: [
       GunbcClaimValidation {
@@ -83,8 +83,8 @@ fn grounded_receipt(
   evidence: String,
 ) -> CapabilityEnsureReceipt
   admit_callers: [
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
   ]
 {
   grounded_capability_ensure_witness_fixture(
@@ -102,7 +102,7 @@ fn grounded_receipt(
 // at all -- the fixture goes through capability_ensure_receipt, which runs the consistency table.
 fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt
   admit_callers: [
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "platform_grounded_receipts"),
   ]
 {
   grounded_capability_ensure_witness_fixture(
@@ -115,8 +115,8 @@ fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt
 
 fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt>
   admit_callers: [
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "missing_capability_realization_refuses"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "admitted_fixture"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "missing_capability_realization_refuses"),
   ]
 {
   [
@@ -136,8 +136,8 @@ fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt>
 
 fn admitted_fixture() -> DispatchEnvironmentAdmission
   admit_callers: [
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "all_required_grounded_receipts_admit"),
-    decl_ref(module_path: "test.claim.roadmap_dispatch_environment_witness_test", decl_name: "admission_receipt_is_structured_and_located"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "all_required_grounded_receipts_admit"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_dispatch_environment_witness_test", decl_name: "admission_receipt_is_structured_and_located"),
   ]
 {
   dispatch_environment_admission_decision(

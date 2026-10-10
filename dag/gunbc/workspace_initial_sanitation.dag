@@ -11,16 +11,16 @@ import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, M
 import extdeps.tools.hostname { hostname_short_read_command }
 import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_cell_converge { fabric_cell_root_path, fabric_cell_attempt_root_path, fabric_cell_slice_name }
-import gunbc.runner_microvm_lifecycle {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_root_path, fabric_cell_attempt_root_path, fabric_cell_slice_name }
+import gunbc.runner.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   process_observation_of_cgroup, cgroup_observation, resource_observation, slot_network_observation,
 }
-import gunbc.runner_microvm_lifecycle_realize { observe_cgroup_subtree, mount_point_is_within }
-import gunbc.runner_microvm_network { SlotNetworkSanitationSubject, SlotNetworkReadback, slot_network_verdict }
-import gunbc.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
+import gunbc.runner.runner_microvm_lifecycle_realize { observe_cgroup_subtree, mount_point_is_within }
+import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject, SlotNetworkReadback, slot_network_verdict }
+import gunbc.runner.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
 import product.fabric.sanitation { SanitationObservation, MountsRemoved, WritableLayersDeleted, SecretsRemoved }
 
 // Observation identity is content-addressed; observed_at separately carries freshness. A clean

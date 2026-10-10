@@ -1,4 +1,4 @@
-module v2.test.long.syntactic_audit_witness
+module v2.test.claim.long.syntactic_audit_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -13,13 +13,13 @@ test fn syntactic_audit_finds_wildcard_match_arms() -> Bool {
 
 test fn syntactic_audit_bites_translate_boundary_bounded() -> Bool {
   return complexity_linearity_syntactic_site_fired_live(
-    site: "src/v2/compiler/06_translate.dag::serialize_type_expr_boundary_bounded"
+    site: "src/v2/compiler/translate.dag::serialize_type_expr_boundary_bounded"
   )
 }
 
 test fn syntactic_audit_bites_tokenize_prefer_longer() -> Bool {
   return complexity_linearity_syntactic_site_fired_live(
-    site: "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer"
+    site: "src/v2/compiler/tokenize.dag::lex_try_rules_prefer_longer"
   )
 }
 
@@ -37,7 +37,7 @@ test fn wildcard_triage_open_domain_is_proper_subset() -> Bool {
 
 test fn wildcard_triage_eval_match_site_is_migration_debt() -> Bool {
   return complexity_linearity_wildcard_triage_for_site(
-    site: "src/v2/compiler/05_eval.dag::eval_match_node_eval"
+    site: "src/v2/compiler/eval.dag::eval_match_node_eval"
   ) == "migration-debt"
 }
 

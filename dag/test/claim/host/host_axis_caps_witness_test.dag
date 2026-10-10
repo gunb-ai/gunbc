@@ -1,9 +1,9 @@
-module test.claim.host_axis_caps
+module test.claim.host.host_axis_caps_witness_test
 
 import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
 import std.logic { Bool }
 import std.types { NonEmptyStr, String, List, list_length }
-import gunbc.host_axis_caps {
+import gunbc.host.host_axis_caps {
   CapMember,
   ControlShadowUnit,
   control_shadow_unit,
@@ -33,11 +33,11 @@ import gunbc.host_axis_caps {
 }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 
 data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
@@ -145,7 +145,7 @@ test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
 // witness_runner_memory_cap_author_script_derived WAS HERE. Its subject
 // (runner_memory_cap_author_script, the converge-side authoring script) is deleted along with the
 // converge apply arm, so the witness goes with it. What it actually checked — that the authored
-// bytes are derived from gunbc.runner_slot_allocation and carry no revert — is still checked on
+// bytes are derived from gunbc.runner.runner_slot_allocation and carry no revert — is still checked on
 // the deploy-side script, which is the one that executes, by
 // witness_cap_author_before_shadow_revert_enforced_in_axis_caps and the two wrong-order REDs
 // below.

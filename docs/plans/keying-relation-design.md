@@ -95,7 +95,7 @@ DESIGN section 3 separately rules a nickname for the dependency's semantics.
 
 ### 3b. An impostor key as the whole defect — dashboard provider state
 
-`gunbc.roadmap_dashboard_instance` `isolated_dashboard_instance` isolates source,
+`gunbc.roadmap.roadmap_dashboard_instance` `isolated_dashboard_instance` isolates source,
 binary, origin, dispatch roots, tmux server and port, then binds provider state to
 `layout.roadmap_codex_home` — the host's live credential store.
 
@@ -112,7 +112,7 @@ The repository has hit key-soundness twice and solved it in place both times:
 
 - `std.content_hash` grounds `ContentHash` as a family coproduct so cross-family
   comparison returns `ContentHashCrossFamilyIncomparable` rather than a Bool.
-- `std.occurrence_identity` and `gunbc.host_resource` are kept as separate carriers
+- `std.occurrence_identity` and `gunbc.host.host_resource` are kept as separate carriers
   specifically so `occurrence_id_eq` cannot answer `true` on a numeric coincidence
   across two subject spaces.
 
@@ -123,10 +123,10 @@ family, because there is nowhere to state it once.
 
 **Retraction (2026-08-15).** An earlier revision of this section asserted a census of
 "23 constructors that take an isolation parameter and then reach past it to a module-level
-singleton", with six `*_for_instance` functions in `gunbc.roadmap_belt_actuate` reaching
+singleton", with six `*_for_instance` functions in `gunbc.roadmap.roadmap_belt_actuate` reaching
 `belt_observe_workdir` as its flagship. **That flagship is a false positive and the count is
 withdrawn.** `belt_observe_workdir` is deliberately `/` — a host-global execution workdir for
-tmux observation and teardown — and `gunbc.roadmap_belt_actuate` `belt_actuate_workdir_note`
+tmux observation and teardown — and `gunbc.roadmap.roadmap_belt_actuate` `belt_actuate_workdir_note`
 explicitly distinguishes it from the instance-specific spawn workdir, calling their collapse a
 §5 fail-open. The detector answered *function accepts an instance parameter and also reads a
 module singleton*, which is **not** the question: it cannot tell a correctly host-global

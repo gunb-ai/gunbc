@@ -2,7 +2,7 @@ module gunbc.workspace_allocation_lifecycle
 
 import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
 
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
 import gunbc.principal_projection { PrincipalRef }
@@ -14,10 +14,10 @@ import gunbc.workspace_allocation_store {
   WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_read_owner, workspace_write_allocation,
   workspace_retired, workspace_retired_at, workspace_allocation_coherent,
 }
-import gunbc.runner_microvm_lifecycle_realize { TeardownRun, TeardownSettled, TeardownSubjectRefused }
-import gunbc.runner_microvm_cell_readiness_store { StorePersisted, CellReadinessStorePersist, persist_cell_readiness_write, read_cell_readiness_store, StorePersistReadbackFailed }
-import gunbc.runner_microvm_cell_readiness { CellSettled, readiness_cell, cell_reservation_released_write, StoreRead, StoreRootOwned }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_lifecycle_realize { TeardownRun, TeardownSettled, TeardownSubjectRefused }
+import gunbc.runner.runner_microvm_cell_readiness_store { StorePersisted, CellReadinessStorePersist, persist_cell_readiness_write, read_cell_readiness_store, StorePersistReadbackFailed }
+import gunbc.runner.runner_microvm_cell_readiness { CellSettled, readiness_cell, cell_reservation_released_write, StoreRead, StoreRootOwned }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import product.fabric.sanitation { cell_is_ready, CellId }
 import gunbc.workspace_allocation_release { WorkspaceReleasePlan, WorkspaceReleasePrepared, WorkspaceReleaseRefused, workspace_release_prepare, workspace_release_read, workspace_release_reason }
 import gunbc.workspace_allocation { workspace_reservation_json }
@@ -25,7 +25,7 @@ import gunbc.workspace_money_codec { workspace_money_json }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import std.durable_exclusive_hold { HoldSlotFree }
-import gunbc.fabric_control_plane { fabric_hold_release_ref, CellHoldEnd, CellHoldEnded, release_reserved_cell_money_generation, fabric_cell_allocation_key, fabric_money_reservation_ref }
+import gunbc.fabric.fabric_control_plane { fabric_hold_release_ref, CellHoldEnd, CellHoldEnded, release_reserved_cell_money_generation, fabric_cell_allocation_key, fabric_money_reservation_ref }
 
 // Sanitation is the existing lifecycle's verdict, and it must have become durable. A successful
 // stop, elapsed lease, clean-looking console, or cleanup command exit cannot mint this carrier.
@@ -168,7 +168,7 @@ fn workspace_recover_release(store: FabricStorageBinding, fabric_root: NonEmptyS
 // The convergence receipt consumer has one teardown settlement entry. Both refusal and success
 // become durable owner-visible observations; only successful sanitation reaches fabric release.
 fn workspace_complete_teardown(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, teardown: TeardownRun, observed_at: Timestamp) -> WorkspaceStoreWrite
-  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_settle_teardown_result")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_settle_teardown_result")]
  {
   match workspace_admit_sanitized(reservation: reservation, teardown: teardown) {
     WorkspaceSanitationAdmitted { sanitized: sanitized } => match workspace_release_prepare(store: store, reservation: reservation, released_at: observed_at) {

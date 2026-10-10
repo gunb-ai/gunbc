@@ -66,7 +66,7 @@ fn sudo_nopasswd_grant_list_admits_probe(
 // THE SAME TWO READINGS, BOUND TO A POSIX SHELL CONDITION rather than to a typed observation --
 // one probe shape with two handlers, both homed here so neither is a re-authoring of the other.
 // A deploy script that must decide a grant INSIDE the script (after it installs the drop-in that
-// grants it, gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell) renders its
+// grants it, gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell) renders its
 // condition from these, never spells its own.
 //
 // Both are v2.extdeps.languages.bash_build statement nodes, so the words are grammar-quoted by the

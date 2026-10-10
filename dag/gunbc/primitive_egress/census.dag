@@ -10,7 +10,7 @@ import std.primitive_identity {
   PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler,
   primitive_identity_eq,
 }
-import gunbc.v1_interpreter_primitive_surface {
+import gunbc.v1.v1_interpreter_primitive_surface {
   InterpreterPrimitiveDispatchArm, InterpreterDispatchForm, FreeCall, MethodCall, ServiceDispatch, NativeSpecial, UnknownForm,
 }
 import gunbc.primitive_egress.identity {

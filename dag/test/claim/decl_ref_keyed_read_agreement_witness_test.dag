@@ -35,7 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // arm a keyed read is most likely to eat: a lookup that answered "declared?" with a Bool, or
 // returned the first hit, would resolve an ambiguous citation and no other row here would notice.
 // The pool is the existing decl_facts_reflection fixture pool, which declares one qualified name
-// (test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen) in two files
+// (test.fixture.decl_facts_reflection_duplicate_qn.primary.shadow_module.shadowed_specimen) in two files
 // under two roots on purpose — a real duplicate in a real walk, not a synthesized fact list, so
 // the keyed read is exercised on the population shape it must not collapse.
 
@@ -133,7 +133,7 @@ test fn keyed_and_population_routes_agree_on_field_absent() -> Bool {
 test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> Bool {
   routes_agree_on(
     ref: DeclarationRef {
-      module_path: "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module",
+      module_path: "test.fixture.decl_facts_reflection_duplicate_qn.primary.shadow_module",
       decl_name: "shadowed_specimen",
       field: WholeDeclaration,
     },

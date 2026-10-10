@@ -1,8 +1,8 @@
-module test.claim.fabric_state_auth_witness_test
+module test.claim.fabric.fabric_state_auth_witness_test
 
 import std.types { Secret }
 import extdeps.crypto.mac { MacKey, HmacSha256 }
-import gunbc.fabric_storage_state_auth { fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestVerified, FabricStateRequestRefused }
+import gunbc.fabric.fabric_storage_state_auth { fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestVerified, FabricStateRequestRefused }
 
 fn state_fixture_key() -> MacKey {
   MacKey { id: fabric_state_key_id, suite: HmacSha256, material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret }

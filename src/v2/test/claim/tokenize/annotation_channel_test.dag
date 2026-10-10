@@ -1,4 +1,4 @@
-module v2.test.tokenize.annotation_channel
+module v2.test.claim.tokenize.annotation_channel_test
 
 import v2.std.live_tree { LiveTreeDisposition }
 import v2.std.node { symbol_lexeme }

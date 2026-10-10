@@ -4,12 +4,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished }
 import extdeps.posix.termios { termios_onlcr_output_lines }
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
-import gunbc.machine_intake_pre_os_observer {
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.pre_os_observer {
   pre_os_has_banner, pre_os_terminal_from_console, pre_os_host_userspace_boot, pre_os_host_population_statement,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
-import gunbc.host_memory_qualification { BootReachedOperatingSystem }
+import gunbc.machine_intake.pre_os_bringup_verdict { TrainingRefusedByFirmware }
+import gunbc.host.host_memory_qualification { BootReachedOperatingSystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

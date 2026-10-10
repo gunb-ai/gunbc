@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_lookup_receipt_test
+module v2.test.claim.emit.semantic_decl_lookup_receipt_test
 
 import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,

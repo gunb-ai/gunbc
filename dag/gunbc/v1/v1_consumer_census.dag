@@ -1,6 +1,6 @@
-module gunbc.v1_consumer_census
+module gunbc.v1.v1_consumer_census
 
-import gunbc.ci_release_bins { ci_floor_required_artifact_names }
+import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names }
 import std.types { List, String, NonEmptyStr, CommitSha, Bool, Int }
 import std.content_hash { Sha1Digest }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
@@ -15,10 +15,10 @@ import gunbc.replacement_cut {
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
   CoverageClaim, Covered, CoverageOpen
 }
-import gunbc.stage0_partition_package_graph {
+import gunbc.stage0.stage0_partition_package_graph {
   stage0_partition_package_dependency_names, stage0_host_shell_package_name, stage0_host_shell_dependency_names
 }
-import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import gunbc.rust_item_identity { rust_item_identity_key }
 import gunbc.rust_item_host_observation {
@@ -49,10 +49,10 @@ import gunbc.rust_item_host_observation {
 // already refuses as UncoveredSurvivingConsumer; and replaced-by-stronger-witness is ReplacedByY
 // naming the witness, with the STRENGTHENING carried by the witness census's evidence rows.
 //
-// WHAT THIS IS NOT. It is not the v1 exit model: gunbc.v1_deletion_plan owns the four finish lines
+// WHAT THIS IS NOT. It is not the v1 exit model: gunbc.v1.v1_deletion_plan owns the four finish lines
 // and says it owns nothing else. This census discharges two of them -- InterpreterDeleted and
 // ProductsV1Free -- and names them rather than restating their claims. It is not the maintenance
-// standing: gunbc.v1_maintenance_standing governs v1 while it lives; this governs what must be
+// standing: gunbc.v1.v1_maintenance_standing governs v1 while it lives; this governs what must be
 // true for it to stop living.
 
 // WHAT IS BEING CONSUMED, at the grain a deletion actually operates on. These are not folders:
@@ -338,7 +338,7 @@ data v1_census_tree: String = "168f313cdd9562ff01334c3ac2d154f4c5db6d96"
 
 data producer_workflow_argv: DiscoveryProducer = discovery_producer(
   instrument: "argv and cargo invocations in the emitted workflow surface, traced back to the .dag step declaration that emits each one",
-  command: "grep -nE 'target/release/|cargo (build|test).*v1-compiler' .github/workflows/*.yml; then the emitting declaration in gunbc.witness_floor_workflow / gunbc.fleet_desired_admission_workflow / gunbc.fleet_converge_workflow",
+  command: "grep -nE 'target/release/|cargo (build|test).*v1-compiler' .github/workflows/*.yml; then the emitting declaration in gunbc.witness.witness_floor_workflow / gunbc.fleet.fleet_desired_admission_workflow / gunbc.fleet.fleet_converge_workflow",
   source_revision: v1_census_revision,
   source_tree_hex: v1_census_tree,
 )
@@ -403,9 +403,9 @@ data claim_batch_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.cl
 data codex_session_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.codex_app_server_stdio_session", decl_name: "main")
 data v1_compiler_crate_root: DeclarationRef = decl_ref(module_path: "v1_compiler.lib", decl_name: "lib")
 data stage0_partition_rows: DeclarationRef = decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows")
-data invoked_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_invoked_bins")
-data declared_release_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
-data witness_census_gate: String = "gunbc.v1_witness_census v1_claim_conservation_holds"
+data invoked_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci.ci_release_bins", decl_name: "ci_floor_invoked_bins")
+data declared_release_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci.ci_release_bins", decl_name: "witness_declared_release_bins")
+data witness_census_gate: String = "gunbc.v1.v1_witness_census v1_claim_conservation_holds"
 
 // THE LITERAL-TO-AUTHORITY SIGNATURE TABLE, homed here rather than in the producer that folds it.
 // What a `"claim_executor"` atom NAMES is a fact about this census's subjects, and the identity
@@ -487,14 +487,14 @@ fn retired(reason: String) -> ConsumerDisposition {
 }
 
 fn wfw(decl: String) -> DeclarationRef {
-  decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: decl)
+  decl_ref(module_path: "gunbc.witness.witness_floor_workflow", decl_name: decl)
 }
 
 fn v1cc_boundary(consumer: DeclarationRef, authority: DeclarationRef, disposition: ConsumerDisposition) -> BoundaryConsumer {
   BoundaryConsumer { consumer: consumer, consumed_old_authority: authority, disposition: disposition }
 }
 
-data stage0_core_deletion_search_receipt: String = "SEARCH RECEIPT (2026-08-30): searched the workspace member declarations and every tracked Cargo.toml for a stage0_core member or path dependency; searched workflow, emission and tooling sources for stage0_core; and checked both the authored partition authority v2.workflow.rust_crate_partition and its gunbc.stage0_crate_partition_generated projection. No builder or owner names src/v1/stage0_core. The only hits outside the orphan directory were this retirement receipt and the lifecycle residue contradiction whose own dissolution condition selected crate deletion. Therefore the directory deletes; it is not enrolled or frozen."
+data stage0_core_deletion_search_receipt: String = "SEARCH RECEIPT (2026-08-30): searched the workspace member declarations and every tracked Cargo.toml for a stage0_core member or path dependency; searched workflow, emission and tooling sources for stage0_core; and checked both the authored partition authority v2.workflow.rust_crate_partition and its gunbc.stage0.stage0_crate_partition_generated projection. No builder or owner names src/v1/stage0_core. The only hits outside the orphan directory were this retirement receipt and the lifecycle residue contradiction whose own dissolution condition selected crate deletion. Therefore the directory deletes; it is not enrolled or frozen."
 
 fn tsv_row(path_decl: String) -> V1ConsumerRow {
   {
@@ -541,7 +541,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
     boundary: v1cc_boundary(
       consumer: wfw(decl: "witness_floor_run_step"),
       authority: claim_executor_bin,
-      disposition: retained_open(justification: "the witness floor roster executes inside this binary, so every witness identity in the repository is reached through v1 today. Closes on: a native v2 witness fold that executes the same witness identities and refuses on subject loss -- the identity join gunbc.v1_witness_census carries, never a count of witnesses run"),
+      disposition: retained_open(justification: "the witness floor roster executes inside this binary, so every witness identity in the repository is reached through v1 today. Closes on: a native v2 witness fold that executes the same witness identities and refuses on subject loss -- the identity join gunbc.v1.v1_witness_census carries, never a count of witnesses run"),
     ),
     medium: WorkflowArgv,
     subject: V1HostedCiBinary,
@@ -551,7 +551,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
     boundary: v1cc_boundary(
       consumer: wfw(decl: "rust_unit_tests_step"),
       authority: v1_compiler_crate_root,
-      disposition: retired(reason: "the job's entire subject is the v1 crate's own #[test] functions, none of which asserts anything outside v1. #9663 added it because those tests ran on no CI path; it is one merge window old and retires with the code it was built to cover rather than being ported. DELETED 2026-09-04 under the runner-capacity ruling, ahead of the crate it covered: the carrier no longer exists in gunbc.witness_floor_workflow and the loss is declared at gunbc.rung_drop rust_unit_tests_off_the_merge_path. This row is kept rather than dropped because the census is a record of what consumed v1, not of what still does"),
+      disposition: retired(reason: "the job's entire subject is the v1 crate's own #[test] functions, none of which asserts anything outside v1. #9663 added it because those tests ran on no CI path; it is one merge window old and retires with the code it was built to cover rather than being ported. DELETED 2026-09-04 under the runner-capacity ruling, ahead of the crate it covered: the carrier no longer exists in gunbc.witness.witness_floor_workflow and the loss is declared at gunbc.rung_drop rust_unit_tests_off_the_merge_path. This row is kept rather than dropped because the census is a record of what consumed v1, not of what still does"),
     ),
     medium: WorkflowArgv,
     subject: V1CompilerCrate,
@@ -559,7 +559,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
+      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
       authority: gunbc_cli_bin,
       disposition: retained_open(justification: "fleet desired-state admission builds the gunbc binary; a product workflow outside the floor cut's boundary by that cut's own exclusion. Closes on: the native v2 binary answering the verbs the fleet workflows actually pass among the five the v1 clap surface declares (Compile, Test, Run, Converge, Serve), with a REFUSAL for any verb it does not answer -- a verb that silently forwards is the falsifier XL-5 lists, not the migration"),
     ),
@@ -569,7 +569,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
+      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
       authority: gunbc_cli_bin,
       disposition: retained_open(justification: "the decide step owns the argv and invokes `gunbc run` over the corpus to evaluate the admission. It was one of two, one per admission route, until the workflow_run route was deleted with the push-on-main required run. Same closing capability as the build step's row; a separate relation because the key is consumer x authority and this step depends on the RUN verb, not merely on the binary existing"),
     ),
@@ -579,9 +579,9 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
+      consumer: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
       authority: invoked_bins_row,
-      disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
+      disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
     ),
     medium: DagArgvRow,
     subject: V1HostedCiBinary,
@@ -589,9 +589,9 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
+      consumer: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
       authority: declared_release_bins_row,
-      disposition: retained_open(justification: "the same build job packs every witness-declared release bin, all of which are v1-compiler bin targets. Closes on: every member of this roster having its own disposition here -- the roster is a population, and gunbc.ci_release_bins's own lesson is that removing a consumer and removing a member are different edits"),
+      disposition: retained_open(justification: "the same build job packs every witness-declared release bin, all of which are v1-compiler bin targets. Closes on: every member of this roster having its own disposition here -- the roster is a population, and gunbc.ci.ci_release_bins's own lesson is that removing a consumer and removing a member are different edits"),
     ),
     medium: DagArgvRow,
     subject: V1HostedCiBinary,
@@ -599,7 +599,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.host_effect_codex_supervised_turn", decl_name: "host_effect_codex_supervised_turn_bin_name"),
+      consumer: decl_ref(module_path: "gunbc.host.host_effect_codex_supervised_turn", decl_name: "host_effect_codex_supervised_turn_bin_name"),
       authority: codex_session_bin,
       disposition: retained_open(justification: "a PRODUCT integration, not a compiler consumer: the codex stdio session transport is a v1-compiler bin target whose subject has nothing to do with compiling .dag. Its disposition is genuinely open rather than assumed retired, and deleting it as CI cruft would be the deletion-inside-the-deletion-set blind spot the floor cut measured. Closes on: either a native successor for this transport or a retirement with the product owner's cause -- not on the compiler cutover"),
     ),
@@ -639,7 +639,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.v1_consumer_census", decl_name: "stage0_core_deletion_search_receipt"),
+      consumer: decl_ref(module_path: "gunbc.v1.v1_consumer_census", decl_name: "stage0_core_deletion_search_receipt"),
       authority: stage0_partition_rows,
       disposition: retired(reason: "an ALREADY-DECLARED open authority contradiction, not a discovery of this census: src/v1/stage0_core/src/lib.rs is tracked on disk, absent from the partition rows and absent from the workspace member list, and the residue row's dissolution reads 'stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes'. XL-5 satisfies the second arm. Recorded so the transaction is known to DISCHARGE that row rather than orphan it"),
     ),
@@ -649,7 +649,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "stage0_partition_crate_rows_authority_ref"),
+      consumer: decl_ref(module_path: "gunbc.stage0.stage0_rust_source_lifecycle_scaffold", decl_name: "stage0_partition_crate_rows_authority_ref"),
       authority: stage0_partition_rows,
       disposition: retired(reason: "the committed generated mirrors under src/v1 and the .gitattributes rows that route their merges are projections of src/v1 .dag authorities; with the authority deleted a mirror has no producer and is not a survivor to re-home. The .gitattributes rows go with their registry entries, the same motion #9663 performed for the js_site rows"),
     ),
@@ -914,7 +914,7 @@ fn v1_release_bin_main(bin: String) -> DeclarationRef {
 
 fn v1_release_pack_consumers() -> List<V1ConsumerRow> {
   ci_floor_required_artifact_names() |> map(bin => v1_operational_consumer(
-    consumer: decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_required_artifact_names"),
+    consumer: decl_ref(module_path: "gunbc.ci.ci_release_bins", decl_name: "ci_floor_required_artifact_names"),
     authority: v1_release_bin_main(bin: bin),
     medium: CargoBinTarget,
     subject: V1HostedCiBinary,
@@ -925,19 +925,19 @@ fn v1_release_pack_consumers() -> List<V1ConsumerRow> {
 fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
   [
     v1_operational_consumer(
-      consumer: decl_ref(module_path: "gunbc.repo_self_build", decl_name: "repo_self_build_package"),
+      consumer: decl_ref(module_path: "gunbc.repo.repo_self_build", decl_name: "repo_self_build_package"),
       authority: v1_compiler_crate_root,
       medium: DagArgvRow, subject: V1CompilerCrate,
       obligation: "repo_self_build_command and repo_self_build_all_bins_command choose v1-compiler for required CI and fleet builds. Replacing target/release/gunbc alone does not retire the cold-build route. The admitted replacement must supply the required target population on a cold runner."
     ),
     v1_operational_consumer(
-      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "witness_bin_build_args"),
+      consumer: decl_ref(module_path: "gunbc.instruments.host_prelude", decl_name: "witness_bin_build_args"),
       authority: v1_compiler_crate_root,
       medium: DagArgvRow, subject: V1CompilerCrate,
       obligation: "witness_bin_ensure_built_typed calls BuildInheritEnv with these v1-compiler args when an enrolled executable is absent. A warm-path native binary does not discharge this reachable cold-path seed build. Cutover must remove this rebuild route, with missing-artifact refusal tested."
     ),
     v1_operational_consumer(
-      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "run_gunbc_claims_ready"),
+      consumer: decl_ref(module_path: "gunbc.instruments.host_prelude", decl_name: "run_gunbc_claims_ready"),
       authority: decl_ref(module_path: "v1_compiler.bin.claim_batch", decl_name: "main"),
       medium: DagArgvRow, subject: V1Interpreter,
       obligation: "The claim transport invokes target/release/claim_batch; claim_batch links v1_interpreter and evaluates claims through it. A native compiler CLI does not replace this dispatch. Preserve required case identities, positive and refusal outcomes, and wet effect execution."
@@ -945,7 +945,7 @@ fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
     v1_operational_consumer(
       consumer: wfw(decl: "heal_regen_step"), authority: gunbc_cli_bin,
       medium: WorkflowArgv, subject: V1Cli,
-      obligation: "The heal job runs tools.generated_artifact_gate main_wet through gunbc run, then main to check generated-file agreement. Keep the committed_generated_artifacts population and byte-agreement contract when moving execution to the admitted native generation."
+      obligation: "The heal job runs gunbc.instruments.generated_artifact_gate main_wet through gunbc run, then main to check generated-file agreement. Keep the committed_generated_artifacts population and byte-agreement contract when moving execution to the admitted native generation."
     ),
     v1_operational_consumer(
       consumer: wfw(decl: "heal_repair_declaration_step"), authority: gunbc_cli_bin,
@@ -998,7 +998,7 @@ data v1_census_step_trace_tree: String = "ee597647395aa4f1541e0900e034d2339a67f7
 
 data producer_required_lane_step_trace: DiscoveryProducer = discovery_producer(
   instrument: "every `run:` step of the emitted required workflow read against the declaration that emits it, classified by what the step DOES with v1 rather than by whether it spells a binary name",
-  command: "grep -nE '^      - name:|cargo (build|clippy)|target/release/' .github/workflows/witnesses.yml; then the emitting declarations in gunbc.witness_floor_workflow",
+  command: "grep -nE '^      - name:|cargo (build|clippy)|target/release/' .github/workflows/witnesses.yml; then the emitting declarations in gunbc.witness.witness_floor_workflow",
   source_revision: v1_census_step_trace_revision,
   source_tree_hex: v1_census_step_trace_tree,
 )
@@ -1030,13 +1030,13 @@ fn v1_required_lane_step_consumers() -> List<V1ConsumerRow> {
       consumer: wfw(decl: "witness_floor_build_step"),
       authority: v1_compiler_crate_root,
       medium: WorkflowArgv, subject: V1CompilerCrate,
-      obligation: "the step that puts the seed on the runner at all: `cargo build --release -p v1-compiler --bins` is the FIRST step of both required lanes, so every later relation in this census is downstream of it. gunbc.repo_self_build repo_self_build_package is a separate relation naming the same crate through the roster; this one is the emitted step, and a cutover that replaced the roster without replacing the step would leave the seed built on every push. Closes on: both required lanes reaching green on a runner whose checkout contains no v1-compiler package -- the whole-lane condition, never a per-binary substitution"
+      obligation: "the step that puts the seed on the runner at all: `cargo build --release -p v1-compiler --bins` is the FIRST step of both required lanes, so every later relation in this census is downstream of it. gunbc.repo.repo_self_build repo_self_build_package is a separate relation naming the same crate through the roster; this one is the emitted step, and a cutover that replaced the roster without replacing the step would leave the seed built on every push. Closes on: both required lanes reaching green on a runner whose checkout contains no v1-compiler package -- the whole-lane condition, never a per-binary substitution"
     ),
     v1_step_trace_consumer(
       consumer: wfw(decl: "witness_floor_build_step"),
       authority: stage0_partition_rows,
       medium: WorkflowArgv, subject: V1CompilerCrate,
-      obligation: "the same step's second command builds the seven stage0 partition crates by name. A separate relation because the key is consumer x authority and these are seven packages the partition rows own, not the v1-compiler package: retiring the monolith without draining the partition leaves the step naming crates nothing produces, which is the exact stranding gunbc.ci_release_bins records for the bin roster. Closes with the row above and by the same condition"
+      obligation: "the same step's second command builds the seven stage0 partition crates by name. A separate relation because the key is consumer x authority and these are seven packages the partition rows own, not the v1-compiler package: retiring the monolith without draining the partition leaves the step naming crates nothing produces, which is the exact stranding gunbc.ci.ci_release_bins records for the bin roster. Closes with the row above and by the same condition"
     ),
     v1_step_trace_consumer(
       consumer: wfw(decl: "rust_clippy_all_targets_step"),
@@ -1066,7 +1066,7 @@ fn v1_required_lane_step_consumers() -> List<V1ConsumerRow> {
 }
 
 // THE .dag ARGV POPULATION, DISPOSITIONED. Most of these rows were produced by
-// tools.v1_consumer_discovery folding the corpus's declarations and reporting the relations no row
+// gunbc.instruments.v1_consumer_discovery folding the corpus's declarations and reporting the relations no row
 // here disposed. Review 63229 found seven relations by reading the corpus directly while the
 // producer was blind to a declaration whose initializer is the literal itself; that LitStr
 // channel is now closed (discovery_fold_sees_a_bare_string_initializer is the permanent
@@ -1084,7 +1084,7 @@ fn v1_required_lane_step_consumers() -> List<V1ConsumerRow> {
 // would inflate the blocking column with work nobody owes.
 
 data producer_dag_argv_join: DiscoveryProducer = discovery_producer(
-  instrument: "tools.v1_consumer_discovery -- the joined .dag producer: every declaration v2.std.decl_index decl_facts answers for the source roots, folded for whole-atom matches against v1_literal_signatures",
+  instrument: "gunbc.instruments.v1_consumer_discovery -- the joined .dag producer: every declaration v2.std.decl_index decl_facts answers for the source roots, folded for whole-atom matches against v1_literal_signatures",
   command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_gate",
   source_revision: v1_census_step_trace_revision,
   source_tree_hex: v1_census_step_trace_tree,
@@ -1137,22 +1137,22 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retained_open(justification: "the same roster's second offered program, and the one that carries the INTERPRETER rather than the compiler: a developer machine that can build claim_batch can evaluate the corpus. Separate relation, same closing capability as the row above")
     ),
     v1_dag_argv_consumer(
-      module_path: "tools.host_prelude", decl_name: "gunbc_claims_readiness",
+      module_path: "gunbc.instruments.host_prelude", decl_name: "gunbc_claims_readiness",
       authority: claim_batch_bin, subject: V1Interpreter,
-      disposition: retained_open(justification: "the readiness probe that ENSURES claim_batch is built before a witness transport uses it, through witness_bin_ensure_built_typed. It is the cold-path arm of the transport rows: a warm native binary does not discharge it, because this is the code that reaches for the seed when nothing is there. Closes with tools.host_prelude witness_bin_build_args, whose row states the condition; a separate relation because that row is the ARGV and this is the readiness decision that consumes it")
+      disposition: retained_open(justification: "the readiness probe that ENSURES claim_batch is built before a witness transport uses it, through witness_bin_ensure_built_typed. It is the cold-path arm of the transport rows: a warm native binary does not discharge it, because this is the code that reaches for the seed when nothing is there. Closes with gunbc.instruments.host_prelude witness_bin_build_args, whose row states the condition; a separate relation because that row is the ARGV and this is the readiness decision that consumes it")
     ),
     v1_dag_argv_consumer(
-      module_path: "tools.interp_recorded_fixture_witness_transport", decl_name: "run_interp_recorded_fixture_witness",
+      module_path: "gunbc.instruments.interp_recorded_fixture_witness_transport", decl_name: "run_interp_recorded_fixture_witness",
       authority: claim_batch_bin, subject: V1Interpreter,
       disposition: retired(reason: "a witness transport whose SUBJECT is the v1 interpreter's own recorded-fixture behaviour. It shells out to claim_batch to observe the interpreter; with the interpreter deleted there is nothing for it to record, so it retires with its subject rather than being ported. This is the disposition-census distinction the doctrine draws: currently consumed is not required to survive, and a consumer built to observe X is deletion population once X goes")
     ),
     v1_dag_argv_consumer(
-      module_path: "tools.merge_admission_capture_transport", decl_name: "run_merge_admission_capture_subprocess",
+      module_path: "gunbc.instruments.merge_admission_capture_transport", decl_name: "run_merge_admission_capture_subprocess",
       authority: claim_batch_bin, subject: V1Interpreter,
       disposition: retained_open(justification: "the merge-admission capture runs the claim batch in a subprocess to observe a merge's admission. Unlike the recorded-fixture transport its subject is the MERGE decision rather than the interpreter, so the obligation survives the cutover and only its execution route moves. Closes on: the capture invoking a native evaluator over the same claim identities, with the subprocess refusal preserved -- a capture that silently records nothing is the failure this transport exists to make loud")
     ),
     v1_dag_argv_consumer(
-      module_path: "tools.interpreter_dispatch_bijection_real_roster_transport", decl_name: "real_roster_test_extra_args",
+      module_path: "gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport", decl_name: "real_roster_test_extra_args",
       authority: v1_compiler_crate_root, subject: V1CompilerCrate,
       disposition: retired(reason: "the transport's cargo args name the v1-compiler package to run the interpreter-dispatch bijection roster, whose subject is the v1 interpreter's dispatch table. Same class as the recorded-fixture transport: an instrument built to measure a property OF the seed has no successor obligation once the seed is gone")
     ),
@@ -1162,27 +1162,27 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace_step0_candidate_run", decl_name: "run_current_step0_candidate",
+      module_path: "gunbc.namespace.namespace_step0_candidate_run", decl_name: "run_current_step0_candidate",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the namespace cut's step-0 candidate is EVALUATED by running the v1 CLI over the candidate tree, so the migration that is supposed to remove a v1-era representation is itself measured by v1. Closes on: the candidate run executing through a native evaluator; until then the namespace lane's own receipts are seed-produced, which is a fact about their evidence rather than about their conclusions")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run",
+      module_path: "gunbc.namespace.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the receipt projection reads the run above. A separate relation because a cutover could move the RUN to a native evaluator and leave the receipt shape assuming the seed's output, which is the adjudication-lags-execution split the required-lane measurement rows already carry")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace_step0_canary_v2", decl_name: "admit_namespace_step0_v2_receipt",
+      module_path: "gunbc.namespace.namespace_step0_canary_v2", decl_name: "admit_namespace_step0_v2_receipt",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the v2 canary's admission reads a receipt produced by a v1 CLI run. Closes with the candidate-run rows above and by the same capability")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace_step0_canary_v1_history", decl_name: "namespace_step0_canary_v1_historical_receipt",
+      module_path: "gunbc.namespace.namespace_step0_canary_v1_history", decl_name: "namespace_step0_canary_v1_historical_receipt",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retired(reason: "a HISTORICAL receipt: the row records what a v1 canary run answered at a past revision, and the doctrine explicitly admits X serving from history as an offline differential oracle. A recorded observation of a run that already happened is not a live consumer, so it retires as a citation rather than as a dependency -- and it is filed rather than dropped because a reader who found the literal and no row would have to re-establish that distinction")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.roadmap_dashboard_instance", decl_name: "dashboard_instance_provision_plan",
+      module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "dashboard_instance_provision_plan",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "provisioning a dashboard instance installs and runs the v1 CLI on the instance. Same PRODUCT class as the live-deploy row and outside the compiler cutover's boundary: it closes on a native binary the provisioner can install, not on the emitter reaching a fixed point")
     ),
@@ -1214,7 +1214,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
     v1_dag_argv_consumer(
       module_path: "gunbc.offline_local_recipe", decl_name: "claim_batch_bin_name",
       authority: claim_batch_bin, subject: V1Interpreter,
-      disposition: retained_open(justification: "the offline recipe -- what a developer runs with no network -- names the interpreter binary. Closes with tools.host_prelude run_gunbc_claims_ready: the same claim transport reached through the documented offline route")
+      disposition: retained_open(justification: "the offline recipe -- what a developer runs with no network -- names the interpreter binary. Closes with gunbc.instruments.host_prelude run_gunbc_claims_ready: the same claim transport reached through the documented offline route")
     ),
     v1_dag_argv_consumer(
       module_path: "test.claim.stage0_regen_convergence_real_execution", decl_name: "regen_stage0_verify_converges_by_real_execution",
@@ -1222,7 +1222,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retired(reason: "the witness drives a `regen_stage0` bin target that NO LONGER EXISTS -- absent from src/v1/stage0/Cargo.toml and from src/v1/stage0/src/bin/, surviving only as a prose mention in a Cargo.toml comment. So this is not a live consumer of the seed but a witness whose subject was deleted out from under it, and it retires with the target rather than acquiring a successor. Filed rather than dropped because the literal is still in the tree and a reader who greps for it deserves to find the disposition rather than re-derive the deletion. An earlier revision of THIS census made the opposite mistake over the same name, minting v1_compiler.bin.regen_stage0 as a live DeclarationRef (review 63229) -- a deleted binary is exactly the kind of thing a census fabricates when it reads a literal and assumes a target")
     ),
     v1_dag_argv_consumer(
-      module_path: "ctl.pos_emit2", decl_name: "emits_a_two_segment_call",
+      module_path: "test.ctl.pos_emit2", decl_name: "emits_a_two_segment_call",
       authority: v1_compiler_crate_root, subject: V1CompilerCrate,
       disposition: RetainChangedContract {
         terminal_contract: v1cc_nes(s: "a cargo control that names the package and bin of whatever compiler the repository ships, rather than the seed by name"),
@@ -1235,7 +1235,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       authority: v1_compiler_crate_root, subject: V1CompilerCrate,
       disposition: RetainChangedContract {
         terminal_contract: v1cc_nes(s: "the same cargo control, reached from the bash-program fold's fixture support"),
-        justification: v1cc_nes(s: "the bash-program fold's fixture builds the seed package when the binary is absent -- the same cold-path reach tools.host_prelude witness_bin_build_args carries, arriving here through a second caller. Two relations rather than one because the census keys on consumer x authority and this caller can be migrated while the other is not. Closes with that row and by the same condition"),
+        justification: v1cc_nes(s: "the bash-program fold's fixture builds the seed package when the binary is absent -- the same cold-path reach gunbc.instruments.host_prelude witness_bin_build_args carries, arriving here through a second caller. Two relations rather than one because the census keys on consumer x authority and this caller can be migrated while the other is not. Closes with that row and by the same condition"),
         coverage: CoverageOpen
       }
     ),
@@ -1246,7 +1246,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
 // THE CARGO MANIFEST MEDIUM, AS A RELATION KEYED ON PACKAGE IDENTITY. A `path = "../stage0"` line
 // has a declaration identity on neither side, which is why this medium could not become keyed rows
 // without an author inventing one. What it DOES have is a package identity on both sides, and the
-// package names are already decided in one place: gunbc.stage0_partition_package_graph, the
+// package names are already decided in one place: gunbc.stage0.stage0_partition_package_graph, the
 // authority v1.compiler.stage0_crates renders the partition manifests from and
 // gunbc.stage0_partition_rebuild_scope walks. So the rows here take their names from that graph and
 // never restate an edge it carries: the partition-internal edges and the host-shell edge are
@@ -1344,7 +1344,7 @@ data v1_tests_manifest_dependency: CargoPathDependency = CargoPathDependency {
 // joined nor reported; widening the tokens is how the reach grows, and the tokens are derived from
 // the package name's authority so the spelling they do cover cannot drift. The .dag renderers are cited by declaration and the
 // citation wall refuses a stale name; their join to a produced .dag literal population is the
-// declared frontier tools.v1_consumer_discovery (PR #10939) closes.
+// declared frontier gunbc.instruments.v1_consumer_discovery (PR #10939) closes.
 //
 // probe_manifest (v1_compiler.emitted_closure_compile_host) is DELIBERATELY NOT A ROW: #10988
 // removes the seed path dependency it minted, and this table is authored to the post-#10988 shape.
@@ -1375,7 +1375,7 @@ fn v1_minted_manifest_dependencies() -> List<CargoPathDependency> {
     CargoPathDependency {
       consumer_package: FixedPackageName { name: "v1_compiled" },
       dependency_package: stage0_host_shell_package_name(),
-      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.emitted_crate_harness_manifest", decl_name: "harness_seed_link_dependency_table") },
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "gunbc.instruments.emitted_crate_harness_manifest", decl_name: "harness_seed_link_dependency_table") },
       linkage: SeedLinkedIntoEmittedCode,
     },
     CargoPathDependency {
@@ -1635,7 +1635,7 @@ fn join_keys(xs: List<String>) -> String {
 // with it. Partition-internal and host-shell edges are the seed's own graph and are not consumers.
 fn producer_cargo_manifest_relation_at(observed_at: RustObservedTree) -> DiscoveryProducer {
   discovery_producer(
-    instrument: "the Cargo manifest relation keyed on gunbc.stage0_partition_package_graph identities: partition and host-shell edges derived, hand and minted manifests authored, Rust renderers joined against observe_rust_references over head_rust_sources over src/v1 with v1_seed_link_tokens",
+    instrument: "the Cargo manifest relation keyed on gunbc.stage0.stage0_partition_package_graph identities: partition and host-shell edges derived, hand and minted manifests authored, Rust renderers joined against observe_rust_references over head_rust_sources over src/v1 with v1_seed_link_tokens",
     command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_minted_manifest_join",
     source_revision: observed_at.revision,
     source_tree_hex: observed_at.tree,
@@ -1728,7 +1728,7 @@ fn v1_consumer_population_with(observation: RustReferenceObservation, join: Mint
 
     rows: v1_consumers_for(partition: partition, join: join),
     uncitable: list_append(left: partition.uncitable, right: v1_join_uncitable_consumers(j: join)),
-    missing_basis: "per-medium sweeps, the L4 operational selector trace, the required-lane step trace, and ONE joined producer over the .dag medium (tools.v1_consumer_discovery). The population is still a lower bound and the arm does not move, because the join is complete for one medium of eight rather than for all of them. WHAT CHANGED, hole by hole. HOLE ONE NARROWED, NOT CLOSED: the .dag argv rows are now classified by a producer that folds every declaration v2.std.decl_index decl_facts answers for the source roots and joins its literal atoms to the v1 authority each one names, so a .dag consumer added tomorrow enters the population without an author remembering to file it. THE MECHANISM EXECUTES, THE WHOLE-CORPUS CLAIM DOES NOT -- two remaining facts; a third, the authoring-position blind spot, is closed. (i) The fold is exercised on the merge path against a real declaration node fetched by name, with a red control on a declaration naming no v1 binary and a control that it does not count its own signature table, plus the permanent positive control that a bare String initializer is visible (discovery_fold_sees_a_bare_string_initializer). (ii) The JOIN over the whole corpus is not enrolled: as long-home witnesses it was interrupted before verdict by the floor's cost budget, so it runs on demand at tools.v1_consumer_discovery v1_discovery_gate. (iii) THE BARE, LIST, AND CONCAT LitStr CHANNEL IS CLOSED. DataItem decl_facts carry authored LitStr atoms from the parse tree so v2.std.fn_index atom_identities_in_node and tools.v1_consumer_discovery see them; the expecting-red that named this hole flipped to that positive control rather than retiring. Review 63229's seven hand-authored relations remain as judgements on this roster, not as evidence the producer is still blind. The .dag medium is therefore joined for those initializer shapes at declaration grain. The population stays a lower bound because of (ii) and because the join is complete for one medium of eight, not because LitStr positions are still dark. HOLE TWO UNCHANGED: the deletion-set blind spot still has no complete instrument. The step trace added the emitted-closure manifest relation, which is one more consumer defined inside src/v1 and consumed by the v2 self-host path, but a consumer defined inside src/v1 AND consumed inside src/v1 still cannot refuse when both go, and only a per-deleted-file question finds the rest. HOLE THREE UNCHANGED: whole-repository reachability is still not measured. The step trace establishes that the emitted required workflow reaches v1 in three of its four jobs and that the fourth reaches none of it -- the aggregating `witnesses` job consumes needs[...].result for the two lanes through shell test expressions and invokes no binary, no cargo target and no source root, read at the revision this producer names -- which is a closed answer over ONE emitted artifact and carries no claim about the corpus. Presence still over-approximates demand. THE FOUR MEDIA WITH NO DECLARATION NAMESPACE remain the structural reason a single joined instrument cannot exist yet: a hit in Rust, a Cargo manifest, a committed mirror or a serialized artifact path has no declaration identity for the consumer half of the key, so it cannot become a keyed row without an author inventing one -- which is what V1UncitableConsumer refuses. Closing the remaining media therefore needs a projection from those file grains into DeclarationRef, not more sweeping -- AND THAT IS THREE DIFFERENT OBLIGATIONS RATHER THAN ONE, which is recorded here so the next reader starts from this carrier instead of re-deriving it. (A) FOUR OF THE SEVEN ARE NOT A SEPARATE MEDIUM AT ALL. Workflow YAML, .gitattributes, the git hooks and the committed stage0 mirrors are GENERATED, and gunbc.generated_artifact_registry generated_artifact_registry is a closed typed roster of exactly that population; a v1 reference in one of them is a projection of a literal in the .dag declaration that emits it. CLOSED AS A REFUSAL, NOT A SCANNER: gunbc.generated_artifact artifact_producer names each artifact's producer declaration and gunbc.generated_artifact_producer_coverage generated_artifact_producer_refusals refuses an artifact whose producer the .dag population cannot resolve (gunbc#11005); this census may count those four media as joined only when gunbc.generated_artifact_producer_coverage every_generated_artifact_producer_covered holds over the same pool roots the .dag producer folds, which is the read that moves them out of this string. (B) RUST IS PRODUCED, NOT LISTED. gunbc.rust_item_host_observation head_rust_sources plus observe_rust_references fold the item scan over every hand-Rust file outside the deletion set whose text names a v1 reference token and carry the DeclarationRef projection on each row; v1_consumer_population_for consumes that observation, the four hand-named shim items are gone, a host refusal is PopulationUnmeasured and an unattributed line is an uncitable row. WHAT KEEPS THE MEDIUM FROM COUNTING AS COMPLETE: the population is one HEAD read and its tokens reach only the spellings v1_reference_authorities declares; a reference spelled some other way is outside it, silently, which is the same token-reach boundary the seed-link join states for (C). (C) CARGO MANIFESTS ARE A RELATION KEYED ON PACKAGE IDENTITY, declared here and taking its names from gunbc.stage0_partition_package_graph (v1_cargo_manifest_dependencies): partition and host-shell edges derived from the graph, the hand tests manifest and the minted manifests authored with their SeedLinkage, and the Rust renderers joined in both directions against the produced seed-link population (v1_minted_manifest_join). The three .dag renderers are cited and wall-checked but their join to a produced .dag literal population is the frontier tools.v1_consumer_discovery's whole-corpus fold closes. THE ARM STAYS LowerBound because no medium's join is complete for every authoring position and the media are not yet joined to one another; the per-medium state that would let the arm move is the next carrier, not a sentence here.",
+    missing_basis: "per-medium sweeps, the L4 operational selector trace, the required-lane step trace, and ONE joined producer over the .dag medium (gunbc.instruments.v1_consumer_discovery). The population is still a lower bound and the arm does not move, because the join is complete for one medium of eight rather than for all of them. WHAT CHANGED, hole by hole. HOLE ONE NARROWED, NOT CLOSED: the .dag argv rows are now classified by a producer that folds every declaration v2.std.decl_index decl_facts answers for the source roots and joins its literal atoms to the v1 authority each one names, so a .dag consumer added tomorrow enters the population without an author remembering to file it. THE MECHANISM EXECUTES, THE WHOLE-CORPUS CLAIM DOES NOT -- two remaining facts; a third, the authoring-position blind spot, is closed. (i) The fold is exercised on the merge path against a real declaration node fetched by name, with a red control on a declaration naming no v1 binary and a control that it does not count its own signature table, plus the permanent positive control that a bare String initializer is visible (discovery_fold_sees_a_bare_string_initializer). (ii) The JOIN over the whole corpus is not enrolled: as long-home witnesses it was interrupted before verdict by the floor's cost budget, so it runs on demand at gunbc.instruments.v1_consumer_discovery v1_discovery_gate. (iii) THE BARE, LIST, AND CONCAT LitStr CHANNEL IS CLOSED. DataItem decl_facts carry authored LitStr atoms from the parse tree so v2.std.fn_index atom_identities_in_node and gunbc.instruments.v1_consumer_discovery see them; the expecting-red that named this hole flipped to that positive control rather than retiring. Review 63229's seven hand-authored relations remain as judgements on this roster, not as evidence the producer is still blind. The .dag medium is therefore joined for those initializer shapes at declaration grain. The population stays a lower bound because of (ii) and because the join is complete for one medium of eight, not because LitStr positions are still dark. HOLE TWO UNCHANGED: the deletion-set blind spot still has no complete instrument. The step trace added the emitted-closure manifest relation, which is one more consumer defined inside src/v1 and consumed by the v2 self-host path, but a consumer defined inside src/v1 AND consumed inside src/v1 still cannot refuse when both go, and only a per-deleted-file question finds the rest. HOLE THREE UNCHANGED: whole-repository reachability is still not measured. The step trace establishes that the emitted required workflow reaches v1 in three of its four jobs and that the fourth reaches none of it -- the aggregating `witnesses` job consumes needs[...].result for the two lanes through shell test expressions and invokes no binary, no cargo target and no source root, read at the revision this producer names -- which is a closed answer over ONE emitted artifact and carries no claim about the corpus. Presence still over-approximates demand. THE FOUR MEDIA WITH NO DECLARATION NAMESPACE remain the structural reason a single joined instrument cannot exist yet: a hit in Rust, a Cargo manifest, a committed mirror or a serialized artifact path has no declaration identity for the consumer half of the key, so it cannot become a keyed row without an author inventing one -- which is what V1UncitableConsumer refuses. Closing the remaining media therefore needs a projection from those file grains into DeclarationRef, not more sweeping -- AND THAT IS THREE DIFFERENT OBLIGATIONS RATHER THAN ONE, which is recorded here so the next reader starts from this carrier instead of re-deriving it. (A) FOUR OF THE SEVEN ARE NOT A SEPARATE MEDIUM AT ALL. Workflow YAML, .gitattributes, the git hooks and the committed stage0 mirrors are GENERATED, and gunbc.generated_artifact_registry generated_artifact_registry is a closed typed roster of exactly that population; a v1 reference in one of them is a projection of a literal in the .dag declaration that emits it. CLOSED AS A REFUSAL, NOT A SCANNER: gunbc.generated_artifact artifact_producer names each artifact's producer declaration and gunbc.generated_artifact_producer_coverage generated_artifact_producer_refusals refuses an artifact whose producer the .dag population cannot resolve (gunbc#11005); this census may count those four media as joined only when gunbc.generated_artifact_producer_coverage every_generated_artifact_producer_covered holds over the same pool roots the .dag producer folds, which is the read that moves them out of this string. (B) RUST IS PRODUCED, NOT LISTED. gunbc.rust_item_host_observation head_rust_sources plus observe_rust_references fold the item scan over every hand-Rust file outside the deletion set whose text names a v1 reference token and carry the DeclarationRef projection on each row; v1_consumer_population_for consumes that observation, the four hand-named shim items are gone, a host refusal is PopulationUnmeasured and an unattributed line is an uncitable row. WHAT KEEPS THE MEDIUM FROM COUNTING AS COMPLETE: the population is one HEAD read and its tokens reach only the spellings v1_reference_authorities declares; a reference spelled some other way is outside it, silently, which is the same token-reach boundary the seed-link join states for (C). (C) CARGO MANIFESTS ARE A RELATION KEYED ON PACKAGE IDENTITY, declared here and taking its names from gunbc.stage0.stage0_partition_package_graph (v1_cargo_manifest_dependencies): partition and host-shell edges derived from the graph, the hand tests manifest and the minted manifests authored with their SeedLinkage, and the Rust renderers joined in both directions against the produced seed-link population (v1_minted_manifest_join). The three .dag renderers are cited and wall-checked but their join to a produced .dag literal population is the frontier gunbc.instruments.v1_consumer_discovery's whole-corpus fold closes. THE ARM STAYS LowerBound because no medium's join is complete for every authoring position and the media are not yet joined to one another; the per-medium state that would let the arm move is the next carrier, not a sentence here.",
   }
   }
   }
@@ -1785,7 +1785,7 @@ fn v1_native_lane_consumers() -> List<V1ConsumerRow> {
       obligation: "THE LANE IS INTERPRETER-BRACKETED AT BOTH ENDS, and this is ONE relation rather than two because both ends are the same consumer reaching the same authority. Its population is derived by calling discover_floor_rows_for_source through the seed interpreter over the whole source population, so the set of modules the native route is asked about is chosen by v1; and its census receipt is adjudicated by two further run_in_context_with_args calls in the same function, so the verdict on whether the native route stood is computed by the route it is judging the replacement of. An earlier revision split these into two rows and paid for the split by inventing a symbol for the second consumer -- which is the fabrication this census exists to refuse, so the split is withdrawn rather than repaired: the census keys on consumer x authority, and one function reaching one authority is one relation however many roles it plays. Closes on: the universe deriving AND the admission fold executing outside the seed. The derivation half is the same discovery fold the required floor already runs, so that half closes for both lanes at once or for neither"
     ),
     v1_native_lane_consumer(
-      consumer: decl_ref(module_path: "gunbc.witness_v2_native_route", decl_name: "required_v2_native_job_name"),
+      consumer: decl_ref(module_path: "gunbc.witness.v2_native_route", decl_name: "required_v2_native_job_name"),
       authority: claim_executor_bin,
       medium: WorkflowArgv, subject: V1HostedCiBinary,
       obligation: "THE JOB RUNS INSIDE THE SEED BINARY: the lane harness is a claim_executor subcommand, so the lane adds a fourth required use of the v1 executable rather than replacing any of the three this census already carries. Closes on: the lane's harness being a native entry point -- which is downstream of, and not the same as, the emitted compiler accepting a member"
@@ -1885,7 +1885,7 @@ fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1Uncitab
 // nobody has judged at all. Collapsing them lets the second hide inside the first, and the second is
 // the worse state -- a known-but-uncovered consumer at least names the capability that closes it,
 // while an undecided one names nothing. THIS IS ALSO THE ARM THE JOINED PRODUCER FILLS:
-// tools.v1_consumer_discovery emits every relation it discovers as Undecided by construction, so a
+// gunbc.instruments.v1_consumer_discovery emits every relation it discovers as Undecided by construction, so a
 // newly discovered .dag consumer arrives here as an unknown row and stays one until an author
 // judges it. The count is the discovery backlog and cannot be reduced by editing a number.
 type WorklistPartition {

@@ -1,4 +1,4 @@
-module v2.test.long.namespace_graft_normalize_witness
+module v2.test.claim.long.namespace_graft_normalize_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.namespace_graft.normalize_graft_witness_helpers {

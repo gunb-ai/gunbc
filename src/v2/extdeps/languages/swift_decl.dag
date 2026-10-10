@@ -48,7 +48,7 @@ import v2.std.node {
 // CONSUMER (DESIGN section 3c): a declared frontier. The named consumer is the approve-ios
 // protocol-slice emission of gunbc.auth.approval_device_wire's records and coproducts, gated on the
 // v2 closure-emit route rendering a module's members (gunbc#12239); until then the executing
-// consumer is v2.test.emit.swift_semantic_decl_routing at the emit_semantic_type_decl boundary.
+// consumer is v2.test.claim.emit.swift_semantic_decl_routing_test at the emit_semantic_type_decl boundary.
 
 // THE TWO KNOWN GAPS, AS DISSOLUTION CONDITIONS ON THE SHARED CARRIER (std.dissolution), read by
 // gunbc.dissolution_census like every other such row rather than by a target-local type.

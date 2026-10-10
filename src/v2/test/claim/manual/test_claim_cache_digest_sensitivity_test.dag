@@ -1,4 +1,4 @@
-module v2.test.manual.test_claim_cache_digest_sensitivity
+module v2.test.claim.manual.test_claim_cache_digest_sensitivity_test
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }

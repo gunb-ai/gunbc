@@ -1,4 +1,4 @@
-module v2.test.emit.semantic_decl_string_codec
+module v2.test.claim.emit.semantic_decl_string_codec_test
 
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.compilers.semantic_decl_emission {

@@ -1,4 +1,4 @@
-module v2.test.fn_family.lens_unit.discriminators_test
+module v2.test.claim.fn_family.lens_unit.discriminators_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

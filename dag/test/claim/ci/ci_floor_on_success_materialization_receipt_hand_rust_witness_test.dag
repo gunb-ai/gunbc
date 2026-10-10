@@ -1,6 +1,6 @@
-module test.claim.ci_floor_on_success_materialization_receipt_hand_rust_witness
+module test.claim.ci.ci_floor_on_success_materialization_receipt_hand_rust_witness_test
 
-import gunbc.ci_materialization {
+import gunbc.ci.ci_materialization {
   ci_floor_on_success_materialization_receipt_path,
   ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition,
   ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral,

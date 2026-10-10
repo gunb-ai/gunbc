@@ -236,7 +236,7 @@ fn join_array_elements(elements: List<TsExpr>) -> String {
 // semantic substitution downstream of a green typecheck (DESIGN section 5). Every consumer of this
 // module inherited it, because the defect is in the printer, not in any one program.\n\nFOUR LIVE
 // PRODUCERS, found by reading the emitted asset rather than the model (2026-07-30,
-// gunbc.roadmap_component). Every one of them was in a REASON channel — a tooltip, an accessible
+// gunbc.roadmap.roadmap_component). Every one of them was in a REASON channel — a tooltip, an accessible
 // name, a refusal string — which is not a coincidence: a reason channel is read by a person on a
 // bad day, never by a test, so it is exactly where a silent substitution survives longest.\n
 // BinOp('+') over Cond -> `seg.label + ': ' + seg.state + seg.detail ? ' — ' + seg.detail : ''`,

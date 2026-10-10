@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_program_emit_run
+module v2.test.claim.manual.typescript_program_emit_run_test
 
 import v2.std.diagnostic { Accepted, Rejected }
 import extdeps.communication.medium { Medium }
@@ -7,7 +7,7 @@ import v2.std.compilers.target_model {
   target_atom_realization_lookup_in_catalog
 }
 import v2.extdeps.languages.typescript { ts_target_atom_realization_catalog }
-import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
+import v2.test.claim.manual.typescript_add_emit_translate_test { anchor_typescript_add_emit_accepts }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -28,7 +28,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable,
   chassis_observation, ipmitool_chassis_status_power_line,
 }
-import gunbc.machine_intake_oob_boot_handoff { read_chassis_power }
+import gunbc.machine_intake.oob_boot_handoff { read_chassis_power }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
   bmc_world, bmc_with_pending, bmc_with_power,
@@ -41,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ENTRY-BOUND MODELED OPERATION REALIZATION, EXERCISED THROUGH THE REAL DISPATCHER. Every subject
 // below issues real extdeps.bmc operations -- directly, or through the production helper
-// gunbc.machine_intake_oob_boot_handoff read_chassis_power, which issues ChassisStatus and runs the
+// gunbc.machine_intake.oob_boot_handoff read_chassis_power, which issues ChassisStatus and runs the
 // production decoder chassis_observation on what comes back. Nothing here constructs a decoded
 // judgment: the model renders stdout and the production decoder reads it. Each claim asserts the
 // ROUTE the dispatcher logged, not only the answer.

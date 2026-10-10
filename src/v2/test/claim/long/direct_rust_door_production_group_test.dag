@@ -1,4 +1,4 @@
-module v2.test.long.direct_rust_door_production_group
+module v2.test.claim.long.direct_rust_door_production_group_test
 
 import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   direct_rust_door_production_group,
@@ -26,7 +26,7 @@ import v2.std.text { String }
 // That collapse removed REPETITION; the remaining single walk is still the wrong shape. Exactly one
 // test function lives here because every function here pays that walk. The leaf semantics are
 // already migrated: sub-millisecond controls over planted observations in
-// v2.test.self_host.direct_rust_door_group_algebra discriminate each leaf law, the exact per-stage
+// v2.test.claim.self_host.direct_rust_door_group_algebra_test discriminate each leaf law, the exact per-stage
 // not-reached causes, and the parent composition, with zero production cost. What is NOT migrated
 // is the REAL observation, still reconstructed per evaluation rather than materialized once under
 // its subject identity — that is this row's replacement plan, owned by the semantic-result

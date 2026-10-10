@@ -45,8 +45,8 @@ data ssh_add_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // upstream (the OpenSSH portable distribution ships all three from one release), with a citation per
 // utility because they are three separate manual pages making three separate contracts.
 //
-// These builders were previously hand-spelled at their call sites in gunbc.fleet_host_key_enrollment
-// and gunbc.fleet_ssh_credential_verify -- five bare word lists in which the flags of a security
+// These builders were previously hand-spelled at their call sites in gunbc.fleet.fleet_host_key_enrollment
+// and gunbc.fleet.fleet_ssh_credential_verify -- five bare word lists in which the flags of a security
 // tool lived beside the code that read its output.
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
@@ -100,7 +100,7 @@ fn ssh_add_list_identities_command() -> ArgvCommand {
 // scp, IN THE ANCHORED POSTURE. extdeps.exec.command scp_command predates the fleet trust anchor
 // and disables host-key checking outright; these two take the rendered trust options of a
 // materialized known-hosts anchor (extdeps.ssh.client_options serialize_ssh_client_options over
-// gunbc.fleet_known_hosts_anchor fleet_openssh_trust_options), so the far side's key is checked
+// gunbc.fleet.fleet_known_hosts_anchor fleet_openssh_trust_options), so the far side's key is checked
 // against the same verified file every other fleet leg checks it against. Authentication is the
 // agent named by SSH_AUTH_SOCK in the process environment -- as with ssh-add above, arranging the
 // socket is the caller's realization concern, not argv. The remote operand is ONE word,

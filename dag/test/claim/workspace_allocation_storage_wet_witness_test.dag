@@ -1,14 +1,14 @@
-module gunbc.test.claim.workspace_allocation_storage_wet_witness_test
+module test.claim.workspace_allocation_storage_wet_witness_test
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.shell
-import gunbc.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.workspace_allocation_store {
   workspace_record_request, workspace_read_owner, workspace_request_release, workspace_settle_unplanned_retirement,
   WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreReadOk, WorkspaceReleased,
 }
-import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
+import test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
 
 // A real temporary fabric DB, through independently constructed bindings. No host or VM effects.
 test fn workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head() -> Bool {

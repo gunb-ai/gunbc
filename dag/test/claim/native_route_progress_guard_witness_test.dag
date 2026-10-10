@@ -7,7 +7,7 @@ import std.content_hash { structural_content_hash }
 import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
-import gunbc.witness_v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteExclusionCause, NativeRouteDivergenceCause,
   NativeEntryResolutionLimit, NativePassedExpectedRed, NativeReturnedOtherVerdict,
   NativeRouteTestIdentity,
@@ -94,7 +94,7 @@ fn observed(identity: NativeRouteTestIdentity, attained: NativeRouteAttainment) 
 // by, so every claim that does not vary it is comparing within one meaning of green -- which is
 // the only condition under which a per-identity comparison says anything.
 data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
-  authority: "gunbc.witness_v2_native_route native_route_admission",
+  authority: "gunbc.witness.v2_native_route native_route_admission",
   closure_identity: structural_content_hash(digest: "1111222233334444"),
   receipt_identity: optional_present(value: "native_route_receipt.json")
 }
@@ -103,7 +103,7 @@ data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication 
 // the discriminator moved off `authority`: a gate strengthening that renames nothing -- the
 // NORMAL case, since gunbc#11829 renamed nothing it strengthened.
 data strengthened_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
-  authority: "gunbc.witness_v2_native_route native_route_admission",
+  authority: "gunbc.witness.v2_native_route native_route_admission",
   closure_identity: structural_content_hash(digest: "aaaabbbbccccdddd"),
   receipt_identity: optional_absent()
 }

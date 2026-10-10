@@ -1,25 +1,25 @@
-module gunbc.fleet_converge_plan_cli
+module gunbc.fleet.fleet_converge_plan_cli
 
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
-import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
-import gunbc.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
-import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
-import gunbc.host_kernel_dependency { host_kernel_maintenance_capability }
-import gunbc.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
+import gunbc.host.host_kernel_dependency { host_kernel_maintenance_capability }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
 
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
-import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import std.types { CommitSha }
 
 
-import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
@@ -61,9 +61,9 @@ import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
-import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
-import gunbc.runner_unit { runner_unit_dropin_dir }
-import gunbc.runner_slot_retirement {
+import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
+import gunbc.runner.runner_unit { runner_unit_dropin_dir }
+import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
   SlotRetirementEvidencePresent,
@@ -73,7 +73,7 @@ import gunbc.runner_slot_retirement {
   HostInterruptionAuthorizationPresent,
   HostInterruptionAuthorizationAbsent,
 }
-import gunbc.runner_slot_provision {
+import gunbc.runner.runner_slot_provision {
   runner_slot_member_observed,
   runner_slot_name_in_host_grammar,
   RunnerSlotProvenance,
@@ -92,10 +92,10 @@ import extdeps.github.actions_runner {
   ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
   ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
 }
-import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
-import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
-import gunbc.fabric_allocation_store_substrate {
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.fabric.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
+import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.fabric.fabric_allocation_store_substrate {
   AllocationStoreSubstrateObservation,
   AllocationStoreSubstrateObserved,
   AllocationStoreSubstrateObservationRefused,
@@ -111,15 +111,15 @@ import gunbc.fabric_allocation_store_substrate {
   allocation_store_directory_absent,
   allocation_store_desired_stat_mode,
 }
-import gunbc.host_effect { LocalShell }
-import gunbc.host_effect_realize { srv3_observe_path_owner, srv3_observe_path_mode }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { srv3_observe_path_owner, srv3_observe_path_mode }
 import extdeps.posix.path_ownership {
   PathOwnerObserved,
   PathOwnerUnobserved,
   PathModeObserved,
   PathModeUnobserved,
 }
-import gunbc.runner_service_activation {
+import gunbc.runner.runner_service_activation {
   runner_unit_standings_unobserved_no_transaction,
   runner_activation_readiness_unobserved_no_transaction,
   RunnerUnitStandings,
@@ -128,7 +128,7 @@ import gunbc.runner_service_activation {
   UnitStandingsUnobserved,
   runner_host_activation_units,
 }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
 import extdeps.systemd { ActiveState, UnitFileState }
 import gunbc.host_convergence_protocol {
@@ -138,7 +138,7 @@ import gunbc.host_convergence_protocol {
   CanonicalProtocolAdmitted,
   CanonicalProtocolRefused,
 }
-import gunbc.fleet_converge_plan_manifest {
+import gunbc.fleet.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,
   PayloadAdmitted,
   PayloadScopeUndecodableInReceipt,
@@ -149,7 +149,7 @@ import gunbc.fleet_converge_plan_manifest {
   fleet_converge_apply_payload_admits,
   fleet_converge_apply_payload_refusal_text,
 }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
@@ -219,7 +219,7 @@ import gunbc.actions_run_binding {
   RunRevisionRefused,
   fleet_converge_expected_host_env_name,
 }
-import gunbc.fleet_converge_receipt {
+import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_plan_run_id_env_name,
@@ -234,7 +234,7 @@ import gunbc.fleet_converge_receipt {
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible."
 
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
 // repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
@@ -278,7 +278,7 @@ fn observe_host_short_wet() -> NonEmptyStr?
 }
 
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
-// (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
+// (gunbc.fleet.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
 fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
 {
@@ -383,7 +383,7 @@ type FleetConvergeRequestObservation
 //
 // AN EARLIER CUT SAID THE ARM "HAS NO FIELD TO PUT AN ANSWER IN", which reads as a claim about what
 // the compiler permits. It does not: a payload-carrying variant literal accepts any excess field
-// (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeRequest, and the
+// (see the excess-field measurement in gunbc.fleet.fleet_converge_plan above FleetConvergeRequest, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
 fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
@@ -481,7 +481,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 // yet retired is RENDERED by `runner_slot_provision_plan` into `retirement_scripts` and executed only
 // by fleet apply, after apply has reobserved this same subject and compared it with the reviewed
 // artifact. An effectful retirement performed HERE would mutate the host while the plan describing it
-// was still being built, which is why the actuator drafted in `gunbc.runner_slot_retirement` was
+// was still being built, which is why the actuator drafted in `gunbc.runner.runner_slot_retirement` was
 // deleted rather than called from this function.
 //
 // PERMISSION IS DECIDED BEFORE ANY READ. A transition whose required retirees are not fully covered by
@@ -808,7 +808,7 @@ fn fleet_converge_plan_wet() -> ProcessExit
 }
 
 // RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
-// in gunbc.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
+// in gunbc.fleet.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
 fn fleet_converge_launch_environment_plan_wet() -> ProcessExit
 {
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
@@ -1227,7 +1227,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
 // WHY `gunbc converge` REFUSED, AND WHAT THIS IS INSTEAD. PR #8286 deleted the cli_run driver's verb
 // handlers; converge's handler was resolve-a-.dag-entry plus an interpreter context, and the ruling
 // was that the frozen v1 engine must not become load-bearing for a capability by being re-homed.
-// The verb was left refusing with `successor: gunbc.fleet_converge_apply`, the knob-grain spine
+// The verb was left refusing with `successor: gunbc.fleet.fleet_converge_apply`, the knob-grain spine
 // behind the per-host timer -- and that timer was retired 2026-08-13, so the named successor is a
 // route nothing invokes. Meanwhile the spine that IS live -- plan, hashed bundle, lease, apply,
 // receipts -- was reachable only from inside a GitHub Actions run, because its entries admit
@@ -1253,7 +1253,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag \
 //     --function fleet_converge_local_plan_wet --arg scope=scope:full-host
 //   gunbc run ... --function fleet_converge_local_apply_wet --arg plan_run_id=<id> --arg plan_hash=<hex>
-data fleet_converge_operator_local_workflow_ref: String = "operator-local:gunbc.fleet_converge_plan_cli"
+data fleet_converge_operator_local_workflow_ref: String = "operator-local:gunbc.fleet.fleet_converge_plan_cli"
 
 type OperatorLocalRunBinding
   = OperatorLocalRunBound { binding: ActionsRunBinding }
@@ -1651,7 +1651,7 @@ fn fleet_converge_apply_commissioning_bound_wet(run: ActionsRunBinding, plan_run
       } else { match admit_apply_plan_binding(plan: plan_receipt, apply_run: run, plan_run_id_input: plan_run_id, plan_hash_on_disk: trim(s: hash.content)) {
         PlanBindingAdmitted => match workspace_executor_plan_credential(plan_body: body.content) {
           Present { value: credential } => {
-            let receipt_text = serialize_json(v: gunbc.fleet_converge_receipt.fleet_converge_plan_receipt_json(r: plan_receipt))
+            let receipt_text = serialize_json(v: gunbc.fleet.fleet_converge_receipt.fleet_converge_plan_receipt_json(r: plan_receipt))
             match workspace_executor_plan_bytes(plan_body: body.content, apply_shell: shell.content, receipt_text: receipt_text, credential: credential) {
               WorkspaceExecutorPlanBytesVerified { verified } => {
                 let bytes = WorkspaceCommissioningInputBytes { body: body.content, shell: shell.content, receipt: receipt_text, credential: credential }

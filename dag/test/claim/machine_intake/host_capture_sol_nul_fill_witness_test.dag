@@ -2,23 +2,23 @@ module test.claim.machine_intake.host_capture_sol_nul_fill_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.machine_intake.host_capture_envelope {
   host_capture_bind, host_capture_section_reading, HostCaptureOpen, HostCaptureSectionReading, SectionComplete,
 }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.machine_intake.mtcollins1_boot_run {
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, MtCollins1BootTerminalVerdict, TerminalRefused,
 }
 import extdeps.posix.termios { termios_onlcr_output_lines }
-import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
-import gunbc.boot_medium { BootMedium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
-import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
+import gunbc.host.boot_medium { BootMedium }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
-// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// the medium the claim needs; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor). Absent fails the claim that asked for it.
 fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
   match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
@@ -87,7 +87,7 @@ test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
 
 // THE VERDICT: workload's write is the one refusing cause, and every qualification still pending is
 // named. nproc's NUL-prefixed "80" reads exactly and HOLDS against the one-socket milestone
-// (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, under the declared
+// (gunbc.machine_intake.mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, under the declared
 // drop gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent), so it is absent from the list -- and that
 // absence is the discriminator: with the fill left in, nproc and boot-media pend and are named as
 // unterminated here. numa (dropped from the trimmed capture) and edac-after (never run: the workload

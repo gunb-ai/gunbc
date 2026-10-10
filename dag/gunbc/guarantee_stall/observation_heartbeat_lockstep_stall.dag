@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 data observation_heartbeat_lockstep_stall: GuaranteeStall = GuaranteeStall {
   subject: "the observation heartbeat implementation and its declared cadence are out of lockstep",

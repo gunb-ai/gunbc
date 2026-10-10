@@ -1,4 +1,4 @@
-module test.claim.roadmap_verification_receipt_witness_test
+module test.claim.roadmap.roadmap_verification_receipt_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, CommitSha }
 import std.optional { Present }
@@ -7,18 +7,18 @@ import std.content_hash {
   content_hash_of_value,
   content_hash_atom,
 }
-import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
+import gunbc.roadmap.roadmap_execution_contract {
   GunbcClaimValidation,
   ModeledValidationCommand,
 }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationPassed,
   ValidationRefused,
   ValidationChangeWindowRefused,
   validation_refusal_cause_key,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
   ValidationExecution,
   VerificationReceipt,
@@ -42,8 +42,8 @@ import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
   ChangeWindowPersistenceRefused,
 }
-import gunbc.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_verification_receipt_path_for_instance,
 }
 

@@ -1,19 +1,19 @@
-module test.claim.host_reach_identity_probe_witness
+module test.claim.host.host_reach_identity_probe_witness_test
 
 import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import extdeps.tools.id { id_user_name_argv }
 import extdeps.tools.hostname { hostname_read_argv }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv9, operator_host_183527 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv9, operator_host_183527 }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotUnassigned,
 }
-import gunbc.host_reach_identity_probe {
+import gunbc.host.host_reach_identity_probe {
   ReachProbeOutcome,
   ProbeReachable,
   ProbeTransportUnavailable,
@@ -31,12 +31,12 @@ import gunbc.host_reach_identity_probe {
   observe_host_identity_converge,
   host_identity_desired_short_hostname,
 }
-import gunbc.host_phase_status {
+import gunbc.host.host_phase_status {
   observe_host_phase,
   host_phase_observation_coverage_count,
 }
-import gunbc.fleet_enrollment { fleet_enrollments }
-import gunbc.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

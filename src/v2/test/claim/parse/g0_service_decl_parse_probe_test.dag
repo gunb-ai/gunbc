@@ -1,4 +1,4 @@
-module v2.test.parse.g0_service_decl_parse_probe
+module v2.test.claim.parse.g0_service_decl_parse_probe_test
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { ParseArtifact, parse_module }

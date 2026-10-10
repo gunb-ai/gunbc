@@ -272,7 +272,7 @@ pub fn witness_layer_roots() -> Vec<String> {
         .clone()
 }
 
-/// Floor discovery path exclusions — single authority `gunbc.ci_layer_roots.witness_exclusion_substrings`.
+/// Floor discovery path exclusions — single authority `gunbc.ci.ci_layer_roots.witness_exclusion_substrings`.
 pub fn witness_exclusion_substrings() -> Vec<String> {
     static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
     EXCLUDES
@@ -345,9 +345,9 @@ pub(crate) fn compile_clean_whole_tree_sources_and_index(
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
-/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc.ci_diff_policy` `gunbc_ci_diff_policy`
+/// shard entries from `gunbc.instruments.dag_compile_clean_scope` (lever a) using `gunbc.ci.ci_diff_policy` `gunbc_ci_diff_policy`
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
-/// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
+/// Skip/whole-tree/skip-vs-run authority lives in `gunbc.instruments.dag_compile_clean_scope` (including
 /// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_and_index_for_plan(

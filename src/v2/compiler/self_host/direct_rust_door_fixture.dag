@@ -101,8 +101,8 @@ fn direct_rust_door_admission() -> Admission {
 }
 
 // THE ASSEMBLED DAG SPECIMEN, ONE PIPELINE WITH ONE HOME. The grounding-frontier control files
-// (v2.test.execution.infer_atom_grounding_rules, v2.test.execution.infer_product_introduction,
-// v2.test.execution.dag_binding_denotation) each begin every specimen claim with the same
+// (v2.test.claim.execution.infer_atom_grounding_rules_test, v2.test.claim.execution.infer_product_introduction_test,
+// v2.test.claim.execution.dag_binding_denotation_test) each begin every specimen claim with the same
 // ingest→assemble→infer walk over the add_probe module above; the resolved stage is the deepest
 // stage whose value is closure-free and therefore portable (the InferredTree one stage up carries
 // the facts PartialFunction and is deliberately not the share point), so the resolved tree is the

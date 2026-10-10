@@ -1,4 +1,4 @@
-module test.claim.fleet_intent_memory
+module test.claim.fleet.fleet_intent_memory_witness_test
 
 import std.logic { Bool }
 import std.types { list_length }
@@ -9,7 +9,7 @@ import std.measure {
   Gibibyte,
   byte_size,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
@@ -25,7 +25,7 @@ import gunbc.fleet_intent {
   compute_host_ram_bytes_total,
   fleet_host_memory_nominal_vs_usable_note,
 }
-import gunbc.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
+import gunbc.ci.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
 import extdeps.memory {
   host_memory_population_nominal_bytes,
   memory_population_row_bytes,
@@ -45,7 +45,7 @@ data srv4_bmc_observed_total_gib: Gibibyte = gibibyte(512)
 
 // srv1 HAS NO BMC READ, SO THIS ROW IS NOT ONE AND NO LONGER PRETENDS TO BE. It was authored as
 // srv1_bmc_observed_total_gib, which named a Redfish observation that does not exist: srv1's
-// upgrade is operator-relayed at the population grain, as gunbc.fleet_intent says in the row's own
+// upgrade is operator-relayed at the population grain, as gunbc.fleet.fleet_intent says in the row's own
 // note. Feeding that figure through redfish_memory_summary_from_gib and asserting the population
 // matched it proved 512 == 512 -- the answer under test retyped as a receipt, which is the
 // fabricated-evidence failure DESIGN 5 forbids, committed inside the witness that exists to catch it.

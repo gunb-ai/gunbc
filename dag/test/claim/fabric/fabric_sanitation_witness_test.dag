@@ -1,4 +1,4 @@
-module test.claim.fabric_sanitation_witness_test
+module test.claim.fabric.fabric_sanitation_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.fabric.sanitation {

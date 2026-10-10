@@ -7,16 +7,16 @@ import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
 import extdeps.llm.anthropic_messages_api { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
 import std.bytes { bytes_seam_host_realization_marker }
 import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   gunbc_ci_concurrent_runs_conservative_high_disposition,
   gunbc_ci_footprint_granularity_disposition,
   gunbc_ci_footprint_bridge_disposition
 }
-import gunbc.host_memory_observation {
+import gunbc.host.host_memory_observation {
   gunbc_ci_managed_host_fixed_overhead_disposition,
   gunbc_ci_legacy_host_fixed_overhead_disposition
 }
-import gunbc.ci_budget_tree { gunbc_ci_budget_tree_deconfliction_disposition }
+import gunbc.ci.ci_budget_tree { gunbc_ci_budget_tree_deconfliction_disposition }
 import extdeps.entropy {
   entropy_count_bytes_unit_debt,
   entropy_transport_linux_gnu_only
@@ -24,15 +24,15 @@ import extdeps.entropy {
 import gunbc.tools.bmc_onboard {
   bmc_onboard_secret_on_disk_debt,
 }
-import gunbc.ci_runner_placement {
+import gunbc.ci.ci_runner_placement {
   gunbc_ci_cpu_weight_unit_modeling_marker,
   gunbc_ci_count_field_measure_followup,
   gunbc_ci_runner_count_from_budget_disposition
 }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   gunbc_host_converge_runner_sessions_coupling_marker
 }
-import tools.rust_stage0_gates {
+import gunbc.instruments.rust_stage0_gates {
   consumed_input_closure_concept_note,
   unit_must_run_failclosed_note,
   unit_must_run_staged_note,
@@ -142,7 +142,7 @@ data redundancy_region_budget_marks: List<Disposition> = [
 
 // The budget region tracked ONE fixed-overhead scaffold bound to gunbc_ci_per_service_overhead
 // until 2026-08-05, when that number split into a measured bound for the managed hosts and an
-// operator allowance for the legacy pair (gunbc.ci_floor_measurement
+// operator allowance for the legacy pair (gunbc.ci.ci_floor_measurement
 // gunbc_ci_host_fixed_overhead_kind_note). Two facts, two closure conditions, two successors — so
 // the region carries both marks and the locator below names the MANAGED successor specifically.
 //
@@ -153,16 +153,16 @@ data redundancy_region_budget_marks: List<Disposition> = [
 // version could not distinguish.
 
 // THE SCAFFOLDS MOVED AND THIS LOCATOR DELIBERATELY DID NOT (2026-09-19). The two fixed-overhead
-// scaffolds this region tracks were extracted into gunbc.host_memory_observation, and an
+// scaffolds this region tracks were extracted into gunbc.host.host_memory_observation, and an
 // intermediate revision of that change repointed this locator with them on the reasoning that a
 // QUIESCENT /proc/meminfo read belongs beside the rows it grounds. That was the author's aesthetic
 // judgement, not a decision the corpus had taken, and it was applied by a proximity rewrite rather
 // than chosen. It also broke six declaration findings: the successor is not declared anywhere yet,
 // and the citation debt rows that exempt it (declaration_index.rs PRE_EXISTING_CITATION_DEBT and
-// FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci_floor_measurement as its home. Where the
+// FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci.ci_floor_measurement as its home. Where the
 // successor lands is those rows' question, not this locator's, so the locator stays put.
 data redundancy_region_budget_per_service_overhead_locator: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.ci_floor_measurement",
+  module_path: "gunbc.ci.ci_floor_measurement",
   decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
   field: WholeDeclaration
 }
@@ -194,7 +194,7 @@ data redundancy_region_rust_gates_marks: List<Disposition> = [
 
 data redundancy_region_rust_gates_synthetic_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "tools.rust_stage0_gates",
+    module_path: "gunbc.instruments.rust_stage0_gates",
     decl_name: "per_unit_test_selector",
     field: WholeDeclaration
   }
@@ -316,7 +316,7 @@ test fn redundancy_region_runner_placement_fires_on_measure_present() -> Bool {
 }
 
 // gunbc_ci_regime2_aggregate_dissolution_marker IS GONE BECAUSE THE THING IT MARKED DISSOLVED.
-// It was the dissolution marker for the fused Regime2 aggregate row in gunbc.ci_floor_measurement;
+// It was the dissolution marker for the fused Regime2 aggregate row in gunbc.ci.ci_floor_measurement;
 // that row is deleted, so the marker has nothing left to mark and could not be retained without
 // naming a disposition that no longer exists. The region drops to one member and the successor
 // count below follows it -- the assertion is not relaxed, its subject is one smaller.
@@ -331,7 +331,7 @@ data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> =
     field: WholeDeclaration
   },
   DeclarationRef {
-    module_path: "gunbc.host_converge",
+    module_path: "gunbc.host.host_converge",
     decl_name: "HostConverge",
     field: WholeDeclaration
   }

@@ -1,15 +1,15 @@
-module test.claim.pre_os_observer_witness
+module test.claim.machine_intake.pre_os_observer_witness_test
 
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
 import std.types { Bool, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_sel_stimulus_listener { sel_read, sel_after }
-import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_terminal_from_console, pre_os_has_banner, sol_activation_banner }
-import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated, BootRestart }
+import gunbc.machine_intake.sel_stimulus_listener { sel_read, sel_after }
+import gunbc.machine_intake.pre_os_observer { pre_os_host_userspace_boot, pre_os_terminal_from_console, pre_os_has_banner, sol_activation_banner }
+import gunbc.machine_intake.pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated, BootRestart }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp }
-import gunbc.machine_intake_pre_os_observer { pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment }
-import gunbc.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem, RepeatingFirmwareReset, BootStalledWithoutReset }
+import gunbc.machine_intake.pre_os_observer { pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment }
+import gunbc.host.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem, RepeatingFirmwareReset, BootStalledWithoutReset }
 import std.goal_assessment { GoalIndeterminate, GoalAssessmentRefused, GoalSatisfied, GoalDiverged }
 
 

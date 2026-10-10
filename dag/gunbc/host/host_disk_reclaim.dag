@@ -1,13 +1,13 @@
-module gunbc.host_disk_reclaim
+module gunbc.host.host_disk_reclaim
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, seconds_per_day }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
 // THE FLEET'S DISK CAPACITY MECHANISM, SUBSUMED. This module models what ctrl-runner-reclaim.timer
 // has done on every runner host since 2026-07-23, read from the script itself
 // (scripts/session-dashboard/host/reclaim-runner-disk.sh and its .service/.timer), not from a
-// description. It follows the precedent gunbc.runner_lifecycle runner_lifecycle_ctrl_void_note
+// description. It follows the precedent gunbc.runner.runner_lifecycle runner_lifecycle_ctrl_void_note
 // sets: READ the ctrl artifact as ground truth for what the host does, subsume it here, never
 // invoke ctrl from gunbc.
 //
@@ -24,16 +24,16 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 // Deleting it re-opens a 5x disk regression on every host, so this model gives the mechanism a home
 // in the substrate rather than superseding a working thing with an unproven one.
 //
-// NOT A SECOND HYGIENE AUTHORITY. gunbc.host_hygiene_reaper is a DIFFERENT mechanism sharing the
+// NOT A SECOND HYGIENE AUTHORITY. gunbc.host.host_hygiene_reaper is a DIFFERENT mechanism sharing the
 // word: it reaps residual SLOTS -- stale cgroups, inactive units, control-override dirs -- and
 // covers none of packs, repack, tmp_pack, _diag or docker (verified by grep against it and its
 // _remediate half, all six terms zero). Treating one as the other's successor is the
 // one-name-two-concepts error, so the boundary is stated here.
 //
 // Subsumes ctrl-runner-reclaim.timer / .service / reclaim-runner-disk.sh, read as ground truth per
-// gunbc.runner_lifecycle runner_lifecycle_ctrl_void_note. The script is the authority for WHAT the
+// gunbc.runner.runner_lifecycle runner_lifecycle_ctrl_void_note. The script is the authority for WHAT the
 // host does today; this module for what the fabric believes about it. Disjoint from
-// gunbc.host_hygiene_reaper, which reaps residual slots and models no disk reclamation.
+// gunbc.host.host_hygiene_reaper, which reaps residual slots and models no disk reclamation.
 
 // THE FIVE GROWTH PATHS, each a separate arm because each has a different owner and repair. Four
 // are the accretion the script's header names; the fifth is a WEDGE, not growth, and the one a
@@ -165,7 +165,7 @@ fn slot_has_interrupted_fetch_residue(obs: SlotDiskObservation) -> Bool {
 // running job. The git object store is the only subject serialised against live work, twice over:
 // skipped entirely for a busy slot, and left to git's own repo lock otherwise.
 
-// THE INTENDED CONSUMER, named so this fold is not mistaken for a report. gunbc.runner_lifecycle
+// THE INTENDED CONSUMER, named so this fold is not mistaken for a report. gunbc.runner.runner_lifecycle
 // runner_slot_disk_budget_per_slot is circular -- disk divided by desired width, used to preflight
 // that width -- and measures ~16x the observed per-slot occupancy. slot_observed_bytes is the
 // observed quantity that replaces it. NOT DONE IN THIS MODULE, by operator sequencing 2026-08-22:
@@ -174,7 +174,7 @@ fn slot_has_interrupted_fetch_residue(obs: SlotDiskObservation) -> Bool {
 // down is unmodeled would rest on an unmodeled dependency.
 
 // WHAT THE FABRIC ACTUALLY WANTS FROM THIS: a per-slot disk claim derived from OBSERVATION, not
-// arithmetic. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot is today a single literal,
+// arithmetic. gunbc.runner.runner_lifecycle runner_slot_disk_budget_per_slot is today a single literal,
 // byte_size(40960000000), whose annotation derives it as "~38GB per slot at width 7 on 500GB class
 // disk" -- disk divided by the width you want, then used to preflight whether that width fits, so
 // charge and question are the same number. Measured reality on srv4 is ~2.5G per slot, about

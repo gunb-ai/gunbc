@@ -2,7 +2,7 @@ module test.claim.runner.runner_microvm_slot_controller_witness_test
 
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
 import gunbc.runner.jit_registration_subject { microvm_registration_subject }
-import gunbc.runner_microvm_attempt { bind_owned_attempt }
+import gunbc.runner.runner_microvm_attempt { bind_owned_attempt }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
@@ -11,7 +11,7 @@ import std.algebra { list_append }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }
-import gunbc.runner_microvm_attempt_bounds {
+import gunbc.runner.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound, attempt_unit_stop_slack,
 }
 import extdeps.systemd.unit_file { slice_memory_max, slice_memory_swap_max }
@@ -23,14 +23,14 @@ import extdeps.systemd.unit_file {
 import product.fabric.identity { FabricIdentity, WorkKey }
 import product.fabric.work { Work, ExecutionRequirements, TrustDomainRef }
 import product.fabric.sanitation { CellId }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }
-import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
-import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
-import gunbc.runner_microvm_attempt {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }
+import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   runner_microvm_attempt_slice_property, runner_microvm_attempt_part_of_property,
 }
@@ -38,21 +38,21 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command,
 }
-import gunbc.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
-import gunbc.runner_attempt_launch {
+import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
+import gunbc.runner.runner_attempt_launch {
   ReservationAuthorization, ReservationAuthorizes, ReservationArmRequiresInternalFleetTrust,
   ReservationNamesDifferentWork, ReservationForDifferentCell, ReservationGenerationDisagrees,
   reservation_agreement,
 }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_unit_file, microvm_slot_unit_text, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
   microvm_controller_slice_memory_max,
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import extdeps.systemd.unit_file { ServiceSlice, SliceUnitFile, SystemdSliceDirective, MemoryMax, MemorySwapMax, DirectiveByteCount }
-import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration, refusal_text, ReservationNotObserved }
-import gunbc.fabric_required_build_cell { ReservationUnreadable, ReservationPayloadUndecodable }
+import gunbc.runner.runner_microvm_slot_controller { slot_of_instance, minted_registration, refusal_text, ReservationNotObserved }
+import gunbc.fabric.fabric_required_build_cell { ReservationUnreadable, ReservationPayloadUndecodable }
 import std.durable_compare_and_set { CasUnreadableReadRefused }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
 import gunbc.runner.jit_registration_subject { microvm_registration_subject_of }
@@ -386,7 +386,7 @@ test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool 
 
 // THE RESERVATION REFUSAL CARRIES WHY THE STORE COULD NOT BE READ. The first srv1 slot start (fleet-
 // converge run 36054790165) refused "the allocation store could not be read for srv1-13" and nothing
-// more: the store read's typed cause was dropped at gunbc.fabric_required_build_cell, so a missing
+// more: the store read's typed cause was dropped at gunbc.fabric.fabric_required_build_cell, so a missing
 // directory and a refused read looked the same to the operator. The red is that old text, which ended
 // at the slot key; the receipt now carries the cause through std's one rendering of it, and a payload
 // that does not decode carries its decode detail the same way.

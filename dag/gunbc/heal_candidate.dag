@@ -238,7 +238,7 @@ type DriftPopulation
 // refusal rejects the WHOLE candidate, not the offending entry. So a candidate carrying one drifted
 // workflow beside five ordinary artifacts would publish NOTHING.
 //
-// THAT SHAPE IS COMMON, NOT EXOTIC: one edit to gunbc.ci_spec regenerates witnesses.yml AND
+// THAT SHAPE IS COMMON, NOT EXOTIC: one edit to gunbc.ci.ci_spec regenerates witnesses.yml AND
 // docs/design-rung-drops.md together, which is exactly what the change introducing this filter did.
 // The heal job this replaced pushed what it could and bundled the rest for the author; proposing the
 // unpublishable path and being refused wholesale is strictly worse than either.

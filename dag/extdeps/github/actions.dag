@@ -246,7 +246,7 @@ type CancelInProgressWhenQueueMax
 // was cancelled; without it, two of four were CANCELLED while pending. So the key is consumed and
 // it changes behaviour in exactly the direction the variant names. The measured receipt lives in
 // the observing layer, per the external-upstream rule that an observation this repository produces
-// is a receipt of ours and not a fact authored inside the upstream module: gunbc.fleet_desired_admission_workflow
+// is a receipt of ours and not a fact authored inside the upstream module: gunbc.fleet.fleet_desired_admission_workflow
 // `fleet_desired_queue_max_measured_receipt`.
 //
 // WHAT IS STILL UNGROUNDED, named so it is not mistaken for settled: an undocumented key can change

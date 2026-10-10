@@ -2,8 +2,8 @@ module test.claim.machine_intake.mtcollins1_census_qemu_host_observe_witness_tes
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
-import gunbc.runner_qemu_toolchain { qemu_toolchain_location, qemu_toolchain_archives, qemu_toolchain_recipe_identity }
-import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_install_dir, census_qemu_host_observe_receipt_path }
+import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_location, qemu_toolchain_archives, qemu_toolchain_recipe_identity }
+import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_install_dir, census_qemu_host_observe_receipt_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

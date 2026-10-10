@@ -1,4 +1,4 @@
-module test.claim.boot_artifact_delivery_witness_test
+module test.claim.machine_intake.boot_artifact_delivery_witness_test
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.board_authority { BoardFruObservation, BoardUnbound }
@@ -78,7 +78,7 @@ import extdeps.bmc.access_profile {
   SurfaceRedfishVirtualMedia,
   bmc_access_profile_for,
 }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   ComponentIdentity,
   DimmComponent,
@@ -90,8 +90,8 @@ import gunbc.machine_intake_subject {
   UnitKey,
   qualification_subject_of,
 }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.machine_intake_access {
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.access {
   AccessContextBound,
   AccessContextCatalogRefused,
   AccessContextControlRouteEvidenceMismatch,
@@ -1129,7 +1129,7 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
 // is a staged-artifact mismatch, never a plan.
 fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
   let obs = DeclarationRef {
-    module_path: "test.claim.boot_artifact_delivery_witness_test",
+    module_path: "test.claim.machine_intake.boot_artifact_delivery_witness_test",
     decl_name: "established_network_boot_for",
     field: WholeDeclaration,
   }

@@ -1,4 +1,4 @@
-module v2.test.manual.infer_bounded_lattice_completeness_anchor
+module v2.test.claim.manual.infer_bounded_lattice_completeness_anchor_test
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }

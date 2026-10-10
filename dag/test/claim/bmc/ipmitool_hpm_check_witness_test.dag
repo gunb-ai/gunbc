@@ -1,4 +1,4 @@
-module test.claim.ipmitool_hpm_check_witness
+module test.claim.bmc.ipmitool_hpm_check_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { any, filter }

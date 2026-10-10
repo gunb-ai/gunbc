@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_network_shape
+module gunbc.runner.runner_microvm_network_shape
 
 import std.types { NonEmptyStr, String }
 

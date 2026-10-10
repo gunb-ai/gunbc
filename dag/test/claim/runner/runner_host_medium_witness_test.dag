@@ -1,4 +1,4 @@
-module test.claim.runner_host_medium_witness
+module test.claim.runner.runner_host_medium_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { kibibyte_count, hardware_thread_count_value }
@@ -6,8 +6,8 @@ import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
-import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
@@ -17,11 +17,11 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   seeded_install_media_seed_artifact_admission, SeedArtifactsAdmitted, SeedArtifactsRefused,
   SeedArtifactNameNotABasename, SeedArtifactNameReserved, SeedArtifactNameCollidesWithSeedFile, SeedArtifactNameDuplicated,
 }
-import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg }
+import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRunnerHostAccepted, TerminalRefused, TerminalPending,
   WatchRunnerHostAccepted, watch_tick, SolChannelLive,
   TerminalWatch, actuation_watch_of, actuation_after_watch, actuation_with_outcome, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
@@ -246,7 +246,7 @@ test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
 }
 
 // THE ARTIFACT NAME IS ADMITTED BEFORE ANY FETCH (the remaster's fetch takes only an
-// AdmittedSeedArtifact; its real-execution control is test.claim.srv3_seeded_install_media_real_execution).
+// AdmittedSeedArtifact; its real-execution control is test.claim.srv3.srv3_seeded_install_media_real_execution_witness_test).
 // The runner image's own tarball is admitted; an escaping path, the image's own program name, a
 // NoCloud datasource name and a duplicate each refuse with their own cause.
 fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCloudSeedArtifact, cause: String) -> Bool {

@@ -1,14 +1,14 @@
-module test.claim.roadmap_publish_observe_witness_test
+module test.claim.roadmap.roadmap_publish_observe_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_publish_observe {
+import gunbc.roadmap.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   worktree_repository_binding_of,
   remote_branch_observation_of,
   advertised_refs_projecting_empty_branch,
 }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RemoteBranch,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure,
@@ -180,8 +180,8 @@ test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
 
 // The observation is only worth building if it composes with the judgment it was built for, so this
 // claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two
-// halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into
-// observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no
+// halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap.roadmap_publish_observe turns it into
+// observations, gunbc.roadmap.roadmap_publish adjudicates. Before this slice roadmap_publish had no
 // producer at all - adjudicate_publication was called only from its own witness - so the
 // adjudicator was a judgment nothing could ask.
 
@@ -228,7 +228,7 @@ test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
 data divergence_is_the_point_note: String = "The two claims above are the same advertisement differing only in which commit the branch points at, and they must not produce the same answer. A name-shaped publication check reports both as published, which is precisely the defect the exact-head rewrite exists to remove: the ordinary state after a worker pushes a revision while a review is in flight is a branch whose name still matches and whose head no longer does."
 
 // THESE ARE CONSTRUCTED, NOT OBSERVED, which is the property the observer/adjudicator split in
-// gunbc.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts
+// gunbc.roadmap.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts
 // a `git remote get-url` produces and decides; observe_worktree_repository_binding only feeds it.
 // So every arm - including the two failure arms - is reachable here with no git, no worktree and no
 // network, and a witness that needed a real misconfigured checkout to exercise the mismatch arm

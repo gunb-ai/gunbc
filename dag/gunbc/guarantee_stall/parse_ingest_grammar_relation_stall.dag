@@ -9,6 +9,6 @@ data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Empty {} } },
+  population: BoundedPopulation { members: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip_test.same_grammar_parse_ingest_bridge_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when(capability: "the same-grammar parse-to-ingest round trip holds")
 }

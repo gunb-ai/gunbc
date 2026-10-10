@@ -204,7 +204,7 @@ stage0 emission plan → produced module/file identities → canonical output pa
 
 That route is not available: `gunbc.stage0_emit_plan` was deleted at the root by the
 regen cut (#8406), which is also what left the roster producerless. A derivation landed
-in its place — `gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`,
+in its place — `gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`,
 which reads the emitter's own declared population at a revision and intersects it with the
 tracked tree. **The last sentence of the old text — "the derived paths feed the merge-attribute
 population" — was never true of it.** The derivation landed; the join this lane names as its own

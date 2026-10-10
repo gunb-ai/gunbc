@@ -1,25 +1,25 @@
-module test.claim.host_control_route_witness
+module test.claim.host.host_control_route_witness_test
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerObserved }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
-import gunbc.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
-import gunbc.hetzner_cloud_server_reading { AcquiredServerRead, judge_acquired_server_read }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet.hetzner_cloud_server_reading { AcquiredServerRead, judge_acquired_server_read }
 import product.host_identity { HostIdentity }
 import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.decl_ref { decl_ref }
-import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
-import gunbc.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
-import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
-import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
-import gunbc.host_control_route {
+import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
+import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
+import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
+import gunbc.host.host_control_route {
   HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
   BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
 }
 
 // THE PROVIDER'S ANSWER IS SUPPLIED AT THE API BOUNDARY and judged by the production judge
-// (gunbc.hetzner_cloud_server_reading judge_acquired_server_read), so the route below is the real one
+// (gunbc.fleet.hetzner_cloud_server_reading judge_acquired_server_read), so the route below is the real one
 // from the GET's decoded body onward.
 fn read_of(acquisition: ProviderResourceAcquisition, answered_id: Int) -> AcquiredServerRead {
   judge_acquired_server_read(
@@ -70,7 +70,7 @@ test fn both_cax_guests_are_controlled_through_the_hetzner_project_account() -> 
     && guest_controlled_as(host: operator_host_3dde7f, resource_id: "169308796")
 }
 
-// RED: AN OWNED BOARD THAT gunbc.managed_host DOES NOT BIND HAS NO CONTROL ROUTE, even though it is
+// RED: AN OWNED BOARD THAT gunbc.host.managed_host DOES NOT BIND HAS NO CONTROL ROUTE, even though it is
 // installed over its BMC. srv1 is enrolled and BMC-installed, and no managed-host row binds it today,
 // so claiming control of it would be claiming a route nobody secured.
 test fn an_owned_board_with_no_managed_host_row_is_not_controlled() -> Bool {

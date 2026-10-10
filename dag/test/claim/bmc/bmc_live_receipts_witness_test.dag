@@ -1,4 +1,4 @@
-module test.claim.bmc_live_receipts_witness
+module test.claim.bmc.bmc_live_receipts_witness_test
 
 import extdeps.bmc.types {
   BmcFanCurve,
@@ -26,7 +26,7 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_from_proc_mounts,
   linux_overlay_observation_is_flash_backed,
 }
-import gunbc.fleet_bmc_observation {
+import gunbc.fleet.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
@@ -38,8 +38,8 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_firmware_observation,
   srv4_bmc_update_service_observation,
 }
-import gunbc.fleet_bmc_state { srv4_bmc_fan_reboot_persistence_receipt }
-import gunbc.fleet_intent { srv4_host }
+import gunbc.fleet.fleet_bmc_state { srv4_bmc_fan_reboot_persistence_receipt }
+import gunbc.fleet.fleet_intent { srv4_host }
 import std.measure {
   celsius,
   percent,

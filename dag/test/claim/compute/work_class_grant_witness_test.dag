@@ -246,7 +246,7 @@ test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> B
 // THE THIRD CASE IS THE INVERSE, AND IT IS WHY NO TERMINATION GUARD BELONGS HERE. A truncated read
 // would under-report a peak silently -- "Memory peak: 11G" cut to "Memory peak: 1G" parses cleanly
 // as a tenth of the real figure -- so a trailing-newline requirement suggests itself. It is REFUSED,
-// on the authority that already settled this question: gunbc.machine_intake_host_capture_envelope
+// on the authority that already settled this question: gunbc.machine_intake.host_capture_envelope
 // HostCaptureText rules that whether a capture's last line is whole is the CALLER's fact and is
 // never inferred from the bytes, which cannot tell a truncation from a transport that trimmed. This
 // stderr is a COMPLETED TRANSCRIPT -- systemd-run has exited before the provider reads it -- and the

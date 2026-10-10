@@ -1,4 +1,4 @@
-module gunbc.instrument_dispatch_workflow
+module gunbc.instruments.instrument_dispatch_workflow
 
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append }
@@ -25,10 +25,10 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused,
   toolchain_home_refusal_reason,
 }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
+import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_steps }
-import gunbc.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_steps }
+import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
   type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, instrument_targets,
@@ -66,7 +66,7 @@ import v2.extdeps.languages.bash_build {
 //   - the run's revision, run id and the instrument's own output and exit are uploaded as an artifact,
 //     seeded under RUNNER_TEMP before the fallible prelude so every termination uploads one.
 //
-// THE PRELUDE IS gunbc.compiler_gate_workflow's HOSTED BUILD PRELUDE, NOT A COPY OF IT: checkout,
+// THE PRELUDE IS gunbc.witness.compiler_gate_workflow's HOSTED BUILD PRELUDE, NOT A COPY OF IT: checkout,
 // isolated toolchain homes, the pinned toolchain and the `gunbc` build are the steps emit-build already
 // runs to reach `gunbc test`, so the two cannot disagree about how the door is built.
 
@@ -156,7 +156,7 @@ fn instrument_dispatch_labels_are_rostered() -> Bool {
 // that slot's cgroup happened to admit it; nothing said it needed to. Each row here names a label and
 // the memory its run must be granted, and the requirement is held twice from this one row:
 //   - at GENERATION, against the selected runner target's memory regime
-//     (gunbc.ci_runner_target ci_runner_target_ram_speed_budget -- the existing vocabulary, so a
+//     (gunbc.ci.ci_runner_target ci_runner_target_ram_speed_budget -- the existing vocabulary, so a
 //     runner switch that cannot hold a row refuses the workflow instead of emitting it);
 //   - at RUN TIME, by a guard step bound to that label which reads the job's effective memory bound
 //     (the least numeric memory.high/memory.max on its cgroup path, and MemTotal) and refuses before
@@ -221,7 +221,7 @@ fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
           bash_build_word_var(name: source),
           bash_build_word_lit(text: " required="),
           bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
-          bash_build_word_lit(text: " -- this runner cannot hold the dispatched subject (gunbc.instrument_dispatch_workflow instrument_dispatch_memory_demands)"),
+          bash_build_word_lit(text: " -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)"),
         ]),
       ]),
       redir: ^bash_production_fold_redir_stdout_to_stderr,
@@ -538,46 +538,46 @@ type InstrumentDispatchWorkflowGenerationOutcome
 
 fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOutcome {
   if !instrument_dispatch_memory_demands_are_dispatchable() {
-    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: a memory demand names a label that is not dispatchable" }
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a memory demand names a label that is not dispatchable" }
   } else if !instrument_dispatch_memory_demands_fit_selected_target() {
-    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: a dispatchable label's declared memory demand exceeds the selected runner target's budget (gunbc.ci_runner_target ci_runner_target_ram_speed_budget), so no runner this workflow targets can hold it" }
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a dispatchable label's declared memory demand exceeds the selected runner target's budget (gunbc.ci.ci_runner_target ci_runner_target_ram_speed_budget), so no runner this workflow targets can hold it" }
   } else if instrument_dispatch_labels_are_rostered() {
     match instrument_dispatch_seed_script() {
       Rejected { diagnostics: _ } =>
-        InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the seed script, so no workflow is emitted" }
+        InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: v2.workflow.bash_emit refused the seed script, so no workflow is emitted" }
       Accepted { value: seed, diagnostics: _ } =>
         match instrument_dispatch_script() {
           Rejected { diagnostics: _ } =>
-            InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the run script, so no workflow is emitted" }
+            InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: v2.workflow.bash_emit refused the run script, so no workflow is emitted" }
           Accepted { value: script, diagnostics: _ } =>
             match instrument_dispatch_memory_guard_script() {
               Rejected { diagnostics: _ } =>
-                InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the memory guard script, so no workflow is emitted" }
+                InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: v2.workflow.bash_emit refused the memory guard script, so no workflow is emitted" }
               Accepted { value: guard, diagnostics: _ } =>
                 expected_instrument_dispatch_yml_with(workflow: instrument_dispatch_workflow(seed: seed, guard: guard, script: script))
             }
         }
     }
   } else {
-    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: a dispatchable label is not a row of gunbc.instrument_targets instrument_targets" }
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a dispatchable label is not a row of gunbc.instrument_targets instrument_targets" }
   }
 }
 
 fn expected_instrument_dispatch_yml_with(workflow: Workflow) -> InstrumentDispatchWorkflowGenerationOutcome {
   match admit_workflow_action_uses(workflow: workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
-      InstrumentDispatchWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.instrument_dispatch_workflow", refusals: rs) }
+      InstrumentDispatchWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.instruments.instrument_dispatch_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
       match admit_workflow_checkout_refs(workflow: workflow, declared: []) {
         WorkflowCheckoutRefsRefused { refusals: crs } =>
-          InstrumentDispatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.instrument_dispatch_workflow", refusals: crs) }
+          InstrumentDispatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.instruments.instrument_dispatch_workflow", refusals: crs) }
         WorkflowCheckoutRefsAdmitted =>
           match admit_workflow_toolchain_homes(workflow: workflow) {
             WorkflowToolchainHomesAdmitted =>
               match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
                 EmittedYaml { text: t } => InstrumentDispatchWorkflowGenerated { content: t }
                 YamlEmitRefused { path: p, reason: r } =>
-                  InstrumentDispatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.instrument_dispatch_workflow", path: p, reason: r) }
+                  InstrumentDispatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.instruments.instrument_dispatch_workflow", path: p, reason: r) }
               }
             WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
               InstrumentDispatchWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }

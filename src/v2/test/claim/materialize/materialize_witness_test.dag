@@ -1,4 +1,4 @@
-module v2.test.materialize.materialize_witness
+module v2.test.claim.materialize.materialize_witness_test
 
 import std.types { List }
 import v2.std.materialize {

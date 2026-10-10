@@ -1,7 +1,7 @@
 module test.claim.e0599_probe_census_witness_test
 
 import std.error_primitives { Ok, Err }
-import tools.e0599_probe_census {
+import gunbc.instruments.e0599_probe_census {
   MissingMethod,
   BoundsUnsatisfied,
   NoVariant,
@@ -17,7 +17,7 @@ import tools.e0599_probe_census {
   e0599_root_family_labels_from_blob,
 }
 
-// Witness for tools.e0599_probe_census authority: pattern row census, canonical-seven roster blob,
+// Witness for gunbc.instruments.e0599_probe_census authority: pattern row census, canonical-seven roster blob,
 // and root-family rollup used by docs/probes/e0599_census_extract.sh (SCAFFOLD realization).
 // Aggregate path refuses unless inputs match e0599_canonical_seven_modules exactly
 // (missing/duplicate/extra). Export boundary refuses unknown failure-shape labels (fail-closed).

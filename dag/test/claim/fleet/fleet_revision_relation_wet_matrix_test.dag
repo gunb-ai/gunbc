@@ -1,4 +1,4 @@
-module test.claim.fleet_revision_relation_wet_matrix
+module test.claim.fleet.fleet_revision_relation_wet_matrix_test
 
 import std.types { Bool, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
@@ -11,8 +11,8 @@ import gunbc.live_deploy.revision {
   DivergedHistories,
   RelationUnverifiable,
 }
-import gunbc.fleet_main_revision { FleetRevisionRelationObservation }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation_in }
+import gunbc.fleet.fleet_main_revision { FleetRevisionRelationObservation }
+import gunbc.fleet.fleet_desired_observe { observe_fleet_revision_relation_in }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // OPPOSITE IS THE NATURAL ASSUMPTION FOR A GREEN WITNESS FILE. It is a wet/replay class: every
 // dispatching row reaches git.Inspect.MergeBase, which publishes no mock_response, so under the
 // hermetic envelope the run REFUSES by construction rather than skipping. Its exclusion row and
-// substantiated reason live in gunbc.ci_layer_roots; the local recipe is beside them.
+// substantiated reason live in gunbc.ci.ci_layer_roots; the local recipe is beside them.
 //
 // WHY IT CANNOT SIMPLY BE ENROLLED, established by reading the carrier rather than assumed: the
 // replay binding that WOULD carry recorded observations into a hermetic run is

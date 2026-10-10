@@ -44,7 +44,7 @@ fn bash_program() -> ProgramIdentity = uncataloged_program(invocation: "bash")
 
 // Same residual-class standing as the POSIX sibling: the script TEXT is modeling debt owned by the
 // shell -> dag lane, and this builder is not a route for spelling a program's argv inside a string.
-// One call site at the seal: gunbc.fleet_converge_plan_cli's locked apply script.
+// One call site at the seal: gunbc.fleet.fleet_converge_plan_cli's locked apply script.
 fn bash_program_command(script: String) -> ArgvCommand {
   argv_command(program: bash_program(), arguments: ["-c", script])
 }

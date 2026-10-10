@@ -4,9 +4,9 @@ import extdeps.shell
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   ClaimRun,
   WitnessBinReady,
   WitnessBinRefused,
@@ -17,8 +17,8 @@ import tools.host_prelude {
 }
 
 data closure_source_root: String = "src/v2"
-data closure_entry: String = "src/v2/compiler/00_compile.dag"
-data closure_boundary_entry: String = "src/v2/compiler/07_target_carriers.dag"
+data closure_entry: String = "src/v2/compiler/compile.dag"
+data closure_boundary_entry: String = "src/v2/compiler/target_carriers.dag"
 data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
 data closure_boundary_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag"
 data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"

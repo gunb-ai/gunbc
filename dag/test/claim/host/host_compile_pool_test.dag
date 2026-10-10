@@ -1,4 +1,4 @@
-module test.claim.host_compile_pool
+module test.claim.host.host_compile_pool_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

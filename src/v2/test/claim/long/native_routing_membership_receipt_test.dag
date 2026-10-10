@@ -89,7 +89,7 @@ test fn native_routing_red_control_unreached_subject_is_not_member() -> Bool {
       entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag"
     ),
     subject: family_subject(
-      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      module_path: "v2.test.claim.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
     ),
     facts: facts
@@ -108,7 +108,7 @@ test fn native_routing_green_control_bound_entry_reaches_subject() -> Bool {
       entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag"
     ),
     subject: family_subject(
-      module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
+      module_path: "v2.test.claim.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
     ),
     facts: facts

@@ -1,4 +1,4 @@
-module v2.test.manual.pbp_body_producer_perf_repro
+module v2.test.claim.manual.pbp_body_producer_perf_repro
 
 
 fn pbp() -> Bool {

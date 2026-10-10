@@ -1,4 +1,4 @@
-module tools.docs_projection_agreement
+module gunbc.instruments.docs_projection_agreement
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 

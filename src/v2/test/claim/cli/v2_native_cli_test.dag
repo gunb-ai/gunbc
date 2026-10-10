@@ -1,4 +1,4 @@
-module v2.test.cli.v2_native_cli
+module v2.test.claim.cli.v2_native_cli_test
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitFailure, ExitSuccess }
@@ -361,7 +361,7 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 // asserting `v2_cli_run` reaches `CliEmitted` over a one-module ingest failed; so did the SAME
 // ingest and admission handed to `emit_compiler_import_closure_from_ingest` DIRECTLY, with this CLI
 // entirely out of the path -- which localises the refusal to the fold rather than to the routing.
-// And the pre-existing claim for that fold, `v2.test.long.self_host_module_emit_derisk`
+// And the pre-existing claim for that fold, `v2.test.claim.long.self_host_module_emit_derisk_test`
 // `self_host_frontier_emit_ownership_miss_accepts`, is RED ON THIS TREE unchanged: it asserts
 // Accepted for the identical module shape and does not get it. So the emitter does not accept a
 // standalone-module ingest at this head, and a claim asserting that it does would be red for a
@@ -369,7 +369,7 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 //
 // WHY THAT RED WAS NOT ALREADY KNOWN: that file lives under `test/claim/long/`, which CI discovery
 // EXCLUDES at directory grain, and its last commit is a repository-wide DESIGN edit. The exclusion
-// note in `gunbc.ci_layer_roots` already carries the retraction that relocating a witness there is
+// note in `gunbc.ci.ci_layer_roots` already carries the retraction that relocating a witness there is
 // precisely what stops it running; this is that retraction's next receipt.
 //
 // THE TRIGGER, NAMED AS A CAPABILITY (DESIGN section 4b(3)): `emit_compiler_import_closure_from_ingest`

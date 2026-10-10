@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_kvm_observer_observe
+module gunbc.machine_intake.mtcollins1_kvm_observer_observe
 
 import std.types { NonEmptyStr, String }
 import std.algebra { trim }
@@ -6,26 +6,26 @@ import std.measure { Second }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
-import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
-import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
-import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake_megarac_kvm_observer_observe {
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.megarac_kvm_observer_observe {
   KvmObserverProbePaths, megarac_kvm_observer_observe, megarac_kvm_observer_release,
   megarac_kvm_observer_probe_artifact_glob, megarac_kvm_observer_probe_bound,
 }
 
 // MT. COLLINS UNIT 1'S BINDING OF THE KVM OBSERVER PROBE (managed-host cut 5). The probe itself is
-// gunbc.machine_intake_megarac_kvm_observer_observe over an admitted MegaRAC host; what stays here is
+// gunbc.machine_intake.megarac_kvm_observer_observe over an admitted MegaRAC host; what stays here is
 // only what the fleet-converge workflow names (ruling (a): the workflow surface moves in cut 7) -- the
 // two entry functions, the artifact glob and the step bound -- and the mtcollins1 row it binds: the host
 // label, the boot's observer-directory authority this unit's probes share a prefix with, the executor
 // host the unit hold store lives on, the workflow run id that owns the hold, and the credential file the
 // workflow prelude materializes.
 
-// The probe's directories share the boot's observer prefix (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
+// The probe's directories share the boot's observer prefix (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
 // mtcollins1_kvm_observer_dir), derived from that authority rather than re-spelled.
 data mtcollins1_kvm_observer_probe_paths: KvmObserverProbePaths = KvmObserverProbePaths { dir_prefix: mtcollins1_kvm_observer_dir(attempt: "") }
 

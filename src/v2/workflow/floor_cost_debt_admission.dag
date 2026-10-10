@@ -160,7 +160,7 @@ data approval_intent_digest_typed_admissions: List<FloorCostDebtTypedAdmission> 
   },
   FloorCostDebtTypedAdmission {
     identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision",
-    reason: "the one inhabitance claim of gunbc.fabric_storage_state_provision fabric_state_provision_request: one interpreted SHA-256 over the real material intent, then the gate over that revision and a refused other revision; its siblings read fabric_state_provision_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+    reason: "the one inhabitance claim of gunbc.fabric.fabric_storage_state_provision fabric_state_provision_request: one interpreted SHA-256 over the real material intent, then the gate over that revision and a refused other revision; its siblings read fabric_state_provision_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
   },
 ]
 

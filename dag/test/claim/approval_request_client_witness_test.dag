@@ -11,7 +11,7 @@ import gunbc.auth.approval_status_wire {
   parse_filed_approval_status, filed_approval_status_text, submission_filed_text, submission_body_admits_poll,
   StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.auth.approval_writer_authority { approval_writer_authority, approval_writer_process, RoadmapProcess, BrokerProcess }
 import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port }
 import gunbc.auth.approval_request_submission { submission_envelope_json }

@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_session_release_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
-import gunbc.machine_intake_megarac_media_attach {
+import gunbc.machine_intake.megarac_media_attach {
   SessionAbsent,
   SessionPresent,
   SessionPresenceUnreadable,

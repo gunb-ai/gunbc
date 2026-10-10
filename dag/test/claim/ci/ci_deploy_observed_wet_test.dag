@@ -1,4 +1,4 @@
-module test.claim.ci_deploy_observed_wet
+module test.claim.ci.ci_deploy_observed_wet_test
 
 // OFFLINE wet integration witness (hermetic-floor split, operator posture 2026-07-11:
 // integration-style witnesses do not run regularly; CI runs hermetic/mocked variants).

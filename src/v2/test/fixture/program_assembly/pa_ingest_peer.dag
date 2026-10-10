@@ -1,3 +1,3 @@
-module bisect.add
+module v2.test.fixture.program_assembly.pa_ingest_peer
 
 fn add(x:Int, y:Int) -> Int { x + y }

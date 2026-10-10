@@ -2,16 +2,16 @@ module test.claim.shell.shell_dag_slot_population_census_read_witness_test
 
 import std.types { Bool, String, List }
 import product.host_identity { HostIdentity }
-import gunbc.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, HostEffectTransport }
-import gunbc.host_effect_realize { observe_slot_population_over_host_effect_transport }
-import gunbc.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }
+import gunbc.host.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, HostEffectTransport }
+import gunbc.host.host_effect_realize { observe_slot_population_over_host_effect_transport }
+import gunbc.runner.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ACCEPTANCE ORACLE FOR shell-dag-slot-population-census-read, RED BY DESIGN UNTIL THE NODE IS
-// DONE. The node's bar is that gunbc.host_effect_realize observe_slot_population_over_host_effect_
+// DONE. The node's bar is that gunbc.host.host_effect_realize observe_slot_population_over_host_effect_
 // transport executes its census read through the typed-argv transport directly — the same file's
 // own build_cache_typed_argv_read precedent — instead of building typed argv and throwing the
 // typing away by re-joining it via shell_command_text_of_argv. A no-control-word assertion cannot
@@ -75,7 +75,7 @@ test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool {
 
 // POSITIVE CONTROL over a planted list-units outcome, green today and after: a successful planted
 // list-units outcome classifies as a census, not a refusal. The host must have a derivable desired
-// slot population (gunbc.runner_slot_population_census slot_population_census refuses one without),
+// slot population (gunbc.runner.runner_slot_population_census slot_population_census refuses one without),
 // so the planted outcome is read for a fleet host rather than for census_fixture_host.
 test fn planted_list_units_success_classifies_as_a_census() -> Bool {
   match slot_census_from_command_outcome(host: operator_host_srv1, success: true, exit_code: 0, stdout: "", stderr: "") {

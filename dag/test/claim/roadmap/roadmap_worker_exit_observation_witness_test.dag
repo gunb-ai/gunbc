@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_worker_exit_observation_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
   AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown }
-import gunbc.roadmap_session_placement { session_worker_unit_lifecycle }
+import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle }
 
 // The worker unit's observation now that the unit is collected when its process ends (the
 // 2026-09-05 RemainAfterExit is reversed). Each claim supplies the manager's answer and the spool's

@@ -1,4 +1,4 @@
-module v2.test.emit_host_gate.target_coverage_completeness
+module v2.test.claim.emit_host_gate.target_coverage_completeness_test
 
 import std.types { List }
 import v2.std.algebra { fold_list, is_empty }

@@ -1,9 +1,9 @@
-module test.claim.workspace_allocation_write_seam_wet_witness_test
+module test.claim.roadmap.workspace_allocation_write_seam_wet_witness_test
 
 import std.types { Bool, String }
 import extdeps.shell
 import test.claim.request_authentication_witness_test { witness_mint_session }
-import test.claim.workspace_allocation_http_witness_test {
+import test.claim.roadmap.workspace_allocation_http_witness_test {
   seam_security, seam_create, seam_create_body, seam_matching_readback, seam_decided_at, seam_observed_at, seam_tailnet_login,
 }
 import gunbc.auth.session { SessionMinted, SessionRefused }
@@ -11,11 +11,11 @@ import gunbc.auth.tailnet_serve_readback { TailnetServeReadbackUntaken }
 import gunbc.auth.request_authentication { TailnetReadbackNotDemanded }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest }
-import gunbc.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import test.claim.runner.workspace_owner_access_witness_test { witness_single_owner_policy }
-import gunbc.workspace_allocation_http { workspace_http_reason }
-import gunbc.workspace_allocation_routes { workspace_route_release_over }
+import gunbc.roadmap.workspace_allocation_http { workspace_http_reason }
+import gunbc.roadmap.workspace_allocation_routes { workspace_route_release_over }
 import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceRetired, WorkspaceWanted }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.principal_projection { principal_ref_eq }

@@ -1,20 +1,20 @@
-module test.claim.fleet_converge_plan_manifest_witness
+module test.claim.fleet.fleet_converge_plan_manifest_witness_test
 
-import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly }
+import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly }
 
-import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 
 import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
 import v2.std.algebra { count_where }
 import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.actions_run_binding { ActionsRunBinding }
-import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_receipt { FleetConvergePlanReceipt }
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_scope_wire,
   fleet_converge_plan_bundle_digest_hex
 }
-import gunbc.fleet_converge_plan_manifest {
+import gunbc.fleet.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,
   FleetConvergeApplyPayloadAdmission,
   PayloadAdmitted,
@@ -34,7 +34,7 @@ import gunbc.fleet_converge_plan_manifest {
   fleet_converge_persisted_member_authority,
   fleet_converge_persisted_member_paths,
 }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_plan_body_path,
   fleet_converge_plan_apply_shell_path,
   fleet_converge_plan_subject_host_path,

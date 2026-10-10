@@ -21,7 +21,7 @@ module test.claim.org_admin_refusal_prelude_derivation_witness_test
 // OrgAdminCredentialRefusal; gunbc.auth.org_admin_credential records why, and what would change it.
 // These witnesses say the words have one home and reach the runner -- not that a refusal VALUE ever
 // exists on the CI path.
-import gunbc.ci_spec { gunbc_ci_org_admin_app_token_prelude }
+import gunbc.ci.ci_spec { gunbc_ci_org_admin_app_token_prelude }
 import gunbc.auth.org_admin_credential {
   org_admin_app_key_unreadable_message,
   org_admin_installation_token_refused_message,

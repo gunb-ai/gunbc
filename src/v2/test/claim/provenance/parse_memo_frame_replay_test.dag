@@ -1,4 +1,4 @@
-module v2.test.provenance.parse_memo_frame_replay
+module v2.test.claim.provenance.parse_memo_frame_replay_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,4 @@
-module v2.test.manual.parallel_executor
+module v2.test.claim.manual.parallel_executor_test
 
 import std.types { List }
 import v2.std.dependency { ReadinessLayer }
@@ -20,7 +20,7 @@ import v2.workflow.executor {
 import v2.workflow.scheduler {
   SchedulerNoRunnableFrontier
 }
-import v2.test.manual.scheduler_runnable_frontier {
+import v2.test.claim.manual.scheduler_runnable_frontier_test {
   scheduler_build_node,
   scheduler_emit_node,
   scheduler_fixture_dependencies,

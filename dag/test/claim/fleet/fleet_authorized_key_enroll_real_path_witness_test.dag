@@ -10,7 +10,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import extdeps.tools.gnu_coreutils { ls_long_directory_command }
 import gunbc.command_runner { run_shell_command_capture }
 import std.algebra { trim }
-import gunbc.fleet_host_key_enrollment {
+import gunbc.fleet.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
   fleet_host_key_enroll_apply,
   fleet_authorized_key_enroll_route,
@@ -20,7 +20,7 @@ import gunbc.fleet_host_key_enrollment {
   SelfEnrollApply,
   SelfEnrollRefuse,
 }
-import gunbc.fleet_probe_identity_observe {
+import gunbc.fleet.fleet_probe_identity_observe {
   fleet_probe_identity_observe_receipt_body,
   fleet_probe_identity_receipt_path,
 }

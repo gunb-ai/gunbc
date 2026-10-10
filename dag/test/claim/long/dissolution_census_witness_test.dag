@@ -7,7 +7,7 @@ module test.claim.long.dissolution_census_witness_test
 // test.claim.dissolution_census_mechanism_witness_test. This file carries
 // only the properties whose subject IS the live census_closure_frontier_rows
 // roster and cannot be proven on synthetic data. Enrolled on the falsifier
-// FalsifierSubstrateLongLane cadence (gunbc.ci_layer_roots
+// FalsifierSubstrateLongLane cadence (gunbc.ci.ci_layer_roots
 // falsifier_substrate_long_lane_rows), not per-PR fast-lane discovery.
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.dissolution_observation {
@@ -27,7 +27,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // unbound_dissolution_empty_literal_refuses (below) was investigated as a possible third
-// import-closure-pollution exemplar for the witness-cost-class lane (gunbc.roadmap_authority
+// import-closure-pollution exemplar for the witness-cost-class lane (gunbc.roadmap.roadmap_authority
 // adhoc-0e6f8ea5-158) and FALSIFIED -- NOT import-closure pollution, and not fixable by
 // closure-narrowing. w_unbound_dissolution_empty_literal_red /
 // w_unbound_dissolution_nonempty_literal_green both call compile_dag_rust_emit_check, whose

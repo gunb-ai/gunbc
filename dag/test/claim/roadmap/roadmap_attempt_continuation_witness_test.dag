@@ -1,9 +1,9 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness_test
 
-import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
 import std.types { Bool, String, Int }
-import gunbc.roadmap_model {  RoadmapNodeId }
+import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_supervisor {
   SupervisorTarget, SupervisorForNode, SupervisorAtTop, supervisor_target_for,
   supervisor_verdict_schema,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,

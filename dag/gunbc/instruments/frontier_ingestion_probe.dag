@@ -1,4 +1,4 @@
-module gunbc.tools.frontier_ingestion_probe
+module gunbc.instruments.frontier_ingestion_probe
 
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -44,7 +44,7 @@ import extdeps.filesystem.filesystem_io
 // continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable
 // claims — that the stage classifier separates its states, that reasons are read by containment,
 // and that census reconciliation is a two-directional join over the roster — live in
-// gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so
+// test.claim.normalize_retention_contract_probe_test and import classify_source from here, so
 // there is one classifier authority and not two.
 //
 // Reason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS
@@ -378,7 +378,7 @@ fn roster_identity(rows: List<FrontierMember>) -> ContentHash {
   as_content_hash_structural(
     structural: fold_list(
       xs: rows,
-      empty: content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as NonEmptyStr),
+      empty: content_hash_atom(value: "gunbc.instruments.frontier_ingestion_probe.frontier_roster" as NonEmptyStr),
       cons: fn(acc, m) {
         content_hash_combine_structural(left: acc, right: content_hash_atom(value: m.path as NonEmptyStr))
       }

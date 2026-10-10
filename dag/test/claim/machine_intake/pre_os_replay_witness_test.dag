@@ -1,21 +1,21 @@
-module test.claim.pre_os_replay_witness
+module test.claim.machine_intake.pre_os_replay_witness_test
 
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
-import gunbc.machine_intake_pre_os_refusal { pre_os_text_refusal, PreOsOccurrenceConflict, PreOsMachineDisagrees, PreOsTextRefusal, PreOsSourceRefusal, PreOsContinuityRefusal, PreOsCommitRefusal, PreOsOwnershipRefusal }
+import gunbc.machine_intake.pre_os_refusal { pre_os_text_refusal, PreOsOccurrenceConflict, PreOsMachineDisagrees, PreOsTextRefusal, PreOsSourceRefusal, PreOsContinuityRefusal, PreOsCommitRefusal, PreOsOwnershipRefusal }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
-import gunbc.fleet_observation_collector_ownership { FollowerReadOnly }
+import gunbc.fleet_observation.collector_ownership { FollowerReadOnly }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalAssessmentRefused, GoalSatisfied, GoalIndeterminate }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
-import gunbc.fleet_observation_capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, CommitNoReceipt, CommitAttestsOtherPayload, LocalCommitStanding, LocalCommitNotAttempted }
+import gunbc.fleet_observation.observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
+import gunbc.fleet_observation.capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, CommitNoReceipt, CommitAttestsOtherPayload, LocalCommitStanding, LocalCommitNotAttempted }
 import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }
-import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel }
+import gunbc.machine_intake.pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel }
 
-import gunbc.machine_intake_pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, PreOsTimelineRow, pre_os_machine_timeline, pre_os_timeline_view, pre_os_captured_cycles }
-import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_inventory_question }
-import test.claim.pre_os_observer_witness { observer_test_boot_payload }
+import gunbc.machine_intake.pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, PreOsTimelineRow, pre_os_machine_timeline, pre_os_timeline_view, pre_os_captured_cycles }
+import gunbc.machine_intake.pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_inventory_question }
+import test.claim.machine_intake.pre_os_observer_witness_test { observer_test_boot_payload }
 
 fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
   let base = t_envelope(ownership: t_owner(fencing: t_unfenced), chunk: t_chunk(seq: seq, generation: 4, payload: "identical-payload", first: 0, len: 100),

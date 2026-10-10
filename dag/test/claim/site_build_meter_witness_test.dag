@@ -5,10 +5,10 @@ import std.markup { Fragment }
 import v2.std.algebra { filter }
 import extdeps.languages.html { serialize_html_source }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderFailed,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentRefused, WorkflowSegmentFailed, WorkflowSegmentStopped,
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
@@ -44,7 +44,7 @@ import gunbc.site.build_meter_client { build_meter_bind_statements, build_meter_
 import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
 import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
 import gunbc.site.element.styles { element_styles }
-import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.roadmap.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, serialize_rules, decl }
 import gunbc.design.theme_transition { rule_selector }
 import extdeps.languages.css.selectors { RawSelector }

@@ -203,7 +203,7 @@ fn harness_premise_text(p: HarnessPremise) -> String {
 fn harness_worker_guidance_at(worktree: String, test_command: String, test_receipt_path: String, compile_command: String, compile_receipt_path: String) -> List<HarnessGroundedPremise> {
   concat(harness_worker_guidance(), [
     grounded(premise: WorktreeAt { path: worktree },
-             module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "dispatch_worktree_path_for_instance"),
+             module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worktree_path_for_instance"),
     grounded(premise: CompileProcessIs { command: compile_command, receipt_path: compile_receipt_path },
              module_path: "gunbc.compute.test_run", decl_name: "compile_entry_cli"),
     grounded(premise: TestProcessIs { command: test_command, receipt_path: test_receipt_path },
@@ -213,7 +213,7 @@ fn harness_worker_guidance_at(worktree: String, test_command: String, test_recei
     grounded(premise: RunRebuildsOnTreeChange,
              module_path: "gunbc.compute.work_provider_local", decl_name: "compute_work_identity"),
     grounded(premise: AcceptanceIsTheContractValidation,
-             module_path: "gunbc.roadmap_execution_contract", decl_name: "validation_operation_command"),
+             module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "validation_operation_command"),
     grounded(premise: CapabilityWithheld { capability: BuildOrTestOutsideTheProcess },
              module_path: "gunbc.compute.host_capacity", decl_name: "compute_reserve"),
   ])
@@ -584,7 +584,7 @@ fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> 
 fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
   [
     grounded(premise: ActingAs { role: CodingWorkerInWorktree },
-             module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "gunbc_harness_spawn_argv"),
+             module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "gunbc_harness_spawn_argv"),
     grounded(premise: ToolIs { tool: RunCommandTool },
              module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
     grounded(premise: ToolRunsIn { locus: TheAttemptWorktree },
@@ -602,15 +602,15 @@ fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
     grounded(premise: ToolCanWriteBy { form: InPlaceEdit },
              module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
     grounded(premise: CompletionRequires { term: FilesOnDiskDiffer },
-             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_workflow_progress_for_attempt_ref"),
+             module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_workflow_progress_for_attempt_ref"),
     grounded(premise: CompletionRequires { term: AcceptanceCheckPasses },
-             module_path: "gunbc.roadmap_execution_contract", decl_name: "ValidationOperation"),
+             module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "ValidationOperation"),
     grounded(premise: CompletionRequires { term: SubmissionDeclared { artifact: submission_artifact_name as String } },
              module_path: "gunbc.roadmap.roadmap_submission", decl_name: "submission_schema"),
     grounded(premise: CapabilityWithheld { capability: CommitTheChange },
-             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+             module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     grounded(premise: CapabilityWithheld { capability: PublishTheBranch },
-             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+             module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
   ]
 }
 

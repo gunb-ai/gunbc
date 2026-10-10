@@ -14,7 +14,7 @@ import gunbc.auth.approval_ntfy_runtime_observe {
   approval_ntfy_runtime_observe_run_as,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import gunbc.ci_release_bins { gunbc_release_bin_name }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 
 // THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
 // gunbc.live_deploy.emit, so every reader of a release path -- the approval broker's own routes and

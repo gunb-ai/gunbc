@@ -1,4 +1,4 @@
-module test.claim.roadmap_tactile_witness
+module test.claim.roadmap.roadmap_tactile_witness_test
 
 import std.types { Int, String, Bool }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
@@ -31,14 +31,14 @@ import gunbc.design.sound {
   sound_mute_storage_key, sound_default_sounding,
   operation_sound_max_decay_ms,
 }
-import gunbc.roadmap_interaction {
+import gunbc.roadmap.roadmap_interaction {
   roadmap_elements, roadmap_behaviors,
   roadmap_dispatch_detents, roadmap_sound_toggle_detents, roadmap_detent_edges,
   roadmap_dispatch_detent_defects, roadmap_behavior_rules,
   detent_rest, detent_hover, detent_pressed, detent_requested, detent_accepted,
 }
-import gunbc.roadmap_style { roadmap_css, roadmap_rules }
-import gunbc.roadmap_component { dispatch_client_js_source, dispatch_class_requested, dispatch_class_ok, dispatch_ack_prefix, dispatch_ack_word }
+import gunbc.roadmap.roadmap_style { roadmap_css, roadmap_rules }
+import gunbc.roadmap.roadmap_component { dispatch_client_js_source, dispatch_class_requested, dispatch_class_ok, dispatch_ack_prefix, dispatch_ack_word }
 import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_toggle_label_off }
 import gunbc.site.document { site_header, sound_toggle_control }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -278,7 +278,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
   }
 }
 
-// Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
+// Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
 fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
   fragment_is_sound_toggle(c: f)
     || (match f {

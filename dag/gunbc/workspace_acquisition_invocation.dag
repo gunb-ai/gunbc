@@ -8,12 +8,12 @@ import std.resources { Filesystem }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
-import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_reservation }
-import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
@@ -181,7 +181,7 @@ fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvo
 fn workspace_rearm_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: NonEmptyStr) -> Bool
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor"),
-    decl_ref(module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", decl_name: "actor_rearm_race"),
+    decl_ref(module_path: "test.claim.workspace_acquisition_storage_wet_witness_test", decl_name: "actor_rearm_race"),
   ]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))

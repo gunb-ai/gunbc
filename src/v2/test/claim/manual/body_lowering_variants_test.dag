@@ -1,4 +1,4 @@
-module v2.test.manual.body_lowering_variants
+module v2.test.claim.manual.body_lowering_variants_test
 
 import v2.std.compilers.body_lowering { lower_bind, lower_branch, lower_loop }
 import v2.extdeps.languages.dag {

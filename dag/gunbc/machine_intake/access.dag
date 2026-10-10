@@ -1,4 +1,4 @@
-module gunbc.machine_intake_access
+module gunbc.machine_intake.access
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_equal }
@@ -25,8 +25,8 @@ import extdeps.bmc.access_profile {
 }
 import extdeps.board_authority { BoardAuthorityLookup }
 import gunbc.board_authority_binding { board_authority_bindings }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.receipt { EvidenceRef, same_intake_subject }
 
 // THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
 // §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the

@@ -1,16 +1,16 @@
-module gunbc.fleet_host_identity
+module gunbc.fleet.fleet_host_identity
 
 import std.types { List, NonEmptyStr, String }
 import v2.std.algebra { filter }
 import product.host_identity { HostIdentity }
 
-// THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet_intent_network,
+// THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet.fleet_intent_network,
 // beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only
 // needs a host's name -- the approval broker composing its ntfy address, gunbc.auth.approval_ntfy_publish --
 // does not import the topology's assets, segments and endpoints. The notes below were written when
-// the rows lived in gunbc.fleet_intent_network: where one says "this module" or "here" about NAMING,
+// the rows lived in gunbc.fleet.fleet_intent_network: where one says "this module" or "here" about NAMING,
 // it now means this leaf; where it speaks of enrollment or `endpoints`, that is still
-// gunbc.fleet_intent_network. Naming is not enrollment, and the split makes the two separate modules.
+// gunbc.fleet.fleet_intent_network. Naming is not enrollment, and the split makes the two separate modules.
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
 data operator_host_srv3: HostIdentity = "srv3"
@@ -23,13 +23,13 @@ data operator_host_srv4: HostIdentity = "srv4"
 //
 // NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
 // in this case. This unit is NOT an executor fleet host: it commits no runner slots, and
-// gunbc.fleet_runner_connectivity fleet_hosts() — whose consumers fold it as the eligible host set
+// gunbc.fleet.fleet_runner_connectivity fleet_hosts() — whose consumers fold it as the eligible host set
 // (gunbc.compile_permit_scope) and to gather committed slot identities (gunbc.fabric.fabric_cell_observe)
 // — deliberately does not gain a member here. Adding it there would not extend a roster; it would
 // change the denominator of those folds and give one name two contracts.
 //
 // WHAT IT IS INSTEAD is a reset subject, and that membership is DERIVED rather than declared:
-// gunbc.host_reset_subject_roster admits a host iff a landed BMC access observation and a capability
+// gunbc.host.host_reset_subject_roster admits a host iff a landed BMC access observation and a capability
 // row admit power control through the same fold the actuation arm already performs before it writes.
 // So this row names the unit and licenses nothing.
 data operator_host_mtcollins1: HostIdentity = "mtcollins1"
@@ -37,7 +37,7 @@ data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 // MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
 // mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
 // NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
-// gunbc.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
+// gunbc.host.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
 // there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant
 // mtjade1_live_standing_grant) binds this identity as its host scope.
 data operator_host_mtjade1: HostIdentity = "mtjade1"

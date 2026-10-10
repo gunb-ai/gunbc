@@ -2,9 +2,9 @@ module test.claim.auth.account_controls_route_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Secret }
 import extdeps.ietf.http_semantics { GET, POST }
-import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
-import gunbc.roadmap_serve { AuthLoginHandler, AuthLogoutHandler }
-import test.claim.roadmap_serve_witness { selects }
+import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap.roadmap_serve { AuthLoginHandler, AuthLogoutHandler }
+import test.claim.roadmap.roadmap_serve_witness_test { selects }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse, RequestSecurityContext,
   ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
@@ -13,8 +13,8 @@ import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeR
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, AccessPathLocalDev, RequestAccessPath }
 import gunbc.auth.session { session_cookie_name }
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
-import gunbc.roadmap_auth_routes {
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_auth_routes {
   auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused,
   auth_login_redirect_location, auth_logout_response,
 }
@@ -97,7 +97,7 @@ test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
 // THE PATHS THE ACCOUNT CONTROLS ADDRESS ARE SERVED, on the live route table and with the method
 // each control uses: Sign in and Switch account are links (GET) to the login path, and Sign out is
 // a form POST to the logout path. The controls and the route specs read the same two rows
-// (gunbc.roadmap_auth_route_paths), so this fails if a row stops being served rather than when a
+// (gunbc.roadmap.roadmap_auth_route_paths), so this fails if a row stops being served rather than when a
 // second spelling drifts.
 test fn the_account_controls_address_routes_the_table_serves() -> Bool {
   selects(method: GET, path: auth_login_route_path, want: AuthLoginHandler)

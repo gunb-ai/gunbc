@@ -79,7 +79,7 @@ use std::rc::Rc;
 pub fn occurrence_binding_candidates_roadmap_anchor() -> String {
     thread_local! {
         static CACHED: String = {
-            "gunbc.roadmap_authority namespace-reference-derived-closure".to_string()
+            "gunbc.roadmap.roadmap_authority namespace-reference-derived-closure".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

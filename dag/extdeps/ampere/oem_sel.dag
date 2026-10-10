@@ -90,7 +90,7 @@ data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelPr
 }
 
 // Deferred consumer: the raw-record SEL layout-applicability ingestion change in
-// gunbc.machine_intake_pre_os_replay. Its trigger is a reader that obtains the
+// gunbc.machine_intake.pre_os_replay. Its trigger is a reader that obtains the
 // sensor number and manufacturer octets from the same independently read raw
 // record, calls ampere_oem_sel_record_match, and retains the resulting layout
 // applicability beside that record in replay. The current rendered SEL reader

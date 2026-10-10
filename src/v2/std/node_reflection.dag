@@ -82,7 +82,7 @@ fn coproduct_nullary_inhabitants<T>(
 // diagnostic. It was DESIGN section 5 silent wrongness: not a refusal, a wrong answer that
 // typechecks. The corpus inhabits the invalid state today, so this is a live class and not a
 // hypothetical one; the discriminating pair enrolled against it is in
-// `v2.test.manual.scoped_type_reflection_conformance`.
+// `v2.test.claim.manual.scoped_type_reflection_conformance_test`.
 //
 // The fix mints NO new identity and NO new host seam, which is the whole point (DESIGN
 // section 3). The multiplicity that decides ambiguity is already a substrate fact:
@@ -96,7 +96,7 @@ fn coproduct_nullary_inhabitants<T>(
 // in this change: v2.lens.affected_set (through the guarded route, with a refusal landing in
 // UniverseIncomplete), the generated coproduct witnesses, the reflection conformance witness, the
 // wiring-liveness entry, and the conformance claims in
-// v2.test.manual.scoped_type_reflection_conformance.
+// v2.test.claim.manual.scoped_type_reflection_conformance_test.
 //
 // An earlier revision of this annotation classified that cutover as a DECLARED FRONTIER and said the
 // bare pair stayed reachable and unguarded until it landed. review 65702 caught that the sentence
@@ -256,7 +256,7 @@ fn coproduct_arm_keys(
 // caller that cites its module needs the same answer shape. It binds over resolve_type_node_at
 // exactly as coproduct_arm_keys binds over resolve_type_node, so the two routes
 // differ in how the declaration is NAMED and in nothing else -- no second arm-key law.
-// Consumer: the conformance claims in v2.test.manual.scoped_type_reflection_conformance that read
+// Consumer: the conformance claims in v2.test.claim.manual.scoped_type_reflection_conformance_test that read
 // a forked spelling through each of its declaring modules.
 fn coproduct_arm_keys_at(
   pool_roots: List<String>,

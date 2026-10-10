@@ -1,6 +1,6 @@
-module v2.test.self_host.compiler_closure_emit_from_ingest
+module v2.test.claim.self_host.compiler_closure_emit_from_ingest_test
 
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
@@ -43,7 +43,7 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Symbol }
-import v2.test.workflow.host_source_root_ingest_manifest {
+import v2.test.claim.workflow.host_source_root_ingest_manifest {
   host_source_root_closure_refs,
   host_source_root_ingest_coverage_receipt
 }

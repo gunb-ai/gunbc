@@ -1,15 +1,15 @@
-module test.claim.fleet_convergence_verdict_witness
+module test.claim.fleet.fleet_convergence_verdict_witness_test
 
 import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet_enrollment { fleet_enrollments }
-import gunbc.fleet_enrollment { HostEnrollmentIntent }
-import gunbc.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
-import gunbc.host_converge { VerdictConverged, VerdictAbsent, Drifted }
-import gunbc.fleet_convergence_verdict {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
+import gunbc.host.host_converge { VerdictConverged, VerdictAbsent, Drifted }
+import gunbc.fleet.fleet_convergence_verdict {
   fleet_convergence_verdict,
   FleetConvergenceVerdict,
   FleetConverged,

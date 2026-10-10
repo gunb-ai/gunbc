@@ -1,7 +1,7 @@
-module test.claim.host_hygiene_reaper
+module test.claim.host.host_hygiene_reaper_test
 
-import gunbc.host_hygiene_reaper_observe { host_hygiene_override_dir_for_unit }
-import gunbc.host_hygiene_reaper_remediate {
+import gunbc.host.host_hygiene_reaper_observe { host_hygiene_override_dir_for_unit }
+import gunbc.host.host_hygiene_reaper_remediate {
   ResidualReapEffect,
   NoEffect,
   RemoveOverrideDirEffect,

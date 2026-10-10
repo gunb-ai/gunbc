@@ -2500,7 +2500,7 @@ pub fn emit_module_storage_binding_manifest(
     rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
 
     let mut out = String::new();
-    out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
+    out.push_str("module v2.test.claim.workflow.host_module_binding_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  ModuleStorageIndex,\n");
     out.push_str("  module_storage_parsed_binding\n");
@@ -2634,7 +2634,7 @@ pub fn emit_source_root_ingest_manifest(
     let read_count = records.len();
 
     let mut out = String::new();
-    out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
+    out.push_str("module v2.test.claim.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
     out.push_str("  DiscoveredSourceRefsDigestFromList,\n");

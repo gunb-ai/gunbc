@@ -966,7 +966,7 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // authorable. Both halves held and the conclusion was still wrong, which is the finding. The named
 // closure was the regen seed closure (SeedV1 + DagCorpus), where the population is zero. The
 // required build lane ALSO runs a v2-emission phase over a DIFFERENT closure --
-// entry:src/v2/compiler/00_compile.dag, 169 modules -- and there the population is EIGHTY-SEVEN,
+// entry:src/v2/compiler/compile.dag, 169 modules -- and there the population is EIGHTY-SEVEN,
 // measured on run 33111325404 at b331e24cf7d, which refused the phase and reddened the required
 // check. So the zero was a property of THE CLOSURE and not of the arm, and flipping globally on a
 // single-closure measurement is the denominator error this very carrier already names one clause
@@ -981,8 +981,8 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // roster widens. A described set leaves that to whoever remembers; a named one makes a phase
 // addition visibly re-open this question. AS OF 2026-08-27 THE SET IS THREE, each with its own
 // authority: the regen seed closure (v1.compiler.cli_run regen_source_roots, SeedV1 + DagCorpus),
-// the v2-emission entries (gunbc.ci_layer_roots required_v2_emission_entries), and the emit-compile
-// entries (gunbc.ci_layer_roots required_emit_compile_entries). Only the first two have been
+// the v2-emission entries (gunbc.ci.ci_layer_roots required_v2_emission_entries), and the emit-compile
+// entries (gunbc.ci.ci_layer_roots required_emit_compile_entries). Only the first two have been
 // measured for this arm -- 0 and 87 -- and the third is UNMEASURED, so even the corrected condition
 // is not currently evaluable and any future flip must measure it rather than assume it follows the
 // seed. This warning was delivered before the flip rather than after it: deep-ant-102 stated that

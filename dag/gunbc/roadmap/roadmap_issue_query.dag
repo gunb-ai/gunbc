@@ -1,7 +1,7 @@
-module gunbc.roadmap_issue_query
+module gunbc.roadmap.roadmap_issue_query
 
 import std.types { String, Int, Bool, List }
-import gunbc.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending }
+import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending }
 import extdeps.google.issue_tracker { issue_results_sort_key_wire }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_array, json_string, json_int }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string_list, json_field_value }

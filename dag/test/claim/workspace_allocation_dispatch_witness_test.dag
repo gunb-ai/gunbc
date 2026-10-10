@@ -5,7 +5,7 @@ import gunbc.workspace_allocation_dispatch_transport { workspace_allocation_disp
 import gunbc.workspace_allocation_dispatch { workspace_allocation_prepare_cli, workspace_allocation_readback_cli }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_text, WorkspaceLaunchDirectiveReady }
-import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation_in_slot, launch_fixture_directive }
+import test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation_in_slot, launch_fixture_directive }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }
 
 fn dispatch_result_admits(host: NonEmptyStr, installed: NonEmptyStr) -> Bool {

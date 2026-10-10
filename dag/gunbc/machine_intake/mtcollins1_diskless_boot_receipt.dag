@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+module gunbc.machine_intake.mtcollins1_diskless_boot_receipt
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -61,7 +61,7 @@ data mtcollins1_booted_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759
 // against a controller whose state has already moved.
 //
 // THAT IS WHY THE SUCCESS SIGNAL FOR THESE OPERATIONS MUST BE A READ-BACK, not an exit status —
-// the same shape gunbc.machine_intake_oob_boot_handoff already uses for the boot override, where a
+// the same shape gunbc.machine_intake.oob_boot_handoff already uses for the boot override, where a
 // set command's own return could not distinguish acceptance from indifference. The read-back here
 // is the images listing and the configurations listing.
 //
@@ -69,7 +69,7 @@ data mtcollins1_booted_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759
 // attaches an image, that name leaves /remote/images for /remote/configurations. An earlier reading
 // treated the shorter listing as a stale cache and advised re-asserting mount_cd; that toggle
 // detaches everything, which is why the name reappeared. The retract lives in
-// gunbc.machine_intake_megarac_media_attach. A caller that reads an empty listing as "the share has
+// gunbc.machine_intake.megarac_media_attach. A caller that reads an empty listing as "the share has
 // no images" will still conclude the wrong thing, but the wrong thing is "already attached" rather
 // than "cache went stale".
 type ControllerWriteReportingAnomaly {
@@ -113,7 +113,7 @@ data mtcollins1_controller_write_anomalies: List<ControllerWriteReportingAnomaly
 //
 // THE WRITE IS NOT MODELED. extdeps.bmc.ipmi has no clock operation, and this row does not add one:
 // grounding it needs the write performed and read back, the same standard every other capability in
-// gunbc.machine_intake_mtcollins1_access_observation was held to. SurfaceBmcClock is recorded there
+// gunbc.machine_intake.mtcollins1_access_observation was held to. SurfaceBmcClock is recorded there
 // as a successful READ surface only, which remains accurate.
 type ControllerClockSkewObservation {
   observed_at: EpochMs
@@ -139,6 +139,6 @@ data mtcollins1_controller_clock_skew: ControllerClockSkewObservation = Controll
 //
 // UEFI HTTP Boot remains UNMEASURED. Every boot in this lane was forced to a device over IPMI, so
 // the firmware has never been given the chance to advertise HTTPClient. The PXE client observation
-// in gunbc.machine_intake_mtcollins1_netboot_client_observation is therefore not evidence that HTTP
+// in gunbc.machine_intake.mtcollins1_netboot_client_observation is therefore not evidence that HTTP
 // boot is unavailable — only that PXE is what a forced PXE boot produced.
 data mtcollins1_diskless_boot_receipt_scope: NonEmptyStr = "stock live-server image, fleet-peer backing share, UEFI HTTP Boot unmeasured"

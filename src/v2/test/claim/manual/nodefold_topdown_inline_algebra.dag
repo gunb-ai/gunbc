@@ -1,4 +1,4 @@
-module v2.test.manual.nodefold_topdown_inline_algebra
+module v2.test.claim.manual.nodefold_topdown_inline_algebra
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {

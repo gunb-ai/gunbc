@@ -1,4 +1,4 @@
-module test.claim.organization_runner_roster_read_witness
+module test.claim.fleet.organization_runner_roster_read_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int, List }
@@ -8,9 +8,9 @@ import extdeps.github.pagination { github_first_page_cursor, github_max_page_siz
 import std.page_fold { PageSize }
 import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
-import gunbc.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
-import gunbc.host_cli_dependency { HostCliDependencyAbsence }
-import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
+import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
+import gunbc.host.host_cli_dependency { HostCliDependencyAbsence }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
 import gunbc.fleet.organization_runner_roster_read {
   OrganizationRunnerScope,
   OrganizationRunnerListing,

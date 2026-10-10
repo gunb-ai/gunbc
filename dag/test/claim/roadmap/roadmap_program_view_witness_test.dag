@@ -1,22 +1,22 @@
-module test.claim.roadmap_program_view_witness
+module test.claim.roadmap.roadmap_program_view_witness_test
 
 import std.types { Int, String, Bool, List, NonEmptyStr }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapNodeIdentity, RoadmapAcceptanceReceipt,
   roadmap_criteria_digest,
   WorkItemDispatch, NotDispatchable, Dispatchable, ManualAcceptance, PrsMerged,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
   RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
   CargoFmtValidation,
   PathsUnrestricted, PublicWorktreeLayout,
 }
-import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
-import gunbc.roadmap_program_view {
+import gunbc.v1.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
+import gunbc.roadmap.roadmap_program_view {
   V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
   ConvergenceFrontSpec, program_front_key,
   RemainingShape, ConstraintView, ConstraintKind,
@@ -29,7 +29,7 @@ import gunbc.roadmap_program_view {
   program_view,
 }
 
-// SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05):
+// SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap.roadmap_program_view (operator verdict 2026-08-05):
 // every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap
 // tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted
 // mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt
@@ -37,7 +37,7 @@ import gunbc.roadmap_program_view {
 // misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts
 // on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish
 // line and gate resolves — is ONE separately classified receipt in
-// test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted
+// test.claim.roadmap.roadmap_program_view_live_corpus_receipt_test (falsifier substrate long lane), not counted
 // here.
 
 fn fx_ticket(headline: String) -> TicketFields {
@@ -170,7 +170,7 @@ fn fx_receipt_for(n: RoadmapNode) -> RoadmapAcceptanceReceipt {
     node: n.node,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
     red_control: RedControlExecuted {
-      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
+      witness_module: "test.claim.roadmap.roadmap_program_view_witness_test" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
       executed_on: "2026-08-02" as NonEmptyStr,
     },
@@ -373,7 +373,7 @@ test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
     node: "fe" as RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
     red_control: RedControlExecuted {
-      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
+      witness_module: "test.claim.roadmap.roadmap_program_view_witness_test" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
       executed_on: "2026-08-02" as NonEmptyStr,
     },

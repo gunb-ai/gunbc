@@ -1,7 +1,7 @@
-module v2.test.long.parse_binding_fidelity_witness
+module v2.test.claim.long.parse_binding_fidelity_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.test.parse.parse_binding_fidelity_support {
+import v2.test.claim.parse.parse_binding_fidelity_support {
   pbf_parse_does_not_collapse_to_token_ident,
   pbf_parse_preserves_param_x_binding,
   pbf_parse_preserves_param_y_binding,

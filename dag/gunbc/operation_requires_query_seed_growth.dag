@@ -1,6 +1,6 @@
 module gunbc.operation_requires_query_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // parses one supplied source with the seed's own tokenizer and parser and hands the named operation to
 // that reader; it re-derives nothing.
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The seed compiles the corpus, so it must
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The seed compiles the corpus, so it must
 // parse and CARRY the `requires` member v2 already admits before any extdeps operation can declare the
 // resources it reaches. Acceptance alone does not show the members are carried: a parser that read and
 // dropped them would compile the same sources. No existing compile_dag_* query exposes a parsed node's

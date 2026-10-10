@@ -1,4 +1,4 @@
-module gunbc.host_boot_supervision
+module gunbc.host.host_boot_supervision
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.nat { Nat }

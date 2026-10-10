@@ -1,4 +1,4 @@
-module v2.test.manual.sg2_type_expression_projection
+module v2.test.claim.manual.sg2_type_expression_projection_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { translate_type_expression_project, target_bundle_child_optional_type_expr_projection, translate, ProjectionAbsent }
@@ -38,7 +38,7 @@ import v2.std.compilers.target_model {
 }
 import std.algebra { Cons, Empty }
 import v2.std.node { Arrow }
-import v2.test.manual.rust_add_emit_translate {
+import v2.test.claim.manual.rust_add_emit_translate_test {
   rust_add_inferred_tree,
   rust_add_target_model
 }

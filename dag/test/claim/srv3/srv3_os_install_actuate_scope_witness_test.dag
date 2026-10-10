@@ -1,4 +1,4 @@
-module test.claim.srv3_os_install_actuate_scope
+module test.claim.srv3.srv3_os_install_actuate_scope_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

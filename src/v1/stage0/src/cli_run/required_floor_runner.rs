@@ -666,7 +666,7 @@ pub(crate) fn floor_discovery_rows_over_sources<'a>(
 pub(crate) fn floor_required_opaque_host_call_surface(
     ctx: &v1_interpreter::InterpContext,
 ) -> Result<Vec<String>, String> {
-    let qualified = "gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface";
+    let qualified = "gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface";
     let value = v1_interpreter::run_in_context(ctx, qualified, false)
         .map_err(|e| format!("{qualified}: {e}"))?;
     let v1_interpreter::Value::Variant {
@@ -699,7 +699,7 @@ pub(crate) fn floor_required_opaque_host_call_surface(
              unpollable is unreadable and no claim's preemption reachability can be observed. \
              The floor refuses rather than arming an empty surface, which would report every \
              completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
-             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
+             gunbc.v1.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
              wrong_dispatch_site={:?}",
             floor_value_shape(ctx.field(fields, "unresolved")),
             floor_value_shape(ctx.field(fields, "not_free_call")),
@@ -2030,7 +2030,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
     // A NEW token for a wider phase, not the old one renamed: `arm-set-planning` stays its own
-    // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
+    // arm (gunbc.floor.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
     // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
     floor_seam("interface-consumer-planning");
     let touched_declarations =
@@ -4416,7 +4416,7 @@ fn path_under_floor_roots(rel_path: &str, roots: &[String]) -> bool {
 
 /// Is this identity's declared home under a root the tree declares NON-EXECUTING?
 ///
-/// The authority is `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
+/// The authority is `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
 /// front-end projection as `witness_layer_roots`. Membership is the grant; everything else blocks.
 /// The roster is grained in the MODULE NAMESPACE because this population is undiscovered by
 /// definition -- no file was enumerated, so no path exists here to compare against a directory.
@@ -4586,7 +4586,7 @@ pub(crate) fn changed_witness_projection_rows(
             // Blocking every decline is right for the silence the 2026-08-30 ruling closes: a PR
             // adds witnesses, they never run, the floor greens. `DeclinedOutsideGateClosure` is
             // that case. A root the fold structurally CANNOT reach is a different subject --
-            // `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
+            // `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
             // `non_executing_witness_module_prefixes_restoration` carries its 4b(2) trigger (bare references
             // binding by containment; vehicle, the namespace cut). Blocking there surfaces no new
             // silence: it forbids TOUCHING debt the tree has already declared, including by the
@@ -4684,12 +4684,13 @@ pub(crate) struct LocalRepoWetScheduledRow {
     pub function: String,
     /// THE DECLARED HOST PREMISE, if any, by its `v2.workflow.wet_evidence` `WetHostPremise` arm
     /// name, joined from `local_repo_wet_premise_roster`. The executor reads it BEFORE invoking
-    /// the claim; the readback and its verdict are `.dag` (`gunbc.wet_host_premise_readback`).
+    /// the claim; the readback and its verdict are `.dag` (`gunbc.runner.wet_host_premise_readback`).
     pub premise: Option<String>,
 }
 
 /// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
-pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.wet_host_premise_readback";
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str =
+    "gunbc.runner.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -5289,7 +5290,7 @@ fn local_repo_wet_join_premises(
     Ok(())
 }
 
-/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.wet_host_premise_readback`. Returns the
+/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.runner.wet_host_premise_readback`. Returns the
 /// readings by premise arm name: `None` met, `Some(words)` unmet. The seed decides nothing here:
 /// readiness and its words are the toolchain authority's.
 fn local_repo_wet_premise_readings(
@@ -5744,7 +5745,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // to prove that a REAL jq exits 0 only on two argv words rather than one concatenated
         // one, and a mocked dispatch passes it without any process running.
         //
-        // The first attempt at this fix added rows to gunbc.ci_layer_roots
+        // The first attempt at this fix added rows to gunbc.ci.ci_layer_roots
         // (witness_exclusion_frontier + bin_witness_wet_entries) and asserted they would take
         // effect. They did not: run_required_floor consults THIS list and nothing else, the CI
         // receipt was an unchanged modules_excluded=2, and the wet batches those rosters feed
@@ -6031,7 +6032,7 @@ pub fn floor_seam(name: &str) {
     // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
     // names the minute a phase was in, never where it began or ended, so a phase shorter than a
     // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
-    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // boundary is what lets gunbc.floor.floor_demand attribute a held-set delta to the phase between two
     // seams rather than to whichever phase the next tick happened to land in.
     floor_cgroup_stat_beat(&format!("seam-{name}"), None);
     floor_heap_beat(name);
@@ -6113,7 +6114,7 @@ fn floor_heap_beat(seam: &str) {
 /// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
 /// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
 /// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
-/// `gunbc.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
+/// `gunbc.floor.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
 /// `SeamNotYetEntered`. Same fact, two boundaries, one read.
 pub(crate) fn floor_seam_current() -> Option<String> {
     FLOOR_SEAM.lock().ok().map(|g| g.clone())
@@ -8094,7 +8095,7 @@ pub(crate) fn floor_decode_module_prefix_roster(
 /// THE ENVELOPE THE PROCESS ACTUALLY HAS, read from the kernel, at every visible level.
 ///
 /// Every envelope figure this lane has reasoned with — 13.00 GiB high, 14.00 GiB max — came
-/// from the DECLARED rows in `gunbc.runner_slot_allocation`: a nominal limit, read before the
+/// from the DECLARED rows in `gunbc.runner.runner_slot_allocation`: a nominal limit, read before the
 /// run, describing what was requested rather than what binds. Two measurements say that is not
 /// good enough.
 ///
@@ -8187,7 +8188,7 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 /// KERNEL REPORTS THEM: one flat list, no grouping, no sum. `memory.stat` is not a partition --
 /// `file` includes shmem, and `unevictable` is an LRU-list state over pages `anon` and `file`
 /// already count -- so any grouping here would already be a derivation, and the derivation has
-/// one home: `gunbc.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
+/// one home: `gunbc.floor.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
 /// held-set lower bound. `memory.current` is printed beside the counters so a derivation can be
 /// checked against the charge it is drawn from.
 ///
@@ -8266,7 +8267,7 @@ pub(crate) fn floor_cgroup_stat_beat(
     };
     // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
     // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
-    // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
+    // this one, so `gunbc.floor.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
     // -- and `receipt_last_unstalled_beat` derives the guest's cache allowance from that field,
     // so a mis-joined stall mis-sizes a guest. `na` where the window could not be read, never a
     // zero: a zero stall is the healthiest reading this line can carry, so fabricating one would
@@ -9111,7 +9112,7 @@ pub fn run_required_floor(
     // billed to a first toucher. `languages_decl_records_cached` is a process-wide `OnceLock`
     // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
-    // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
+    // `v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer_test
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms CPU safety deadline
     // standing at the time — red on any runner a fifth slower, which is the
     // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
@@ -9538,7 +9539,7 @@ pub fn run_required_floor(
     // ARM THE OPAQUE-HOST-CALL SURFACE FROM ITS ONE AUTHORITY, AND REFUSE IF IT IS UNGROUNDED.
     //
     // The roster is NOT restated in Rust: it is read out of
-    // `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
+    // `gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
     // §4b drop's bounded population is derived from, so the seed and the model cannot drift into
     // two answers about which arms are unpollable.
     //
@@ -9549,7 +9550,7 @@ pub fn run_required_floor(
     // moment the join broke. So a broken join stops the line here, typed and located, and the
     // remedy is named rather than left to the reader.
     let opaque_surface_frame =
-        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+        floor_authority_frame(&prepared, "gunbc.v1.v1_interpreter_opaque_host_call")?;
     let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
     v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
@@ -12505,7 +12506,7 @@ pub fn run_required_floor(
         // §4b(4) is the rule that says to delete it rather than keep it as a belt: a climb deletes
         // the redundant lower-rung PRODUCTION machinery it obsoletes, while the class's
         // discriminating RED and positive control REMAIN ENROLLED. The evidence is separate and
-        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` holds the eight rows,
+        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness.dag` holds the eight rows,
         // including the subject that must refuse and the field-label and local-parameter controls
         // that must not.
         //
@@ -15606,7 +15607,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
     }
 
-    /// The #11751 shape (gunbc.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
+    /// The #11751 shape (gunbc.runner.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
     /// retyped from `Int` to a new product, read by an untouched constructor.
     const IFACE_H_BASE: &str = "module iface.h\n\ntype Standing {\n  surface: Int\n}\n";
     const IFACE_H_HEAD: &str = "module iface.h\n\ntype Reading {\n  value: Int\n}\n\n\
@@ -16496,7 +16497,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     }
 
     /// EVERY `floor_seam` LITERAL THE INSTRUMENT CAN PRINT HAS A TYPED ARM: each token passed to
-    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor_demand
+    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor.floor_demand
     /// `floor_seam_tokens`, so a new or renamed seam cannot print a token the vocabulary cannot
     /// ingest. A join by spelling across the language boundary, because the producer is Rust.
     #[test]
@@ -16597,7 +16598,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// (a) A LONG-HOME WITNESS WITH NO ADMISSION IS STILL SELECTED. This is the discriminating
     /// RED for the whole change: an exclusion keyed on the lane rather than on the admission
     /// would drop this row too, and the floor would stop noticing a failing witness the PR
-    /// touched. Sitting in `v2.test.long.` earns nothing by itself.
+    /// touched. Sitting in `v2.test.claim.long.` earns nothing by itself.
     #[test]
     fn an_unadmitted_long_home_witness_is_still_selected_as_a_changed_witness() {
         let dir = quarantine_selection_fixture("unadmitted");
@@ -18368,14 +18369,17 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target_test"],
             )],
         );
         // THE LEDGER OBSERVES A FILL UNDER THE REFUSED PRODUCER'S OWN KEY. That is the
         // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
         // thing this wall is entitled to charge. The admitted spelling is reached from the
         // roster rather than named by it, which is why the static fold cannot see it.
-        fill_from("v2.test.emit.produced_decl_two_target", "rust_target_model");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target_test",
+            "rust_target_model",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("a refused producer's own key recurring over its carriers must refuse");
         // The three things the diagnostic owes: the admitted subject, the row it inherited the
@@ -18397,7 +18401,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             "{why}"
         );
         assert!(
-            why.contains("shared_carrier_modules=v2.test.emit.produced_decl_two_target"),
+            why.contains("shared_carrier_modules=v2.test.claim.emit.produced_decl_two_target_test"),
             "{why}"
         );
     }
@@ -18410,7 +18414,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target_test"],
             )],
         );
         fill_from(
@@ -18429,7 +18433,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target_test"],
             )],
         );
         shared_fill::set_current_claim(None);
@@ -18455,13 +18459,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate_test",
             "grammar_relation_row_for_emitted",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
@@ -18477,13 +18481,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate_test",
             "rust_target_model_core_edges",
         );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
@@ -18509,13 +18513,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate_test",
             "grammar_relation_row_for_emitted",
         );
         assert!(
@@ -18534,13 +18538,16 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["a.module.shared_spelling", "b.module.shared_spelling"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.shared_spelling",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target_test"],
             )],
         );
         // The refused producer's own key recurs over its own carriers, so the identity trigger
         // fires — and then the bare key is claimed by two admitted spellings, so naming either
         // one would be a fabricated subject.
-        fill_from("v2.test.emit.produced_decl_two_target", "shared_spelling");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target_test",
+            "shared_spelling",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("an unattributable overlap must refuse");
         assert!(

@@ -2,7 +2,7 @@ module gunbc.regen_digest_spelling_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the regression control behind the seed-executable digest repair. It
@@ -13,7 +13,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // WHY THIS ROW EXISTS AT ALL, AND WHO ASKED. Nobody's gate asked: seed_growth_admit_change is an
 // obligation rather than an armed lane, so this change was green without it and two reviews said so
 // while raising the receipt as advisory. What produced it is the instrument the SIBLING migration
-// promotes -- tools.rust_item_census_instrument census -- run against this branch, which answered
+// promotes -- gunbc.instruments.rust_item_census_instrument census -- run against this branch, which answered
 // `admission: REFUSED ... unjustified-additions (3)` and named all three items. That is the whole
 // argument of DESIGN section 6's name-the-instrument rule arriving as a result rather than as a
 // principle: a transcribed count would have said "three items added" and stopped; the instrument

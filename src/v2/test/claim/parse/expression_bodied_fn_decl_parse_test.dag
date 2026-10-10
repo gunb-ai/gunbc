@@ -1,4 +1,4 @@
-module v2.test.parse.expression_bodied_fn_decl_parse
+module v2.test.claim.parse.expression_bodied_fn_decl_parse_test
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }

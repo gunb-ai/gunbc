@@ -1,7 +1,7 @@
 module test.claim.deploy_transition_bootstrap_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   DeploymentNames,
   srv1_live_deployment_names,

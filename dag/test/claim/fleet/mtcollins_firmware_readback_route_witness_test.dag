@@ -1,4 +1,4 @@
-module test.claim.mtcollins_firmware_readback_route_witness
+module test.claim.fleet.mtcollins_firmware_readback_route_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }

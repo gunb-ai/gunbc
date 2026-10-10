@@ -62,7 +62,7 @@ import gunbc.rung_drop.transitional_admission_exception { transitional_admission
 // policy are different kinds of fact and must not share a substring-based representation — that
 // fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies
 // (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in
-// gunbc.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only:
+// gunbc.ci.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only:
 // witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused
 // representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it
 // is total: a function with an exact admission is decided by that admission; path policy applies
@@ -137,7 +137,7 @@ fn known_red_probe(
 // Green exact admission for witnesses excluded from per-PR discovery by OfflineLocalRecipe
 // transport posture but executed on the per-PR floor by v2.workflow.source_root_ingest_gate
 // (run_compiler_closure_ingest_gate and siblings). Cadence is BinWitnessWet as the Wet host-overlay
-// execution class only — these rows are NOT enrolled on gunbc.ci_layer_roots
+// execution class only — these rows are NOT enrolled on gunbc.ci.ci_layer_roots
 // bin_witness_wet_entries; hermetic discovery there would bypass the file exclusion and refuse on
 // an empty manifest. The executing consumer is the gate overlay ClaimRun list in
 // v2.workflow.compiler_closure_ingest_transport.
@@ -194,7 +194,7 @@ data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness re
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   known_red_probe(
-    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    entry: "src/v2/test/claim/body_lowering/map_literal.dag",
     f: "ml_an_elaborated_map_infers_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -202,7 +202,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    entry: "src/v2/test/claim/body_lowering/map_literal.dag",
     f: "ml_a_same_module_generic_entry_construct_infers_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -210,7 +210,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
   ),
   known_red_probe(
-    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
     f: "w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -294,7 +294,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "w_method_arg_infers_against_declared_contract_not_element_type_test",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "THE DISCRIMINATING RED FOR #8592 (v1 infer: use each method arg's own declared parameter type, not the receiver's element_type), red on main for a reason that is not this fix's defect: the witness host builtin compile_dag_rust_emit_check executes the COMPILED stage0 mirror, and the fix lives in src/v1/04_infer.dag and src/v1/04_lookup.dag (declared_arg_types_for_method) authority only. Measured directly at 98d7147f9e (BuildBuddy 1047f203) by building gunbc from both 98d7147f9e and its parent and running each on the discriminating fixture (List<NonEmptyStr>.get called with a NonEmptyStr where the declared contract requires Int): BOTH binaries compile the fixture clean with zero diagnostics of any severity, byte-identical emitted output. grep on src/v1/stage0/src/v1_compiler_infer.rs confirms declared_arg_types_for_method appears in ZERO stage0 .rs files, and the pre-fix scalar_shaped_builtin_method_arg_type whitelist function is still present and still called — the #8592 commit touched only .dag authority plus 38 unrelated lines in required_regen_host.rs, and its own commit message records that required-regen's v2 self-compile refused with 11 source-annotation diagnostics, blocking the mirror regen for this exact change. This row is therefore NOT a feature gap in the fix; it is the identical authority/mirror gap independently found and quarantined the same day for the where-refinement wall — owned by the required-regen lane. THAT PRECEDENT ROW HAS SINCE DISSOLVED (2026-08-20): its 04_infer mirror was regenerated on gunbc#8619 and the row deleted in that same change, per its own trigger, so this sentence no longer names it as a live row. The precedent stands as a recorded instance of the class, not as a citation a reader can resolve. The witness function itself is written to assert the CORRECTED behavior (compile_dag_rust_emit_check must refuse) so that regenerating the mirror greens it with no edit; today, run against the committed (unmirrored) binary, it evaluates false because the ill-typed call is silently accepted. COVERAGE, checked rather than assumed (2026-08-20, per deep-ant-102): this witness's module (test.claim.method_arg_declared_contract_witness_test) is NOT under dag/test/claim/long/ and matches none of the required floor's long-home exclusion prefixes, so it IS discovered and executed by the required floor regardless of cadence — unlike the where-refinement precedent's witness file dag/test/claim/long/where_refinement_enforcement_witness_test.dag, which sits under that excluded directory and is discovered nowhere (the row itself is gone as recorded above; the fact was always about the FILE's home, and that home is unchanged by the row's dissolution). That floor execution is the row's real, present protection. Separately, this row's cadence field (QuarantineProbeExpectRed, from known_red_probe) also names it for the periodic falsifier re-probe cadence, whose consumer (falsifier.yml) was deleted in the 2026-08-15 floor cut and is not yet re-added — so the cadence tag should not be read as implying that second, currently-inert consumer.",
+    reason: "THE DISCRIMINATING RED FOR #8592 (v1 infer: use each method arg's own declared parameter type, not the receiver's element_type), red on main for a reason that is not this fix's defect: the witness host builtin compile_dag_rust_emit_check executes the COMPILED stage0 mirror, and the fix lives in src/v1/04_infer.dag and src/v1/04_lookup.dag (declared_arg_types_for_method) authority only. Measured directly at 98d7147f9e (BuildBuddy 1047f203) by building gunbc from both 98d7147f9e and its parent and running each on the discriminating fixture (List<NonEmptyStr>.get called with a NonEmptyStr where the declared contract requires Int): BOTH binaries compile the fixture clean with zero diagnostics of any severity, byte-identical emitted output. grep on src/v1/stage0/src/v1_compiler_infer.rs confirms declared_arg_types_for_method appears in ZERO stage0 .rs files, and the pre-fix scalar_shaped_builtin_method_arg_type whitelist function is still present and still called — the #8592 commit touched only .dag authority plus 38 unrelated lines in required_regen_host.rs, and its own commit message records that required-regen's v2 self-compile refused with 11 source-annotation diagnostics, blocking the mirror regen for this exact change. This row is therefore NOT a feature gap in the fix; it is the identical authority/mirror gap independently found and quarantined the same day for the where-refinement wall — owned by the required-regen lane. THAT PRECEDENT ROW HAS SINCE DISSOLVED (2026-08-20): its 04_infer mirror was regenerated on gunbc#8619 and the row deleted in that same change, per its own trigger, so this sentence no longer names it as a live row. The precedent stands as a recorded instance of the class, not as a citation a reader can resolve. The witness function itself is written to assert the CORRECTED behavior (compile_dag_rust_emit_check must refuse) so that regenerating the mirror greens it with no edit; today, run against the committed (unmirrored) binary, it evaluates false because the ill-typed call is silently accepted. COVERAGE, checked rather than assumed (2026-08-20, per deep-ant-102): this witness's module (test.claim.method_arg_declared_contract_witness_test) is NOT under dag/test/claim/long/ and matches none of the required floor's long-home exclusion prefixes, so it IS discovered and executed by the required floor regardless of cadence — unlike the where-refinement precedent's witness file dag/test/claim/long/where_refinement_enforcement_witness.dag, which sits under that excluded directory and is discovered nowhere (the row itself is gone as recorded above; the fact was always about the FILE's home, and that home is unchanged by the row's dissolution). That floor execution is the row's real, present protection. Separately, this row's cadence field (QuarantineProbeExpectRed, from known_red_probe) also names it for the periodic falsifier re-probe cadence, whose consumer (falsifier.yml) was deleted in the 2026-08-15 floor cut and is not yet re-added — so the cadence tag should not be read as implying that second, currently-inert consumer.",
     dissolution: unbound_dissolution(description: "the 04_infer and 04_lookup stage0 mirrors are regenerated so the compiled harness contains declared_arg_types_for_method — this row deletes in that same change, promoting the unchanged witness to ordinary DiscoverySelection as the permanent regression control for #8572/#8579/#8592 (infer method args against the declared param contract, never the receiver element type)")
   ),
   known_red_probe(
@@ -302,7 +302,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "legacy_test_behavior_unclassified_frontier_is_zero",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "NO LONGER THE CLOSING VALIDATION FOR roadmap node v1-test-migration as of 2026-08-11 (gunbc#8146, review 51212) — that node rebound to test_migration_debt_test.dag retained_rust_kernel_wall_holds_against_live_tree when the authority inverted from classifying departures to declaring residents, and gunbc.roadmap_authority is the single authority for that binding. RETAINED as an expecting-red probe only: it still measures a real derived quantity and greening it would still be progress. It was: the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
+    reason: "NO LONGER THE CLOSING VALIDATION FOR roadmap node v1-test-migration as of 2026-08-11 (gunbc#8146, review 51212) — that node rebound to test_migration_debt_test.dag retained_rust_kernel_wall_holds_against_live_tree when the authority inverted from classifying departures to declaring residents, and gunbc.roadmap.roadmap_authority is the single authority for that binding. RETAINED as an expecting-red probe only: it still measures a real derived quantity and greening it would still be progress. It was: the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
     dissolution: unbound_dissolution(description: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall")
   ),
   known_red_probe(
@@ -330,7 +330,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the traversal repair lands and BOTH rows for this entry delete in the same change — they are one obligation with one terminal construction and neither survives the other, so they are deliberately not split; the two witnesses stay as the permanent pair that keeps LocalRead, RuntimeRead and Refused distinguishable")
   ),
   known_red_probe(
-    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance.dag",
     f: "witness_p1_proof_kernel_acceptance_contract_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -338,7 +338,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "every required KernelAcceptanceCapability has a passing executing scenario — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall")
   ),
   known_red_probe(
-    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance.dag",
     f: "witness_namespace_reference_derived_closure_closing_contract_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -346,7 +346,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness.dag",
     f: "self_host_use_site_verdict_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
@@ -354,7 +354,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness.dag",
     f: "self_host_discovery_enumeration_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
@@ -362,7 +362,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness.dag",
     f: "self_host_target_carriers_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
@@ -370,7 +370,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness.dag",
     f: "self_host_body_producer_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
@@ -378,7 +378,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness.dag",
     f: "self_host_03_normalize_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
@@ -646,7 +646,7 @@ fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmi
   }
 }
 
-// The budget half of the split, derived. gunbc.ci_layer_roots unions this with the long-lane BATCH
+// The budget half of the split, derived. gunbc.ci.ci_layer_roots unions this with the long-lane BATCH
 // roster to give the scheduler its ceiling condition, so a row obtains its required eval time from
 // its own declaration and never by joining a second batch. The union is the whole mechanism: batch
 // membership still routes execution, this roster only sizes the ceiling, and the residual (declared

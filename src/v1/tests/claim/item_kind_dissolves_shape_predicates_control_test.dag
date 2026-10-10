@@ -27,7 +27,7 @@ import v1.compiler.infer_env { empty_type_env }
 //
 // WHERE THIS RUNS IS NOT ASSERTED HERE, AND DELIBERATELY SO. No annotation can establish that a
 // witness executes, so the fact that this directory is outside the required run is carried by the
-// typed authority that decides it -- `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`
+// typed authority that decides it -- `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes`
 // and its restoration condition -- and not by prose in this file.
 
 // One node shape, parameterised only by the carried kind, so the rows differ in exactly the fact

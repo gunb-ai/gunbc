@@ -1,4 +1,4 @@
-module test.claim.srv3_os_install_actuator_toolchain_ensure
+module test.claim.srv3.srv3_os_install_actuator_toolchain_ensure_witness_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

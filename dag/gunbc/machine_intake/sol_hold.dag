@@ -1,4 +1,4 @@
-module gunbc.machine_intake_sol_hold
+module gunbc.machine_intake.sol_hold
 
 import std.types { Bool, NonEmptyStr, Unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -59,7 +59,7 @@ import v2.extdeps.languages.bash_build {
 // child, records "gunbc-sol-hold: pid not published; collector stopped", and still records the exit.
 // Never a global kill or a BMC deactivate. The launch itself returns once the supervisor is started;
 // whether a collector was ESTABLISHED is read afterwards from the pid, the stat and the diagnostics
-// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_activate_held).
+// (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_activate_held).
 //
 // THE BUILD THIS IS READ FROM. srv1, reported 2026-09-27: `ipmitool -V` 1.8.19; dpkg ipmitool
 // 1.8.19-7ubuntu0.24.04.3 arm64; /usr/bin/ipmitool sha256 prefix 84b8c7b03972e809. That package's
@@ -74,16 +74,16 @@ import v2.extdeps.languages.bash_build {
 data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.machine_intake_sol_hold",
+    module_path: "gunbc.machine_intake.sol_hold",
     decl_name: "mtcollins1_sol_hold_shell_emit_dissolution_trigger",
     field: WholeDeclaration
   }
 }
 
-data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — a bash -c script held as a string: it starts `ipmitool sol activate` in the background (stdin from an unlinked read-write fifo on fd 3, stdout line-buffered and appended to the capture, stderr appended to the client file) inside a background supervisor subshell whose body -- start-time read, publication, stop on failure, wait, exit record -- is already bash_build nodes (sol_hold_supervisor_body); and the one line of the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) and [C8 fd-redirection] (no bash grammar rows for opening a file read-write on a numbered fd, duplicating it onto stdin, closing it, or >>/2>> appends) land, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, and supervise and record the exit -- without a medium-as-string script; the release by identity is already bash_build nodes (mtcollins1_sol_hold_release_script)")
+data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — a bash -c script held as a string: it starts `ipmitool sol activate` in the background (stdin from an unlinked read-write fifo on fd 3, stdout line-buffered and appended to the capture, stderr appended to the client file) inside a background supervisor subshell whose body -- start-time read, publication, stop on failure, wait, exit record -- is already bash_build nodes (sol_hold_supervisor_body); and the one line of the boot step (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) and [C8 fd-redirection] (no bash grammar rows for opening a file read-write on a numbered fd, duplicating it onto stdin, closing it, or >>/2>> appends) land, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, and supervise and record the exit -- without a medium-as-string script; the release by identity is already bash_build nodes (mtcollins1_sol_hold_release_script)")
 
 // THE HOLD'S OWN LINES IN THE CLIENT DIAGNOSTIC FILE, as the launch below writes them. The watch
-// classifies a loss by them (gunbc.machine_intake_mtcollins1_boot_run sol_client_diagnostics), so
+// classifies a loss by them (gunbc.machine_intake.mtcollins1_boot_run sol_client_diagnostics), so
 // they are named once here; test.claim.machine_intake.mtcollins1_boot_run_witness asserts the launch
 // text carries each spelling, and the wet controls read them back from a real supervisor.
 data sol_hold_line_prefix: String = "gunbc-sol-hold:"
@@ -183,7 +183,7 @@ data mtcollins1_sol_hold_activate_script: String = join(["h=\"$1\"; u=\"$2\"; pw
 
 // RELEASE IS THE ONE SPELLING OF "stop the collector this hold started": the workflow's teardown calls
 // ReleaseHeld after the BMC deactivate, and the boot step's EXIT trap runs the same script on cancel or
-// timeout (gunbc.ci_spec gunbc_ci_mtcollins1_boot_trap_body), for the collector and for the notice
+// timeout (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_trap_body), for the collector and for the notice
 // watcher's record alike. There is no separate stdin holder to stop: the collector's pipe is held only
 // by the collector. The supervisor records the resulting exit.
 // RELEASE AND THE OWNED CHECK ARE bash_build NODES RENDERED BY v2.workflow.bash_emit, not scripts held
@@ -240,7 +240,7 @@ fn sol_hold_proc_present() -> Node {
 // subject: the one it used to borrow named the gunbc run step pipeline, and borrowing it put
 // v2.workflow.gunbc_invoke_step_emit, and through it v2.compiler.emit_orchestration, in the closure of
 // every process hold and every read-only observer that releases one.
-data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake_sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (DESIGN 5: refuse, never widen)\n"
+data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake.sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (DESIGN 5: refuse, never widen)\n"
 
 fn sol_hold_rendered(stmts: List<Node>) -> String {
   match bash_emit_stmts(statements: stmts, set_e: false) {

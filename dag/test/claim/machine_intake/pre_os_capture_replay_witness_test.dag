@@ -1,24 +1,24 @@
-module test.claim.pre_os_capture_replay_witness
+module test.claim.machine_intake.pre_os_capture_replay_witness_test
 
-import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
 import test.claim.fleet_observation_capture_witness { t_pos, t_stream, t_other_stream }
 
-import gunbc.machine_intake_pre_os_refusal { PreOsSourceRefusal }
+import gunbc.machine_intake.pre_os_refusal { PreOsSourceRefusal }
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate, GoalDiverged, GoalAssessmentRefused }
 import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_first_own_image_boot }
-import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, replay_pre_os_quiet_archive, pre_os_selection_capture_path, pre_os_selection_capture_sha256, replay_pre_os_host_archive, pre_os_archive_inventory_question }
-import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
-import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment, pre_os_firmware_boot_selection }
+import gunbc.host.memory_observation { read_verified_memory_capture }
+import gunbc.machine_intake.pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, replay_pre_os_quiet_archive, pre_os_selection_capture_path, pre_os_selection_capture_sha256, replay_pre_os_host_archive, pre_os_archive_inventory_question }
+import gunbc.machine_intake.pre_os_bringup_verdict { TrainingRefusedByFirmware }
+import gunbc.machine_intake.pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment, pre_os_firmware_boot_selection }
 import std.content_hash { content_hash_of_value }
-import gunbc.fleet_observation_observation_envelope { CoverageGapPositionsIncomparable, SourceBytesObserved, CoverageGapContinuityBroken, CoverageGapEvidenceNamesAnotherSubject, BindingMachineDisagrees }
-import gunbc.fleet_observation_capture_chunk { ContinuityUnknown, ContinuityGap, SourceStreamRange, GapCauseUnattributed, CollectorLostOwnership }
+import gunbc.fleet_observation.observation_envelope { CoverageGapPositionsIncomparable, SourceBytesObserved, CoverageGapContinuityBroken, CoverageGapEvidenceNamesAnotherSubject, BindingMachineDisagrees }
+import gunbc.fleet_observation.capture_chunk { ContinuityUnknown, ContinuityGap, SourceStreamRange, GapCauseUnattributed, CollectorLostOwnership }
 import std.measure { byte_size }
-import gunbc.machine_intake_pre_os_inventory_assessment { pre_os_diagnostic_absence }
-import gunbc.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
+import gunbc.machine_intake.pre_os_inventory_assessment { pre_os_diagnostic_absence }
+import gunbc.host.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

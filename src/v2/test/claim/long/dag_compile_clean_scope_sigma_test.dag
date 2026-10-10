@@ -1,4 +1,4 @@
-module v2.test.long.dag_compile_clean_scope_sigma_test
+module v2.test.claim.long.dag_compile_clean_scope_sigma_test
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

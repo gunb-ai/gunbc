@@ -1,4 +1,4 @@
-module test.claim.megarac_operation_standing_witness
+module test.claim.host.megarac_operation_standing_witness_test
 
 import test.fixture.board_fru_observation { collins_fru_read }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
@@ -9,15 +9,15 @@ import std.decl_ref { decl_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.megarac_operation_standing {
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.host.megarac_operation_standing {
   MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   OperationExecutedAtBuild,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
   megarac_operation_standings, megarac_operation_executed_at, megarac_identity_eq,
 }
-import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_identity }
+import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
