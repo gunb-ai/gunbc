@@ -51,6 +51,7 @@ docs/plans/host-effect-orchestration.md merge=generated-artifact
 docs/plans/inert-layer-lens.md merge=generated-artifact
 docs/plans/input-envelope-roadmap.md merge=generated-artifact
 docs/plans/model-realization-fork.md merge=generated-artifact
+docs/plans/native-obligation-population.md merge=generated-artifact
 docs/plans/realization-measurement-loop.md merge=generated-artifact
 docs/plans/representation-minimization.md merge=generated-artifact
 docs/plans/v2-compiler-architecture.md merge=generated-artifact

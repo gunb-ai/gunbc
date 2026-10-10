@@ -2937,7 +2937,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A landing that adds a debt row refuses. A green run over an unminted roster refuses.",
           out_of_scope: "Production admission; a new CI job.",
           handback: "The roster minted, the step required, and both drops Retired."
-        )),
+        ), on: "2026-10-09", note: "The 2026-10-09 ruling puts the merge-queue native step inside the one witnesses job (witnesses-one-required-job), not an existing v1 lane; the roster mint is the first green set of native-obligation-population, with the first frontier recorded by native-route-first-frontier.")),
       parent: in_project(project: "native-route-to-live", contribution: "The ratchet running on every landing is what turns native regressions from silent into refused."),
       centering: plan(text: "Roster mint slice only. Run gunbc test //gunbc/instruments:v2-native-frontier on a fleet host. Capture the [native-frontier-roster] proposal it prints. Open one PR that sets gunbc.native_frontier_roster from RosterUnminted to the minted proposal, citing the run. Do not touch CI YAML or rung drops. Stop if the run refuses or prints no proposal."),
     ),
@@ -3568,7 +3568,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A term whose retention the driver cannot measure REFUSES rather than reporting zero -- zero and unmeasured are the conflation this lane exists to prevent, and it is the same distinction the landed floor-memory carrier draws between a bound and a demand.",
         out_of_scope: "Re-measuring the whole-run peak, which the landed instrument already does; and fixing the floor's inability to report its own peak, which is a separate defect recorded below.",
         handback: "The driver, a pool_parse byte figure re-derivable by naming its producer, and a refusal receipt for a term it cannot measure. RELATED AND DELIBERATELY NOT BUNDLED: floor_cgroup_envelope is documented as emitted at entry AND EXIT and has no exit call, so a run outside the supervisor cannot report its maximum. If that is fixed it must be an RAII GUARD rather than a placed call, and the reason is countable in v1_compiler.cli_run run_required_floor rather than quotable from here: its early-return and propagation sites vastly outnumber its explicit successful returns, so a placed call is unreachable on most paths."
-      ), on: "2026-10-09", note: "The 2026-10-09 ruling puts the merge-queue native step inside the one witnesses job (witnesses-one-required-job), not an existing v1 lane; the roster mint is the first green set of native-obligation-population, with the first frontier recorded by native-route-first-frontier.")),
+      ), on: "2026-10-09", note: "Superseded with floor-memory by the 2026-10-09 ruling; the floor lane it attributes no longer exists.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
@@ -3602,7 +3602,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A discriminating RED for each half on the real acceptance path: a bystander change is NOT refused by a row it does not own, and a change that consumes a row without deleting it IS refused on the revision that lands.",
         out_of_scope: "Re-enrolling the phase without the billing repair, which reproduces the cost that caused the deletion.",
         handback: "Both halves executing with their reds enrolled, the phase re-enrolled, and the retirement of gunbc.rung_drop namespace_wave_admission_wall_removed."
-      ), on: "2026-10-09", note: "Superseded with floor-memory by the 2026-10-09 ruling; the floor lane it attributes no longer exists.")),
+      )),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
