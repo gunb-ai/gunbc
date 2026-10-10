@@ -1,10 +1,11 @@
 module test.claim.v1.v1_maintenance_admission_receipt_witness_test
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.cutover_receipt {
   CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
+  cutover_receipt_is_recorded, cutover_receipt_has_label_reading, cutover_receipt_names_runs,
+  LabelReading, Purpose, Control, RefusedClass,
   v1_maintenance_first_admission_receipt
 }
 
@@ -17,13 +18,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and a control that resolves.
 test fn the_first_admission_receipt_cites_a_resolving_control() -> Bool {
   cutover_receipt_is_recorded(r: v1_maintenance_first_admission_receipt)
-    && cutover_receipt_has_reading(r: v1_maintenance_first_admission_receipt, name: "purpose")
-    && cutover_receipt_has_reading(r: v1_maintenance_first_admission_receipt, name: "control")
+    && cutover_receipt_has_label_reading(r: v1_maintenance_first_admission_receipt, kind: Purpose)
+    && cutover_receipt_has_label_reading(r: v1_maintenance_first_admission_receipt, kind: Control)
 }
 
 // CONTROL: a receipt that names a refused class (growth for its own sake) refuses.
 test fn a_receipt_naming_a_refused_class_refuses() -> Bool {
-  !cutover_receipt_has_reading(r: ReceiptRecorded {
-    run_ids: ["r"], host: "h", readings: [CutoverReading { name: "class", value: "growth_for_its_own_sake" }]
-  }, name: "purpose")
+  !cutover_receipt_has_label_reading(r: ReceiptRecorded {
+    run_ids: ["r"], host: "h", readings: [LabelReading { kind: RefusedClass, label: "growth_for_its_own_sake" as NonEmptyStr }]
+  }, kind: Purpose)
 }

@@ -1,6 +1,7 @@
 module gunbc.cutover_receipt
 
-import std.types { String, List, Bool, Int, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.measure { ByteSize, byte_size_count }
 import v2.std.algebra { any }
 
 // THE RECEIPT A V2 CUTOVER ROADMAP NODE HANDS BACK, AS A TYPED STANDING.
@@ -13,14 +14,21 @@ import v2.std.algebra { any }
 // recorded one cannot be written without the runs it came from: no run id, no receipt.
 //
 // The rows below are born ReceiptUnrecorded, and that is the RED each node's acceptance witness
-// pins. A worker flips a row by recording the run, never by editing the witness. Each row dissolves
+// pins. A worker flips a row by recording the run -- readings are typed by the kinds the gunbc test MEMORY RECEIPT and the slot readback print, never free text -- and never by editing the witness. Each row dissolves
 // into its consumer's own carrier when that carrier exists (the roster the node builds), at which
 // point the row is deleted in the same change.
 
-type CutoverReading {
-  name: String
-  value: String
-}
+// A reading is a MEASUREMENT of a named quantity, so it is keyed on a closed kind and a byte quantity
+// is a std.measure ByteSize, never a String: the kinds are the fields the gunbc test MEMORY RECEIPT
+// prints (peak, swap charged) and the slot readback (MemoryMax, MemorySwapMax), so the producer that
+// re-derives a reading is named by its kind. A label reading carries an identifier, not a number.
+type ByteReadingKind = PeakSelfHost | PeakNativeCli | SwapCharged | SlotMemoryMax | SlotSwapMax
+
+type LabelReadingKind = CacheDecision | CacheStateLine | ProducingReceipt | RequestKey | Purpose | Control | RefusedClass
+
+type CutoverReading
+  = ByteReading { kind: ByteReadingKind, bytes: ByteSize }
+  | LabelReading { kind: LabelReadingKind, label: NonEmptyStr }
 
 type CutoverReceipt
   = ReceiptUnrecorded
@@ -34,10 +42,65 @@ fn cutover_receipt_is_recorded(r: CutoverReceipt) -> Bool {
   }
 }
 
-fn cutover_receipt_has_reading(r: CutoverReceipt, name: String) -> Bool {
+fn reading_is_byte_kind(x: CutoverReading, kind: ByteReadingKind) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: _ } => k == kind
+    LabelReading { kind: _, label: _ } => false
+  }
+}
+
+fn reading_is_label_kind(x: CutoverReading, kind: LabelReadingKind) -> Bool {
+  match x {
+    ByteReading { kind: _, bytes: _ } => false
+    LabelReading { kind: k, label: _ } => k == kind
+  }
+}
+
+fn cutover_receipt_has_byte_reading(r: CutoverReceipt, kind: ByteReadingKind) -> Bool {
   match r {
     ReceiptUnrecorded => false
-    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => x.name == name)
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => reading_is_byte_kind(x: x, kind: kind))
+  }
+}
+
+fn cutover_receipt_has_label_reading(r: CutoverReceipt, kind: LabelReadingKind) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => reading_is_label_kind(x: x, kind: kind))
+  }
+}
+
+fn reading_is_a_peak_above(x: CutoverReading, trip: ByteSize) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: b } =>
+      (k == PeakSelfHost || k == PeakNativeCli) && byte_size_count(b: b) > byte_size_count(b: trip)
+    LabelReading { kind: _, label: _ } => false
+  }
+}
+
+// A recorded receipt holds the trip only if it carries a peak and no peak exceeds the trip.
+fn cutover_receipt_peaks_within(r: CutoverReceipt, trip: ByteSize) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } =>
+      (any(readings, x => reading_is_byte_kind(x: x, kind: PeakSelfHost)) || any(readings, x => reading_is_byte_kind(x: x, kind: PeakNativeCli)))
+        && !any(readings, x => reading_is_a_peak_above(x: x, trip: trip))
+  }
+}
+
+// A readback is swap-free only if its swap cap and any charged swap are zero bytes.
+fn cutover_receipt_swap_free(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } =>
+      !any(readings, x => reading_is_nonzero_swap(x: x))
+  }
+}
+
+fn reading_is_nonzero_swap(x: CutoverReading) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: b } => (k == SwapCharged || k == SlotSwapMax) && byte_size_count(b: b) > 0
+    LabelReading { kind: _, label: _ } => false
   }
 }
 

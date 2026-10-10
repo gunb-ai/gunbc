@@ -1,10 +1,11 @@
 module test.claim.materialization.verified_exact_reuse_witness_test
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.cutover_receipt {
   CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
+  cutover_receipt_is_recorded, cutover_receipt_has_label_reading, cutover_receipt_names_runs,
+  LabelReading, ProducingReceipt, RequestKey,
   verified_exact_reuse_first_run_receipt
 }
 
@@ -17,15 +18,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // producing receipt.
 test fn a_pull_request_reuse_carries_its_producing_receipt() -> Bool {
   cutover_receipt_is_recorded(r: verified_exact_reuse_first_run_receipt)
-    && cutover_receipt_has_reading(r: verified_exact_reuse_first_run_receipt, name: "producing_receipt")
-    && cutover_receipt_has_reading(r: verified_exact_reuse_first_run_receipt, name: "request_key")
+    && cutover_receipt_has_label_reading(r: verified_exact_reuse_first_run_receipt, kind: ProducingReceipt)
+    && cutover_receipt_has_label_reading(r: verified_exact_reuse_first_run_receipt, kind: RequestKey)
 }
 
 // CONTROL: a reuse with no producing receipt refuses.
 test fn a_reuse_without_a_producing_receipt_refuses() -> Bool {
-  !cutover_receipt_has_reading(r: ReceiptRecorded {
-    run_ids: ["r"], host: "h", readings: [CutoverReading { name: "request_key", value: "k" }]
-  }, name: "producing_receipt")
+  !cutover_receipt_has_label_reading(r: ReceiptRecorded {
+    run_ids: ["r"], host: "h", readings: [LabelReading { kind: RequestKey, label: "k" as NonEmptyStr }]
+  }, kind: ProducingReceipt)
 }
 
 // CONTROL: a receipt recorded for another request key does not serve this one.

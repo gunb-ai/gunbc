@@ -2,10 +2,13 @@ module test.claim.ci.witnesses_cold_run_receipt_witness_test
 
 import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size, byte_size_count }
+import gunbc.emitted_subject_build_gate { native_step_memory_trip }
 import gunbc.cutover_receipt {
-  CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
-  witnesses_cold_run_receipt
+  CutoverReceipt, CutoverReading, ByteReading, PeakSelfHost, PeakNativeCli, CacheStateLine,
+  ReceiptUnrecorded, ReceiptRecorded,
+  cutover_receipt_is_recorded, cutover_receipt_has_byte_reading, cutover_receipt_has_label_reading,
+  cutover_receipt_names_runs, cutover_receipt_peaks_within, witnesses_cold_run_receipt
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -15,20 +18,33 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // RED TODAY: a cold run is recorded from a named run on a named host with the per-step peaks.
 test fn the_cold_run_receipt_is_recorded_from_a_named_run() -> Bool {
   cutover_receipt_names_runs(r: witnesses_cold_run_receipt, count: 1)
-    && cutover_receipt_has_reading(r: witnesses_cold_run_receipt, name: "emit_build_self_host.peak")
-    && cutover_receipt_has_reading(r: witnesses_cold_run_receipt, name: "emit_build_v2_native_cli.peak")
+    && cutover_receipt_has_byte_reading(r: witnesses_cold_run_receipt, kind: PeakSelfHost)
+    && cutover_receipt_has_byte_reading(r: witnesses_cold_run_receipt, kind: PeakNativeCli)
+}
+
+// CONTROL: a recorded peak ABOVE the slot trip is refused, and one at or under it holds. The trip
+// is the one the gate derives (native_step_memory_trip), not a number copied here.
+test fn a_peak_above_the_trip_refuses() -> Bool {
+  let trip = native_step_memory_trip()
+  let over = byte_size(count: byte_size_count(b: trip) + 1)
+  !cutover_receipt_peaks_within(r: ReceiptRecorded {
+    run_ids: ["r"], host: "h", readings: [ByteReading { kind: PeakSelfHost, bytes: over }]
+  }, trip: trip)
+    && cutover_receipt_peaks_within(r: ReceiptRecorded {
+      run_ids: ["r"], host: "h", readings: [ByteReading { kind: PeakSelfHost, bytes: trip }]
+    }, trip: trip)
 }
 
 // CONTROL: a receipt with no run id is not recorded, so a peak copied from nowhere cannot stand.
-test fn a_peak_above_the_trip_refuses() -> Bool {
+test fn a_peak_with_no_run_id_is_not_recorded() -> Bool {
   !cutover_receipt_is_recorded(r: ReceiptRecorded {
-    run_ids: [], host: "h", readings: [CutoverReading { name: "emit_build_self_host.peak", value: "1" }]
+    run_ids: [], host: "h", readings: [ByteReading { kind: PeakSelfHost, bytes: byte_size(count: 1) }]
   })
 }
 
 // CONTROL: a cold claim beside a cache hit refuses; the receipt must name the cache state reading.
 test fn a_cold_claim_beside_a_cache_hit_refuses() -> Bool {
-  !cutover_receipt_has_reading(r: ReceiptRecorded {
-    run_ids: ["r"], host: "h", readings: [CutoverReading { name: "emit_build_self_host.peak", value: "1" }]
-  }, name: "cache_state")
+  !cutover_receipt_has_label_reading(r: ReceiptRecorded {
+    run_ids: ["r"], host: "h", readings: [ByteReading { kind: PeakSelfHost, bytes: byte_size(count: 1) }]
+  }, kind: CacheStateLine)
 }

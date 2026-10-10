@@ -1,10 +1,11 @@
 module test.claim.ci.seed_build_cache_measurement_witness_test
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.cutover_receipt {
   CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
+  cutover_receipt_is_recorded, cutover_receipt_has_label_reading, cutover_receipt_names_runs,
+  LabelReading, CacheDecision, CacheStateLine,
   seed_build_cache_pair_receipt
 }
 
@@ -15,12 +16,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // RED TODAY: the pair is recorded from two named runs on one host.
 test fn the_pair_is_recorded_from_two_named_runs_on_one_host() -> Bool {
   cutover_receipt_names_runs(r: seed_build_cache_pair_receipt, count: 2)
-    && cutover_receipt_has_reading(r: seed_build_cache_pair_receipt, name: "decision")
+    && cutover_receipt_has_label_reading(r: seed_build_cache_pair_receipt, kind: CacheDecision)
 }
 
 // CONTROL: a pair without the cache state lines refuses.
 test fn a_pair_without_the_cache_state_lines_refuses() -> Bool {
-  !cutover_receipt_has_reading(r: ReceiptRecorded {
-    run_ids: ["a", "b"], host: "h", readings: [CutoverReading { name: "seed_build_wall", value: "1" }]
-  }, name: "cache_state_line")
+  !cutover_receipt_has_label_reading(r: ReceiptRecorded {
+    run_ids: ["a", "b"], host: "h", readings: [LabelReading { kind: CacheDecision, label: "x" as NonEmptyStr }]
+  }, kind: CacheStateLine)
 }

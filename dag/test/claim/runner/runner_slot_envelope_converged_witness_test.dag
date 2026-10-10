@@ -1,12 +1,12 @@
 module test.claim.runner.runner_slot_envelope_converged_witness_test
 
 import std.types { Bool, String, List }
-import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size }
 import gunbc.cutover_receipt {
-  CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
-  fleet_slot_envelope_readback
+  CutoverReceipt, ByteReading, SlotMemoryMax, SlotSwapMax, ReceiptUnrecorded, ReceiptRecorded,
+  cutover_receipt_is_recorded, cutover_receipt_has_byte_reading, cutover_receipt_names_runs,
+  cutover_receipt_swap_free, fleet_slot_envelope_readback
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -17,30 +17,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // RED TODAY: a readback has been recorded from a named converge run on a named host.
 test fn the_emitted_slot_unit_carries_the_desired_envelope() -> Bool {
   cutover_receipt_is_recorded(r: fleet_slot_envelope_readback)
-    && cutover_receipt_has_reading(r: fleet_slot_envelope_readback, name: "MemoryMax")
-    && cutover_receipt_has_reading(r: fleet_slot_envelope_readback, name: "MemorySwapMax")
+    && cutover_receipt_has_byte_reading(r: fleet_slot_envelope_readback, kind: SlotMemoryMax)
+    && cutover_receipt_has_byte_reading(r: fleet_slot_envelope_readback, kind: SlotSwapMax)
 }
 
 data swapping_readback: CutoverReceipt = ReceiptRecorded {
   run_ids: ["converge-1"], host: "h",
-  readings: [CutoverReading { name: "MemorySwapMax", value: "infinity" }]
+  readings: [ByteReading { kind: SlotSwapMax, bytes: byte_size(count: 1) }]
 }
 
-fn readback_swap_is_zero(r: CutoverReceipt) -> Bool {
-  match r {
-    ReceiptUnrecorded => false
-    ReceiptRecorded { run_ids: _, host: _, readings: rs } =>
-      !any_reading_with_value(rs: rs, name: "MemorySwapMax", wrong: "infinity")
-  }
-}
-
-fn any_reading_with_value(rs: List<CutoverReading>, name: String, wrong: String) -> Bool {
-  any(rs, x => x.name == name && x.value == wrong)
+data swap_free_readback: CutoverReceipt = ReceiptRecorded {
+  run_ids: ["converge-1"], host: "h",
+  readings: [ByteReading { kind: SlotSwapMax, bytes: byte_size(count: 0) }]
 }
 
 // CONTROL, green today and after: a readback whose swap cap is not zero refuses the host.
 test fn a_readback_with_swap_refuses_the_host() -> Bool {
-  !readback_swap_is_zero(r: swapping_readback) && !readback_swap_is_zero(r: ReceiptUnrecorded)
+  !cutover_receipt_swap_free(r: swapping_readback) && cutover_receipt_swap_free(r: swap_free_readback)
+    && !cutover_receipt_swap_free(r: ReceiptUnrecorded)
 }
 
 // CONTROL: an unrecorded readback is not a host that matches its row.
