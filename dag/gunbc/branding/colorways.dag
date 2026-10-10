@@ -1,51 +1,62 @@
 module gunbc.branding.colorways
 
 import std.types { Bool, List, NonEmptyStr }
-import extdeps.gunb_ai.frontend {
-  MarkColorway, mark_colorway_name, gunb_team_palettes,
-  team_palette_salmon_and_void, team_palette_warm_stone, team_palette_heavy_moss, team_palette_heavy_clay,
-  team_palette_moss_on_cream, team_palette_clay_on_cream, team_palette_stark, team_palette_raw_linen,
-  team_palette_salmon_glow, team_palette_moss_block, team_palette_clay_block, team_palette_night_ink,
+import extdeps.color.srgb { Srgb8 }
+
+// THE gunb.ai BRAND COLOURWAYS. This module is their authority (operator ruling 2026-10-10): each is
+// the Stoic Giant seal drawn in one ink on one field, with its eyes and mouth cut through to the
+// field, and nothing else -- the geometry is extdeps.gunb_ai.frontend's, unchanged. The file stem is
+// the name each colourway's SVG is committed under (dag/gunbc/branding/colorways/<stem>.svg).
+//
+// This module is deliberately light -- extdeps only -- because the generated-artifact registry
+// imports it to enumerate the files, and that registry's closure is paid by every consumer that
+// needs one artifact's path.
+type BrandColorway sole_constructor {
+  name: NonEmptyStr
+  file_stem: NonEmptyStr
+  field: Srgb8
+  ink: Srgb8
 }
 
-// THE COLOURWAYS THIS REPOSITORY EMITS, one row per extdeps.gunb_ai.frontend team palette, each with
-// the file stem its SVG is committed under (dag/gunbc/branding/colorways/<stem>.svg). The palette is
-// the upstream's fact; the stem is this repository's naming, which is why the two live in different
-// modules. This module is deliberately light -- extdeps only -- because the generated-artifact
-// registry imports it to enumerate the files, and that registry's closure is paid by every consumer
-// that needs one artifact's path.
-//
-// The rows name each palette by reference rather than mapping over gunb_team_palettes because no
-// stem can be derived from a caption here (std has no case folding); test.claim.branding
-// mark_colorway_witness_test holds the two lists to an identity join in both directions, so a
-// palette added upstream without a row here refuses there.
-type BrandColorway { colorway: MarkColorway, file_stem: NonEmptyStr }
+data brand_colorway_salmon_and_void: BrandColorway = BrandColorway {
+  name: "Salmon & Void", file_stem: "salmon-and-void",
+  field: Srgb8 { r: 255, g: 181, b: 176 }, ink: Srgb8 { r: 10, g: 10, b: 10 },
+}
+
+data brand_colorway_raw_clay: BrandColorway = BrandColorway {
+  name: "Raw Clay", file_stem: "raw-clay",
+  field: Srgb8 { r: 249, g: 246, b: 240 }, ink: Srgb8 { r: 211, g: 74, b: 46 },
+}
+
+data brand_colorway_heavy_moss: BrandColorway = BrandColorway {
+  name: "Heavy Moss", file_stem: "heavy-moss",
+  field: Srgb8 { r: 235, g: 233, b: 224 }, ink: Srgb8 { r: 25, g: 64, b: 37 },
+}
+
+data brand_colorway_stark: BrandColorway = BrandColorway {
+  name: "Stark", file_stem: "stark",
+  field: Srgb8 { r: 10, g: 10, b: 10 }, ink: Srgb8 { r: 249, g: 246, b: 240 },
+}
 
 data brand_colorways: List<BrandColorway> = [
-  BrandColorway { colorway: team_palette_salmon_and_void, file_stem: "salmon-and-void" },
-  BrandColorway { colorway: team_palette_warm_stone, file_stem: "warm-stone" },
-  BrandColorway { colorway: team_palette_heavy_moss, file_stem: "heavy-moss" },
-  BrandColorway { colorway: team_palette_heavy_clay, file_stem: "heavy-clay" },
-  BrandColorway { colorway: team_palette_moss_on_cream, file_stem: "moss-on-cream" },
-  BrandColorway { colorway: team_palette_clay_on_cream, file_stem: "clay-on-cream" },
-  BrandColorway { colorway: team_palette_stark, file_stem: "stark" },
-  BrandColorway { colorway: team_palette_raw_linen, file_stem: "raw-linen" },
-  BrandColorway { colorway: team_palette_salmon_glow, file_stem: "salmon-glow" },
-  BrandColorway { colorway: team_palette_moss_block, file_stem: "moss-block" },
-  BrandColorway { colorway: team_palette_clay_block, file_stem: "clay-block" },
-  BrandColorway { colorway: team_palette_night_ink, file_stem: "night-ink" },
+  brand_colorway_salmon_and_void,
+  brand_colorway_raw_clay,
+  brand_colorway_heavy_moss,
+  brand_colorway_stark,
 ]
 
 data brand_colorway_directory: NonEmptyStr = "dag/gunbc/branding/colorways"
 
+fn brand_colorway_name(c: BrandColorway) -> NonEmptyStr { c.name }
+
 fn brand_colorway_stem(c: BrandColorway) -> NonEmptyStr { c.file_stem }
 
-fn brand_colorway_palette(c: BrandColorway) -> MarkColorway { c.colorway }
+fn brand_colorway_field(c: BrandColorway) -> Srgb8 { c.field }
 
-// Identity join over the palette's name, which the upstream page makes unique per card: every
-// palette has exactly one row, every row names a palette, and no two rows share a file stem.
-fn brand_colorways_cover(rows: List<BrandColorway>, palettes: List<MarkColorway>) -> Bool {
-  all(palettes, p => count(filter(rows, c => mark_colorway_name(c: c.colorway) == mark_colorway_name(c: p))) == 1)
-    && all(rows, c => any(palettes, p => mark_colorway_name(c: p) == mark_colorway_name(c: c.colorway)))
-    && all(rows, c => count(filter(rows, d => d.file_stem == c.file_stem)) == 1)
+fn brand_colorway_ink(c: BrandColorway) -> Srgb8 { c.ink }
+
+// Two colourways may not share a name or a file stem: a shared stem would have two artifacts write
+// one path, and a shared name would give one brand word two paints.
+fn brand_colorways_distinct(rows: List<BrandColorway>) -> Bool {
+  all(rows, c => count(filter(rows, d => d.file_stem == c.file_stem)) == 1 && count(filter(rows, d => d.name == c.name)) == 1)
 }

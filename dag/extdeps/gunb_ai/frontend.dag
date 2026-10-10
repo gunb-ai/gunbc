@@ -35,7 +35,7 @@ data gunb_mark_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: gunb_mark_authority,
-  further_citations: [gunb_icon_explore_authority]
+  further_citations: []
 }
 
 // The exact blob this module was derived from. A content hash rather than a branch name, because a
@@ -137,74 +137,6 @@ data gunb_stoic_giant_mark: StoicGiantMark = StoicGiantMark {
 // not recorded until a consumer paints with it; a consumer on a light ground inverts the seal and
 // paints the body with this ink, which is the use that admits the row.
 data mark_ink: Srgb8 = Srgb8 { r: 12, g: 13, b: 12 }
-
-// ═══ THE TEAM PALETTES ═══
-//
-// legacy/icon-explore.html, section "Team palettes", at the same frontend commit as the mark: twelve
-// cards, each painting <use href="#stoic-idle"/> in the card's `color` over the card's `background`.
-// stoic-idle is this seal with its eyes and mouth cut through (fill-rule evenodd), so on a card the
-// features show the card. A colourway is therefore exactly two paints -- the field and the ink -- and
-// the geometry is the seal's, unchanged. The values are the cards' style attributes, which is what
-// renders; a card's caption sometimes names tokens instead ("void / stone"), and where the two
-// differ the rendered hex is the fact. Names are the cards' captions.
-data gunb_icon_explore_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/gunb-ai/frontend/blob/3152d4c4b0/legacy/icon-explore.html"
-  }
-}
-
-type MarkColorway sole_constructor {
-  name: NonEmptyStr
-  field: Srgb8
-  ink: Srgb8
-}
-
-fn mark_colorway_name(c: MarkColorway) -> NonEmptyStr { c.name }
-
-fn mark_colorway_field(c: MarkColorway) -> Srgb8 { c.field }
-
-fn mark_colorway_ink(c: MarkColorway) -> Srgb8 { c.ink }
-
-data team_palette_salmon_and_void: MarkColorway = MarkColorway { name: "Salmon & Void", field: Srgb8 { r: 255, g: 181, b: 176 }, ink: Srgb8 { r: 10, g: 10, b: 10 } }
-
-data team_palette_warm_stone: MarkColorway = MarkColorway { name: "Warm Stone", field: Srgb8 { r: 13, g: 13, b: 13 }, ink: Srgb8 { r: 196, g: 189, b: 176 } }
-
-data team_palette_heavy_moss: MarkColorway = MarkColorway { name: "Heavy Moss", field: Srgb8 { r: 13, g: 13, b: 13 }, ink: Srgb8 { r: 83, g: 139, b: 94 } }
-
-data team_palette_heavy_clay: MarkColorway = MarkColorway { name: "Heavy Clay", field: Srgb8 { r: 13, g: 13, b: 13 }, ink: Srgb8 { r: 147, g: 72, b: 66 } }
-
-data team_palette_moss_on_cream: MarkColorway = MarkColorway { name: "Moss on Cream", field: Srgb8 { r: 244, g: 241, b: 235 }, ink: Srgb8 { r: 25, g: 64, b: 37 } }
-
-data team_palette_clay_on_cream: MarkColorway = MarkColorway { name: "Clay on Cream", field: Srgb8 { r: 244, g: 241, b: 235 }, ink: Srgb8 { r: 211, g: 74, b: 46 } }
-
-data team_palette_stark: MarkColorway = MarkColorway { name: "Stark", field: Srgb8 { r: 10, g: 10, b: 10 }, ink: Srgb8 { r: 249, g: 246, b: 240 } }
-
-data team_palette_raw_linen: MarkColorway = MarkColorway { name: "Raw Linen", field: Srgb8 { r: 235, g: 233, b: 224 }, ink: Srgb8 { r: 10, g: 10, b: 10 } }
-
-data team_palette_salmon_glow: MarkColorway = MarkColorway { name: "Salmon Glow", field: Srgb8 { r: 44, g: 44, b: 44 }, ink: Srgb8 { r: 255, g: 181, b: 176 } }
-
-data team_palette_moss_block: MarkColorway = MarkColorway { name: "Moss Block", field: Srgb8 { r: 83, g: 139, b: 94 }, ink: Srgb8 { r: 244, g: 241, b: 235 } }
-
-data team_palette_clay_block: MarkColorway = MarkColorway { name: "Clay Block", field: Srgb8 { r: 147, g: 72, b: 66 }, ink: Srgb8 { r: 249, g: 246, b: 240 } }
-
-data team_palette_night_ink: MarkColorway = MarkColorway { name: "Night Ink", field: Srgb8 { r: 26, g: 26, b: 46 }, ink: Srgb8 { r: 224, g: 214, b: 200 } }
-
-// In the page's order.
-data gunb_team_palettes: List<MarkColorway> = [
-  team_palette_salmon_and_void,
-  team_palette_warm_stone,
-  team_palette_heavy_moss,
-  team_palette_heavy_clay,
-  team_palette_moss_on_cream,
-  team_palette_clay_on_cream,
-  team_palette_stark,
-  team_palette_raw_linen,
-  team_palette_salmon_glow,
-  team_palette_moss_block,
-  team_palette_clay_block,
-  team_palette_night_ink,
-]
 
 // ═══ SCALING TO PLASTIC ═══
 //
