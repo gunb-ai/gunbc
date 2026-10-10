@@ -38,7 +38,8 @@ import extdeps.git {
   shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
 }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_event_log {
@@ -66,13 +67,25 @@ type RoadmapEventCarrierLayout {
   remote: String
 }
 
+data roadmap_events_worktree_child: String = "roadmap-events"
+
+// THE DIRECTORY THE CARRIER DEMANDS: the worktree it checks the event branch out into, under the instance
+// root. The carrier's `git worktree add` cannot create it where the instance root is not the service
+// principal's to write (srv1's /opt/gunbc is root-owned), which is what answered every issue page 503;
+// so the directory is a target both deployment routes ensure (gunbc.roadmap.dashboard_instance_directories)
+// and the layout's worktree is read off it. The worktree is checked out INTO the ensured directory --
+// roadmap_event_carrier_ensure treats an empty directory as one to check out into, not as a worktree.
+fn roadmap_event_carrier_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_shared_directory(instance: instance, member: "roadmap-events" as NonEmptyStr, child: roadmap_events_worktree_child)
+}
+
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
 // instance root the worktree hangs under, and the host's git and directory (install) realizations.
 fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
   RoadmapEventCarrierLayout {
     remote: if instance.instance_id == srv2_dashboard_preview_id { concat(instance.instance_root as String, "/ui-preview-events.git") } else { roadmap_events_remote },
     repo_root: instance.repo_root,
-    worktree: join([instance.instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: owned_directory_path(t: roadmap_event_carrier_directory(instance: instance)),
     git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
     directory_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
   }
@@ -82,7 +95,7 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
   RoadmapEventCarrierLayout {
     remote: roadmap_events_remote,
     repo_root: repo_root,
-    worktree: join([instance_root as String, "/roadmap-events"], "") as FilePath,
+    worktree: dashboard_instance_child(root: instance_root, child: roadmap_events_worktree_child),
     git_program: git_program,
     directory_program: directory_program,
   }
@@ -131,10 +144,24 @@ fn carrier_exec_program(program: String, workdir: String, args: List<String>) ->
 // it, so the FIRST event has a parent tree to land in. Each step that fails is named.
 type CarrierEnsure = CarrierReady | CarrierEnsureRefused { step: String, reason: String }
 
+// A LISTED DIRECTORY IS NOT A WORKTREE. The deployment ensures the worktree's directory empty and owned
+// (roadmap_event_carrier_directory), so presence alone stopped meaning "checked out": an empty
+// directory is checked out into (git worktree add accepts an empty existing directory), a directory
+// holding the worktree's `.git` link is ready, and anything else is refused rather than overwritten.
+fn roadmap_event_worktree_entries(listing: String) -> List<String> {
+  filter(xs: split(s: listing, delimiter: "\n"), predicate: e => e != "")
+}
+
 fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEnsure {
   let probe = Filesystem.List(path: layout.worktree as String)
-  if probe.success {
+  let entries = if probe.success { roadmap_event_worktree_entries(listing: probe.entries) } else { [] }
+  if probe.success && any(entries, e => e == ".git") {
     CarrierReady
+  } else if probe.success && count(entries) > 0 {
+    CarrierEnsureRefused {
+      step: "worktree-probe",
+      reason: join([layout.worktree as String, " exists, is not empty and holds no .git link; it is never overwritten"], ""),
+    }
   } else {
     match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_ls_remote_heads_args(remote: layout.remote, branch: roadmap_events_branch)) {
       CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "ls-remote", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }

@@ -1039,6 +1039,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         UnresolvedImport { module_path: s(), importing_module: s(), span: no_span() },
         MissingExport { name: s(), module_path: s(), importing_module: s(), span: no_span() },
         ImportShadowedByLocalDefinition { name: s(), module_path: s(), importing_module: s(), span: no_span() },
+        ImportCollidesWithKernelName { name: s(), module_path: s(), importing_module: s(), kernel_declaration_module: s(), span: no_span() },
+        KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
@@ -1105,6 +1107,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         EffectfulSelfRecursionUnrealized { name: s(), span: no_span() },
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
         EmittedSymbolCollision { symbol: s(), identities: istrings(), span: no_span() },
+        NativeEffectRealizationRefused { entry: s(), refusals: istrings(), span: no_span() },
         EffectSummaryIncompleteAtFunctionValue { caller: s(), span: no_span() },
         EffectSummaryIncompleteAtLocalBinding { caller: s(), name: s(), span: no_span() },
         CallArgumentNameUnknown { callee: s(), argument: s(), declared: istrings(), span: no_span() },
@@ -1528,6 +1531,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
             "ImportShadowedByLocalDefinition"
         }
+        CompilerDiagnostic::ImportCollidesWithKernelName { .. } => "ImportCollidesWithKernelName",
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => {
+            "KernelMintDeclarationAmbiguousAtImport"
+        }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
@@ -1593,6 +1600,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::EmittedSymbolCollision { .. } => "EmittedSymbolCollision",
+        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
+            "NativeEffectRealizationRefused"
+        }
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
         }
@@ -1638,6 +1648,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
+        CompilerDiagnostic::ImportCollidesWithKernelName { name, .. } => name.clone(),
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
@@ -1709,6 +1721,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { symbol, .. } => symbol.clone(),
+        CompilerDiagnostic::NativeEffectRealizationRefused {
+            entry, refusals, ..
+        } => format!(
+            "{entry}: {}",
+            refusals.iter().cloned().collect::<Vec<_>>().join("; ")
+        ),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),

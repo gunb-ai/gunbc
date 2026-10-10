@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_name_resolved_by_proximity_standing_in_for_resolution: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_name_resolved_by_proximity_standing_in_for_resolution" as NonEmptyStr,
+
+  receipts: [
+    "**bare name resolved by proximity, standing in for resolution** (the reference-edge reader in `v1_compiler.cli_run` `entry_resolve` binds a bare name in an IMPORT-LESS file by 'proximity disambiguation' -- the longest shared module-path prefix with a pool declarer -- yielding a UniqueBare or AmbiguousBare edge. A heuristic standing where lexical resolution (locals plus imports) is the authority; DESIGN §4: in a closed system a heuristic is never necessary.)",
+
+    "INVALID STATE: a dependency edge from a module to a declarer it does not lexically bind. The edge widens closures and affected-set selection and can name a homonym the source never meant, silently, with no refusal.",
+
+    "SPECIMEN (gunbc#13526, open when this row was written): a supplied fixture declaring a homonym `Present` beside `std.optional { Present }` produced an edge from an importer of `std.optional` to the homonym's module while the reader still resolved by proximity. #13526 closed the arm for import-BEARING files (bare names there are lexically bound, only qualified chains become edges) and kept the proximity tier for import-less files only.",
+
+    "RUNG FOUND AT (gunbc#13533): silent wrongness on the import-less UniqueBare path, outside the ladder. Import-bearing files were already closed by #13526.",
+
+    "EVIDENCE, EXECUTED (gunbc#13579): two populations, not one. (a) Longest-common-prefix ranking among homonyms -- RED `cli_run` `reference_edge_producer_tests` `proximity_must_not_bind_an_importless_bare_name_to_a_sibling_homonym` over the real `dependency_resolution_facts` union. Fixture: `frontier.child.consumer` calls `duplicated()`; `frontier` and `frontier.child.plant` both declare it. RED captured on the merge-base ranking (entry_resolve.rs identical at 17ebbde83b and 82a3edfea3): `proximity UniqueBare bound the sibling plant: [\"frontier.child.plant\"]`. After the climb that test is the producer regression control; positive `an_importless_bare_name_on_the_ancestor_chain_still_resolves`. (b) Census-unique off-chain UniqueBinding -- `unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge` proves `test.user` can call `test.decl.shared_fn` with no import and no ancestor, and the producer keeps UniqueBare because UniqueBinding still accepts. Two off-chain homonyms: `off_chain_homonym_with_no_lexical_binder_is_refused_on_the_resolve_path` runs `compile_sources` over `load_sources_for_entry_with_pool` (not `resolve_entry_with_index`) and asserts blocking compile failure containing `function 'shared' not found in scope`; it is not a typed-and-located diagnostic identity. Live dag+src/v2 UniqueBare identity is unchanged (gunbc#13579).",
+
+    "RUNG NOW: (a) longest-common-prefix ranking among homonyms is mechanically preventable (rung 2) on the UniqueBare producer -- the RED is the producer's edge set. (b) census-unique off-chain GlobalBareUniqueBinding remains OUTSIDE the lexical guarantee; `pick_importless_bare`'s `mods.len() == 1` arm is not a lexical-scope proof, and `global_bare_lookup_candidates` UniqueBinding does not check the ancestor chain. Those UniqueBare edges stay in the reader until canonical acceptance and edge derivation change together -- dropping them from the reader alone would undercount an accepted call. The row's minimum is (b), not 2. A written import is a legitimate lexical binding even when its target is not an ancestor -- the guarantee forbids bindings without lexical authority, not off-chain references in general. CEILING 3 at source -> accepted graph. NEXT-RUNG TRIGGER: GlobalBareUniqueBinding of a name with no lexical authority is refused, and this producer stops emitting UniqueBare for that case in the same change.",
+
+    "REVIEW TELL: a reader or resolver that ranks candidate declarers by path similarity, shared prefix or 'closest' instead of refusing; an edge whose only justification is that one pool declarer exists.",
+  ],
+
+  evidence: [],
+}

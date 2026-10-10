@@ -1,6 +1,6 @@
 module std.literal_elaboration
 
-import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.types { List, String, Bool, Int, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
@@ -204,7 +204,9 @@ fn elaborate_literal_at(
 // tree. The declaration stays the accepted inductive definition -- exhaustiveness, descent and
 // inhabitance are all judged on it -- and no realizer ever builds the unary tower.
 //
-// THE ROW NAMES THE CARRIER AND NOTHING ELSE. Which constructor is zero and which is successor is
+// THE ROW IS THE CARRIER'S ONLY ELABORATION-DISCOVERY AUTHORITY, AND ITS RANGE IS THE DECLARED
+// ADMISSION BOUND. It names the carrier and the kernel values the carrier admits (min and max,
+// below); it names no constructor. Which constructor is zero and which is successor is
 // read from the carrier's own declaration by the consumer (one nullary constructor, and one
 // constructor with exactly one field of the carrier's own type), so a row cannot disagree with
 // the declaration it is about, and a bound declaration that is NOT that shape is a refusal at the
@@ -214,9 +216,22 @@ fn elaborate_literal_at(
 // A DECLARATION IS NEVER BOTH. A carrier with a KernelGrounding row realizes as the kernel value,
 // so a kernel literal at its boundary is already its own value (DirectLiteral) and it must carry
 // no LiteralHomomorphism row; the two rosters partition the declarations they name.
+//
+// THE ROW DECLARES ITS RANGE: the kernel values that ARE values of the carrier, in std.types range's own
+// vocabulary (an absent bound constrains nothing). A kernel value outside it denotes no value of the carrier
+// -- std.nat Nat's row declares min 0, so `-1` is no natural -- and a consumer refuses it, derived from the
+// row (kernel_grounding_admits), never from a check of its own.
 type KernelGrounding {
   source_kind: LiteralSourceKind
   carrier: DeclarationRef
+  min: Int?
+  max: Int?
+}
+
+// Whether a kernel integer is a value of a grounded carrier: the ONE range authority, std.types range,
+// over the bounds the row declares.
+fn kernel_grounding_admits(row: KernelGrounding, value: Int) -> Bool {
+  range(value: value, min: row.min, max: row.max)
 }
 
 type KernelGroundingLookup
@@ -302,5 +317,35 @@ fn kernel_mint_ownership(rows: List<KernelMintDeclaration>, minted_name: String,
       if declaration_ref_eq(a: bound, b: declaration) { DeclarationOwnsTheMint } else { DeclarationDoesNotOwnTheMint }
     KernelMintDeclarationAbsent => DeclarationDoesNotOwnTheMint
     KernelMintDeclarationAmbiguous { row_count: n } => KernelMintOwnershipAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER AN AUTHORED IMPORT OF A KERNEL-MINTED SPELLING IS THE MINT ITSELF. The exemption is the
+// full DeclarationRef, not the module path: a row for owner.Maybe does not admit importing
+// owner.Optional. Ambiguous mint rows are their own arm so the consumer cannot guess a module.
+type KernelNamedImportStanding
+  = KernelNamedImportAdmitted
+  | KernelNamedImportCollides { kernel_declaration_module: String }
+  | KernelNamedImportMintAmbiguous { row_count: Int }
+
+fn kernel_named_import_standing(
+  imported_name: String,
+  import_path: String,
+  module_declares_type: Bool,
+  rows: List<KernelMintDeclaration>
+) -> KernelNamedImportStanding {
+  if module_declares_type == false {
+    KernelNamedImportAdmitted
+  } else {
+    match kernel_mint_declaration_for(rows: rows, minted_name: imported_name) {
+      KernelMintDeclarationFound { declaration: d } =>
+        if declaration_ref_eq(a: d, b: decl_ref(module_path: import_path, decl_name: imported_name)) {
+          KernelNamedImportAdmitted
+        } else {
+          KernelNamedImportCollides { kernel_declaration_module: d.module_path as String }
+        }
+      KernelMintDeclarationAbsent => KernelNamedImportAdmitted
+      KernelMintDeclarationAmbiguous { row_count: n } => KernelNamedImportMintAmbiguous { row_count: n }
+    }
   }
 }

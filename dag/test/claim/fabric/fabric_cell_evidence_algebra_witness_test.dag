@@ -196,28 +196,13 @@ test fn evidence_domain_laws_hold() -> Bool {
     && class_of(observations: [refused, a, b, absent]) == "refused"
 }
 
-// AND THE ONE THAT IS RED TODAY, ASSERTING THE PROPERTY WE WANT RATHER THAN THE ONE WE HAVE. The
-// class projection above is order-independent; the FULL semantic value is not, because the fold
-// keeps the FIRST refusal cause it saw. Two refusals differing only in cause text are semantically
-// identical and textually distinct, so `[c1, c2]` and `[c2, c1]` reach the same arm carrying
-// different payloads.
-//
-// THIS ROW ASSERTS EQUALITY AND IS ENROLLED AS EXPECTED-RED, and the direction is the whole point
-// (codex review 55693). An earlier cut asserted the INEQUALITY -- that reversed refusals must stay
-// unequal -- and it passed, making the defect part of the green contract: whoever canonicalized
-// the join would meet a red row whose obvious repair is to DELETE the row protecting the property.
-// That is a witness pinning a defect and thereby acquiring a defender, the exact class this lane
-// named one PR earlier and then re-committed here. Asserted this way round the row goes GREEN when
-// the join is fixed, and the floor's known-red-now-passing arm tells the fixer to retire the
-// enrolment.
-//
-// WHY IT IS NOT FIXED IN THIS PR: canonicalizing the refusal changes `EvidenceRefused`'s payload
-// and therefore `AddressUnreadable.cause` and every consumer of it, in a file #9167 is already
-// restructuring. It is a production change belonging in its own diff with its own mutation
-// receipt, not a rider on a witness-only PR. It is NOT harmless: the plan identity consumes the
-// CLASS, so the wording does not move the member-set fingerprint today, but it sits one consumer
-// away -- whoever routes on `cause` or renders it into anything content-addressed reopens the CAS
-// defect this family already fixed once.
+// AND THE FULL SEMANTIC VALUE, NOT ONLY ITS CLASS, IS ORDER-INDEPENDENT. Two refusals differing only
+// in cause text once reached the same arm carrying different payloads, because the fold kept the
+// FIRST cause it saw; the join now keeps the least cause, so `[c1, c2]` and `[c2, c1]` agree. This
+// row was enrolled expected-red (asserting the property wanted rather than the one held, codex
+// review 55693) and is retired from floor_expected_red with the join fix. The cause reaches
+// AddressUnreadable.cause, one consumer away from anything content-addressed, which is why the
+// payload and not only the class has to be canonical.
 test fn evidence_full_value_is_order_independent() -> Bool {
   full_of(observations: [atom_refused(cause: "transport reset"), atom_refused(cause: "permission denied")])
     == full_of(observations: [atom_refused(cause: "permission denied"), atom_refused(cause: "transport reset")])

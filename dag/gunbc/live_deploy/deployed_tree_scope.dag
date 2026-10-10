@@ -3,11 +3,15 @@ module gunbc.live_deploy.deployed_tree_scope
 import std.types { Bool, String, List }
 import v2.std.algebra { any }
 
-// WHAT THE DEPLOY ACTUALLY INSTALLS, DECLARED ONCE BECAUSE TWO THINGS NEED IT AND MUST NOT DISAGREE.
-// The working-tree leg of the source sync rsyncs the runner checkout wholesale except these
-// prefixes, so the deployed source is the WORKING TREE, not the commit. Two consumers read it:
+// WHICH CHECKOUT PATHS CANDIDATE ADMISSION HOLDS TO "CLEAN", DECLARED ONCE.
+// The deployed tree is converged GIT-NATIVELY (gunbc.live_deploy.repository_convergence
+// repository_converge_wet: objects fetched from the runner checkout, the base ref moved by
+// compare-and-swap, `reset --hard` to the candidate), so what is installed is the COMMIT, not the
+// runner's working tree. Admission still refuses a checkout carrying an untracked or ignored path
+// outside these prefixes, because such a path means the candidate is not the clean revision it
+// names. One consumer reads it:
 //
-//   gunbc.live_deploy.candidate  decides whether an untracked path would actually be shipped
+//   gunbc.live_deploy.candidate  decides whether an untracked or ignored path makes the checkout unclean
 //
 // A second reader once rendered it as rsync `--exclude` flags (deployed_tree_rsync_exclude_flags).
 // The tree-sync unit and then the approval broker's job-user rsync were its last production callers;
@@ -21,8 +25,7 @@ import v2.std.algebra { any }
 // and acyclicity is the import graph's one structural law (DESIGN §3). A fact needed by two modules
 // on opposite sides of a dependency chain belongs beneath both, not inside either.
 // WHY THIS LIST IS NOT JUST target AND .git, AND WHY IT IS STILL NOT EVERY IGNORED PATH.
-// The working-tree leg is rsync, which does not read .gitignore, so an ignored path outside these
-// prefixes is copied to the host under a revision that does not name it. Candidate admission
+// An ignored path outside these prefixes is state the revision does not name. Candidate admission
 // refuses on exactly that state (gunbc.live_deploy.candidate, the ignored_deployed arm), naming two
 // remedies: widen these exclusions, or remove the file. The four appended here take the first
 // because they are host state by construction -- agent session state and local tool/build caches
@@ -30,8 +33,8 @@ import v2.std.algebra { any }
 // refusing on one is pure friction.
 //
 // THE .env FAMILY IS DELIBERATELY ABSENT AND STAYS REFUSED. The repository ignores `.env`,
-// `.env.local` and `.env.*.local`; the third is a wildcard, and both this predicate and rsync's
-// `--exclude /<p>` match a literal segment. Listing the two spellable forms would silence admission
+// `.env.local` and `.env.*.local`; the third is a wildcard, and this predicate matches a literal
+// segment. Listing the two spellable forms would silence admission
 // on them while `.env.*.local` kept shipping -- partial cover on the one class where the shipped
 // bytes are secrets, strictly worse than the present loud refusal on all three. It stays refused
 // until the exclusion carrier can express a pattern. src/v2/test/claim/manual/sg2_scratch_probe.dag
@@ -54,23 +57,10 @@ data deployed_tree_excluded_prefixes: List<String> = [
   ".gunbc-build-receipts", ".gunbc-converge-receipts",
 ]
 
-// A COMPILER-DERIVED FILE INSIDE A SOURCE ROOT IS EXCLUDED AS A FILE, NOT A PREFIX. The
-// recurring-failure-mode roster is gitignored and written by every gunbc invocation as a read-path
-// side effect of listing .dag files (src/v1 cli_run derived_row_roster), so the deploying process
-// itself creates it before candidate admission scans the checkout, and the first RLM-2
-// dashboard_deploy refused itself on it (run 35189302828: ignored-deployed=dag/gunbc/
-// recurring_failure_mode/roster.dag). Unlike sg2_scratch_probe, excluding it changes nothing the
-// host compiles: the host's own first invocation derives the identical file from the sibling rows
-// the revision DOES name. Exact path, segment-exact, so a sibling row file is never excluded.
-data deployed_tree_excluded_derived_files: List<String> = [
-  "dag/gunbc/recurring_failure_mode/roster.dag",
-]
-
 // Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
-// it as excluded would hide from admission a path rsync goes on to ship.
+// it as excluded would hide from admission a path that is not host state.
 fn path_is_deployed(path: String) -> Bool {
   !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
-    && !any(deployed_tree_excluded_derived_files, f => path == f)
 }
 
 // WHICH REPOSITORY TRANSITION THIS DEPLOYMENT IS BOUND TO, AND WHY IT IS A WALL RATHER THAN A NOTE.

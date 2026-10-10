@@ -36,10 +36,12 @@ import std.types { NonEmptyStr, List }
 //     approval-request constructor (`approval_intent_digest_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dag_text_round_trip_rows`: the two nested-Bind text round trips
 //     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows`: the kotlin and rust
+//     extended-function grammar parses (`foreign_grammar_extended_parse_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`: the three coproduct type-declaration
 //     fragment-lowering claims (`coproduct_fragment_normalize_new_witness_eval_step_cost`).
-//   - `floor_eval_step_cost_drop_identity_cast_route_rows`: the one real-route claim of the admitted
-//     identity cast (`identity_cast_route_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_bmc_secure_apply_converge_rows`: the one Apply inhabitance of
+//     converge_arrival_through_bmc_secure (`bmc_secure_apply_converge_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -348,7 +350,7 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
     measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=162614 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through an accepted start whose row falls back to Stopped, up to the readiness refusal" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault" as NonEmptyStr,
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_code_16_refuses_as_a_timeout_carrying_the_raw_code" as NonEmptyStr,
     measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=161874 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through an accepted start whose row falls back to Stopped, up to the readiness refusal" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
@@ -423,6 +425,22 @@ data floor_eval_step_cost_drop_dag_text_round_trip_rows: List<EvalStepCostDropMe
   },
 ]
 
+// THE FOREIGN-GRAMMAR EXTENDED-FUNCTION PARSE CLAIMS (v2.test.parse census phase 4; `gunbc.rung_drop`
+// `foreign_grammar_extended_parse_new_witness_eval_step_cost`). Two identities, the kotlin and rust
+// extended-function parses, each one tokenize and one real parse of a function exercising let/val, if,
+// return and binary expressions through that language's grammar. Their grammar preparation is billed
+// apart; the parse alone exceeds the budget.
+data floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.parse_test_kotlin_grammar.claim_kotlin_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_kotlin_grammar_test.dag --functions claim_kotlin_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.parse_test_rust_grammar.claim_rust_extended_function_parses_holds" as NonEmptyStr,
+    measured_by: "v2.test.parse census phase 4, claim_batch BuildBuddy invocations 2c8f9d0b and 9241511f on main of 2026-10-05 plus this change: verdict pass, the claim's own marginal over the new-witness budget even with its grammar preparation billed apart; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_rust_grammar_test.dag --functions claim_rust_extended_function_parses_holds. The billed work is one tokenize and one real parse of an extended function with the language's own grammar" as NonEmptyStr,
+    },
+  ]
+
 // THE COPRODUCT FRAGMENT-LOWERING CLAIMS (v2.test.parse census phase 3; `gunbc.rung_drop`
 // `coproduct_fragment_normalize_new_witness_eval_step_cost`). Three identities, each parsing ONE type
 // declaration fragment at its production and lowering it with normalize_node (two, for the two
@@ -444,20 +462,15 @@ data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepC
   },
 ]
 
-// THE ADMITTED IDENTITY CAST'S REAL-ROUTE CLAIM (`gunbc.rung_drop`
-// `identity_cast_route_new_witness_eval_step_cost`). It was carried by a single-claim fill-debt row
-// until gunbc#13388 retired that row as BecameSharedByDemand: its fixture producer is now demanded by
-// several claims, so no single-claim identity remained to bill, and the claim fell to the new-witness
-// budget on every run (its module is a required_gate_authored_modules member).
-data floor_eval_step_cost_drop_identity_cast_route_rows: List<EvalStepCostDropMeasurement> = [
+data floor_eval_step_cost_drop_bmc_secure_apply_converge_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds" as NonEmptyStr,
-    measured_by: "required floor runs 37486290875 (branch fix/claude-code-std-optional at 675c2c68c2) and 37493248052 (gunbc#13487 at cb21745), both main a453be995a plus the v2.std.optional repoint: COMPLETED-OVER-COST-REQUIREMENT for this identity, verdict holds, 657,428 eval steps against the new-witness budget of 72,300; re-derived by the required floor on any pull request, since its module is a required_gate_authored_modules member. The billed work is the one real emission of the admitted identity cast through the closure route, which this claim is the only execution of" as NonEmptyStr,
+    identity: "test.claim.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_arrival_converge_witness_test.dag --function w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world (BuildBuddy, GUNBC_BIND_MEMORY_CGROUP_BYTES=30064771072): PASS, eval_steps over the new-witness budget. The billed work is converge_arrival_through_bmc_secure over the production prefix captures plus dry Apply+grant, which this claim is the only Apply execution of" as NonEmptyStr,
   },
 ]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows), floor_eval_step_cost_drop_identity_cast_route_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows), floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows), floor_eval_step_cost_drop_bmc_secure_apply_converge_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

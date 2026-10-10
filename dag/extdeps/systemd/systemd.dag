@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.types { List }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count,
+  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,
   HardwareThreadCount, hardware_thread_count_value,
   milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
 }
@@ -71,6 +71,7 @@ type SystemdUnitProperty
   | Result
   | ExecMainStatus
   | ExecStartProperty
+  | ExecStopPostProperty
   | User
   | WorkingDirectoryProperty
   | RuntimeDirectoryProperty
@@ -89,6 +90,15 @@ type SystemdUnitProperty
   | WantsProperty
   | InvocationIDProperty
   | FragmentPathProperty
+  | StandardOutputProperty
+  | StandardErrorProperty
+  | ProtectSystemProperty
+  | ProtectHomeProperty
+  | PrivateTmpProperty
+  | ReadWritePathsProperty
+  | RemainAfterExitProperty
+  | RuntimeMaxSecProperty
+  | CollectModeProperty
   | JobProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
@@ -140,6 +150,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
+    ExecStopPostProperty => "ExecStopPost" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
     RuntimeDirectoryProperty => "RuntimeDirectory" as NonEmptyStr
@@ -158,6 +169,15 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr
     FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    StandardOutputProperty => "StandardOutput" as NonEmptyStr
+    StandardErrorProperty => "StandardError" as NonEmptyStr
+    ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
+    ProtectHomeProperty => "ProtectHome" as NonEmptyStr
+    PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
+    ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
+    RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
+    CollectModeProperty => "CollectMode" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
   }
 }
@@ -241,6 +261,13 @@ fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
         }
     }
   }
+}
+
+// THE TYPED QUANTITY RENDERED TO SYSTEMD'S TIME-SPAN SPELLING, at the boundary and nowhere else: a
+// duration is authored as a Second and only its systemd text is a string, so no consumer parses text to
+// recover the number. Whole seconds with the `s` unit are a spelling systemd_duration_usec reads back.
+fn systemd_time_span_of_seconds(d: Second) -> NonEmptyStr {
+  join([to_string(second_count(s: d)), "s"], "") as NonEmptyStr
 }
 
 fn systemd_duration_usec(text: String) -> Microsecond? {
@@ -508,3 +535,7 @@ fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> Sy
     }
   }
 }
+
+// THE DIRECTORY sd_booted(3) TESTS: it exists exactly when systemd is the running service manager
+// (PID 1), which is what systemd-run needs to start a transient unit.
+data systemd_booted_runtime_dir: String = "/run/systemd/system"

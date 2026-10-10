@@ -251,6 +251,24 @@ pub(crate) fn import_closure_dag_files(
         .collect())
 }
 
+/// Compile-subject closure of caller-supplied seed sources over an explicit pool.
+///
+/// `compiler_tests` `resolve_source_closure` used to BFS `import` lines from the seed
+/// pairs. Same class as #13437 / #13464: a provider reached only by reference was omitted.
+/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`, and
+/// `resolve_virtual_entry_compile_closure` is this function over one seed.
+///
+/// SEED DELTA: production `resolve_source_closure` lost its import-line BFS. Net production
+/// seed is this wrapper; its controls are `virtual_entry_compile_closure_controls`, which
+/// reach it through the one-seed form.
+pub fn resolve_seeded_compile_closure(
+    seeds: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
+    extend_sources_to_both_closure_fixpoint(seeds, &mei)
+}
+
 /// Compile-subject closure of an in-memory (or on-disk) entry over an explicit pool:
 /// the entry plus every module the one closure authority reaches from it.
 ///
@@ -268,12 +286,11 @@ pub fn resolve_virtual_entry_compile_closure(
     entry_content: &str,
     pool_roots: &[String],
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
     let seed = Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     });
-    extend_sources_to_both_closure_fixpoint(vec![seed], &mei)
+    resolve_seeded_compile_closure(vec![seed], pool_roots)
 }
 
 #[cfg(test)]
@@ -347,12 +364,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if !seen.insert(rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     queue.push(file_content);
                 }
@@ -504,12 +523,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if seen.contains_key(&rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     seen.insert(
                         rel.clone(),
@@ -694,8 +715,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
     // (`extend_with_bare_reference_closure`) is deliberately left alone.
     //
-    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
-    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // (SUPERSEDED: this measurement predates the all-importer producer. Import-bearing files now
+    // also emit strict-tier reference edges for modules they reach without importing, so the union
+    // is no longer a no-op on an un-stripped file. The selection-tier effect of that widening is
+    // measured by the floor, not asserted here.)
     // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
     // demander, and that index is the first demander of every pool file's lexing, newline index
     // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
@@ -989,7 +1012,7 @@ pub fn resolve_entry_graph(
     // wave 1) an entry's dependencies are name-derived, and the old
     // `load_sources_for_entry_with_index` walk only follows import edges — a
     // stripped fixed entry (e.g. the floor runner) failed to resolve at all.
-    let index = process_shared_index(source_roots);
+    let index = try_process_shared_index(source_roots)?;
     resolve_entry_with_index(&index, entry_file)
 }
 
@@ -1480,12 +1503,39 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+/// Empty caches over an already-indexed `source_files` map. Recorded as
+/// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
+/// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
+#[track_caller]
+pub(crate) fn new_multi_entry_index_scratch_over(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
 #[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
-    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
+fn multi_entry_index_shell_body(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
@@ -1513,6 +1563,7 @@ pub(crate) fn new_multi_entry_index_shell(
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        scratch_underlay: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
@@ -2875,16 +2926,19 @@ pub(crate) fn import_resolution_facts_with_observation(
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut dag_files) {
+            read_refusals.push((workspace_relative_repo_path(root), cause));
+            continue;
+        }
         dag_files.sort();
         for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
             observed_paths.insert(workspace_relative_repo_path(&rel));
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(e) => {
                     read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
@@ -3117,12 +3171,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        // A ledger row directory whose roster cannot be derived is not a tolerable read miss:
+        // a short pool-name set would silently drop the roster module's names.
+        collect_dag_files_tolerant(root_path, &mut files).unwrap_or_else(|cause| panic!("{cause}"));
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let Ok(content) = std::fs::read_to_string(&file) else {
+            let rel = rel_path_for_layer_import(file.path());
+            let Ok(content) = file.read() else {
                 continue;
             };
             let Some(module_name) = extract_module_path(&content) else {
@@ -3328,9 +3384,6 @@ impl ReferenceSelectionTier {
 
 /// One file's answer from the reference-edge producer.
 pub(crate) enum FileReferenceEdges {
-    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
-    /// and emitting reference edges for it would only over-connect.
-    ImportBearing,
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
@@ -3511,9 +3564,10 @@ pub(crate) fn reference_edges_for_file(
 }
 
 /// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
-/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
-/// never builds the whole-pool heads index; only an import-less file, whose references must be
-/// resolved against pool names, forces it.
+/// file is decided from its own bytes and never builds the whole-pool heads index. EVERY readable
+/// file, import-bearing or not, answers its reference edges: an `import` line declares some of a
+/// module's dependencies, not all of them (`v2.std.artifact` imports three modules and reaches
+/// `v2.std.refinement` only by qualified reference), so imports never own a file's edge set.
 pub(crate) fn reference_edges_for_file_on_demand<
     R: std::ops::Deref<Target = ReferencePoolNames>,
 >(
@@ -3524,9 +3578,6 @@ pub(crate) fn reference_edges_for_file_on_demand<
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
-    if !extract_import_paths(content).is_empty() {
-        return FileReferenceEdges::ImportBearing;
-    }
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
@@ -3536,7 +3587,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
         Ok(refs) => refs,
         Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let ParsedFileReferences { bare, chains, .. } = refs;
+    let ParsedFileReferences {
+        bare,
+        chains,
+        imports,
+        ..
+    } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
@@ -3560,6 +3616,15 @@ pub(crate) fn reference_edges_for_file_on_demand<
         if super::is_substrate_vocabulary(name) {
             continue;
         }
+        // LEXICAL BINDING, NOT PROXIMITY, IN A FILE THAT IMPORTS: a bare name there is a local
+        // declaration or a name the file imports (the import edge already carries that), so
+        // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
+        // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
+        // merely declares the same spelling. Import-less files use the same on-chain UniqueBare
+        // rule below — not a leftover proximity rank.
+        if !imports.is_empty() {
+            continue;
+        }
         if let Some(mods) = names.decl_index.get(name) {
             // Same-module declaration wins by lexical scope (namespace-only): a bare name the
             // referencing file itself declares resolves LOCALLY — no cross-module edge. This
@@ -3569,29 +3634,14 @@ pub(crate) fn reference_edges_for_file_on_demand<
             if mods.contains(&self_module) {
                 continue;
             }
-            // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-            // among declarers, prefer the one sharing the longest module-path prefix with the
-            // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-            // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
-            match winners.len() {
-                0 => {}
-                1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
-                _ => {
-                    // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
-                    // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                    // nearest declarers tie — the definitive "needs qualification" site.
+            // On-chain unique → UniqueBare. Census-unique off-chain → UniqueBare, because
+            // UniqueBinding still accepts that name on the compile path (dropping it is an
+            // undercount). Homonyms with no unique on-chain binder → no UniqueBare (proximity
+            // deleted); two or more on-chain → AmbiguousBare.
+            match pick_importless_bare(&self_module, mods) {
+                ImportlessBarePick::None => {}
+                ImportlessBarePick::Unique(m) => upgrade(m.clone(), RefEdgeResolution::UniqueBare),
+                ImportlessBarePick::Ambiguous(winners) => {
                     if std::env::var("REFAMBIG_DUMP").is_ok() {
                         let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
                         let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
@@ -3653,17 +3703,22 @@ pub fn reference_resolution_facts(
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut files) {
+            unaccounted.push(ReferenceAccountingRefusal {
+                path: cause,
+                cause: "the pool root's ledger roster could not be derived",
+            });
+            continue;
+        }
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let content = std::fs::read_to_string(&file).ok();
+            let content = file.read().ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
-                FileReferenceEdges::ImportBearing => {}
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {
                     unaccounted.push(ReferenceAccountingRefusal {

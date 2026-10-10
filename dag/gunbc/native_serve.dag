@@ -368,6 +368,29 @@ fn native_serve_read_refused(reason: String) -> ServeWireResponse {
   ServeWireResponse { status: 400, content_type_label: native_serve_text_plain, body: concat("bad request: ", concat(reason, "\n")), headers: [] }
 }
 
+// The answer when the handler's effect transport failed (a bound handler -- the clock's shell call, a
+// REST exchange -- returned an error the handler propagated rather than modeled). The main observes
+// the failure, this fold says what it means: the server failed, not the request, so 500 and not 400.
+fn native_serve_effect_failed(reason: String) -> ServeWireResponse {
+  ServeWireResponse { status: 500, content_type_label: native_serve_text_plain, body: concat("effect transport failed: ", concat(reason, "\n")), headers: [] }
+}
+
+// THE EFFECT WORKER. The rendered main realizes ONE worker generation that owns the effect executor
+// and every admitted handle (none for an entry with no effects), and reuses it for each request it
+// answers; a generation that misses the deadline or panics is abandoned and a replacement realized.
+// A generation that cannot be realized is NOT an effect transport failure (native_serve_effect_failed):
+// no handler ran, and none can. At startup the main refuses with this reason before it announces --
+// exit 2, like every launch refusal -- so no process answers /livez that cannot serve a handler. A
+// REPLACEMENT that cannot be realized ends the process with native_serve_worker_replacement_exit_code
+// after the request in hand is answered, for its supervisor to restart it.
+fn native_serve_worker_unrealized(reason: String) -> String {
+  concat("the effect worker could not be realized: ", reason)
+}
+
+// EX_TEMPFAIL (sysexits.h 75): a restart re-runs the startup realization, which refuses with exit 2
+// if the condition persists.
+data native_serve_worker_replacement_exit_code: Int = 75
+
 // ── ROUTING BEFORE THE HANDLER ──────────────────────────────────────────────────────────────
 // GET /livez is answered without entering the handler, for the reason gunbc.serve_liveness
 // states: the conditions that make a served process unhealthy are the conditions under which its

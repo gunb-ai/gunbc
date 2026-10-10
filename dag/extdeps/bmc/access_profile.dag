@@ -8,7 +8,11 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.boards.types { BaseboardModel }
+import extdeps.board_authority {
+  BoardAuthorityRef, BoardAuthorityBinding, BoardAuthorityLookup, BoardFruObservation,
+  board_authority_for, board_facts_authority, board_authority_ref_eq
+}
+import std.optional { Present, Absent }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac { MegaRacImageRedirection }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbeReceipt }
@@ -82,7 +86,7 @@ type ChassisApplicability
   | AllChassisVariants
 
 type BmcAccessProfileKey {
-  baseboard: BaseboardModel
+  board: BoardAuthorityRef
   chassis: ChassisApplicability
   firmware: BmcFirmwareReleaseIdentity
 }
@@ -147,7 +151,7 @@ fn bmc_access_profile_catalog_row_standing(row: BmcAccessProfileCatalogRow) -> B
 // alone, so a same-version endpoint cannot be paired with an unrelated board's
 // profile. The firmware is carried ONCE, here.
 type BmcObservedIdentity {
-  baseboard: BaseboardModel
+  board: BoardFruObservation
   chassis_part_number: NonEmptyStr?
   firmware: BmcFirmwareReleaseIdentity
 }
@@ -200,8 +204,17 @@ fn chassis_applicability_admits(applicability: ChassisApplicability, observed: N
 
 // The profile key binds baseboard, chassis applicability, and exact release
 // (family and raw vendor string). Equal firmware alone is not a binding.
-fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObservedIdentity) -> Bool {
-  key.baseboard == identity.baseboard
+// The board is the authority the host's OWN FRU reaches through the supplied bindings, and a profile
+// imports board FACTS, so only an evidence-bound board matches.
+fn bmc_observed_board_facts_authority(identity: BmcObservedIdentity, bindings: List<BoardAuthorityBinding>) -> BoardAuthorityRef? {
+  board_facts_authority(lookup: board_authority_for(observation: identity.board, bindings: bindings))
+}
+
+fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObservedIdentity, bindings: List<BoardAuthorityBinding>) -> Bool {
+  (match bmc_observed_board_facts_authority(identity: identity, bindings: bindings) {
+    Present { value: a } => board_authority_ref_eq(a: key.board, b: a)
+    Absent => false
+  })
     && chassis_applicability_admits(applicability: key.chassis, observed: identity.chassis_part_number)
     && bmc_firmware_release_identity_eq(a: key.firmware, b: identity.firmware)
 }
@@ -211,6 +224,7 @@ fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObserve
 // standings (gunbc.machine_intake_access), not arms here.
 type BmcAccessProfileLookup
   = AccessProfileKnown { profile: BmcAccessProfile, provenance: BmcAccessProfileProvenance }
+  | AccessProfileBoardNotFactsBound { observed_identity: BmcObservedIdentity, board: BoardAuthorityLookup }
   | AccessProfileUncatalogued { observed_identity: BmcObservedIdentity }
   | AccessProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
   | AccessProfileCatalogRowRefused { standing: BmcAccessProfileCatalogRowStanding }
@@ -238,11 +252,14 @@ fn catalog_first_refused(catalog: List<BmcAccessProfileCatalogRow>) -> BmcAccess
 fn bmc_access_profile_for(
   identity: BmcObservedIdentity,
   catalog: List<BmcAccessProfileCatalogRow>,
+  bindings: List<BoardAuthorityBinding>,
 ) -> BmcAccessProfileLookup {
   match catalog_first_refused(catalog: catalog) {
     Present { value: refused } => AccessProfileCatalogRowRefused { standing: refused }
-    Absent => {
-      let hits = catalog |> filter(row => bmc_access_profile_key_matches(key: row.profile.key, identity: identity))
+    Absent => match bmc_observed_board_facts_authority(identity: identity, bindings: bindings) {
+     Absent => AccessProfileBoardNotFactsBound { observed_identity: identity, board: board_authority_for(observation: identity.board, bindings: bindings) }
+     Present { value: _ } => {
+      let hits = catalog |> filter(row => bmc_access_profile_key_matches(key: row.profile.key, identity: identity, bindings: bindings))
       let n = count(hits)
       if n == 0 {
         AccessProfileUncatalogued { observed_identity: identity }
@@ -255,6 +272,7 @@ fn bmc_access_profile_for(
       } else {
         AccessProfileAmbiguous { observed_identity: identity, count: n }
       }
+     }
     }
   }
 }
@@ -276,8 +294,9 @@ fn bmc_surface_eligibility(
   profile: BmcAccessProfile,
   observation: BmcAccessObservation,
   surface: BmcAccessSurface,
+  bindings: List<BoardAuthorityBinding>,
 ) -> BmcSurfaceEligibility {
-  if bmc_access_profile_key_matches(key: profile.key, identity: observation.identity) == false {
+  if bmc_access_profile_key_matches(key: profile.key, identity: observation.identity, bindings: bindings) == false {
     SurfaceProfileObservationIdentityMismatch { profile: profile.key, observed: observation.identity }
   } else if bmc_surface_in(surfaces: profile.candidate_surfaces, surface: surface) == false {
     SurfaceAbsentFromProfile

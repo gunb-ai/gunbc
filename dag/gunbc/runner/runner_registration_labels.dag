@@ -51,8 +51,7 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
 // ── BROWSER READINESS: A LABEL THE BROWSER-TOOLCHAIN CONVERGE GRANTS AND NOTHING ELSE ─────────────
 //
 // The floor runs real-Chromium wet claims inside its claim_executor run, so a runner on a host whose
-// browser toolchain was never converged refuses them (five test.claim.machine_intake
-// mtcollins1_kvm_observer_protocol_wet_witness claims on srv1, at the missing toolchain tree). The
+// browser toolchain was never converged refuses them (a wet claim on srv1 at the missing toolchain tree). The
 // host's readiness is therefore a LABEL: gunbc.runner_browser_toolchain
 // browser_ready_labels_converge_wet writes it as a template drop-in when that converge's readback
 // holds and removes it when it does not, and once every host in the floor's pool reads ready the

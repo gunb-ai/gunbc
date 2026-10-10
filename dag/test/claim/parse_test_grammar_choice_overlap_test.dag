@@ -1,0 +1,89 @@
+module test.claim.parse_test_grammar_choice_overlap
+
+import std.algebra { Cons, Empty }
+import v2.compiler.parse {
+  PreparedModeled,
+  PreparedVoidGrammar,
+  grammar_choice_ambiguity_roster_from_analysis,
+  grammar_validate_for_parse
+}
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected, declaration_locus, invariant_port_locus, locus_eq }
+import v2.std.grammar {
+  Choice,
+  GrammarProduction,
+  GrammarRoot,
+  Nonterminal,
+  StampClass,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DAG GRAMMAR CARRIES NO CHOICE OVERLAP, AND THE PARSER REFUSES ONE THAT IT WOULD.
+//
+// Grammar validation (v2.compiler.parse grammar_validate_and_analyze) refuses every overlap row,
+// located at the production that owns the choice; there is no accept-with-residue arm. These two
+// claims are that wall's evidence on the merge path, which is why the module is named into the
+// admitted `test.claim.parse_test` family of v2.workflow.required_floor `required_gate_prefixes`.
+//
+// THE COUNT IS READ FROM THE ANALYSIS THE PARSER RUNS ON. dag_prepared_grammar is the warm-shared
+// producer (v2.workflow.floor_pure_producer_share), so this claim pays for one roster read, not a
+// second FIRST analysis: the roster is grammar_choice_ambiguity_roster_from_analysis over the
+// prepared grammar's own analysis, the same value grammar_choice_ambiguity_count folds. A
+// regression reds here twice over: a new overlap row makes the prepare itself refuse, and every
+// parse_test claim that consumes the prepared grammar refuses with it.
+test fn dag_grammar_choice_ambiguity_count_is_zero() -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => false
+        PreparedModeled { modeled: m, materialization: _ } =>
+          length(xs: grammar_choice_ambiguity_roster_from_analysis(root: m.validated.root, analysis: m.analysis)) == 0
+      }
+  }
+}
+
+// THE DISCRIMINATING RED, SUPPLIED. One overlapping choice, owned by a production that is NOT the
+// start, so a refusal located at the start or at the stage port fails this control: only the
+// owning production is the right answer.
+data overlap_fixture_root: GrammarRoot = GrammarRoot {
+  start: ^overlap_fixture_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^overlap_fixture_start,
+      expression: Nonterminal { production: ^overlap_fixture_owner },
+      emitted: grammar_atom(identity: ^overlap_fixture_start)
+    },
+    tail: Cons {
+      head: GrammarProduction {
+        name: ^overlap_fixture_owner,
+        expression: Choice {
+          left: Terminal { token_class: ^overlap_fixture_tok, stamp: StampClass },
+          right: Terminal { token_class: ^overlap_fixture_tok, stamp: StampClass }
+        },
+        emitted: grammar_atom(identity: ^overlap_fixture_owner)
+      },
+      tail: Empty
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn a_grammar_with_one_overlapping_choice_is_refused_at_its_production() -> Bool {
+  match grammar_validate_for_parse(
+    root: overlap_fixture_root,
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_overlap_fixture_contract)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (d.head.reason == ^parse_grammar_choice_ambiguity)
+        && locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: ^overlap_fixture_owner, tail: Empty }))
+        && (length(xs: d.tail) == 0)
+  }
+}

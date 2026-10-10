@@ -373,6 +373,8 @@ type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
   | ImportShadowedByLocalDefinition { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | ImportCollidesWithKernelName { name: String, module_path: String, importing_module: String, kernel_declaration_module: String, span: SourceSpan }
+  | KernelMintDeclarationAmbiguousAtImport { name: String, module_path: String, importing_module: String, row_count: Int, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
   | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
@@ -430,6 +432,7 @@ type CompilerDiagnostic
   | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
+  | NativeEffectRealizationRefused { entry: String, refusals: List<String>, span: SourceSpan }
   | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
   | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -605,6 +608,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
     ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: s } => s
+    ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: s } => s
+    KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
@@ -662,6 +667,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EffectfulSelfRecursionUnrealized { name: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: s } => s
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -691,6 +697,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
     MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
     ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, span: _ } => concat("import of '", n, "' from module '", m, "' is discarded: '", i, "' also defines '", n, "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '", m, ".", n, "(...)' to reach the imported one, or rename one of the two.")
+    ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') collides with the kernel name whose mint is the declaration in '", k, "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.")
+    KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') cannot be judged against the kernel mint: ", to_string(value: c), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
     UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
@@ -770,6 +778,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EmittedSymbolCollision { symbol: s, identities: ids, span: _ } => concat("emitted symbol collision: ", to_string(value: ids |> count), " authored identities render one emitted symbol '", s, "': ", join(ids, separator: ", "), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one")
+    NativeEffectRealizationRefused { entry: e, refusals: rs, span: _ } => concat("native effect realization refused for entry '", e, "': ", join(rs, separator: "; "), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)")
     EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
     EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -787,7 +796,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
-      concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- compare against Present { value: .. } or match on the optional")
+      concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
       concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
     TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
@@ -855,6 +864,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     UnresolvedImport { module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingExport { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -914,6 +925,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

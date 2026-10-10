@@ -1,0 +1,274 @@
+module gunbc.roadmap_task_record
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, WorkItemDispatch, NotDispatchable, Dispatchable, Acceptance, PrsMerged, ManualAcceptance, NodeParent, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap_status { RoadmapItem, TicketLine, TicketFields, TicketUpdate, Unsigned }
+import gunbc.roadmap_execution_contract { WorkItemExecutionContract, ExecutionContractUnspecified, ExecutionContract, NotAgentWork, GunbcClaimValidation, gunbc_claims_execution_contract }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonArray, json_object, json_array, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_field_string_list, json_field_value, json_object_unique_member, JsonMemberFound }
+
+// A RUNTIME TASK IS A RoadmapNode (DESIGN 3: no second task type). This module is only the wire
+// form of that value: the fields a human author supplies at creation, the identity the server
+// minted, and nothing derived. What the record deliberately does NOT carry:
+//   * signoff -- a runtime task is born Unsigned; acceptance lives on the event carrier (one
+//     authority, piece 6), so a record that could say "signed off" would be a second one.
+//   * a TicketLine's done flag -- born false for the same reason.
+//   * readiness -- derived by gunbc.roadmap.roadmap_readiness node_readiness from these fields.
+// The execution contract is the subset an author can state in a form: unspecified, or one witness
+// module with the claim functions that accept the work. A contract carrying capabilities, a path
+// scope, a non-default source layout or a non-claim validation has no wire form here and encode
+// refuses it rather than dropping the extra (fail closed, DESIGN 5).
+// Decode is strict: wrong schema id, an unknown member kind, a missing field or an empty required
+// string is Absent, never a defaulted record.
+
+data roadmap_task_schema_id: String = "gunbc.roadmap-task/v1"
+
+fn task_json_obj(value: JsonValue, key: String) -> JsonValue? { json_field_value(r: json_field(obj: value, key: key)) }
+fn task_json_str(value: JsonValue, key: String) -> String? { json_field_value(r: json_field_string(obj: value, key: key)) }
+
+fn task_parse_acceptance(wire: String) -> Acceptance? {
+  if wire == "prs-merged" { Present { value: PrsMerged } } else if wire == "manual" { Present { value: ManualAcceptance } } else { none }
+}
+
+fn task_acceptance_wire(a: Acceptance) -> String { match a { PrsMerged => "prs-merged" ManualAcceptance => "manual" } }
+
+fn task_pointer_json(p: Pointer) -> JsonValue {
+  json_object(members: [json_kv(key: "label", value: json_string(s: p.label)), json_kv(key: "path", value: json_string(s: p.path))])
+}
+
+fn task_pointer_decode(value: JsonValue) -> Pointer? {
+  match task_json_str(value: value, key: "label") { Absent => none Present { value: label } =>
+    match task_json_str(value: value, key: "path") { Absent => none Present { value: path } =>
+      Present { value: Pointer { label: label, path: path } }
+    }
+  }
+}
+
+fn task_update_json(u: TicketUpdate) -> JsonValue {
+  json_object(members: [json_kv(key: "on", value: json_string(s: u.on)), json_kv(key: "note", value: json_string(s: u.note))])
+}
+
+fn task_ticket_json(t: TicketFields) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "headline", value: json_string(s: t.headline)),
+    json_kv(key: "brief", value: json_string(s: t.brief)),
+    json_kv(key: "displaced_cost", value: json_string(s: t.displaced_cost)),
+    json_kv(key: "current_state", value: json_string(s: t.current_state)),
+    json_kv(key: "first_slice", value: json_string(s: t.first_slice)),
+    json_kv(key: "red_control", value: json_string(s: t.red_control)),
+    json_kv(key: "out_of_scope", value: json_string(s: t.out_of_scope)),
+    json_kv(key: "handback", value: json_string(s: t.handback)),
+    json_kv(key: "updates", value: json_array(elements: map(t.updates, u => task_update_json(u: u)))),
+    json_kv(key: "authored_on", value: json_string(s: t.authored_on)),
+    json_kv(key: "last_verified_on", value: json_string(s: t.last_verified_on)),
+  ])
+}
+
+fn task_updates_decode(value: JsonValue) -> List<TicketUpdate>? {
+  match json_object_unique_member(v: value, key: "updates") {
+    JsonMemberFound { value: JsonArray { elements: rows } } => fold(rows, init: Present { value: [] as List<TicketUpdate> } as List<TicketUpdate>?, f: (acc, row) => match acc {
+      Absent => none
+      Present { value: prior } => match task_json_str(value: row, key: "on") { Absent => none Present { value: on } =>
+        match task_json_str(value: row, key: "note") { Absent => none Present { value: note } =>
+          Present { value: concat(prior, [TicketUpdate { on: on, note: note }]) }
+        }
+      }
+    })
+    other => none
+  }
+}
+
+fn task_ticket_decode(value: JsonValue) -> TicketFields? {
+  match task_json_str(value: value, key: "headline") { Absent => none Present { value: headline } =>
+  match task_json_str(value: value, key: "brief") { Absent => none Present { value: brief } =>
+  match task_json_str(value: value, key: "displaced_cost") { Absent => none Present { value: displaced_cost } =>
+  match task_json_str(value: value, key: "current_state") { Absent => none Present { value: current_state } =>
+  match task_json_str(value: value, key: "first_slice") { Absent => none Present { value: first_slice } =>
+  match task_json_str(value: value, key: "red_control") { Absent => none Present { value: red_control } =>
+  match task_json_str(value: value, key: "out_of_scope") { Absent => none Present { value: out_of_scope } =>
+  match task_json_str(value: value, key: "handback") { Absent => none Present { value: handback } =>
+  match task_updates_decode(value: value) { Absent => none Present { value: updates } =>
+  match task_json_str(value: value, key: "authored_on") { Absent => none Present { value: authored_on } =>
+  match task_json_str(value: value, key: "last_verified_on") { Absent => none Present { value: last_verified_on } =>
+    if headline == "" { none } else {
+      Present { value: TicketFields { headline: headline, brief: brief, displaced_cost: displaced_cost, current_state: current_state, first_slice: first_slice, red_control: red_control, out_of_scope: out_of_scope, handback: handback, updates: updates, authored_on: authored_on, last_verified_on: last_verified_on } }
+    }
+  } } } } } } } } } } }
+}
+
+fn task_dispatch_json(d: WorkItemDispatch) -> JsonValue {
+  match d {
+    NotDispatchable => json_object(members: [json_kv(key: "kind", value: json_string(s: "not-dispatchable"))])
+    Dispatchable { repo, acceptance } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "dispatchable")),
+      json_kv(key: "repo", value: json_string(s: repo)),
+      json_kv(key: "acceptance", value: json_string(s: task_acceptance_wire(a: acceptance))),
+    ])
+  }
+}
+
+fn task_dispatch_decode(value: JsonValue) -> WorkItemDispatch? {
+  match task_json_str(value: value, key: "kind") {
+    Absent => none
+    Present { value: "not-dispatchable" } => Present { value: NotDispatchable }
+    Present { value: "dispatchable" } => match task_json_str(value: value, key: "repo") { Absent => none Present { value: repo } =>
+      match task_json_str(value: value, key: "acceptance") { Absent => none Present { value: wire } =>
+        match task_parse_acceptance(wire: wire) {
+          Absent => none
+          Present { value: acceptance } => if repo == "" { none } else { Present { value: Dispatchable { repo: repo, acceptance: acceptance } } }
+        }
+      }
+    }
+    Present { value: other } => none
+  }
+}
+
+// None means the contract has no wire form (see the module note); the caller refuses.
+fn task_execution_json(c: WorkItemExecutionContract) -> JsonValue? {
+  match c {
+    ExecutionContractUnspecified => Present { value: json_object(members: [json_kv(key: "kind", value: json_string(s: "unspecified"))]) }
+    NotAgentWork { mode: _ } => none
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => match first(validations) {
+      Absent => none
+      Present { value: GunbcClaimValidation { entry, function: _ } } => {
+        let functions = flat_map(validations, v => match v { GunbcClaimValidation { entry: e, function: f } => if e == entry { [f as String] } else { [] as List<String> } other => [] as List<String> })
+        if count(functions) != count(validations) || gunbc_claims_execution_contract(entry: entry, functions: map(functions, f => f as NonEmptyStr)) != c { none } else {
+          Present { value: json_object(members: [
+            json_kv(key: "kind", value: json_string(s: "gunbc-claims")),
+            json_kv(key: "entry", value: json_string(s: entry as String)),
+            json_kv(key: "functions", value: json_array(elements: map(functions, f => json_string(s: f)))),
+          ]) }
+        }
+      }
+      Present { value: other } => none
+    }
+  }
+}
+
+fn task_execution_decode(value: JsonValue) -> WorkItemExecutionContract? {
+  match task_json_str(value: value, key: "kind") {
+    Absent => none
+    Present { value: "unspecified" } => Present { value: ExecutionContractUnspecified }
+    Present { value: "gunbc-claims" } => match task_json_str(value: value, key: "entry") { Absent => none Present { value: entry } =>
+      match json_field_value(r: json_field_string_list(obj: value, key: "functions")) { Absent => none Present { value: functions } =>
+        if entry == "" || count(functions) == 0 || any(functions, f => f == "") { none } else {
+          Present { value: gunbc_claims_execution_contract(entry: entry as FilePath, functions: map(functions, f => f as NonEmptyStr)) }
+        }
+      }
+    }
+    Present { value: other } => none
+  }
+}
+
+// Only the two parents an author can name. Closes is minted by closing_contract_task_for and has
+// no authored wire form, so a runtime record cannot forge a derived closing task's lineage.
+fn task_parent_json(p: NodeParent?) -> JsonValue? {
+  match p {
+    Absent => none
+    Present { value: MemberOf { project, contribution } } => Present { value: json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "member-of")),
+      json_kv(key: "project", value: json_string(s: project)),
+      json_kv(key: "contribution", value: json_string(s: contribution as String)),
+    ]) }
+    Present { value: AdmittedRoot } => none
+    Present { value: Closes { target: _ } } => none
+  }
+}
+
+fn task_parent_decode(value: JsonValue) -> NodeParent? {
+  match task_json_obj(value: value, key: "parent") { Absent => none Present { value: p } =>
+    match task_json_str(value: p, key: "kind") {
+      Present { value: "member-of" } => match task_json_str(value: p, key: "project") { Absent => none Present { value: project } =>
+        match task_json_str(value: p, key: "contribution") { Absent => none Present { value: contribution } =>
+          if project == "" || contribution == "" { none } else {
+            Present { value: MemberOf { project: project, contribution: contribution as NonEmptyStr } }
+          }
+        }
+      }
+      other => none
+    }
+  }
+}
+
+fn roadmap_task_json(node: RoadmapNode) -> JsonValue? {
+  match node.line {
+    TicketLine { done: false, ticket } => match node.signoff {
+      Unsigned => match task_execution_json(c: node.execution) {
+        Absent => none
+        Present { value: execution } => match task_parent_json(p: node.parent) {
+          Absent => none
+          Present { value: parent } => match node.centering { Absent => none Present { value: centering } => Present { value: json_object(members: [
+            json_kv(key: "schema", value: json_string(s: roadmap_task_schema_id)),
+            json_kv(key: "identity", value: json_string(s: node.identity as String)),
+            json_kv(key: "node", value: json_string(s: node.node as String)),
+            json_kv(key: "ticket", value: task_ticket_json(t: ticket)),
+            json_kv(key: "carriers", value: json_array(elements: map(node.carriers, p => task_pointer_json(p: p)))),
+            json_kv(key: "dispatch", value: task_dispatch_json(d: node.dispatch)),
+            json_kv(key: "execution", value: execution),
+            json_kv(key: "owner", value: json_string(s: node.owner)),
+            json_kv(key: "parent", value: parent),
+            json_kv(key: "centering", value: json_string(s: centering as String)),
+          ]) } }
+        }
+      }
+      other => none
+    }
+    other => none
+  }
+}
+
+fn task_carriers_decode(value: JsonValue) -> List<Pointer>? {
+  match json_object_unique_member(v: value, key: "carriers") {
+    JsonMemberFound { value: JsonArray { elements: rows } } => fold(rows, init: Present { value: [] as List<Pointer> } as List<Pointer>?, f: (acc, row) => match acc {
+      Absent => none
+      Present { value: prior } => match task_pointer_decode(value: row) { Absent => none Present { value: p } => Present { value: concat(prior, [p]) } }
+    })
+    other => none
+  }
+}
+
+fn task_centering_decode(value: JsonValue) -> NonEmptyStr? {
+  match task_json_str(value: value, key: "centering") {
+    Present { value: c } => if c == "" { none } else { Present { value: c as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn roadmap_task_from_json(value: JsonValue) -> RoadmapNode? {
+  match task_json_str(value: value, key: "schema") {
+    Present { value: "gunbc.roadmap-task/v1" } => {
+      match task_json_str(value: value, key: "identity") { Absent => none Present { value: identity } =>
+      match task_json_str(value: value, key: "node") { Absent => none Present { value: node } =>
+      match task_json_str(value: value, key: "owner") { Absent => none Present { value: owner } =>
+      match task_json_obj(value: value, key: "ticket") { Absent => none Present { value: tj } =>
+      match task_ticket_decode(value: tj) { Absent => none Present { value: ticket } =>
+      match task_carriers_decode(value: value) { Absent => none Present { value: carriers } =>
+      match task_json_obj(value: value, key: "dispatch") { Absent => none Present { value: dj } =>
+      match task_dispatch_decode(value: dj) { Absent => none Present { value: dispatch } =>
+      match task_json_obj(value: value, key: "execution") { Absent => none Present { value: ej } =>
+      match task_execution_decode(value: ej) { Absent => none Present { value: execution } =>
+      match task_parent_decode(value: value) { Absent => none Present { value: parent } =>
+      match task_centering_decode(value: value) { Absent => none Present { value: centering } =>
+        if identity == "" || node == "" || owner == "" { none } else {
+          Present { value: RoadmapNode {
+            identity: identity as RoadmapNodeIdentity, node: node as RoadmapNodeId,
+            line: TicketLine { done: false, ticket: ticket }, carriers: carriers, dispatch: dispatch,
+            execution: execution, owner: owner, signoff: Unsigned, parent: Present { value: parent }, centering: Present { value: centering },
+          } }
+        }
+      } } } } } } } } } } } }
+    }
+    other => none
+  }
+}
+
+fn roadmap_task_encode(node: RoadmapNode) -> String? {
+  match roadmap_task_json(node: node) { Absent => none Present { value: j } => Present { value: serialize_json(v: j) } }
+}
+
+fn roadmap_task_decode(text: String) -> RoadmapNode? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } => roadmap_task_from_json(value: v)
+  }
+}

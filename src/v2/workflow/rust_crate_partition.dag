@@ -67,7 +67,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import std.optional {

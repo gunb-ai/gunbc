@@ -2,6 +2,8 @@ module test.claim.host_reach_identity_probe_witness
 
 import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.tools.hostname { hostname_read_argv }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.host_identity { HostIdentity }
@@ -250,4 +252,18 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
   fleet_probe_endpoint_for(host: "srv5") == spark_endpoint_or_empty(binding: srv5_router_binding)
     && fleet_probe_endpoint_for(host: "srv6") == spark_endpoint_or_empty(binding: srv6_router_binding)
+}
+
+// THE HANDBACK CONTROL FOR THE HAND-ARGV DISSOLUTION (roadmap shell-dag-host-reach-identity-probe).
+// probe_ready_target_once and probe_reachable_with_principal no longer spell their argv by hand:
+// they call hostname_read_argv() and id_user_name_argv() respectively, so the probe's argv IS the
+// builder's argv. This test pins each builder's MATERIALIZED argv to the exact words the probe has
+// always executed, so the flags cannot drift out from under the builder: a mutant that swaps
+// id_user_name_argv to ["id","-u"] (the numeric uid), drops -n, or hands hostname_read_argv a -s
+// (first label) instead of the full configured name typechecks and reds here. The -s decision the
+// row's first_slice names resolves to the BARE read: the probe compares its output for exact
+// equality against the enrolled short slot label, and -s would re-derive a label the probe must
+// instead read as the host reports it.
+test fn the_probe_argv_is_spelled_by_its_tool_module_builders() -> Bool {
+  id_user_name_argv() == ["id", "-un"] && hostname_read_argv() == ["hostname"]
 }

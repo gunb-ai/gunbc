@@ -72,7 +72,7 @@ import gunbc.crate_partition {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
-import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
+import v2.std.collection { Absent, Present, empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit { ModuleDag, partition_provenance_eq, partition_unit_by_id }
 import gunbc.rust_emitted_edge {
@@ -277,7 +277,7 @@ fn witness_policy_two() -> PartitionParameter {
 }
 
 fn witness_owner(assignment: Map<ModuleId, CompilationUnitId>, module_id: ModuleId) -> String {
-  match map_get(assignment, module_id) {
+  match map_get_checked(assignment, module_id) {
     Accepted { value: Present { value: unit }, diagnostics: _ } => unit as String
     Accepted { value: Absent, diagnostics: _ } => "unowned"
     Rejected { diagnostics: _ } => "unowned"

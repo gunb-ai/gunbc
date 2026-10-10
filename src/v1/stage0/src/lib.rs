@@ -125,28 +125,6 @@ pub mod gunbc_cli_dispatch_surface;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_crate_partition;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod gunbc_emitted_crate_workspace;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod gunbc_namespace_reference_derived_closure_admission;
 #[allow(
     unused_imports,
@@ -510,17 +488,6 @@ pub mod v1_compiler_emit_rust;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_emitted_workspace;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_expected_red_roster_join;
 #[allow(
     unused_imports,
@@ -731,6 +698,17 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
     clippy::all
 )]
 pub mod v1_tests_claim_generic_identity_census;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_interpolation_hole_census;
 #[allow(
     unused_imports,
     unused_variables,

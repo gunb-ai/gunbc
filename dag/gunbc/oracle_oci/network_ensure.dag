@@ -1,0 +1,501 @@
+module gunbc.oracle_oci.network_ensure
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import v2.std.algebra { any }
+import extdeps.network.ipv4 { Ipv4Prefix, ipv4_prefix, render_ipv4_prefix }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
+import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
+import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
+import gunbc.oracle_oci.tenancy_usage { OciWhole, OciWholeValue, OciWholeRefused, oci_whole_member }
+import gunbc.oracle_oci.api {
+  OciExchange, OciAnswered, OciExchangeRefused,
+  OciListRead, OciListed, OciListInaccessible, OciListRefused,
+  OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text, oci_required_text, oci_field_text, oci_field_cause,
+  oci_list, oci_signed_exchange, oci_iaas_host,
+}
+
+// THE NETWORK AN ALWAYS FREE INSTANCE NEEDS, INSIDE THE gunbc-always-free COMPARTMENT: one VCN, an
+// internet gateway, a route table sending 0.0.0.0/0 to that gateway, and one regional public subnet
+// using that route table. The subnet takes the VCN's default security list, which Oracle creates with
+// the VCN and which admits SSH (TCP 22) and all egress. VCNs, gateways, route tables and subnets are
+// not billed resources.
+//
+// Every resource is found by its display name inside the compartment and created only when none is
+// live. Each Create is followed by a read-back, and a resource that is not yet AVAILABLE ends the run
+// with "run again", rather than the next resource being built on something still provisioning. So a
+// first run from nothing takes a few runs to reach the subnet, and every run after that is all Noop.
+//
+// The route table is CREATED WITH its rule, rather than the VCN's default route table being edited,
+// because editing needs a PUT and the signed transport carries GET and POST only. A route table or a
+// subnet found by name whose wiring differs (a subnet on another route table, a route table not sending
+// 0.0.0.0/0 to this gateway) refuses as a conflict, because this converge does not edit what it finds.
+
+// The lifecycle states Oracle's SDK models declare for these four resources. UPDATING occurs on a VCN
+// and a subnet only, and is harmless to admit for the other two.
+type OciNetworkState
+  = NetworkProvisioning
+  | NetworkAvailable
+  | NetworkUpdating
+  | NetworkTerminating
+  | NetworkTerminated
+  | NetworkStateUnknown { raw: String }
+
+fn oci_network_state(raw: String) -> OciNetworkState {
+  if raw == "PROVISIONING" { NetworkProvisioning }
+  else if raw == "AVAILABLE" { NetworkAvailable }
+  else if raw == "UPDATING" { NetworkUpdating }
+  else if raw == "TERMINATING" { NetworkTerminating }
+  else if raw == "TERMINATED" { NetworkTerminated }
+  else { NetworkStateUnknown { raw: raw } }
+}
+
+fn oci_network_state_live(s: OciNetworkState) -> Bool {
+  match s {
+    NetworkTerminated => false
+    NetworkProvisioning => true
+    NetworkAvailable => true
+    NetworkUpdating => true
+    NetworkTerminating => true
+    NetworkStateUnknown { raw } => true
+  }
+}
+
+type OciNamedResource {
+  id: String
+  display_name: String
+  state: OciNetworkState
+  raw: JsonValue
+}
+
+data oci_named_resource_required_fields: List<String> = ["id", "displayName", "lifecycleState"]
+
+// Only for a row ADMITTED on oci_named_resource_required_fields.
+fn oci_named_resource_of(v: JsonValue) -> OciNamedResource {
+  OciNamedResource {
+    id: oci_admitted_text(row: v, key: "id"),
+    display_name: oci_admitted_text(row: v, key: "displayName"),
+    state: oci_network_state(raw: oci_admitted_text(row: v, key: "lifecycleState")),
+    raw: v,
+  }
+}
+
+// One step of the chain: a resource ready to be referenced by the next, or a stop that ends the run.
+// held says whether the stop is the expected "run again" of a converge in progress (false either way,
+// because the run did not reach the goal) and line is what the receipt prints.
+type OciStep
+  = OciStepReady { id: NonEmptyStr, line: String, raw: JsonValue }
+  | OciStepStopped { line: String }
+
+// PURE: what one list read decides for one named resource. Absent asks for a create.
+type OciNamedDecision
+  = NamedReady { resource: OciNamedResource }
+  | NamedCreate
+  | NamedStop { line: String }
+
+fn oci_named_decision(kind: String, display_name: String, read: OciListRead) -> OciNamedDecision {
+  match read {
+    OciListRefused { cause } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused, NOTHING CREATED: ", cause as String], "") }
+    OciListInaccessible { status, body } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused by OCI (", to_string(status), "), NOTHING CREATED: ", body], "") }
+    OciListed { items } => match oci_admit_rows(operation: join(["List ", kind], ""), rows: items, keys: oci_named_resource_required_fields) {
+      OciRowRefused { cause } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused, NOTHING CREATED: ", cause as String], "") }
+      OciRowsAdmitted { rows } => oci_named_decision_over(kind: kind, display_name: display_name, resources: map(rows, r => oci_named_resource_of(v: r)))
+    }
+  }
+}
+
+fn oci_named_decision_over(kind: String, display_name: String, resources: List<OciNamedResource>) -> OciNamedDecision {
+  let live = filter(resources, r => r.display_name == display_name && oci_network_state_live(s: r.state))
+  if live.length() == 0 {
+    NamedCreate
+  } else if live.length() > 1 {
+    NamedStop { line: join(["oci ", kind, " ", display_name, ": more than one live resource has this name; this converge does not choose between them"], "") }
+  } else {
+    match live.first() {
+      Absent => NamedStop { line: join(["oci ", kind, " ", display_name, ": a nonempty list had no first element"], "") }
+      Present { value: r } => match r.state {
+        NetworkAvailable => NamedReady { resource: r }
+        NetworkProvisioning => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is PROVISIONING; run again"], "") }
+        NetworkUpdating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is UPDATING; run again"], "") }
+        NetworkTerminating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is TERMINATING; wait, then run again"], "") }
+        NetworkTerminated => NamedStop { line: join(["oci ", kind, " ", display_name, ": a terminated resource passed the live filter"], "") }
+        NetworkStateUnknown { raw } => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " reports lifecycle state ", raw, ", which is not in Oracle's published set"], "") }
+      }
+    }
+  }
+}
+
+// A resource is admitted only if its wiring is what this converge would have created, whether it was
+// found or read back after a create: a create answered 200 is not evidence of the wiring it was asked
+// for (side-chat review on gunbc#13351). wired
+// returns the empty string when it agrees, and the disagreement otherwise.
+// PURE: the one admission both paths take, a found resource and one read back after a create. A
+// disagreement stops the chain at this resource, and nothing is edited.
+fn oci_admit_wired(kind: String, display_name: String, resource: OciNamedResource, disagreement: String, how: String) -> OciStep {
+  if disagreement == "" {
+    OciStepReady { id: resource.id as NonEmptyStr, line: join(["oci ", kind, " ", display_name, " ", resource.id, " ", how], ""), raw: resource.raw }
+  } else {
+    OciStepStopped { line: join(["oci ", kind, " ", display_name, " ", resource.id, " is wired differently, which this converge does not edit or admit: ", disagreement], "") }
+  }
+}
+
+fn oci_ensure_named(
+  kind: String,
+  display_name: String,
+  list_path: String,
+  create_path: NonEmptyStr,
+  create_body: String,
+  wired: fn(OciNamedResource) -> String,
+) -> OciStep uses net: Network {
+  match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
+    NamedStop { line } => OciStepStopped { line: line }
+    NamedReady { resource } => oci_admit_wired(kind: kind, display_name: display_name, resource: resource, disagreement: wired(resource), how: "converged")
+    NamedCreate =>
+      match oci_signed_exchange(shape: OciPostJson { text: create_body }, host: oci_iaas_host, path_and_query: create_path) {
+        OciExchangeRefused { cause } => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create refused before an answer: ", cause as String], "") }
+        OciAnswered { status, body, next_page } =>
+          if status != 200 {
+            OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered ", to_string(status), ": ", body], "") }
+          } else {
+            match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
+              NamedReady { resource } => oci_admit_wired(kind: kind, display_name: display_name, resource: resource, disagreement: wired(resource), how: "created and AVAILABLE on read-back")
+              NamedCreate => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered 200 and the read-back does not list it yet; run again"], "") }
+              NamedStop { line } => OciStepStopped { line: concat("(read-back after create) ", line) }
+            }
+          }
+      }
+  }
+}
+
+// A REQUIRED BOOLEAN FIELD, read as Oracle answers it. Missing, null or another type is a
+// disagreement, never a default.
+type OciFlag
+  = OciFlagValue { value: Bool }
+  | OciFlagRefused { cause: String }
+
+fn oci_required_flag(row: JsonValue, key: String) -> OciFlag {
+  match json_member_presence(obj: row, key: key) {
+    JsonMemberValue { value } => match value {
+      JsonBool { value: b } => OciFlagValue { value: b }
+      JsonNull => OciFlagRefused { cause: concat(key, " is null") }
+      JsonNumber { lexeme } => OciFlagRefused { cause: concat(key, " is a number, not a boolean") }
+      JsonString { value: t } => OciFlagRefused { cause: concat(key, " is a string, not a boolean") }
+      JsonArray { elements } => OciFlagRefused { cause: concat(key, " is an array, not a boolean") }
+      JsonObject { members } => OciFlagRefused { cause: concat(key, " is an object, not a boolean") }
+    }
+    JsonMemberMissing => OciFlagRefused { cause: concat(key, " is missing") }
+    JsonMemberNull => OciFlagRefused { cause: concat(key, " is null") }
+    JsonMemberUnreadable { cause } => OciFlagRefused { cause: join([key, " is unreadable: ", cause], "") }
+  }
+}
+
+fn oci_flag_must_be(row: JsonValue, key: String, wanted: Bool) -> String {
+  match oci_required_flag(row: row, key: key) {
+    OciFlagRefused { cause } => cause
+    OciFlagValue { value } => if value == wanted { "" } else { join([key, " is ", to_string(value), ", not ", to_string(wanted)], "") }
+  }
+}
+
+fn oci_text_must_be(row: JsonValue, key: String, wanted: String) -> String {
+  let field = oci_required_text(row: row, key: key)
+  let defect = oci_field_cause(f: field)
+  if defect != "" { defect } else if oci_field_text(f: field) == wanted { "" } else { join([key, " is ", oci_field_text(f: field), ", not ", wanted], "") }
+}
+
+fn oci_first_disagreement(defects: List<String>) -> String {
+  fold(defects, init: "", f: (acc, d) => if acc != "" { acc } else { d })
+}
+
+// THE NETWORK IS ADMITTED ON WHAT IT CLAIMS TO PROVIDE (side-chat review on gunbc#13351), on the
+// first read and on the read-back after a create alike: the VCN carries the planned address range, the
+// gateway is enabled, the route table sends 0.0.0.0/0 to that gateway, and the subnet is this VCN's,
+// on that route table, with the planned range, and allows public IPs, which the launch asks for.
+//
+// The access rules are admitted too, after the subnet: the security lists the subnet names must
+// together carry SSH (TCP 22) ingress from 0.0.0.0/0 and all egress to 0.0.0.0/0. Oracle creates the
+// VCN's default list with those rules, but an adopted network's list may have been edited since, so
+// they are read rather than assumed from creation defaults (oci_subnet_access).
+fn oci_vcn_wiring(r: OciNamedResource) -> String {
+  match json_member_presence(obj: r.raw, key: "cidrBlocks") {
+    JsonMemberValue { value } => match value {
+      JsonArray { elements } => if any(elements, e => match e { JsonString { value: c } => c == (render_ipv4_prefix(p: oci_free_vcn_cidr) as String)  JsonNull => false  JsonBool { value: b } => false  JsonNumber { lexeme } => false  JsonArray { elements: x } => false  JsonObject { members } => false }) { "" } else { concat("cidrBlocks does not include ", render_ipv4_prefix(p: oci_free_vcn_cidr) as String) }
+      JsonNull => "cidrBlocks is null"
+      JsonBool { value: b } => "cidrBlocks is not an array"
+      JsonNumber { lexeme } => "cidrBlocks is not an array"
+      JsonString { value: t } => "cidrBlocks is not an array"
+      JsonObject { members } => "cidrBlocks is not an array"
+    }
+    JsonMemberMissing => "cidrBlocks is missing"
+    JsonMemberNull => "cidrBlocks is null"
+    JsonMemberUnreadable { cause } => concat("cidrBlocks is unreadable: ", cause)
+  }
+}
+
+fn oci_igw_wiring(r: OciNamedResource, vcn: NonEmptyStr) -> String {
+  oci_first_disagreement(defects: [
+    oci_text_must_be(row: r.raw, key: "vcnId", wanted: vcn as String),
+    oci_flag_must_be(row: r.raw, key: "isEnabled", wanted: true),
+  ])
+}
+
+// ── THE FOUR RESOURCES ────────────────────────────────────────────────────────────────────────
+
+data oci_free_vcn_name: String = "gunbc-always-free"
+// The address plan, as extdeps.network.ipv4 prefixes rather than CIDR strings, so a malformed octet or
+// prefix length is unwritable and the subnet's containment in the VCN is checkable (review 76379). The
+// CIDR text is rendered at the JSON boundary.
+data oci_free_vcn_cidr: Ipv4Prefix = ipv4_prefix(o1: 10, o2: 0, o3: 0, o4: 0, length: 16)
+data oci_free_igw_name: String = "gunbc-always-free-igw"
+data oci_free_route_table_name: String = "gunbc-always-free-public"
+data oci_free_subnet_name: String = "gunbc-always-free-public"
+data oci_free_subnet_cidr: Ipv4Prefix = ipv4_prefix(o1: 10, o2: 0, o3: 0, o4: 0, length: 24)
+
+fn oci_scoped_list_path(collection: String, compartment: NonEmptyStr, vcn: String) -> String {
+  if vcn == "" {
+    join(["/20160918/", collection, "?compartmentId=", compartment as String], "")
+  } else {
+    join(["/20160918/", collection, "?compartmentId=", compartment as String, "&vcnId=", vcn], "")
+  }
+}
+
+fn oci_vcn_create_body(compartment: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "cidrBlocks", value: json_array(elements: [json_string(s: render_ipv4_prefix(p: oci_free_vcn_cidr) as String)])),
+    json_kv(key: "displayName", value: json_string(s: oci_free_vcn_name)),
+    json_kv(key: "dnsLabel", value: json_string(s: "gunbcfree")),
+  ]))
+}
+
+fn oci_igw_create_body(compartment: NonEmptyStr, vcn: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "vcnId", value: json_string(s: vcn as String)),
+    json_kv(key: "isEnabled", value: json_bool(b: true)),
+    json_kv(key: "displayName", value: json_string(s: oci_free_igw_name)),
+  ]))
+}
+
+fn oci_route_table_create_body(compartment: NonEmptyStr, vcn: NonEmptyStr, igw: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "vcnId", value: json_string(s: vcn as String)),
+    json_kv(key: "displayName", value: json_string(s: oci_free_route_table_name)),
+    json_kv(key: "routeRules", value: json_array(elements: [json_object(members: [
+      json_kv(key: "destination", value: json_string(s: "0.0.0.0/0")),
+      json_kv(key: "destinationType", value: json_string(s: "CIDR_BLOCK")),
+      json_kv(key: "networkEntityId", value: json_string(s: igw as String)),
+    ])])),
+  ]))
+}
+
+fn oci_subnet_create_body(compartment: NonEmptyStr, vcn: NonEmptyStr, route_table: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "vcnId", value: json_string(s: vcn as String)),
+    json_kv(key: "cidrBlock", value: json_string(s: render_ipv4_prefix(p: oci_free_subnet_cidr) as String)),
+    json_kv(key: "displayName", value: json_string(s: oci_free_subnet_name)),
+    json_kv(key: "dnsLabel", value: json_string(s: "public")),
+    json_kv(key: "routeTableId", value: json_string(s: route_table as String)),
+  ]))
+}
+
+// PURE: does a found route table send 0.0.0.0/0 to this gateway? Its routeRules are read from the
+// list answer as returned.
+fn oci_route_table_wiring(r: OciNamedResource, igw: NonEmptyStr) -> String {
+  match json_member_presence(obj: r.raw, key: "routeRules") {
+    JsonMemberValue { value } =>
+      if oci_route_rules_reach(rules: value, igw: igw) { "" } else { join(["route table has no rule sending 0.0.0.0/0 to ", igw as String], "") }
+    JsonMemberMissing => "route table answer carries no routeRules"
+    JsonMemberNull => "route table answer carries null routeRules"
+    JsonMemberUnreadable { cause } => concat("route table routeRules unreadable: ", cause)
+  }
+}
+
+fn oci_route_rules_reach(rules: JsonValue, igw: NonEmptyStr) -> Bool {
+  match rules {
+    JsonArray { elements } => any(elements, e => oci_field_text(f: oci_required_text(row: e, key: "destination")) == "0.0.0.0/0" && oci_field_text(f: oci_required_text(row: e, key: "networkEntityId")) == (igw as String))
+    JsonObject { members } => false
+    JsonNull => false
+    JsonBool { value: b } => false
+    JsonNumber { lexeme } => false
+    JsonString { value: t } => false
+  }
+}
+
+fn oci_subnet_wiring(r: OciNamedResource, vcn: NonEmptyStr, route_table: NonEmptyStr) -> String {
+  oci_first_disagreement(defects: [
+    oci_text_must_be(row: r.raw, key: "vcnId", wanted: vcn as String),
+    oci_subnet_route_wiring(r: r, route_table: route_table),
+    oci_text_must_be(row: r.raw, key: "cidrBlock", wanted: render_ipv4_prefix(p: oci_free_subnet_cidr) as String),
+    oci_flag_must_be(row: r.raw, key: "prohibitPublicIpOnVnic", wanted: false),
+  ])
+}
+
+fn oci_subnet_route_wiring(r: OciNamedResource, route_table: NonEmptyStr) -> String {
+  let field = oci_required_text(row: r.raw, key: "routeTableId")
+  let defect = oci_field_cause(f: field)
+  if defect != "" {
+    concat("subnet answer's ", defect)
+  } else if oci_field_text(f: field) == (route_table as String) {
+    ""
+  } else {
+    join(["subnet uses route table ", oci_field_text(f: field), ", not ", route_table as String], "")
+  }
+}
+
+// THE NETWORK CHAIN. Each resource needs the one before it, so a stop at any layer ends the run there
+// and names the layer.
+type OciNetworkStanding
+  = NetworkReady { subnet: NonEmptyStr, lines: List<String> }
+  | NetworkNotReady { lines: List<String> }
+
+fn oci_free_network(compartment: NonEmptyStr) -> OciNetworkStanding uses net: Network {
+  match oci_ensure_named(kind: "vcn", display_name: oci_free_vcn_name, list_path: oci_scoped_list_path(collection: "vcns", compartment: compartment, vcn: ""), create_path: "/20160918/vcns", create_body: oci_vcn_create_body(compartment: compartment), wired: r => oci_vcn_wiring(r: r)) {
+    OciStepStopped { line } => NetworkNotReady { lines: [line] }
+    OciStepReady { id: vcn, line: vcn_line, raw: vcn_row } =>
+      match oci_ensure_named(kind: "internet gateway", display_name: oci_free_igw_name, list_path: oci_scoped_list_path(collection: "internetGateways", compartment: compartment, vcn: vcn as String), create_path: "/20160918/internetGateways", create_body: oci_igw_create_body(compartment: compartment, vcn: vcn), wired: r => oci_igw_wiring(r: r, vcn: vcn)) {
+        OciStepStopped { line } => NetworkNotReady { lines: [vcn_line, line] }
+        OciStepReady { id: igw, line: igw_line, raw: igw_row } =>
+          match oci_ensure_named(kind: "route table", display_name: oci_free_route_table_name, list_path: oci_scoped_list_path(collection: "routeTables", compartment: compartment, vcn: vcn as String), create_path: "/20160918/routeTables", create_body: oci_route_table_create_body(compartment: compartment, vcn: vcn, igw: igw), wired: r => oci_route_table_wiring(r: r, igw: igw)) {
+            OciStepStopped { line } => NetworkNotReady { lines: [vcn_line, igw_line, line] }
+            OciStepReady { id: rt, line: rt_line, raw: rt_row } =>
+              match oci_ensure_named(kind: "subnet", display_name: oci_free_subnet_name, list_path: oci_scoped_list_path(collection: "subnets", compartment: compartment, vcn: vcn as String), create_path: "/20160918/subnets", create_body: oci_subnet_create_body(compartment: compartment, vcn: vcn, route_table: rt), wired: r => oci_subnet_wiring(r: r, vcn: vcn, route_table: rt)) {
+                OciStepStopped { line } => NetworkNotReady { lines: [vcn_line, igw_line, rt_line, line] }
+                OciStepReady { id: subnet, line: subnet_line, raw: subnet_row } => {
+                  let access = oci_subnet_access(compartment: compartment, vcn: vcn, subnet_row: subnet_row)
+                  if access == "" {
+                    NetworkReady { subnet: subnet, lines: [vcn_line, igw_line, rt_line, subnet_line, "oci subnet security lists admit SSH (TCP 22) ingress from 0.0.0.0/0 and all egress"] }
+                  } else {
+                    NetworkNotReady { lines: [vcn_line, igw_line, rt_line, subnet_line, join(["oci subnet ", subnet as String, " access rules are not admitted, and this converge does not edit them: ", access], "")] }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// ── ACCESS RULES ──────────────────────────────────────────────────────────────────────────────
+
+fn oci_rule_text(rule: JsonValue, key: String) -> String {
+  oci_field_text(f: oci_required_text(row: rule, key: key))
+}
+
+// A TCP rule with no tcpOptions admits every port. Otherwise both ranges matter, because Oracle models
+// source and destination ports separately and an SSH client connects FROM an ephemeral port: the
+// destination range must cover 22, and a source range, if present, must cover every port 1..65535.
+// A source-restricted rule is refused rather than evaluated further (side-chat review on gunbc#13351).
+// An omitted range is unrestricted; an unreadable one is a refusal.
+fn oci_tcp_rule_admits_ssh(rule: JsonValue) -> Bool {
+  match json_member_presence(obj: rule, key: "tcpOptions") {
+    JsonMemberMissing => true
+    JsonMemberNull => true
+    JsonMemberUnreadable { cause } => false
+    JsonMemberValue { value: options } =>
+      oci_source_ports_unrestricted(options: options) && oci_destination_admits_ssh(options: options)
+  }
+}
+
+fn oci_source_ports_unrestricted(options: JsonValue) -> Bool {
+  match json_member_presence(obj: options, key: "sourcePortRange") {
+    JsonMemberMissing => true
+    JsonMemberNull => true
+    JsonMemberUnreadable { cause } => false
+    JsonMemberValue { value: range } =>
+      match oci_whole_member(obj: range, key: "min") {
+        OciWholeRefused { cause } => false
+        OciWholeValue { value: low } => match oci_whole_member(obj: range, key: "max") {
+          OciWholeRefused { cause } => false
+          OciWholeValue { value: high } => low <= 1 && high >= 65535
+        }
+      }
+  }
+}
+
+fn oci_destination_admits_ssh(options: JsonValue) -> Bool {
+  match json_member_presence(obj: options, key: "destinationPortRange") {
+    JsonMemberMissing => true
+    JsonMemberNull => true
+    JsonMemberUnreadable { cause } => false
+    JsonMemberValue { value: range } =>
+      match oci_whole_member(obj: range, key: "min") {
+        OciWholeRefused { cause } => false
+        OciWholeValue { value: low } => match oci_whole_member(obj: range, key: "max") {
+          OciWholeRefused { cause } => false
+          OciWholeValue { value: high } => low <= 22 && 22 <= high
+        }
+      }
+  }
+}
+
+fn oci_rules_of(list: JsonValue, key: String) -> List<JsonValue> {
+  match json_member_presence(obj: list, key: key) {
+    JsonMemberValue { value } => match value {
+      JsonArray { elements } => elements
+      JsonObject { members } => []
+      JsonNull => []
+      JsonBool { value: b } => []
+      JsonNumber { lexeme } => []
+      JsonString { value: t } => []
+    }
+    JsonMemberMissing => []
+    JsonMemberNull => []
+    JsonMemberUnreadable { cause } => []
+  }
+}
+
+fn oci_admits_ssh_ingress(list: JsonValue) -> Bool {
+  any(oci_rules_of(list: list, key: "ingressSecurityRules"), r => oci_rule_text(rule: r, key: "protocol") == "6" && oci_rule_text(rule: r, key: "source") == "0.0.0.0/0" && oci_tcp_rule_admits_ssh(rule: r))
+}
+
+fn oci_admits_all_egress(list: JsonValue) -> Bool {
+  any(oci_rules_of(list: list, key: "egressSecurityRules"), r => oci_rule_text(rule: r, key: "protocol") == "all" && oci_rule_text(rule: r, key: "destination") == "0.0.0.0/0")
+}
+
+fn oci_string_elements(v: JsonValue) -> List<String> {
+  match v {
+    JsonArray { elements } => map(elements, e => match e { JsonString { value: t } => t  JsonNull => ""  JsonBool { value: b } => ""  JsonNumber { lexeme } => ""  JsonArray { elements: x } => ""  JsonObject { members } => "" })
+    JsonObject { members } => []
+    JsonNull => []
+    JsonBool { value: b } => []
+    JsonNumber { lexeme } => []
+    JsonString { value: t } => []
+  }
+}
+
+// PURE: whether the subnet's named security lists, read from the VCN's lists, admit the access the
+// launched instances rely on. Every named list must be found, so an unread list is never assumed.
+fn oci_access_disagreement(subnet_row: JsonValue, lists: List<JsonValue>) -> String {
+  match json_member_presence(obj: subnet_row, key: "securityListIds") {
+    JsonMemberValue { value } => {
+      let ids = oci_string_elements(v: value)
+      let named = filter(lists, l => any(ids, i => i != "" && oci_rule_text(rule: l, key: "id") == i))
+      if ids.length() == 0 || any(ids, i => i == "") {
+        "securityListIds is empty or carries a non-string"
+      } else if named.length() != ids.length() {
+        "a security list the subnet names is not among the VCN's listed security lists"
+      } else if !any(named, l => oci_admits_ssh_ingress(list: l)) {
+        "no named security list admits TCP 22 ingress from 0.0.0.0/0"
+      } else if !any(named, l => oci_admits_all_egress(list: l)) {
+        "no named security list admits all egress to 0.0.0.0/0"
+      } else {
+        ""
+      }
+    }
+    JsonMemberMissing => "securityListIds is missing"
+    JsonMemberNull => "securityListIds is null"
+    JsonMemberUnreadable { cause } => concat("securityListIds is unreadable: ", cause)
+  }
+}
+
+fn oci_subnet_access(compartment: NonEmptyStr, vcn: NonEmptyStr, subnet_row: JsonValue) -> String uses net: Network {
+  match oci_list(operation: "List security lists", host: oci_iaas_host, path_and_query: oci_scoped_list_path(collection: "securityLists", compartment: compartment, vcn: vcn as String) as NonEmptyStr) {
+    OciListRefused { cause } => concat("security lists could not be read: ", cause as String)
+    OciListInaccessible { status, body } => join(["security lists were refused by OCI (", to_string(status), "): ", body], "")
+    OciListed { items } => match oci_admit_rows(operation: "List security lists", rows: items, keys: ["id"]) {
+      OciRowRefused { cause } => cause as String
+      OciRowsAdmitted { rows } => oci_access_disagreement(subnet_row: subnet_row, lists: rows)
+    }
+  }
+}

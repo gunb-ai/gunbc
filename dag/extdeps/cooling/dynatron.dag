@@ -1,15 +1,16 @@
 module extdeps.cooling.dynatron
 
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import std.types { NonEmptyStr, List }
-import std.measure { watt, rack_unit }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, watt, rack_unit, Gram, gram, Percent, percent, RevolutionsPerMinute, rpm, MillilitrePerSecond, millilitre_per_second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types {
   SocketedLandGrid, CpuSocket, LandGridArray }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.vendor.dynatron { dynatron }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -26,7 +27,7 @@ data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
   active_passive_switchable: true,
   minimum_rack_units: rack_unit(2),
   max_design_power: watt(250),
-  supported_motherboards: [AsrockRackAltrad8ud1l2t],
+  supported_motherboards: [asrock_altrad8ud_board_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -40,3 +41,38 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
+
+// Manufacturer active W1 envelope; installation pose belongs to the product assembly.
+data dynatron_w1_active_length: Micrometer = micrometer(count: 141100)
+data dynatron_w1_active_width: Micrometer = micrometer(count: 84000)
+data dynatron_w1_active_height: Micrometer = micrometer(count: 72000)
+
+// ---------------------------------------------------------------------------------------------
+// MASS AND AIRFLOW: manufacturer page directly read 2026-10-04.
+//
+// Mass is the figure the stack-mechanics roster sums: 612 +/- 10 g active (fan fitted), 512 +/- 10 g
+// passive. Airflow is the cooler's own 60 mm fan at three duty points, carried at mL/s by floor
+// conversion of the listed CFM (1 CFM = 471.947 mL/s): 11.91 -> 5621, 28.38 -> 13393, 58.31 ->
+// 27519. The cooler's fan is a second air mover in the cassette beside the rear bank; what it
+// contributes to EXHAUST flow depends on ducting the chassis has not qualified, so the exhaust
+// derivation reads the rear bank only and names this row as the unmodelled addition.
+// ---------------------------------------------------------------------------------------------
+data dynatron_w1_mass_active: Gram = gram(count: 612)
+data dynatron_w1_mass_passive: Gram = gram(count: 512)
+data dynatron_w1_mass_standing: CitedFigureStanding = CitedToAuthority {authority:extdeps_external_authority_anchor}
+
+type CoolerFanDutyPoint {
+  duty: Percent
+  speed: RevolutionsPerMinute
+  airflow: MillilitrePerSecond
+}
+
+data dynatron_w1_fan_duty_points: List<CoolerFanDutyPoint> = [
+  CoolerFanDutyPoint { duty: percent(20), speed: rpm(2300), airflow: millilitre_per_second(count: 5621) },
+  CoolerFanDutyPoint { duty: percent(50), speed: rpm(5400), airflow: millilitre_per_second(count: 13393) },
+  CoolerFanDutyPoint { duty: percent(100), speed: rpm(11000), airflow: millilitre_per_second(count: 27519) },
+]
+data dynatron_w1_fan_duty_points_standing: CitedFigureStanding = CitedToAuthority {authority:extdeps_external_authority_anchor}
+
+// First-party page read 2026-10-04; mass tolerance is not zero.
+data dynatron_w1_mass_tolerance: Gram = gram(count:10)

@@ -2,7 +2,7 @@ module gunbc.auth.approval_store_receipt
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, Timestamp, String, Int, List }
-import v2.std.algebra { skip }
+import v2.std.algebra { skip, length }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
@@ -249,7 +249,7 @@ fn receipt_line_at(lines: List<String>, i: Int) -> String {
 
 fn request_field(line: String, key: String) -> String {
   let prefix = join([key, "="], "")
-  if starts_with(s: line, prefix: prefix) { substring(s: line, start: string_length(s: prefix), end: string_length(s: line)) } else { "" }
+  if starts_with(s: line, prefix: prefix) { substring(s: line, start: length(xs: prefix), end: length(xs: line)) } else { "" }
 }
 
 // THE WIRE A RECEIPT TRAVELS AS: its signing input, then its tag, one line each. The signing input
@@ -319,13 +319,15 @@ fn store_receipt_issuance_answer(issuance: StoreReceiptIssuance) -> StoreReceipt
 
 // THE ROUTE. The three escalation readings (the slot, its generation-1 filing, the receipt keyring)
 // are performed HERE, in the authenticated arm and nowhere else, and handed to the pure mint as
-// values.
-fn store_receipt_answer(escalation_id: NonEmptyStr, body: String) -> StoreReceiptAnswer {
-  match authenticate_store_receipt_asker(escalation_id: escalation_id, body: body, submission_keyring: read_submission_keyring()) {
+// values. The decision-store root and the submission keyring are SUPPLIED: a witness discriminates
+// at this interface (DESIGN §3) without a second copy of the fold, and production binds the
+// declared root and the real keyring read.
+fn store_receipt_answer(escalation_id: NonEmptyStr, body: String, root: NonEmptyStr, submission_keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
+  match authenticate_store_receipt_asker(escalation_id: escalation_id, body: body, submission_keyring: submission_keyring) {
     StoreReceiptAskerRefused { answer: refused } => refused
     StoreReceiptAskerAuthenticated { attempt: attempt } => {
-      let slot = observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id)
-      let filing = cas_read_generation(root: approval_decision_store_root, key: escalation_id, generation: cas_generation_first())
+      let slot = observe_escalation(root: root, escalation_id: escalation_id)
+      let filing = cas_read_generation(root: root, key: escalation_id, generation: cas_generation_first())
       let keyring = read_store_receipt_keyring()
       store_receipt_authenticated_answer(attempt: attempt, slot: slot, filing: filing, keyring: keyring)
     }

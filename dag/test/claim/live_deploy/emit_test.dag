@@ -6,11 +6,12 @@ import gunbc.live_deploy.member_identity {
   ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, DirectoryRoot,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -28,7 +29,6 @@ import gunbc.live_deploy.spec {
   deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
-  EnsuredManagedHostDirectory,
   TailscalePackage,
   TmuxPackage,
   deployment_plan_host_identity,
@@ -49,7 +49,6 @@ import gunbc.live_deploy.spec {
   ServeBinary,
   OwnedArtifactKind,
   GunbcSourceTree,
-  AttemptStateRoot,
   SystemdUnit,
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
@@ -72,9 +71,8 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
-  dashboard_instance_fabric_storage_root,
 }
-import extdeps.version.semver { SemVerVersion }
+import extdeps.version.semver { semver_version_parse }
 import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
   ScopedRemovalUnobserved,
@@ -113,12 +111,12 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
-import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
+import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
 import gunbc.live_deploy.emit {
   emit_artifact_upsert,
   approval_broker_tree_copy_steps,
-  ensure_managed_directory_command,
-  managed_directory_entry_repair_commands,
+  owned_directory_install_steps,
+  owned_directory_apply_steps,
   approval_broker_dark_install_script,
   apply_approval_broker_unit_write_steps,
   approval_broker_lifecycle_steps,
@@ -408,6 +406,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     approval_broker: real.approval_broker,
     names: real.names,
     instance_id: real.instance_id,
+    directories: real.directories,
   }
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>
@@ -511,7 +510,7 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
-    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: "/opt/gunbc/dispatch-worktrees"), plan: deploy_witness_full_install_plan(spec: spec))), pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
     && !string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
@@ -1104,22 +1103,26 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
     tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
-    ensured_directories: t.ensured_directories,
+    host_directories: t.host_directories,
   }
 }
 
+// The fixture's client version arrives through the parser like every other SemVerVersion
+// (review 77150): no hand-built record with raw fields.
 fn preserve_removal_client_target() -> DeploymentHostTarget {
   let t = deployment_srv1_target()
+  let client = match semver_version_parse(cps: chars(s: "1.40.0" as String)) {
+    Absent => ScopedRemovalUnobserved { reason: "the fixture client version label failed to parse — a defect in the fixture, not an observation gap" }
+    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+  }
   DeploymentHostTarget {
     host: t.host,
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
-    tailscale_client: tailscale_scoped_removal_capability(
-      observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
-    ),
-    ensured_directories: t.ensured_directories,
+    tailscale_client: client,
+    host_directories: t.host_directories,
   }
 }
 
@@ -1229,9 +1232,9 @@ fn preamble_step_command(step: PipelineStep) -> String {
 // authority as the operation it guards (gunbc.executor_privileged_operation), so the login arrives
 // single-quoted -- equivalent shell, one fewer place that decides quoting. What the witness owes is
 // that the check runs and short-circuits the useradd, which is what it now asserts.
-// THE COUNT IS 3 RATHER THAN 2 BECAUSE C7 ADDED A THIRD PREAMBLE STEP: the provider-state root's
-// ensure (gunbc.live_deploy.emit provider_state_ensure_steps), derived from the spec so that no
-// deploy can omit it. The conjunct is kept at an exact count rather than relaxed to `>= 2`: it
+// THE COUNT IS 2: the sudoers install and the publication principal. The provider-state root the
+// preamble once carried is an owned-directory demand emitted by owned_directory_apply_steps. The
+// conjunct is kept at an exact count rather than relaxed to `>= 2`: it
 // exists so that a step creeping into the preamble is noticed here, and a bound that admits any
 // number of new steps would stop noticing. This claim's own subject -- that the publication
 // principal is ensured as a nologin system account -- is unchanged and still asserted below.
@@ -1249,7 +1252,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
     && string_contains(s: ensure, pattern: "--system")
     && string_contains(s: ensure, pattern: "--no-create-home")
     && string_contains(s: ensure, pattern: "/usr/sbin/nologin")
-    && count(preamble) == 3
+    && count(preamble) == 2
     && any(preamble, step => preamble_step_command(step: step) == ensure)
 }
 
@@ -1375,58 +1378,48 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let steps = spec.steps
   three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
     && owned_step_index(steps: steps, kind: ServeBinary) < owned_step_index(steps: steps, kind: GunbcSourceTree)
-    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: AttemptStateRoot)
-    && owned_step_index(steps: steps, kind: AttemptStateRoot) < owned_step_index(steps: steps, kind: SystemdUnit)
+    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: SystemdUnit)
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
-fn step_is_fabric_storage_store(step: DeploymentStep) -> Bool {
-  match step {
-    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String)
-    ArtifactStep { step: _ } => false
-  }
+fn srv1_demands_directory(path: String) -> Bool {
+  any(deployment_directory_demands(spec: deployment_spec_srv1()), t => (owned_directory_path(t: t) as String) == path)
 }
 
-// The fabric DB's store is created on the placement host's apply path, as an ensured directory.
+// The fabric DB's store is created on the placement host's apply path, as an owned-directory demand.
 test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
-  any(deployment_spec_srv1().steps, st => step_is_fabric_storage_store(step: st))
+  srv1_demands_directory(path: fabric_storage_store_root() as String)
 }
 
-fn srv1_ensures_directory(path: String) -> Bool {
-  any(deployment_spec_srv1().steps, st => match st {
-    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == path
-    ArtifactStep { step: _ } => false
-  })
-}
-
-// THE AREAS THE STORE WRITES INTO ARE ENSURED, NOT ONLY THE ROOT. The paths are read from the file
+// THE AREAS THE STORE WRITES INTO ARE DEMANDED, NOT ONLY THE ROOT. The paths are read from the file
 // store's own root function -- the one the put and the head CAS write under -- so this goes red when
 // the deployment ensures the root alone, which is the state that refused fleet-converge run
 // 35818578751's host-effect claim with `object publication refused: not_found`.
 test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
-  let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
-  srv1_ensures_directory(path: files.objects as String) && srv1_ensures_directory(path: files.heads as String)
+  let files = fabric_storage_file_root(root: fabric_storage_store_root())
+  srv1_demands_directory(path: files.objects as String) && srv1_demands_directory(path: files.heads as String)
 }
 
-// THE AREAS ARE THE SERVICE'S ALONE AND THE DOOR IS THE CI PRINCIPAL'S WAY IN, READ OFF THE ENSURE THE
-// SRV1 SPEC ACTUALLY LOWERS. The store areas are briansrls:briansrls 0700: no other account writes
-// the files (gunbc.fabric_storage_placement fabric_storage_directory). The door directory is owned
-// by the service with group ghrunner and group traverse only (2710), so the CI job reaches the
-// socket and nothing else. Red if an area admits the CI principal again, or the door stops admitting
-// it, or either admission refuses.
+// THE AREAS ARE THE SERVICE'S ALONE AND THE DOOR IS THE CI PRINCIPAL'S WAY IN, READ OFF THE INSTALL THE
+// SRV1 TRANSACTION LOWERS FOR EACH DEMAND (gunbc.live_deploy.emit owned_directory_install_steps). The
+// store areas are briansrls:briansrls 0700: no other account writes the files
+// (gunbc.fabric_storage_placement fabric_storage_directory). The door directory is owned by the service
+// with group ghrunner and group traverse only (2710), so the CI job reaches the socket and nothing
+// else. Red if an area admits the CI principal again, or the door stops admitting it, or either
+// refuses.
+fn srv1_fabric_area_install_steps(path: String) -> List<PipelineStep> {
+  match owned_directory_demand_at(ts: deployment_directory_demands(spec: deployment_spec_srv1()), path: path) {
+    Present { value: t } => owned_directory_install_steps(t: t)
+    Absent => []
+  }
+}
+
 fn srv1_fabric_area_ensure(path: String) -> String {
-  fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
-    Dependency { step: dep } => match dep.subject {
-      EnsuredManagedHostDirectory { admission } =>
-        if (ensured_subject_identity(subject: dep.subject) as String) == path { ensure_managed_directory_command(admission: admission) } else { acc }
-      _ => acc
-    }
-    ArtifactStep { step: _ } => acc
-  })
+  pipeline_steps_text(steps: srv1_fabric_area_install_steps(path: path))
 }
 
 test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_principal() -> Bool {
-  let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
+  let files = fabric_storage_file_root(root: fabric_storage_store_root())
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
   let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
@@ -1435,23 +1428,13 @@ test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_
     && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
 }
 
-// THE ENSURE NO LONGER REPAIRS THE AREAS' ENTRIES, read off the command the srv1 spec lowers: the
-// service is the only writer and publishes at the declared mode itself. Red if a repair reappears,
-// which would mean some other principal is again expected to write the store's files.
-fn srv1_fabric_area_repair(path: String) -> String {
-  fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
-    Dependency { step: dep } => match dep.subject {
-      EnsuredManagedHostDirectory { admission } =>
-        if (ensured_subject_identity(subject: dep.subject) as String) == path { join(managed_directory_entry_repair_commands(admission: admission), "\n") } else { acc }
-      _ => acc
-    }
-    ArtifactStep { step: _ } => acc
-  })
-}
-
+// THE ENSURE NO LONGER REPAIRS THE AREAS' ENTRIES, read off the steps the srv1 transaction lowers: the
+// install alone, no repair. Red if a repair reappears, which would mean some other principal is again
+// expected to write the store's files.
 test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -> Bool {
-  let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
-  srv1_fabric_area_repair(path: files.objects as String) == "" && srv1_fabric_area_repair(path: files.heads as String) == ""
+  let files = fabric_storage_file_root(root: fabric_storage_store_root())
+  count(srv1_fabric_area_install_steps(path: files.objects as String)) == 1
+    && count(srv1_fabric_area_install_steps(path: files.heads as String)) == 1
 }
 
 // THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0400, since the service
@@ -1467,11 +1450,13 @@ test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
 
 // THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
 // owned roster (where the event-log mirror root sat, torn down with rm -rf) turns this red.
+// A retract tears down owned steps only, so the store is safe exactly when it is demanded and no owned
+// step names it.
 test fn no_retract_can_remove_the_fabric_storage_store() -> Bool {
-  any(deployment_spec_srv1().steps, st =>
-    step_is_fabric_storage_store(step: st) && match deployment_step_teardown_disposition(step: st) {
-      TeardownRefuses { cause: _ } => true
-      TeardownActs => false
+  srv1_demands_directory(path: fabric_storage_store_root() as String)
+    && !any(deployment_spec_srv1().steps, st => match st {
+      ArtifactStep { step: art } => (art.path as String) == (fabric_storage_store_root() as String)
+      Dependency { step: _ } => false
     })
 }
 

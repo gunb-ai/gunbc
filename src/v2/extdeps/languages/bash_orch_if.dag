@@ -11,6 +11,10 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  NonEmptyDiagnostics,
+  diagnostics_reason_lexemes,
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
@@ -1043,28 +1047,36 @@ fn bash_nearest_ancestor_locate_assign_command(spec: NearestAncestorContaining) 
   )
 }
 
-fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) -> String {
-  match bash_path_predicate_target_model(
-    predicate: nearest_ancestor_while_predicate(spec: spec)
-  ) {
+// A LOWERED LEAF'S TEXT, OR ITS LOCATED REFUSAL -- NEVER THE EMPTY STRING. Run.command is a
+// String-typed seam, so a refusal cannot cross it as data; the text that crosses instead is a marker
+// that is not valid shell (so the committed-workflow drift gate goes red) and names the producing
+// symbol and the refusal's reasons. It used to be "", which said nothing about what refused, and
+// left every consumer to remember to test for it.
+fn bash_orch_if_leaf_text(producer: String, outcome: Outcome<TargetModel>) -> String {
+  match outcome {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.authority_source_text
-        Some { diagnostics: _ } => ""
+        Some { diagnostics: ds } => bash_orch_if_leaf_refusal(producer: producer, diagnostics: ds)
       }
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: ds } => bash_orch_if_leaf_refusal(producer: producer, diagnostics: ds)
   }
 }
 
+fn bash_orch_if_leaf_refusal(producer: String, diagnostics: NonEmptyDiagnostics) -> String {
+  concat(concat(concat("__GUNBC_PATH_INTENT_LOWERING_REFUSED__ ", producer), concat(": refused (", diagnostics_reason_lexemes(diagnostics: diagnostics))), ")")
+}
+
+fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) -> String {
+  bash_orch_if_leaf_text(
+    producer: "v2.extdeps.languages.bash_orch_if bash_nearest_ancestor_locate_cond_command",
+    outcome: bash_path_predicate_target_model(predicate: nearest_ancestor_while_predicate(spec: spec)),
+  )
+}
+
 fn bash_nearest_ancestor_locate_body_command(spec: NearestAncestorContaining) -> String {
-  match bash_dirname_ascent_target_model(
-    ascent: nearest_ancestor_while_ascent(spec: spec)
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.authority_source_text
-        Some { diagnostics: _ } => ""
-      }
-    Rejected { diagnostics: _ } => ""
-  }
+  bash_orch_if_leaf_text(
+    producer: "v2.extdeps.languages.bash_orch_if bash_nearest_ancestor_locate_body_command",
+    outcome: bash_dirname_ascent_target_model(ascent: nearest_ancestor_while_ascent(spec: spec)),
+  )
 }

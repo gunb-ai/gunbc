@@ -1,0 +1,38 @@
+module gunbc.rung_drop.bmc_secure_apply_converge_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_bmc_secure_apply_converge_rows }
+
+// DECLARED 4b(3) DROP (gunbc#13517, 2026-10-07). Pairing requires one Apply through
+// converge_arrival_through_bmc_secure; that path still bills the arrival prefix plus the dry Apply
+// in the seed interpreter. The DECLARATION lives here; the POPULATION's authority is
+// `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_bmc_secure_apply_converge_rows`.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM IS UNTOUCHED. The identity stays on the gate: planned,
+// executed and measured on every run, its eval_steps recorded; a semantic red and a wall-clock
+// crossing still block. Only an eval-step overrun is reported under the declared drop rather than
+// refusing. The budget is not raised.
+
+data bmc_secure_apply_converge_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_bmc_secure_apply_converge_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_bmc_secure_apply_converge_rows; measured by "), m.measured_by))
+
+data bmc_secure_apply_converge_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "bmc_secure_apply_converge_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one Apply inhabitance of converge_arrival_through_bmc_secure: it still executes, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-07",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "converge_arrival_through_bmc_secure executing as natively emitted code rather than in the seed interpreter, so the one Apply inhabitance fits the NewWitnessTier eval-step budget",
+    },
+    population: bmc_secure_apply_converge_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: converge_arrival_through_bmc_secure (AccessDiscover through BmcSecure Apply, including the fold's Apply-discharge mint) executing as natively emitted code in a claim frame. WHAT THAT MUST BE SUFFICIENT FOR: test.claim.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world, still calling that entry with Apply+grant and still asserting the Applied route, measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting the identity, hard-coding discharges: [] in the entry, or relocating the claim off the required gate satisfies none of it.",
+  }
+}

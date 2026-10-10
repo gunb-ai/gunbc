@@ -1,13 +1,11 @@
 module v2.std.grammar_choice_ambiguity
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-
 import std.algebra { FreeMonoid }
 import v2.std.node { Symbol }
 
 // GrammarChoiceAmbiguityRow is the grammar-analysis authority for FIRST-set choice overlap facts.
-// Compiler parse stage and frontier probe receipts import this module — not v2.compiler.parse — so
-// probe instrumentation does not pull the parse implementation into generic receipt consumers.
+// The parse stage's validation refuses on any row, so a row is a fact about a grammar a caller
+// supplied, never a residue an accepted grammar carries.
 
 type GrammarChoiceAmbiguityRow {
   production: Symbol
@@ -16,10 +14,3 @@ type GrammarChoiceAmbiguityRow {
   overlap_terminals: FreeMonoid<Symbol>
   both_nullable: Bool
 }
-
-type NonEmptyGrammarChoiceAmbiguityRows {
-  head: GrammarChoiceAmbiguityRow
-  tail: FreeMonoid<GrammarChoiceAmbiguityRow>
-}
-
-data non_empty_grammar_choice_ambiguity_rows_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "cut_over_overlap_row_chain — NonEmptyGrammarChoiceAmbiguityRows is FreeSemigroup<GrammarChoiceAmbiguityRow> by shape. std.algebra FreeSemigroup is already in the tree. Dissolve when v2.compiler.parse_diagnostic non_empty_grammar_choice_ambiguity_rows_from_parse_stage (and the three literals in v2.test.claim.self_host.frontier_probe_overlap_detail_test) construct FreeSemigroup<GrammarChoiceAmbiguityRow>, then delete this type. The previous event name migrate_when_free_semigroup_available has already fired.")

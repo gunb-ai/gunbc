@@ -13,6 +13,7 @@ import extdeps.llm.cursor_cli {
   CursorAuth,
   CursorApiKeyArgument,
   CursorInvocation,
+  CursorRunShape,
   CursorDefaultEditMode,
   CursorSandboxEnabled,
   CursorStreamJson,
@@ -27,14 +28,16 @@ data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
 fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
   CursorInvocation {
     auth: auth,
-    model: cursor_model_auto,
-    mode: CursorDefaultEditMode,
-    sandbox: CursorSandboxEnabled,
-    output_format: CursorStreamJson,
-    force: false,
-    trust_workspace: true,
-    workspace: "/srv/attempt" as FilePath,
-    prompt: "do the work" as NonEmptyStr,
+    run: CursorRunShape {
+      model: cursor_model_auto,
+      mode: CursorDefaultEditMode,
+      sandbox: CursorSandboxEnabled,
+      output_format: CursorStreamJson,
+      force: false,
+      trust_workspace: true,
+      workspace: "/srv/attempt" as FilePath,
+      prompt: "do the work" as NonEmptyStr,
+    },
   }
 }
 

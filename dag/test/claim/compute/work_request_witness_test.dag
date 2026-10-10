@@ -17,16 +17,33 @@ import gunbc.compute.work_provider_local {
   UnitPropertyReading, unit_property_from_shell,
 }
 import gunbc.compute.unit_bounds { compute_kill_mode_property, compute_kill_mode_value }
+import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
 }
 import std.measure { kibibyte }
+import extdeps.systemd { systemd_unit_property_wire }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import std.content_hash { serialize_content_hash, content_hash_atom }
+import std.cache_identity { compute_work_artifact_kind }
+import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
+import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
+import std.materialization_provider {
+  ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
+  ArtifactManifest, ArtifactPart, ComputeWorkArtifact, artifact_manifest, artifact_from_manifest, artifact_request_key,
+  ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
+}
+import std.measure { byte_size }
+import gunbc.compute.work_provider_local {
+  compute_work_identity, compute_operation_admission, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
+  ComputeExecOk, ComputeExecFailed,
+}
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
@@ -39,8 +56,24 @@ fn tree(hex: String) -> WorkSubject {
   }
 }
 
-fn tc(rustc: String) -> WorkToolchainIdentity {
-  WorkToolchainIdentity { rustc_version: rustc as NonEmptyStr, cache_release: "sccache 0.15.0" as NonEmptyStr }
+// The one fixture mint, admitted by name. Every axis is a parameter so each can be varied alone.
+fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
+  tc(rustc: rustc, triple: triple, cargo: cargo, cache: cache, provider: provider)
+}
+
+fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
+  work_toolchain_observed(
+    rustc_verbose: rustc as NonEmptyStr, target_triple: triple as NonEmptyStr, cargo_version: cargo as NonEmptyStr,
+    cache_release: cache as NonEmptyStr, provider_revision: provider as NonEmptyStr,
+  )
+}
+
+fn tc_default(rustc: String) -> WorkToolchainIdentity {
+  tc(rustc: rustc, triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+}
+
+fn key_with(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
 }
 
 data tree_a: String = "1111111111111111111111111111111111111111"
@@ -50,20 +83,133 @@ data tree_b: String = "2222222222222222222222222222222222222222"
 // identity; a difference anywhere -- tree, operation, entry, functions, hermeticity, profile,
 // toolchain -- does not collapse, each proven separately.
 test fn identical_requests_share_an_identity_and_every_difference_separates_them() -> Bool {
-  let base = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
-  let same = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
-  let other_tree = work_identity_hex(id: work_identity(subject: tree(hex: tree_b), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
-  let other_toolchain = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.91.0")))
-  let debug = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }, toolchain: tc(rustc: "rustc 1.90.0")))
-  let compile_x = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/x.dag" as FilePath }, toolchain: tc(rustc: "rustc 1.90.0")))
-  let compile_y = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/y.dag" as FilePath }, toolchain: tc(rustc: "rustc 1.90.0")))
-  let claims_h = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true }, toolchain: tc(rustc: "rustc 1.90.0")))
-  let claims_w = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false }, toolchain: tc(rustc: "rustc 1.90.0")))
-  let claims_f = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, toolchain: tc(rustc: "rustc 1.90.0")))
+  let base = key(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0")
+  let same = key(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0")
+  let other_tree = key(subject: tree(hex: tree_b), op: work_default_build(), rustc: "rustc 1.90.0")
+  let other_toolchain = key(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.91.0")
+  let debug = key(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }, rustc: "rustc 1.90.0")
+  let compile_x = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/x.dag" as FilePath }, rustc: "rustc 1.90.0")
+  let compile_y = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/y.dag" as FilePath }, rustc: "rustc 1.90.0")
+  let claims_h = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let claims_w = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
+  let claims_f = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
   base == same
     && base != other_tree && base != other_toolchain && base != debug && base != compile_x
     && compile_x != compile_y && claims_h != claims_w && claims_h != claims_f && compile_x != claims_h
     && base.length() == 16
+}
+
+// THE KEY IS INJECTIVE OVER THE TYPED OPERATION AND COVERS EVERY EXECUTION AXIS (ruling on
+// gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
+// preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
+// result. Each must key apart on its own.
+test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
+  let subject = tree(hex: tree_a)
+  let t = tc_default(rustc: "rustc 1.90.0")
+  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: ["a,b" as NonEmptyStr] }
+  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: ["a" as NonEmptyStr, "b" as NonEmptyStr] }
+  let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true }
+  let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true }
+  let base = key_with(subject: subject, op: work_default_build(), toolchain: t)
+  key_with(subject: subject, op: one_bin, toolchain: t) != key_with(subject: subject, op: two_bins, toolchain: t)
+    && key_with(subject: subject, op: colon_entry, toolchain: t) != key_with(subject: subject, op: colon_functions, toolchain: t)
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.16.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "x86_64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.91.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
+}
+
+// A WET CLAIM RUN IS REFUSED BEFORE ANYTHING IS OBSERVED OR RUN (ruling item 2). RED against a provider
+// that serves it under the request key, where a repeat would attach to the first run's outcome.
+test fn a_wet_claim_run_is_refused_and_a_hermetic_one_is_admitted() -> Bool {
+  (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }) { Present { value: _ } => true  Absent => false })
+    && (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }) { Present { value: _ } => false  Absent => true })
+    && (match compute_operation_admission(op: work_default_build()) { Present { value: _ } => false  Absent => true })
+}
+
+// THE EXECUTION IDENTITY IS READ, NEVER DEFAULTED. The triple comes from rustc's own `host:` line, and
+// a report without one refuses rather than keying the work on an unobserved platform.
+test fn the_execution_identity_reads_the_host_triple_and_refuses_without_one() -> Bool {
+  let verbose = "rustc 1.90.0 (abc 2025-01-01)\nbinary: rustc\nhost: aarch64-unknown-linux-gnu\nrelease: 1.90.0\n"
+  let ok = ComputeExecOk { stdout: "x", stderr: "" }
+  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+    ToolchainObserved { toolchain } => (toolchain.target_triple as String) == "aarch64-unknown-linux-gnu"
+    ToolchainObservationRefused { detail: _ } => false
+  })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "host")
+    })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ComputeExecFailed { exit_code: 128, stdout: "", stderr: "no such path" }) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "provider")
+    })
+}
+
+fn req(subject: WorkSubject, op: WorkOperation, rustc: String) -> ArtifactRequest {
+  ComputeWorkRequest { subject: subject, operation: op, toolchain: tc_default(rustc: rustc) }
+}
+
+fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
+  serialize_content_hash(hash: request_key(req: req(subject: subject, op: op, rustc: rustc))) as String
+}
+
+// THE PROVIDER FILES WORK UNDER THE MATERIALIZATION KEY AND UNDER NOTHING ELSE. RED against a
+// provider that keeps (or regrows) a private hash beside request_key: the two would disagree here.
+test fn the_provider_identity_is_the_materialization_request_key() -> Bool {
+  let subject = tree(hex: tree_a)
+  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }
+  compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.90.0"))
+      == key(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
+    && compute_work_identity(subject: subject, op: claims, toolchain: tc_default(rustc: "rustc 1.90.0"))
+      == key(subject: subject, op: claims, rustc: "rustc 1.90.0")
+}
+
+fn demand_is_fresh(d: DemandNature) -> Bool {
+  match d {
+    FreshEffect => true
+    IdempotentEffect => false
+    PureComputation => false
+    WorldRead { staleness_envelope_declared: _ } => false
+  }
+}
+
+// KIND, OUTPUT ROSTER AND DEMAND NATURE ARE DERIVED FROM THE OPERATION, never declared by a caller.
+// The discriminating cell is the wet claim run: it is the one operation whose answer is not a
+// repeat of a prior one, so it must reach the ladder as FreshEffect (never served from a store),
+// while its hermetic twin over the same entry and functions is IdempotentEffect.
+test fn the_compute_family_derives_kind_outputs_and_demand_nature() -> Bool {
+  let subject = tree(hex: tree_a)
+  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
+  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let build = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
+  request_kind(req: build) == compute_work_artifact_kind
+    && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
+    && demand_is_fresh(d: request_judgment_contract(req: wet).demand_nature)
+    && !demand_is_fresh(d: request_judgment_contract(req: hermetic).demand_nature)
+    && !demand_is_fresh(d: request_judgment_contract(req: build).demand_nature)
+}
+
+fn part(text: String) -> ArtifactPart {
+  ArtifactPart { digest: content_hash_atom(value: text as NonEmptyStr), bytes: byte_size(count: 1) }
+}
+
+// THE COMPUTE ARTIFACT READS BACK THROUGH THE ONE MANIFEST DECODE, and a stored claim missing its
+// log is the named incompleteness, not a decoded artifact (RED against a decode that let the
+// family's roster drop a part).
+test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incomplete() -> Bool {
+  let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x") }
+  let m = artifact_manifest(artifact: artifact)
+  let dropped = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: m.parts |> filter(p => p.id != output_compute_work_log) }
+  (match artifact_from_manifest(m: m) {
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _ } => rk == k  _ => false }
+    _ => false
+  })
+    && (match artifact_from_manifest(m: dropped) {
+      ManifestDecoded { artifact: a } => match a { LegacyIncompleteArtifact { kind: kd, request_key: _, carried_outputs: _ } => kd == compute_work_artifact_kind  _ => false }
+      _ => false
+    })
 }
 
 // Declared outputs follow the operation: a build names its binaries under the profile directory of
@@ -213,14 +359,20 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
 // rejected the property, or a unit started by some other path are all outside what any fold over
 // our own argv can see. That is precisely why the release predicate does not lean on the binding --
 // completion must still be confirmed by a positively empty cgroup, and this row only ensures we are
-// not ALSO shipping an invocation that opts into the dangerous mode.
+// not ALSO shipping an invocation that opts into the dangerous mode. The claims are about WHICH
+// SETTINGS the unit binds; rendering the typed properties back to their wire words here is a test
+// observation, not a builder -- nothing hands these words to systemd-run.
+fn property_words(props: List<SystemdRunProperty>) -> List<String> {
+  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+}
+
 test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
     granted: kibibyte(count: 1048576))
-  contains(props, join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
-    && compute_kill_mode_value == "control-group"
-    && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
+  contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String], ""))
+    && contains(property_words(props), join([systemd_unit_property_wire(property: KillModeProperty) as String, "=", systemd_kill_mode_wire(mode: KillModeControlGroup) as String], ""))
+    && count(filter(property_words(props), p => starts_with(s: p, prefix: "MemoryMax="))) == 1
 }
 
 // A LOSS ANYWHERE IN THE CHAIN REACHES A TERMINAL CONSUMER, which is the property three separate

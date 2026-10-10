@@ -576,6 +576,20 @@ pub enum CompilerDiagnostic {
         importing_module: String,
         span: Rc<SourceSpan>,
     },
+    ImportCollidesWithKernelName {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        kernel_declaration_module: String,
+        span: Rc<SourceSpan>,
+    },
+    KernelMintDeclarationAmbiguousAtImport {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        row_count: i64,
+        span: Rc<SourceSpan>,
+    },
     UnresolvedType {
         name: String,
         span: Rc<SourceSpan>,
@@ -823,6 +837,11 @@ pub enum CompilerDiagnostic {
         identities: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    NativeEffectRealizationRefused {
+        entry: String,
+        refusals: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     EffectSummaryIncompleteAtFunctionValue {
         caller: String,
         span: Rc<SourceSpan>,
@@ -1008,6 +1027,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ImportCollidesWithKernelName { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
             s.clone()
@@ -1062,6 +1083,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { span: s, .. } => s.clone(),
+        CompilerDiagnostic::NativeEffectRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
@@ -1092,6 +1114,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
+    CompilerDiagnostic::ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') collides with the kernel name whose mint is the declaration in '".to_string()), k.clone()), "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.".to_string()),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') cannot be judged against the kernel mint: ".to_string()), (c.clone()).to_string()), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
@@ -1142,6 +1166,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one".to_string()),
+    CompilerDiagnostic::NativeEffectRealizationRefused { entry: e, refusals: rs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("native effect realization refused for entry '".to_string(), e.clone()), "': ".to_string()), rs.clone().join(&"; ".to_string())), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
@@ -1151,7 +1176,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
     CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
-    CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- compare against Present { value: .. } or match on the optional".to_string()),
+    CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument does not inhabit the declared kind applying '".to_string(), t.clone()), "': parameter '".to_string()), p.clone()), "' is declared '".to_string()), k.clone()), "', and '".to_string()), sup.clone()), "' is not one of its inhabitants".to_string()),
     CompilerDiagnostic::TypeParameterInValuePosition { name: n, .. } => v1_rt::concat(v1_rt::concat("'".to_string(), n.clone()), "' is a type parameter, not a value: a name bound as a type may not stand in an expression position".to_string()),
@@ -1210,6 +1235,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ImportCollidesWithKernelName { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1419,6 +1452,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::EmittedSymbolCollision { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::NativeEffectRealizationRefused { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -2195,7 +2232,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2272,7 +2309,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2544,10 +2581,8 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
-        .iter()
+        .get((index.clone()) as usize)
         .cloned()
-        .skip(index.clone() as usize)
-        .next()
     {
         Some(v) => v.clone(),
         std::option::Option::None => make_expr_error_node(
@@ -2805,13 +2840,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(2 as usize)
-        .next()
+    texpr.children.clone().get((2) as usize).cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -2819,15 +2848,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -2927,15 +2948,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn expr_method_name_at(
@@ -2965,17 +2978,9 @@ pub fn lambda_param_names_at(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(
-            texpr
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
+        for n in Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+            .iter()
+            .cloned()
         {
             __result.push(authored_name_at(source_indices.clone(), n.clone()));
         }
@@ -2988,13 +2993,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(1 as usize)
-        .next()
+    texpr.children.clone().get((1) as usize).cloned()
 }
 
 pub fn let_binding_name_at(
@@ -5081,10 +5080,8 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
@@ -5107,10 +5104,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
@@ -5119,10 +5114,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let line_end = match index
             .offsets
             .clone()
-            .iter()
+            .get((v1_rt::int_sub(line.clone(), 1)) as usize)
             .cloned()
-            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
-            .next()
         {
             Some(o) => o.clone(),
             std::option::Option::None => src_len.clone(),

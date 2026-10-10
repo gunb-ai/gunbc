@@ -1,0 +1,13 @@
+module test.claim.print_runtime_dependencies_witness_test
+import std.types {Bool}
+import product.printing.runtime_dependencies {ubuntu2404,cad_versions_match}
+
+test fn unsupported_distro_cannot_use_ubuntu_provider() -> Bool {
+ !ubuntu2404(text:"ID=debian\nVERSION_ID=13\n") && ubuntu2404(text:"ID=ubuntu\nVERSION_ID=\"24.04\"\n")
+}
+test fn ambiguous_os_identity_is_refused() -> Bool {
+ !ubuntu2404(text:"ID=ubuntu\nID=debian\nVERSION_ID=24.04\n")
+}
+test fn absent_python_dependency_is_refused() -> Bool {
+ !cad_versions_match(text:"\{\}") && !cad_versions_match(text:"not-json")
+}

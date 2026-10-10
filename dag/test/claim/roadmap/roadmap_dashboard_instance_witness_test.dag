@@ -1,6 +1,13 @@
 module test.claim.roadmap_dashboard_instance_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
+import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.auth.session_store { session_store_directory }
+import gunbc.auth.login_transaction_store { login_transaction_store_directory }
+import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
+import gunbc.auth.profile_projection { profile_store_directory }
+import gunbc.roadmap_view_preference_store { issue_view_store_directory }
 import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {
   CodexDefaultAccount,
@@ -31,10 +38,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardHydrateControllerHistory,
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
-  DashboardEnsureDirectory,
-  dashboard_auth_stores,
-  dashboard_instance_auth_store_root,
-  DashboardEnsureProviderStateRoot,
   DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
@@ -224,8 +227,8 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 18
-    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
+  count(plan) == 9
+    && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -253,8 +256,8 @@ fn lab_observed(
     } else {
       "source revision drift: desired=abc observed=def"
     },
-    attempts_present: true,
-    attempt_state_present: true,
+    directories_converged: true,
+    directory_refusals: [],
     provider_runtime_ready: true,
     provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
@@ -374,8 +377,8 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     source_revision_observed: true,
     source_revision_current: true,
     source_revision_detail: "desired=abc observed=abc",
-    attempts_present: true,
-    attempt_state_present: true,
+    directories_converged: true,
+    directory_refusals: [],
     provider_runtime_ready: true,
     provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
@@ -411,7 +414,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       anchor_ref,
     } =>
       controller_repo == srv1_dashboard_controller_repo
-        && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
+        && anchor_ref == "refs/remotes/origin/main"
     _ => false
   })
     && any(plan, op => match op {
@@ -436,8 +439,8 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     source_revision_observed: false,
     source_revision_current: false,
     source_revision_detail: "source repository unavailable",
-    attempts_present: false,
-    attempt_state_present: false,
+    directories_converged: false,
+    directory_refusals: [],
     provider_runtime_ready: false,
     provider_runtime_detail: "provider runtime unavailable",
     provider_authenticated: false,
@@ -536,8 +539,8 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
 // page all read correctly — no refusal, just unintended content rendered plausibly. Unlike the host
 // facts, which produced identical values on both hosts and therefore no wrong output at all, this
 // one produces a page that looks right and is not.\n\nThe claim asserts the anchors are
-// per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it
-// collapses.
+// per-instance: the synthetic instance's own anchor fails if the constructor collapses back to one
+// shared literal. Two labs may lawfully follow the same ref (srv1 and srv2 labs both follow main).
 
 test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
@@ -545,8 +548,7 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
   synthetic == "refs/heads/witness-anchor"
     && srv2_lab == "refs/remotes/origin/main"
-    && srv1_lab == "refs/heads/session/codex-provider-feedback-v0"
-    && !(srv2_lab == srv1_lab)
+    && srv1_lab == "refs/remotes/origin/main"
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.
@@ -622,36 +624,29 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 18
-    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
+  count(plan) == 9
+    && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
 
-// TWO PATHS THE PLAN VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began — an operator hitting a CLI error instead of a typed refusal. The serve binary: instances used to BORROW production's, which is why no install step existed; making each instance own its own closed a retract hazard and left the install with no owner.\n\nBoth claims are stated as containment in the plan rather than as a count, because a count says the plan has sixteen things and nothing about whether the right two are among them. Each asserts the op targets the INSTANCE's own path — a plan that ensured some other instance's binary would satisfy a count and fail here.
-// THE AUTH STORES ARE PROVISIONED, stated as containment: every store the auth modules write
-// into has an ensure step for THIS instance's root. The profile store once had none, so every
-// login's profile publication was refused and the assignee surfaces rendered the raw principal.
-fn plan_ensures_every_auth_store_root(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
-) -> Bool {
-  all(dashboard_auth_stores, store => any(plan, op => match op {
-    DashboardEnsureDirectory { path } =>
-      path == dashboard_instance_auth_store_root(instance: instance, store: store)
-    _ => false
-  }))
+// TWO PATHS THE APPLY VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began. The serve binary: instances used to BORROW production's, which is why no install step existed.\n\nThe directories are now owned-directory demands (gunbc.roadmap.dashboard_instance_directories) ensured before the plan runs, and the binary is a plan op; each claim is containment of THIS instance's own path.
+// THE AUTH STORES ARE DEMANDED, stated as containment: every store the auth modules write into has
+// a demand for THIS instance's root, read off the store's own demand function. The profile store once
+// had no creator, so every login's profile publication was refused.
+fn demands_contain_path(instance: HostDashboardInstance, path: FilePath) -> Bool {
+  any(dashboard_instance_directory_demands(instance: instance), t => owned_directory_path(t: t) == path)
 }
 
-fn plan_ensures_provider_state_root(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
-) -> Bool {
-  any(plan, op => match op {
-    DashboardEnsureProviderStateRoot { path } =>
-      path == dashboard_instance_provider_state_root(instance: instance)
-    _ => false
-  })
+fn demands_cover_every_auth_store(instance: HostDashboardInstance) -> Bool {
+  all([
+    session_store_directory(instance: instance),
+    login_transaction_store_directory(instance: instance),
+    jwks_cache_directory(instance: instance),
+    profile_store_directory(instance: instance),
+    issue_view_store_directory(instance: instance),
+  ], t => demands_contain_path(instance: instance, path: owned_directory_path(t: t))
+    && dashboard_path_is_under(path: owned_directory_path(t: t), root: instance.instance_root))
 }
 
 fn plan_ensures_serve_binary(
@@ -665,27 +660,16 @@ fn plan_ensures_serve_binary(
   })
 }
 
-test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
+test fn the_apply_creates_every_path_it_later_verifies() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let srv2 = srv2_lab_dashboard_instance()
-  let lab_plan = dashboard_instance_provision_plan(instance: lab)
-  let srv2_plan = dashboard_instance_provision_plan(instance: srv2)
-  plan_ensures_provider_state_root(plan: lab_plan, instance: lab)
-    && plan_ensures_serve_binary(plan: lab_plan, instance: lab)
-    && plan_ensures_provider_state_root(plan: srv2_plan, instance: srv2)
-    && plan_ensures_serve_binary(plan: srv2_plan, instance: srv2)
-    && any(lab_plan, op => match op {
-      DashboardEnsureDirectory { path } =>
-        path == dashboard_instance_dispatch_worktree_root(instance: lab)
-      _ => false
-    })
-    && any(lab_plan, op => match op {
-      DashboardEnsureDirectory { path } =>
-        path == dashboard_instance_dispatch_attempt_state_root(instance: lab)
-      _ => false
-    })
+  demands_contain_path(instance: lab, path: dashboard_instance_provider_state_root(instance: lab))
+    && plan_ensures_serve_binary(plan: dashboard_instance_provision_plan(instance: lab), instance: lab)
+    && demands_contain_path(instance: srv2, path: dashboard_instance_provider_state_root(instance: srv2))
+    && plan_ensures_serve_binary(plan: dashboard_instance_provision_plan(instance: srv2), instance: srv2)
+    && demands_contain_path(instance: lab, path: dashboard_instance_dispatch_worktree_root(instance: lab))
+    && demands_contain_path(instance: lab, path: dashboard_instance_dispatch_attempt_state_root(instance: lab))
 }
-
 test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let srv2 = srv2_lab_dashboard_instance()
@@ -717,8 +701,8 @@ fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
     source_revision_observed: false,
     source_revision_current: false,
     source_revision_detail: "",
-    attempts_present: false,
-    attempt_state_present: false,
+    directories_converged: false,
+    directory_refusals: [],
     provider_runtime_ready: false,
     provider_runtime_detail: "",
     provider_authenticated: false,
@@ -787,6 +771,7 @@ fn witness_production_slot(
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: srv1_live_dashboard_instance().directory_owner,
   }
 }
 
@@ -1140,6 +1125,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    directory_owner: live.directory_owner,
   }
 }
 

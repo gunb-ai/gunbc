@@ -66,6 +66,8 @@ import gunbc.scm.repository_save {
   RepositoryGenerationAdmitted,
   RepositoryGenerationStale,
   admit_repository_generation,
+  repository_saved_from_write,
+  repository_generation_expected_after_save,
   save_repository_sharded_guarded,
   RepositoryGuardedSaveOutcome,
   RepositoryStaleGenerationRefused,
@@ -209,6 +211,38 @@ test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool {
           GenerationExpectedAbsent => true
           GenerationExpected(_) => false
         }
+  }
+}
+
+// A FIRST SAVE FROM ABSENCE, THEN A CAPTURE PERSIST: the seed write's RepositorySaved.generation
+// is the capture persist's expectation. Reusing GenerationExpectedAbsent after that write is the
+// stale refusal that voided recapture's wet inhabitance; forwarding the written generation admits.
+test fn scm_sv_a_capture_persist_after_a_first_save_from_absence_is_admitted_on_the_written_generation() -> Bool {
+  let content = "{\"schema\":\"seed\"}"
+  match repository_saved_from_write(
+    path: "/tmp/seed.gunbc-repository.json",
+    content: content,
+    bytes_written: 18,
+  ) {
+    RepositorySaveRefusedByCodec { path: _, cause: _ } => false
+    RepositoryFileUnwritable { path: _, error: _ } => false
+    RepositoryWriteByteCountUnrepresentable { path: _, reported: _ } => false
+    RepositorySaved { path: _, written: _, generation } =>
+      match admit_repository_generation(expected: GenerationExpectedAbsent, found: Present { value: generation }) {
+        RepositoryGenerationAdmitted => false
+        RepositoryGenerationStale { expected: _, found: _ } =>
+          match admit_repository_generation(
+            expected: repository_generation_expected_after_save(generation: generation),
+            found: Present { value: generation },
+          ) {
+            RepositoryGenerationAdmitted =>
+              content_hash_eq_structural(
+                left: generation,
+                right: repository_generation_of_content(content: content),
+              )
+            RepositoryGenerationStale { expected: _, found: _ } => false
+          }
+      }
   }
 }
 

@@ -1,0 +1,25 @@
+module gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// A NEW LINK THAT HAS NEVER EXECUTED, RECORDED AS A STALL -- NOT A DROP: no rung stood here and none is claimed to have
+// fallen. gunbc#13513 carries the authored data-vs-fn kind from normalize to the mandatory_tag gate
+// (NormalizedTree.member_declarations -> member_kind_channel_of_tree -> ResolvedTree.member_kinds). The legs
+// normalize -> member_kind_channel_of_tree -> gate execute in test.long.mandatory_tag_gate_witness. The leg from
+// v2.compiler.name_resolve resolve_in_context (subject_member_kind_channel) through ResolvedTree.member_kinds to
+// v2.compiler.compile validate_then_compile's mandatory_tag_root_lens_with_provenance binding is compiled and
+// typechecked and executed by no claim: a door-grain control through compile_source_root_ingest_with_admission was
+// refused with member_not_a_binder by a roster lens ahead of mandatory_tag on even a trivial single-module extdeps.*
+// subject, a refusal independent of #13513 and filed as its own item. Each removed door-grain witness measured roughly
+// 470-560k eval steps against the 72300 new-witness budget, so it is a long-lane witness once runnable.
+data member_kind_door_binding_executed_by_no_claim_stall: GuaranteeStall = GuaranteeStall {
+  subject: "door-grain mandatory_tag provenance: the resolve_in_context -> ResolvedTree.member_kinds -> validate_then_compile mandatory_tag_root_lens_with_provenance link is executed by no claim",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: "the door accepting a minimal extdeps.* subject past every roster lens (the member_not_a_binder door refusal, its own item), which makes the door-grain controls runnable" },
+  population: BoundedPopulation { members: [
+      "v2.compiler.name_resolve resolve_in_context subject_member_kind_channel -> v2.compiler.resolve ResolvedTree.member_kinds -> v2.compiler.compile validate_then_compile mandatory_tag_root_lens_with_provenance, for every extdeps.* subject compiled through compile_source_root_ingest_with_admission"
+    ] },
+  next_rung_trigger: climbs_when(capability: "a minimal extdeps.* subject is accepted through compile_source_root_ingest_with_admission past every roster lens, and the door-grain mandatory_tag clean and zero-arg-fn impersonation controls execute on the long lane. SUFFICIENT FOR: deleting the ResolvedTree.member_kinds binding (or resolve_in_context's subject_member_kind_channel) turns a door-grain control red. A control that supplies the channel, runs a lens directly, or reaches the gate below the door retires nothing")
+}

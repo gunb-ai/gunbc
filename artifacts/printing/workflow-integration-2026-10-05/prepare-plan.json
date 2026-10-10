@@ -1,0 +1,58 @@
+[
+  {
+    "printer": "printer-01",
+    "version": "1",
+    "plates": [
+      {
+        "attempt": "workflow-shadow-lower-printer-01",
+        "placements": [
+          {
+            "id": "CL-1-1",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 6000,
+            "y_um": 10000
+          },
+          {
+            "id": "CL-11",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 48000,
+            "y_um": 10000
+          }
+        ],
+        "support_free": []
+      }
+    ]
+  },
+  {
+    "printer": "printer-02",
+    "version": "1",
+    "plates": [
+      {
+        "attempt": "workflow-shadow-lower-printer-02",
+        "placements": [
+          {
+            "id": "CL1-1",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 6000,
+            "y_um": 10000
+          },
+          {
+            "id": "CL11",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 48000,
+            "y_um": 10000
+          }
+        ],
+        "support_free": []
+      }
+    ]
+  }
+]

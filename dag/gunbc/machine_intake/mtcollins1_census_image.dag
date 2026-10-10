@@ -16,7 +16,7 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import std.optional { Present }
-import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, bmc_boot_image_export, boot_image_export_eq, stock_installer_boot_medium }
+import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export, boot_image_export_eq, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
@@ -167,6 +167,7 @@ fn mtcollins1_seeded_image_input_with_cmdline(
         content: mtcollins1_census_capture_program(stages: stages),
       },
     ],
+    seed_artifacts: [],
     grub_kernel_cmdline: grub_kernel_cmdline,
     volume_id: volume_id,
     pinned_dates: seeded_install_media_pinned_dates,
@@ -255,6 +256,7 @@ fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQua
   let labelled = match medium.terminal {
     BootMediumVolumeLabel { label: l } => (l as String) == (mtcollins1_census_volume_id as String)
     BootMediumNoTerminal { reason: _ } => false
+    BootMediumRunnerHostUp { label: _ } => false
   }
   if !(labelled && (medium.image_name as String) == (census.image_name as String)) {
     CensusMediumNotCensus

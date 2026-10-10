@@ -13,17 +13,16 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
-  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused, identity_cast_route_verdict,
+  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
+  identity_cast_route_verdict,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN. v2.test.claim.coercion.identity_cast_emission_route
-// establishes that `fn f(x: Int) -> Int { x as Int }` is admitted and reaches Rust on the source
-// route; this module establishes what the emitted function DOES. The text under test is the entry
-// member that route emits -- never a hand-written `f` -- and the host row
-// (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
-// calls it and frames the return value.
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. One native control reads the REAL member text from
+// identity_cast_route_verdict and every runtime case builds and runs that artifact (DESIGN section 3
+// pairing). The last merge-time execution of the door on the required gate is still
+// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
@@ -46,12 +45,16 @@ fn identity_cast_native_inputs() -> Inputs {
   inputs_root_only(root: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_native_probe } }, children: []))
 }
 
-// The entry member's emitted text, read from the route module's shared verdict rather than emitted a
-// second time: the text built here is the text the admission row asserted on. Absent when the route
-// did not emit exactly the entry.
+// The entry member's emitted text from the closure door. Absent when the route did not emit exactly
+// one admitted entry. Runtime cases share this control; they do not substitute a supplied spelling.
 fn identity_cast_native_emitted() -> Optional<String> {
   match identity_cast_route_verdict() {
-    IdentityCastEntryEmitted { text: t, members: n } => if n == 1 { optional_present(value: t) } else { optional_absent() }
+    IdentityCastEntryEmitted { text: t, members: n } =>
+      if n == 1 {
+        optional_present(value: t)
+      } else {
+        optional_absent()
+      }
     IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
     IdentityCastClosureRefused { reason: _ } => optional_absent()
   }

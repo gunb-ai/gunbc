@@ -8,7 +8,9 @@ import gunbc.spark.cell_role {
   SparkCellRole,
   SparkServingCell,
   SparkTrainingCell,
-  spark_cell_role_of,
+  SparkCellRoleAssignment,
+  spark_cell_role_assignments,
+  spark_cell_role_in,
   spark_cell_role_eq,
   SparkCellRoleLookup,
   SparkCellRoleAbsent,
@@ -444,8 +446,20 @@ fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservati
 fn spark_training_readiness(
   pool: SparkUnifiedPoolObservation,
 ) -> SparkTrainingReadiness {
+  spark_training_readiness_in(pool: pool, assignments: spark_cell_role_assignments)
+}
+
+// THE ROSTER IS A PARAMETER, FOR THE REASON gunbc.spark.cell_role spark_cell_role_in GIVES: a
+// capability's evidence must not depend on which machines are currently assigned what. Reading the
+// production roster here left the training arm with no subject once the 2026-09-02 operator decision
+// (#10009) made srv6 a serving cell -- the positive control went red, and every refusal claim over
+// srv6 passed on role alone instead of on the axis it exists to discriminate.
+fn spark_training_readiness_in(
+  pool: SparkUnifiedPoolObservation,
+  assignments: List<SparkCellRoleAssignment>,
+) -> SparkTrainingReadiness {
   let retirement = pool.after
-  match spark_cell_role_of(host: retirement.host) {
+  match spark_cell_role_in(assignments: assignments, host: retirement.host) {
     SparkCellRoleAbsent =>
       SparkTrainingNotReady {
         cause: "spark_training_ready: the host holds no Spark cell role, so nothing assigned it to training" as NonEmptyStr,

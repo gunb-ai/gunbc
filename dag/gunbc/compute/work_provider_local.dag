@@ -11,7 +11,9 @@ import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run {
-  systemd_run_user_wait_arguments, systemd_run_property, SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv,
+  SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
+  systemd_run_user_wait_command,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -20,6 +22,7 @@ import extdeps.systemd.systemd_run {
   ServiceResultFormatNotGrounded, MemoryPeakFormatNotGrounded,
   SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+  systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.systemd.systemctl
 import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }
@@ -45,7 +48,6 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
-  dashboard_instance_compute_root,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
@@ -62,16 +64,19 @@ import gunbc.compute.host_capacity {
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_store, compute_release_on,
+  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
 import std.measure { kibibyte }
+import std.content_hash { serialize_content_hash }
+import std.materialization_provider { ComputeWorkRequest, request_key, compute_work_demand_nature }
+import std.materialization_ladder { FreshEffect, IdempotentEffect, PureComputation, WorldRead }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable,
+  CheckoutUnavailable, StoreUnavailable, FreshEffectNotServed,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -109,7 +114,7 @@ type ComputeLayout {
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
-  let root = dashboard_instance_compute_root(instance: instance) as String
+  let root = compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
   ComputeLayout {
     root: root,
@@ -131,6 +136,12 @@ type ComputeExec
   = ComputeExecOk { stdout: String, stderr: String }
   | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
 
+// The unit launch has its own refusal carrier: the systemd-run builder's typed cause, carried from
+// the one site that can produce it. compute_exec's shared reading never refuses.
+type ComputeUnitRunReading
+  = ComputeUnitRunExecuted { run: ComputeUnitRun }
+  | ComputeUnitRunRefused { cause: SystemdRunOptionWordsRefusedCause }
+
 fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
   let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
   if r.success { ComputeExecOk { stdout: r.stdout, stderr: r.stderr } } else { ComputeExecFailed { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr } }
@@ -147,16 +158,47 @@ type ToolchainObservation
   | ToolchainObservationRefused { detail: String }
 
 fn compute_observe_toolchain(instance: HostDashboardInstance) -> ToolchainObservation {
-  match compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: instance.repo_root as String, args: ["--version"]) {
-    ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc --version exited ", to_string(value: exit_code), ": ", stderr], "") }
-    ComputeExecOk { stdout: rustc_line, stderr: _ } =>
-      match compute_exec(program: sccache_installed_binary_path, workdir: instance.repo_root as String, args: ["--version"]) {
-        ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
-        ComputeExecOk { stdout: cache_line, stderr: _ } =>
-          if trim(s: rustc_line) == "" || trim(s: cache_line) == "" {
-            ToolchainObservationRefused { detail: "rustc or sccache printed an empty version line" }
-          } else {
-            ToolchainObserved { toolchain: WorkToolchainIdentity { rustc_version: trim(s: rustc_line) as NonEmptyStr, cache_release: trim(s: cache_line) as NonEmptyStr } }
+  let repo = instance.repo_root as String
+  compute_toolchain_decide(
+    rustc: compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: repo, args: ["-vV"]),
+    cargo: compute_exec(program: compute_program(instance: instance, cap: CargoCapability), workdir: repo, args: ["--version"]),
+    cache: compute_exec(program: sccache_installed_binary_path, workdir: repo, args: ["--version"]),
+    provider: compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: repo, args: ["rev-parse", "HEAD:dag/gunbc/compute"]),
+  )
+}
+
+// PURE: four readings in, one execution identity or a located refusal out. Every axis must have been
+// read and be non-empty, and the triple must be found in rustc's own report; a missing axis is a
+// refusal, never a default, because a key with a hole names a different computation than it claims.
+fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: ComputeExec, provider: ComputeExec) -> ToolchainObservation {
+  match rustc {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc -vV exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout: verbose, stderr: _ } =>
+      match cargo {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["cargo --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecOk { stdout: cargo_line, stderr: _ } =>
+          match cache {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+            ComputeExecOk { stdout: cache_line, stderr: _ } =>
+              match provider {
+                ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["the provider's source revision could not be read (git rev-parse exited ", to_string(value: exit_code), "): ", stderr], "") }
+                ComputeExecOk { stdout: provider_tree, stderr: _ } =>
+                  match rustc_verbose_host_triple(verbose: verbose) {
+                    Absent => ToolchainObservationRefused { detail: "rustc -vV reported no host: line, so the target triple is unobserved" }
+                    Present { value: triple } =>
+                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" || trim(s: provider_tree) == "" {
+                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo, sccache or the provider revision)" }
+                      } else {
+                        ToolchainObserved { toolchain: work_toolchain_observed(
+                          rustc_verbose: trim(s: verbose) as NonEmptyStr,
+                          target_triple: triple as NonEmptyStr,
+                          cargo_version: trim(s: cargo_line) as NonEmptyStr,
+                          cache_release: trim(s: cache_line) as NonEmptyStr,
+                          provider_revision: trim(s: provider_tree) as NonEmptyStr,
+                        ) }
+                      }
+                  }
+              }
           }
       }
   }
@@ -311,7 +353,7 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<String> {
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<SystemdRunProperty> {
   compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
 }
 
@@ -366,38 +408,43 @@ type ComputeUnitRun {
 // set must refuse rather than have its figures read against a format nobody has checked. Reading
 // `systemctl --version` there would answer about a DIFFERENT executable than the one that prints the
 // line, which on a mixed install is a different version.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRun {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
-    ComputeUnitRun {
+    ComputeUnitRunExecuted { run: ComputeUnitRun {
       exec: ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" },
       summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
-    }
+    } }
   } else {
     let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
-    let launcher = systemd_run_user_wait_arguments(
+    match systemd_run_user_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
       setenv_bindings: [
-        join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
-        join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
+        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
+        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
       ],
       command_argv: argv,
-    )
-    let r = compute_exec(
-      program: systemd_run,
-      workdir: layout.checkout,
-      args: systemd_summary_printing_wait_argv(w: launcher),
-    )
-    ComputeUnitRun {
-      exec: r,
-      summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
-        ComputeExecOk { stdout: _, stderr } => stderr
-        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
-      }),
+    ) {
+      SystemdSummaryPrintingWaitRefused { cause: why } =>
+        ComputeUnitRunRefused { cause: why }
+      SystemdSummaryPrintingWaitReady { wait: launcher } => {
+        let r = compute_exec(
+          program: systemd_run,
+          workdir: layout.checkout,
+          args: systemd_summary_printing_wait_argv(w: launcher),
+        )
+        ComputeUnitRunExecuted { run: ComputeUnitRun {
+          exec: r,
+          summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
+            ComputeExecOk { stdout: _, stderr } => stderr
+            ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+          }),
+        } }
+      }
     }
   }
 }
@@ -528,35 +575,36 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
   let population = unit_population(control_group: o.control_group, events: o.events)
   match population {
     PopulationOccupied { detail: d } => UnitPopulated { detail: d }
-    PopulationEmpty { detail: _ } => unit_termination_unoccupied(o: o, population: population)
-    PopulationUnknown { detail: _ } => unit_termination_unoccupied(o: o, population: population)
+    PopulationEmpty { detail: _ } => unit_termination_unconfirmed(o: o, population: population)
+    PopulationUnknown { detail: _ } => unit_termination_unconfirmed(o: o, population: population)
   }
 }
 
-// The population did not positively refuse release: decide from load state and attempt completion.
-fn unit_termination_unoccupied(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
-  if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
-    UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
-  } else if !o.attempt_completed {
-    UnitTerminationUnavailable {
-      detail: join([
-        "the attempt did not complete, so its end is not established -- ",
-        match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-      ], ""),
-    }
-  } else {
-    match population {
-      PopulationEmpty { detail: pd } =>
-        UnitAttemptCompleted {
+// The cgroup is not confirmed-occupied: the termination is decided from the manager's record and
+// the attempt's completion, with the population's own reading as the located detail.
+fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
+      if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
+        UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
+      } else if !o.attempt_completed {
+        UnitTerminationUnavailable {
           detail: join([
-            "systemd-run --wait returned success under ", compute_kill_mode_property, "=", compute_kill_mode_value,
-            " and ", pd,
+            "the attempt did not complete, so its end is not established -- ",
+            match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
           ], ""),
         }
-      PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
-      PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
-    }
-  }
+      } else {
+        match population {
+          PopulationEmpty { detail: pd } =>
+            UnitAttemptCompleted {
+              detail: join([
+                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value() as String,
+                " and ", pd,
+              ], ""),
+            }
+          PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
+          PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
+        }
+      }
 }
 
 // A completed wait whose population is not a confirmed-empty cgroup: the termination is not established.
@@ -610,32 +658,33 @@ data unit_result_success_wire: String = "success"
 fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
   match o.population {
     PopulationOccupied { detail: d } => UnitStillRunning { detail: d }
-    PopulationEmpty { detail: _ } => unit_lifecycle_unoccupied(o: o)
-    PopulationUnknown { detail: _ } => unit_lifecycle_unoccupied(o: o)
+    PopulationEmpty { detail: _ } => unit_lifecycle_unpopulated(o: o)
+    PopulationUnknown { detail: _ } => unit_lifecycle_unpopulated(o: o)
   }
 }
 
-// The population did not positively show the unit running: decide from the manager properties.
-fn unit_lifecycle_unoccupied(o: UnitLifecycleObservations) -> UnitLifecycle {
-  if !o.load_state.queried {
-    UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
-  } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
-    UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
-  } else if !o.active_state.queried {
-    UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
-  } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
-    UnitTerminatedFailure { detail: join(["ActiveState=failed, Result=", if o.result.queried { trim(s: o.result.value) } else { "<unreadable>" }], "") }
-  } else if trim(s: o.active_state.value) != unit_active_state_inactive_wire {
-    UnitStillRunning { detail: join(["ActiveState=", trim(s: o.active_state.value)], "") }
-  } else if !o.result.queried {
-    UnitLifecycleUnknown { detail: "the unit is inactive but its Result could not be read, so whether it ended well is not established" }
-  } else if trim(s: o.result.value) == "" {
-    UnitLifecycleUnknown { detail: "the unit is inactive and the manager answered its Result with nothing, which is not a verdict" }
-  } else if trim(s: o.result.value) == unit_result_success_wire {
-    UnitTerminatedSuccess { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", unit_result_success_wire], "") }
-  } else {
-    UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
-  }
+// The cgroup is not confirmed-occupied, so the unit's lifecycle is decided from the manager's
+// load state, active state and result alone.
+fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
+      if !o.load_state.queried {
+        UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
+      } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
+        UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+      } else if !o.active_state.queried {
+        UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
+      } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
+        UnitTerminatedFailure { detail: join(["ActiveState=failed, Result=", if o.result.queried { trim(s: o.result.value) } else { "<unreadable>" }], "") }
+      } else if trim(s: o.active_state.value) != unit_active_state_inactive_wire {
+        UnitStillRunning { detail: join(["ActiveState=", trim(s: o.active_state.value)], "") }
+      } else if !o.result.queried {
+        UnitLifecycleUnknown { detail: "the unit is inactive but its Result could not be read, so whether it ended well is not established" }
+      } else if trim(s: o.result.value) == "" {
+        UnitLifecycleUnknown { detail: "the unit is inactive and the manager answered its Result with nothing, which is not a verdict" }
+      } else if trim(s: o.result.value) == unit_result_success_wire {
+        UnitTerminatedSuccess { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", unit_result_success_wire], "") }
+      } else {
+        UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
+      }
 }
 
 // THE UNIT NAME COMES FROM THE ATTEMPT RECORD (criterion 2). This fold takes the name it is given
@@ -974,7 +1023,7 @@ fn compute_list(path: String) -> ComputeListing {
 }
 
 fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
-  let root = dashboard_instance_compute_root(instance: instance) as String
+  let root = compute_root(instance: instance) as String
   grant_exceeded_count_decide(
     root: compute_list(path: root),
     parent: compute_list(path: compute_grant_exceeded_parent(root: root)),
@@ -1472,6 +1521,15 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
   }
 }
 
+// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
+// the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
+// the operation and the observed execution identity are the only things that move it, and the key a
+// store will be asked for at the cutover is byte-for-byte the name this provider already files the
+// work under.
+fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
+}
+
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
@@ -1480,7 +1538,7 @@ fn compute_provide_leaf(
   toolchain: WorkToolchainIdentity,
   dependency_store: String,
 ) -> ProvideResult {
-  let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+  let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
   let layout = compute_layout(instance: instance, identity_hex: identity)
   let attached = compute_read_stored_outcome(layout: layout)
   if stored_outcome_is_success(r: attached) {
@@ -1627,7 +1685,18 @@ type UnitEnding
 
 fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  ServiceResultSuccess => EndingNotOomKill  ServiceResultProtocol => EndingNotOomKill  ServiceResultTimeout => EndingNotOomKill  ServiceResultExitCode => EndingNotOomKill  ServiceResultSignal => EndingNotOomKill  ServiceResultCoreDump => EndingNotOomKill  ServiceResultWatchdog => EndingNotOomKill  ServiceResultStartLimitHit => EndingNotOomKill  ServiceResultResources => EndingNotOomKill }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => EndingNotOomKill
+    ServiceResultProtocol => EndingNotOomKill
+    ServiceResultTimeout => EndingNotOomKill
+    ServiceResultExitCode => EndingNotOomKill
+    ServiceResultSignal => EndingNotOomKill
+    ServiceResultCoreDump => EndingNotOomKill
+    ServiceResultWatchdog => EndingNotOomKill
+    ServiceResultStartLimitHit => EndingNotOomKill
+    ServiceResultResources => EndingNotOomKill
+    ServiceResultOomKill => EndingOomKill
+}
     ServiceResultUnrecognized { wire } => EndingUnclassifiable { cause: join(["the manager reported a result this corpus does not recognize: ", wire], "") }
     ServiceResultNotReported { absence } => EndingUnclassifiable { cause: summary_absence_wire(a: absence) }
     ServiceResultFormatNotGrounded { standing } => EndingUnclassifiable { cause: summary_format_standing_wire(s: standing) }
@@ -1661,7 +1730,18 @@ fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String,
 // refuses upstream and never reaches here.
 fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  ServiceResultSuccess => false  ServiceResultProtocol => false  ServiceResultTimeout => false  ServiceResultExitCode => false  ServiceResultSignal => false  ServiceResultCoreDump => false  ServiceResultWatchdog => false  ServiceResultStartLimitHit => false  ServiceResultResources => false }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => false
+    ServiceResultProtocol => false
+    ServiceResultTimeout => false
+    ServiceResultExitCode => false
+    ServiceResultSignal => false
+    ServiceResultCoreDump => false
+    ServiceResultWatchdog => false
+    ServiceResultStartLimitHit => false
+    ServiceResultResources => false
+    ServiceResultOomKill => true
+}
     ServiceResultUnrecognized { wire: _ } => false
     ServiceResultNotReported { absence: _ } => false
     ServiceResultFormatNotGrounded { standing: _ } => false
@@ -1755,7 +1835,14 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  let unit_run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted) {
+    ComputeUnitRunRefused { cause: cause } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    ComputeUnitRunExecuted { run: unit_run } => {
   let run = unit_run.exec
   let log = Filesystem.Write(path: layout.log_path, content: match run {
     ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
@@ -1775,6 +1862,8 @@ fn compute_spawn_and_collect(
     summary: summary,
     gate: launched,
   }
+    }
+  }
 }
 
 // NOTHING WAS SPAWNED, SO NOTHING WAS SUMMARIZED: the same absence main's checkout-failure arm
@@ -1785,7 +1874,33 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 
 // PROVIDE, WITH THE BUILD DEPENDENCY RESOLVED FIRST. The build of the same subject is itself a
 // request: attached if stored, produced once otherwise, and compile/claims consume its store.
+// A WET CLAIM RUN IS A FRESH EFFECT AND THIS PROVIDER DOES NOT SERVE ONE (ruling on gunbc#13072,
+// item 2). Its identity is the request key, and every request with that key shares one lease, one
+// work directory and one stored outcome -- so a second identical wet run would attach to the first,
+// memoizing what std.materialization_provider classifies FreshEffect and the ladder answers Recompute.
+// Serving it needs an execution-occurrence identity beside the demand identity, which the ladder
+// cutover introduces; until then the request refuses before anything is observed or run. The
+// classification is the contract's own (std.materialization_provider compute_work_demand_nature, a
+// fold over the operation alone), read here rather than re-derived, so a future FreshEffect operation
+// refuses without this function changing.
+fn compute_operation_admission(op: WorkOperation) -> String? {
+  match compute_work_demand_nature(operation: op) {
+    FreshEffect => Present { value: "the request's contract classifies it FreshEffect, and this provider has no occurrence identity, so a repeat would attach to a prior run's outcome; run it hermetic or through the materialization cutover" }
+    IdempotentEffect => none
+    PureComputation => none
+    WorldRead { staleness_envelope_declared: _ } => Present { value: "the request's contract classifies it a WorldRead, which this provider's key does not cover" }
+  }
+}
+
 fn compute_provide(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_operation_admission(op: op) {
+    Present { value: why } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: FreshEffectNotServed { detail: why } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+    Absent => compute_provide_admitted(instance: instance, commit: commit, op: op)
+  }
+}
+
+fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
   match compute_observe_toolchain(instance: instance) {
     ToolchainObservationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
@@ -1817,7 +1932,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
       r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir),
       carried: provide_result_host_record(r: build))
   } else {
-    let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+    let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
       r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))
@@ -1899,7 +2014,7 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
 // would work and would also be a second spelling of the same path (DESIGN 3).
 fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  join([dashboard_instance_compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
+  join([compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
 }
 
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT

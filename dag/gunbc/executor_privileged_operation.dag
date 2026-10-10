@@ -28,6 +28,7 @@ import v2.std.orchestration { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.owned_directory { owned_directory_stat_format }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb }
@@ -42,6 +43,8 @@ import gunbc.fleet_posix_accounts {
   SudoConntrack,
   SudoIptablesLegacySave,
   SudoNfct,
+  SudoStat,
+  SudoLs,
 }
 import extdeps.tools.conntrack { conntrack_list_expectations_arguments }
 import extdeps.nftables.ruleset { nft_list_ruleset_arguments, nft_list_table_arguments_wire }
@@ -85,6 +88,8 @@ type ExecutorPrivilegedOperation
   | ReadConntrackExpectations
   | ReadLegacyXtablesRules
   | ReadUserspaceConntrackHelpers
+  | ReadDirectoryIdentity { path: NonEmptyStr }
+  | ListDirectoryEntries { path: NonEmptyStr }
   | RunGunbcEntryAs {
       run_as: NonEmptyStr
       workspace_root: NonEmptyStr
@@ -200,6 +205,8 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
     ReadConntrackExpectations => concat([ci_runner_sudo_binary_path(b: SudoConntrack)], conntrack_list_expectations_arguments)
     ReadLegacyXtablesRules => concat([ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)], iptables_legacy_save_arguments)
     ReadUserspaceConntrackHelpers => concat([ci_runner_sudo_binary_path(b: SudoNfct)], nfct_helper_list_arguments)
+    ReadDirectoryIdentity { path: p } => [ci_runner_sudo_binary_path(b: SudoStat), "-c" as NonEmptyStr, owned_directory_stat_format as NonEmptyStr, "--" as NonEmptyStr, p]
+    ListDirectoryEntries { path: p } => [ci_runner_sudo_binary_path(b: SudoLs), "-1A" as NonEmptyStr, "--" as NonEmptyStr, p]
     ReadNftTable { family: f, table: t } => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_table_arguments_wire(family_wire: f, name: t))
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
@@ -246,6 +253,8 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     ReadConntrackExpectations => RunsAsRoot
     ReadLegacyXtablesRules => RunsAsRoot
     ReadUserspaceConntrackHelpers => RunsAsRoot
+    ReadDirectoryIdentity { path: _ } => RunsAsRoot
+    ListDirectoryEntries { path: _ } => RunsAsRoot
   }
 }
 
@@ -478,6 +487,8 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     ReadConntrackExpectations => NoPrecondition
     ReadLegacyXtablesRules => NoPrecondition
     ReadUserspaceConntrackHelpers => NoPrecondition
+    ReadDirectoryIdentity { path: _ } => NoPrecondition
+    ListDirectoryEntries { path: _ } => NoPrecondition
     RunGunbcEntryAs { run_as: _, workspace_root: _, binary: _, source_roots: _, entry: _, function: _ } => NoPrecondition
   }
 }

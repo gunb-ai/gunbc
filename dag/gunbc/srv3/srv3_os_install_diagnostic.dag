@@ -1432,10 +1432,15 @@ fn observe_stdout_bmc_websocket_line(stdout: String) -> String {
   let parts = split(s: stdout, delimiter: "surface=bmc_websocket")
   match parts.length() <= 1 {
     true => concat("", "")
-    false => {
-      let tail = parts.skip(n: 1).first()
-      split(s: tail, delimiter: "\n").first()
-    }
+    false =>
+      match parts.skip(n: 1).first() {
+        Absent => ""
+        Present { value: tail } =>
+          match split(s: tail, delimiter: "\n").first() {
+            Absent => ""
+            Present { value: line } => line
+          }
+      }
   }
 }
 
