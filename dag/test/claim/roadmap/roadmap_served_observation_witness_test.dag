@@ -42,7 +42,7 @@ import gunbc.roadmap_served_observation {
   served_observation_standing_http_status,
 }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.roadmap.roadmap_event_carrier { AllEventsReadRefused }
+import gunbc.roadmap.roadmap_event_carrier { AllEventsRead, AllEventsReadRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -356,6 +356,16 @@ test fn a_newer_event_makes_the_served_observation_stale() -> Bool {
       ObservationStale { observed_at: _, newest_event_at: _ } => false
       ObservationFreshnessUnread { reason: _ } => false
     }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "") {
+      ObservationFreshnessUnread { reason: _ } => true
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01+00:00") {
+      ObservationFreshnessUnread { reason: _ } => true
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
 }
 
 test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
@@ -369,6 +379,11 @@ test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
   let marked = served_observation_apply_freshness(response: body, freshness: stale)
   let unread_r = served_observation_apply_freshness(response: body, freshness: unread)
   served_observation_newest_event_at(envelopes: []) == ""
+    && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsRead { envelopes: [] }) {
+      ObservationCurrent => true
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
     && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsReadRefused { step: "snapshot", reason: "fixture" }) {
       ObservationFreshnessUnread { reason } => string_contains(s: reason, pattern: "fixture")
       ObservationCurrent => false

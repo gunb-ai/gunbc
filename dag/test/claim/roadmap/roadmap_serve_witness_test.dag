@@ -1093,7 +1093,7 @@ test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool 
     && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }
 
-test fn a_refused_follow_up_enqueue_is_a_502_and_a_held_one_keeps_the_write() -> Bool {
+test fn a_refused_follow_up_enqueue_keeps_the_action_status_and_names_the_refusal() -> Bool {
   let ok = serve_text_response(status: 200, content_type: text_plain_utf8, body: "assigned\n")
   let recorded = serve_attaching_follow_ups(response: ok, enqueues: [
     BeltObligationStarted { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr },
@@ -1103,7 +1103,7 @@ test fn a_refused_follow_up_enqueue_is_a_502_and_a_held_one_keeps_the_write() ->
     BeltObligationEnqueueRefused { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr, reason: "user manager unread" },
   ])
   recorded.status == 200 && recorded.body == "assigned\n"
-    && refused.status == 502
+    && refused.status == 200
     && string_contains(s: refused.body, pattern: "assigned")
     && string_contains(s: refused.body, pattern: "follow-up enqueue refused")
     && string_contains(s: refused.body, pattern: "user manager unread")

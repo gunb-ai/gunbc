@@ -23,6 +23,11 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp, Rfc3339Comparison,
+  Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
+  rfc3339_is_canonically_spelled, rfc3339_compare,
+}
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -719,28 +724,87 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
 }
 
 // FRESHNESS IS A COMPARISON, NOT A CLOCK. The pre-render is last-known-good bytes. Serving them
-// as current when a newer event exists is silent wrongness (DESIGN §5). The fold compares the
-// index's observed_at to the newest event recorded_at from the instance's event log (the same
-// roadmap_events_read_all the assignment route already closes). Standing names the result
-// (present / stale / freshness_unreadable). A stale surface still returns the stored body and
-// answers 409 so the bytes are not presented as current. An unreadable log refuses: absence of a
-// newest instant is not currency. Routes enqueue ServedObservationObligation so the window is the
+// as current when a newer event exists is silent wrongness (DESIGN §5). The fold admits each
+// recorded_at and observed_at as a canonical RFC 3339 UTC instant (extdeps.time.rfc3339) and
+// orders them with rfc3339_compare — lexical String `>` is not an instant (DESIGN §2) and would
+// fabricate currency across format drift (DESIGN §5). Standing names the result (present /
+// stale / freshness_unreadable). A stale surface still returns the stored body and answers 409
+// so the bytes are not presented as current. An empty, unparseable, or incomparable instant
+// refuses: absence of a newest instant is not currency. An empty log (no envelopes) is current:
+// there is no later event. Routes enqueue ServedObservationObligation so the window is the
 // obligation's latency, not a minute-timer.
 type ServedObservationFreshness
   = ObservationCurrent
   | ObservationStale { observed_at: String, newest_event_at: String }
   | ObservationFreshnessUnread { reason: String }
 
+type ServedObservationNewestInstant
+  = NewestInstantNone
+  | NewestInstantUnread { reason: String }
+  | NewestInstantAt { at: Rfc3339Timestamp }
+
+fn served_observation_admit_instant(text: String) -> Rfc3339Timestamp? {
+  let t = trim(s: text)
+  if t == "" {
+    none
+  } else {
+    let stamp = t as Rfc3339Timestamp
+    if rfc3339_is_canonically_spelled(value: stamp) {
+      Present { value: stamp }
+    } else {
+      none
+    }
+  }
+}
+
+fn served_observation_newer_instant(acc: Rfc3339Timestamp, next: Rfc3339Timestamp) -> ServedObservationNewestInstant {
+  match rfc3339_compare(left: acc, right: next) {
+    Rfc3339Precedes => NewestInstantAt { at: next }
+    Rfc3339Follows => NewestInstantAt { at: acc }
+    Rfc3339Simultaneous => NewestInstantAt { at: acc }
+    Rfc3339OrderUndecidable { cause } => NewestInstantUnread { reason: cause as String }
+  }
+}
+
+fn served_observation_newest_instant(envelopes: List<RoadmapEventEnvelope>) -> ServedObservationNewestInstant {
+  fold(envelopes, init: NewestInstantNone, f: (acc, env) =>
+    match acc {
+      NewestInstantUnread { reason: _ } => acc
+      NewestInstantNone =>
+        match served_observation_admit_instant(text: env.event.recorded_at) {
+          Absent => NewestInstantUnread { reason: "an event recorded_at is empty or not a canonical RFC 3339 UTC instant, so the newest instant is unknown" }
+          Present { value: at } => NewestInstantAt { at: at }
+        }
+      NewestInstantAt { at } =>
+        match served_observation_admit_instant(text: env.event.recorded_at) {
+          Absent => NewestInstantUnread { reason: "an event recorded_at is empty or not a canonical RFC 3339 UTC instant, so the newest instant is unknown" }
+          Present { value: next } => served_observation_newer_instant(acc: at, next: next)
+        }
+    })
+}
+
 fn served_observation_newest_event_at(envelopes: List<RoadmapEventEnvelope>) -> String {
-  fold(envelopes, init: "", f: (acc, env) =>
-    if env.event.recorded_at > acc { env.event.recorded_at } else { acc })
+  match served_observation_newest_instant(envelopes: envelopes) {
+    NewestInstantNone => ""
+    NewestInstantUnread { reason: _ } => ""
+    NewestInstantAt { at } => at as String
+  }
 }
 
 fn served_observation_freshness(observed_at: String, newest_event_at: String) -> ServedObservationFreshness {
-  if newest_event_at > observed_at {
-    ObservationStale { observed_at: observed_at, newest_event_at: newest_event_at }
-  } else {
-    ObservationCurrent
+  match served_observation_admit_instant(text: observed_at) {
+    Absent => ObservationFreshnessUnread { reason: "observed_at is empty or not a canonical RFC 3339 UTC instant" }
+    Present { value: observed } =>
+      match served_observation_admit_instant(text: newest_event_at) {
+        Absent => ObservationFreshnessUnread { reason: "newest recorded_at is empty or not a canonical RFC 3339 UTC instant" }
+        Present { value: newest } =>
+          match rfc3339_compare(left: observed, right: newest) {
+            Rfc3339Precedes => ObservationStale { observed_at: observed_at, newest_event_at: newest_event_at }
+            Rfc3339Follows => ObservationCurrent
+            Rfc3339Simultaneous => ObservationCurrent
+            Rfc3339OrderUndecidable { cause } => ObservationFreshnessUnread { reason: cause as String }
+          }
+      }
   }
 }
 
@@ -748,7 +812,11 @@ fn served_observation_freshness_from_events(observed_at: String, events: Roadmap
   match events {
     AllEventsReadRefused { step, reason } => ObservationFreshnessUnread { reason: join([step, ": ", reason], "") }
     AllEventsRead { envelopes } =>
-      served_observation_freshness(observed_at: observed_at, newest_event_at: served_observation_newest_event_at(envelopes: envelopes))
+      match served_observation_newest_instant(envelopes: envelopes) {
+        NewestInstantNone => ObservationCurrent
+        NewestInstantUnread { reason } => ObservationFreshnessUnread { reason: reason }
+        NewestInstantAt { at } => served_observation_freshness(observed_at: observed_at, newest_event_at: at as String)
+      }
   }
 }
 

@@ -150,6 +150,7 @@ import gunbc.live_deploy.emit {
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
   leftover_systemd_timer_retire_steps,
+  leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
 }
 import gunbc.live_deploy.release_locus {
@@ -181,6 +182,7 @@ import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
   artifact_path,
@@ -1867,6 +1869,10 @@ test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -
     && string_contains(s: text, pattern: path as String)
     && string_contains(s: text, pattern: "not-found")
     && string_contains(s: text, pattern: "systemctl")
+    && (match leftover_systemd_timer_retire_dissolution {
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found")
+      BoundDissolution { trigger: _ } => false
+    })
 }
 
 test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path() -> Bool {

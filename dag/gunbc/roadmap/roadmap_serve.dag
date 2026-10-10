@@ -522,20 +522,12 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
   )
 }
 
-fn serve_follow_up_refused_status(status: HttpStatus) -> HttpStatus {
-  if status >= 200 && status < 300 {
-    502
-  } else {
-    status
-  }
-}
-
 fn serve_attaching_follow_ups(response: ServeHttpResponse, enqueues: List<BeltObligationEnqueue>) -> ServeHttpResponse {
   match belt_obligation_enqueue_pass(enqueues: enqueues) {
     BeltPassRecorded => response
     BeltPassFailed { reason } =>
       ServeHttpResponse {
-        status: serve_follow_up_refused_status(status: response.status),
+        status: response.status,
         content_type: response.content_type,
         body: join([response.body, "\nfollow-up enqueue refused: ", reason, " — the write stands\n"], ""),
         headers: response.headers,
