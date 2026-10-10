@@ -3,6 +3,7 @@ module gunbc.auth.oidc_claim_pins
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.repository { gunbc_repository, gunbc_repository_numeric_identity }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.repo_identity { gunbc_default_branch_name }
 
 // ── ONE LIST OF PINS, TWO PROJECTIONS ───────────────────────────────────────────────────────────
 // A dedicated federation's membership rule is a list of GitHub OIDC claims pinned to values. The CEL
@@ -11,9 +12,11 @@ import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 // not on a second description of it. This was the Mt. Collins boot federation's; the GCP IAM
 // converge's observe federation (gunbc.auth.gcp_iam_converge_federation) is the second job pinned
 // the same way, so the shape moved here rather than being written twice.
-// Equality is the default pin. Prefix is the branch-agnostic form of `workflow_ref`: GitHub
+// Equality is the default pin. Prefix is admitted only on the development claim list: GitHub
 // concatenates the workflow FILE and the git ref into one claim (`path.yml@refs/heads/<branch>`),
-// so an equality pin at main is a branch pin, and a pull-request or tag ref is a different prefix.
+// so an equality pin at main is a branch pin. Operator 2026-10-10: privileged SAs (fleet-cloud-
+// convergence, gcp-iam-converge, boot, printer, namecheap, R2 write, Secret Manager version
+// creation) use the equality list. A rung drop does not substitute for that trust boundary.
 type OidcClaimRelation
   = OidcClaimEquals
   | OidcClaimStartsWith
@@ -57,18 +60,18 @@ fn claim_pins_admit(pins: List<OidcClaimPin>, claims: List<OidcClaimPin>) -> Boo
   filter(pins, p => !claim_satisfies_pin(claims: claims, pin: p)).length() == 0
 }
 
-// THE FLEET-CONVERGE WORKFLOW FILE ON ANY HEADS REF. GitHub's `workflow_ref` is
-// `<owner/repo>/<path>@<git-ref>`. The prefix stops at `@refs/heads/` so a tag dispatch and a
-// pull-merge ref are refused, and a session-branch dispatch is admitted. The separate `ref ==
-// refs/heads/main` pin is gone: it was the same branch lock written twice.
-//
-// MINTED REACH (operator 2026-10-09; §3d selection re-run, not a second pool): still
-// FederatedScopedGrant — recurring automated effect, workload identity, per-secret cell, this
-// workflow file, workflow_dispatch only. Reach is any heads dispatch of that file, not reviewed
-// main bytes. The YAML on the branch is the run's workflow; the path pin does not pin main's
-// contents. Pull_request stays refused. Who may press Dispatch is GitHub's repo dispatch
-// permission, not WIF. A second federation for "branch vs main" would be two authorities for one
-// account. Live GCP still holds the old main pin until gcp_iam_converge after this parses.
+fn fleet_converge_workflow_ref_at_main() -> String {
+  join([
+    gunbc_repository.full_name as String, "/",
+    artifact_path(a: FleetConvergeYamlArtifact),
+    "@refs/heads/", gunbc_default_branch_name
+  ], "")
+}
+
+// THE FLEET-CONVERGE WORKFLOW FILE ON ANY HEADS REF. Bound only to
+// fleet_converge_development_workflow_claim_pins -- never to fleet-cloud-convergence or any
+// privileged job pin list. The development SA (fleet-development-convergence) is the next landing;
+// this list is the claim contract that SA may consume.
 fn fleet_converge_workflow_ref_heads_prefix() -> String {
   join([
     gunbc_repository.full_name as String, "/",
@@ -79,21 +82,31 @@ fn fleet_converge_workflow_ref_heads_prefix() -> String {
 
 data workflow_dispatch_event_name: String = "workflow_dispatch"
 
-// THE PINS EVERY FLEET-CONVERGE FEDERATION SHARES, at WORKFLOW grain: this repository by numeric
-// identity, this workflow file on a branch, and a workflow_dispatch event. A job-grain federation
-// adds the job's own `environment`; a federation for jobs that declare none (fleet-cloud-convergence)
-// stops here. Pull requests present event_name pull_request and are refused.
+// THE PINS EVERY PRIVILEGED FLEET-CONVERGE FEDERATION SHARES: this repository by numeric identity,
+// the workflow file at reviewed main, a dispatch on main, and workflow_dispatch. A job-grain
+// federation adds the job's own `environment`; fleet-cloud-convergence stops here.
 fn fleet_converge_workflow_claim_pins() -> List<OidcClaimPin> {
+  [
+    oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
+    oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
+    oidc_equals(claim: "workflow_ref", value: fleet_converge_workflow_ref_at_main()),
+    oidc_equals(claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name)),
+    oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
+  ]
+}
+
+fn fleet_converge_job_claim_pins(environment: NonEmptyStr) -> List<OidcClaimPin> {
+  concat(fleet_converge_workflow_claim_pins(), [oidc_equals(claim: "environment", value: environment as String)])
+}
+
+// BRANCH-DISPATCHABLE DEVELOPMENT PINS: plan/observe and narrow development deploys. Not bound to
+// fleet-cloud-convergence, gcp-iam-converge, R2 write, Secret Manager version creation, boot, or
+// root-host mutation. A session-branch dispatch is admitted here and refused by the privileged list.
+fn fleet_converge_development_workflow_claim_pins() -> List<OidcClaimPin> {
   [
     oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
     oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
     oidc_starts_with(claim: "workflow_ref", value: fleet_converge_workflow_ref_heads_prefix()),
     oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
   ]
-}
-
-// THE PINS EVERY DEDICATED FLEET-CONVERGE JOB SHARES: the workflow pins and the job's own
-// `environment` -- the one job-grain claim GitHub asserts.
-fn fleet_converge_job_claim_pins(environment: NonEmptyStr) -> List<OidcClaimPin> {
-  concat(fleet_converge_workflow_claim_pins(), [oidc_equals(claim: "environment", value: environment as String)])
 }

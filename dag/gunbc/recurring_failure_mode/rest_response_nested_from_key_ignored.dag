@@ -25,7 +25,7 @@ data rest_response_nested_from_key_ignored: RecurringFailureMode = RecurringFail
     DeclarationRef { module_path: "extdeps.cloud.gcp.gcp", decl_name: "WifProviderWire", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.auth.heal_publisher_provision", decl_name: "provider_reasons", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness", decl_name: "the_live_provider_list_decodes_its_camel_case_fields", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness", decl_name: "the_live_mtcollins1_provider_still_pins_main_and_is_not_fully_present", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness", decl_name: "the_live_mtcollins1_provider_matches_the_declared_main_pin", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness", decl_name: "an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness", decl_name: "both_issuer_spellings_refuse_as_ambiguous", field: WholeDeclaration },
   ],
