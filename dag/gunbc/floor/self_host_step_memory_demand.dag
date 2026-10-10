@@ -242,10 +242,16 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
 ]
 
 
-// DECLARED FRONTIER (DESIGN 3c): this module has no executing consumer on the base this PR is cut
-// from. The consumer it is built for is slot sizing: the cold-run receipt row of gunbc.cutover_receipt
-// and the note of gunbc.runner_slot_desired, which take this readout as the carrier of the per-step
-// memory figure. Trigger: those modules import it, on a base that carries them.
+// CONSUMERS (DESIGN 3c, review 78429). By execution in this change: test.claim.floor
+// .self_host_step_memory_demand_witness_test runs self_host_step_memory_readout_over and
+// measured_lowering_holds over supplied receipt rows, so every refusal arm here goes red by execution;
+// and the instrument that reads the committed receipt is this module's own entry
+// (gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag
+// --function self_host_step_memory_readout), whose result each PR records per receipt. DECLARED
+// FRONTIER: a `gunbc test` label for that readout, which needs a TargetProducer arm in
+// gunbc.target_binding plus its seed arm (the trigger gunbc.memory_composition_seed_growth already
+// names); until it exists the readout is not on any required path, and gunbc.runner_slot_desired,
+// which is on main, sizes the slot as a policy row and does not import an effectful entry.
 
 // A trend row must exist for every classified structure's ender and scale (NeverEnds excepted): the
 // classification and the trend are one claim about what ends each structure, so a structure whose
