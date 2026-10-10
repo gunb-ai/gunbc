@@ -1,6 +1,5 @@
 module gunbc.machine_intake_ampere_checkpoint_console_observation
 
-import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.optional { Present }

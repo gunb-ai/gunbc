@@ -199,7 +199,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.logic { bool_node }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import v2.std.algebra { fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,

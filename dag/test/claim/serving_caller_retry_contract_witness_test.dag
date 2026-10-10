@@ -3,7 +3,7 @@ module test.claim.serving_caller_retry_contract_witness_test
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { length }
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, DurableRetryPropertyRow, RetryPropertyEstablished, RetryPropertyUnestablished,
   PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,

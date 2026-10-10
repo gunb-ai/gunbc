@@ -2,7 +2,6 @@ module test.claim.system_memory_component_witness
 
 import std.types { Bool, List }
 import std.nat { Nat }
-import v2.std.algebra { filter }
 import std.optional { Present, Absent }
 import std.measure { bandwidth, gibibyte, gibibyte_to_byte_size }
 import extdeps.memory.types { MemoryFacts, Hbm }

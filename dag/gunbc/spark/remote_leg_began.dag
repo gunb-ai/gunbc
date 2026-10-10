@@ -2,7 +2,7 @@ module gunbc.spark.remote_leg_began
 
 import std.types { String, Bool, List }
 import std.algebra { trim }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 
 // THE IN-BAND BEGAN-LINE, ONE PROTOCOL FOR EVERY PRIVILEGED SPARK LEG. extdeps.ssh.session
 // ssh_client_error_exit_status says why ssh's 255 alone does not establish that nothing ran, and

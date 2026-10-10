@@ -3,7 +3,7 @@ module extdeps.networkmanager.nmcli
 import std.types { NonEmptyStr, String, List, Int, Bool }
 import std.algebra { trim }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }

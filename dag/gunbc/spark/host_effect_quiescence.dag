@@ -2,7 +2,6 @@ module gunbc.spark.host_effect_quiescence
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter }
 import std.algebra { trim }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }

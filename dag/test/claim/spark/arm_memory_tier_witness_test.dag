@@ -10,7 +10,6 @@ import extdeps.vllm.weight_offload {
   vllm_prefetch_step, VllmPrefetchStepAdmitted, VllmPrefetchStepRefused,
   vllm_weight_offload_split_standing, VllmWeightOffloadSplitStanding, WeightOffloadSplitRefused,
 }
-import v2.std.algebra { filter }
 import std.optional { Present, Absent }
 import extdeps.systems.types {
   SystemMemoryComponent, system_memory_component_wire, coherent_superchip_memory_components, system_memory_component_same,

@@ -1,7 +1,7 @@
 module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, NonEmptyStr, Set, String }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }

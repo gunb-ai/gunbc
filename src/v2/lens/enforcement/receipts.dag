@@ -3,7 +3,7 @@ module v2.lens.enforcement.receipts
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { any, contains }
+import v2.std.algebra { contains }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.node { Atom, ComputationNode, Edge, Loop, Authored, Node, Positional, TypeNode, LoopBoundEdge, core_edge_label }

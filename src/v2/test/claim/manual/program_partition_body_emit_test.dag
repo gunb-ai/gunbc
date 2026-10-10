@@ -12,7 +12,7 @@ import v2.extdeps.languages.typescript {
   ts_target_model
 }
 import std.algebra { Empty, list_snoc_item }
-import v2.std.algebra { any, fold_list }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,

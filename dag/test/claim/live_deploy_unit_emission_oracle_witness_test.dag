@@ -61,7 +61,7 @@ import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, systemd_time_span_of_seconds }
 import extdeps.http.server { HttpServerListenConfig }
-import v2.std.algebra { any, for_all }
+import v2.std.algebra { for_all }
 import extdeps.systemd.unit_file {
   systemd_unit_file_lines,
   SystemdUnitFile,

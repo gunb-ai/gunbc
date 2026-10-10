@@ -79,7 +79,6 @@ import extdeps.languages.css.properties { Color, Padding, css_property_wire }
 import extdeps.languages.css.media_queries { coarse_pointer, media_condition_wire }
 import gunbc.design.scale { scale_value_wire, font_sans }
 import gunbc.site.web_fonts { web_font_faces }
-import v2.std.algebra { filter }
 
 // GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
 // an element's markup function, an element's rules, the token block, the palette, a text role.

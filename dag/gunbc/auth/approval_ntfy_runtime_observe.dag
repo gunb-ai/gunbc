@@ -1,7 +1,6 @@
 module gunbc.auth.approval_ntfy_runtime_observe
 
 import std.types { NonEmptyStr, String, Int, List }
-import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
