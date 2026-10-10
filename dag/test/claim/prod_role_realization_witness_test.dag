@@ -1,0 +1,97 @@
+module test.claim.prod_role_realization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool }
+import gunbc.deployment_risk {
+  NoProdRole,
+  ProdRoleHeldBy,
+  srv1_daily_workspace_deployment,
+  srv2_deploy_deployment,
+  srv2_lab_v1_deletion_deployment,
+  macbook_local_deployment,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleUnheld,
+  ProdRoleHolderUnrealized,
+  ProdRoleHolderAmbiguous,
+  ProdRoleHolderUnactuatable,
+  prod_role_realization,
+  prod_role_realization_in,
+  srv1_live_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+}
+import gunbc.live_deploy.desired { prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED ROSTERS: the resolver is judged at its own interface, over rosters the claim constructs.
+fn two_instances() -> List<HostDashboardInstance> {
+  [srv1_live_dashboard_instance(), srv2_deploy_dashboard_instance()]
+}
+
+fn doubled_instances() -> List<HostDashboardInstance> {
+  [srv1_live_dashboard_instance(), srv1_live_dashboard_instance()]
+}
+
+fn holder_host_in(realization: ProdRoleRealization) -> String {
+  match realization {
+    ProdRoleRealizedBy { holder } => holder.instance.host_identity as String
+    ProdRoleRealizationRefused { cause: _ } => ""
+  }
+}
+
+// ── RED per refusal ─────────────────────────────────────────────────────────────────────────────
+test fn no_prod_role_refuses_as_unheld_and_never_falls_back_to_srv1() -> Bool {
+  match prod_role_realization_in(selection: NoProdRole, instances: two_instances()) {
+    ProdRoleRealizationRefused { cause: ProdRoleUnheld } => true
+    _ => false
+  }
+}
+
+test fn a_holder_with_no_instance_refuses_as_unrealized() -> Bool {
+  match prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_lab_v1_deletion_deployment }, instances: two_instances()) {
+    ProdRoleRealizationRefused { cause: ProdRoleHolderUnrealized { deployment: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_holder_with_two_instances_refuses_as_ambiguous_not_the_first() -> Bool {
+  match prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }, instances: doubled_instances()) {
+    ProdRoleRealizationRefused { cause: ProdRoleHolderAmbiguous { deployment: _, count: n } } => n == 2
+    _ => false
+  }
+}
+
+// ── POSITIVE CONTROLS: the role FOLLOWS the selection ───────────────────────────────────────────
+test fn the_holder_realization_follows_the_selection_to_another_host() -> Bool {
+  holder_host_in(prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }, instances: two_instances())) == "srv2"
+    && holder_host_in(prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }, instances: two_instances())) == "srv1"
+}
+
+// The actuated join refuses a holder that has a dashboard instance but no desired deployment row:
+// srv2_deploy is a dashboard instance and a real holder candidate, so the join (not the roster
+// lookup) is what decides whether anything can install the role.
+test fn the_actuated_join_refuses_a_holder_nothing_can_install() -> Bool {
+  match prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: macbook_local_deployment }) {
+    ProdRoleRealizationRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── THE INHABITANCE CLAIM: the real switch over the real roster and the real desired roster ────
+// The route is asserted, not only the answer: the plain resolver and the actuated join must agree
+// on the same holder, and the broker placement must read its host from that holder.
+test fn the_real_route_places_the_broker_on_the_prod_role_holder() -> Bool {
+  let plain = holder_host_in(prod_role_realization())
+  let actuated = holder_host_in(prod_role_actuated_realization())
+  let broker = match approval_broker_host_under(realization: prod_role_actuated_realization()) {
+    ApprovalBrokerHostResolved { host } => host as String
+    ApprovalBrokerHostRefused { cause: _ } => ""
+  }
+  plain != "" && plain == actuated && actuated == broker
+}

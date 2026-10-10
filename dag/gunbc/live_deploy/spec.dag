@@ -40,13 +40,17 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
+  ProdRoleRealization,
+  ProdRoleHolder,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
 }
@@ -382,20 +386,15 @@ data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_br
 //
 // SO OWNERSHIP IS DECLARED AND THE EMITTER READS IT. One instance per host owns the broker unit;
 // every other spec emits no broker step at all, writes nothing and restarts nothing.
-// THE INSTANCE THAT OWNS THE HOST'S BROKER. It is srv1-live because that is where the approval
-// store is: gunbc.auth.approval_decision_store approval_decision_store_root is one path on one
-// host, and the whole point of a single-writer store is that exactly one process opens it.
+// THE INSTANCE THAT OWNS THE HOST'S BROKER IS THE REALIZATION OF THE PROD-ROLE HOLDER
+// (gunbc.deployment_risk prod_role_selection, resolved by gunbc.roadmap_dashboard_instance
+// prod_role_realization). The approval store is the prod deployment's state -- one single-writer
+// path that exactly one process opens -- so the broker follows the role, not a host or an
+// instance_id literal. Moving prod is an edit to the selection row and to nothing here.
 //
-// IT IS A DECLARED OWNER RATHER THAN A DERIVATION FROM THE INSTANCE because "which deployment runs
-// the approval loop" is not recoverable from any field an instance carries -- srv1-live and
-// srv1-lab are the same shape on the same host, and the only thing that distinguishes them for this
-// purpose is that one of them was chosen. Deriving it would mean inventing a rule that happens to
-// select production today.
-//
-// A SECOND HOST SERVING APPROVALS IS WHAT RETIRES THIS ROW, at which point the owner becomes a
-// per-host lookup and the store root becomes host-derived with it. Until then a single row is the
-// honest shape: there is one approval loop, and it has one home.
-data gunbc_approval_broker_owning_instance: NonEmptyStr = "srv1-live"
+// UNDER NoProdRole NOBODY OWNS IT. The realization refuses with a typed cause and every spec emits
+// no broker step; there is no fallback to srv1. A second host serving approvals still retires the
+// single-owner shape, at which point ownership becomes per-host.
 
 data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
 
@@ -414,18 +413,33 @@ fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
 }
 
-// A SPEC THAT DOES NOT OWN THE BROKER EMITS NO BROKER STEP. This is the predicate the emitter
-// consults; it is not a validation standing beside a write that would otherwise happen, because the
-// steps are CONSTRUCTED from it -- a non-owning apply produces an empty list, so there is nothing to
-// skip and nothing to get wrong.
-fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
-  instance_owns_the_host_approval_broker(instance_id: spec.instance_id)
+// THE ROLE-FOLLOWING SINGLETONS A SPEC HOLDS -- the approval broker unit and front door, the fabric
+// storage unit, route, socket, root and directories -- as ONE subject, carried on the spec as a
+// holder token (gunbc.roadmap_dashboard_instance ProdRoleHolder, sole_constructor: only a successful
+// resolution of prod_role_selection mints one). Every singleton effect is BUILT FROM the token's
+// instance, never from a caller-supplied instance_id, so no spec can take ownership by spelling one.
+// Which spec carries the token is decided by the role model's own identity (DeploymentId, a
+// structural record), and under every refused realization no spec holds anything.
+type RoleSingletonHolding
+  = HoldsProdRoleSingletons { holder: ProdRoleHolder }
+  | HoldsNoRoleSingleton
+
+fn role_singleton_holding_under(realization: ProdRoleRealization, instance: HostDashboardInstance) -> RoleSingletonHolding {
+  match realization {
+    ProdRoleRealizedBy { holder } =>
+      if holder.instance.deployment == instance.deployment { HoldsProdRoleSingletons { holder: holder } } else { HoldsNoRoleSingleton }
+    ProdRoleRealizationRefused { cause: _ } => HoldsNoRoleSingleton
+  }
 }
 
-// THE ONE OWNERSHIP COMPARISON, read by the spec-level predicate above and by the front-door member,
-// which is built before a spec exists and so holds only the instance.
-fn instance_owns_the_host_approval_broker(instance_id: NonEmptyStr) -> Bool {
-  (instance_id as String) == (gunbc_approval_broker_owning_instance as String)
+// A SPEC THAT DOES NOT HOLD THE ROLE EMITS NO BROKER STEP. This is the predicate the emitter
+// consults; the steps are CONSTRUCTED from it -- a non-holding apply produces an empty list, so there
+// is nothing to skip and nothing to get wrong.
+fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => true
+    HoldsNoRoleSingleton => false
+  }
 }
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
@@ -606,7 +620,7 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
-// only by the deployment whose instance holds the fabric DB placement (fabric_storage_placed_on). It is
+// only by the deployment whose instance holds the fabric DB placement (RoleSingletonHolding). It is
 // deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
 // are owned-directory demands no retract touches (gunbc.fabric_storage_placement fabric_storage_directory_demands).
 fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
@@ -617,11 +631,20 @@ fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
-fn deployment_fabric_storage_serve_endpoint() -> TailscaleServeEndpoint {
+// THE DOOR SOCKET OF THE HOLDER THIS SPEC CARRIES, built from the token's instance like every other
+// role singleton. A spec holding no role has no socket, and the emitter refuses rather than invent one.
+fn deployment_fabric_storage_door_socket(spec: DeploymentSpec) -> NonEmptyStr? {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } => Present { value: fabric_storage_door_socket(instance: holder.instance) }
+    HoldsNoRoleSingleton => none
+  }
+}
+
+fn deployment_fabric_storage_serve_endpoint(door_socket: NonEmptyStr) -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: fabric_storage_https_port,
     mount: ServeRootMount,
-    backend: tailscale_serve_unix_target(path: fabric_storage_door_socket()),
+    backend: tailscale_serve_unix_target(path: door_socket),
   }
 }
 
@@ -991,6 +1014,7 @@ type DeploymentSpec {
   names: DeploymentNames
   instance_id: NonEmptyStr
   directories: List<OwnedDirectoryTarget>
+  role_singletons: RoleSingletonHolding
 }
 
 // TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20):
@@ -1065,6 +1089,7 @@ type DeploymentSpec {
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
+  holding: RoleSingletonHolding,
 ) -> List<DeploymentArtifactStep> {
   concat([
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
@@ -1085,8 +1110,8 @@ fn deployment_owned_steps(
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
   ], concat(
-    deployment_fabric_storage_steps(instance: instance, names: names),
-    deployment_approval_broker_front_door_steps(instance: instance),
+    deployment_fabric_storage_steps(holding: holding, names: names),
+    deployment_approval_broker_front_door_steps(holding: holding),
   ))))
 }
 
@@ -1107,13 +1132,14 @@ fn deployment_owned_steps(
 // One member, two mappings: its identity is the /approve mount's route key and its apply and
 // teardown realize every endpoint approval_broker_front_door_endpoints returns, the way
 // GunbcSourceTree's one member owns its sync unit and env file. It is emitted only by the instance
-// that owns the host's broker (instance_owns_the_host_approval_broker).
+// that owns the host's broker (RoleSingletonHolding).
 fn deployment_approval_broker_front_door_endpoints() -> List<TailscaleServeEndpoint> {
   approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
 }
 
-fn deployment_approval_broker_front_door_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
-  if instance_owns_the_host_approval_broker(instance_id: instance.instance_id) && approval_front_door_mounts_installed() {
+fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) -> List<DeploymentArtifactStep> {
+  let holds = match holding { HoldsProdRoleSingletons { holder: _ } => true  HoldsNoRoleSingleton => false }
+  if holds && approval_front_door_mounts_installed() {
     [
       DeploymentArtifactStep {
         kind: ApprovalBrokerFrontDoor,
@@ -1129,14 +1155,13 @@ fn deployment_approval_broker_front_door_steps(instance: HostDashboardInstance) 
 // references the binary and tree installed above) and then its tailscale route (routes to a live
 // service, the same reason the dashboard's mapping is last). Empty on every instance that does not
 // hold the placement.
-fn deployment_fabric_storage_steps(instance: HostDashboardInstance, names: DeploymentNames) -> List<DeploymentArtifactStep> {
-  if fabric_storage_placed_on(instance: instance) {
-    [
+fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match holding {
+    HoldsProdRoleSingletons { holder } => [
       DeploymentArtifactStep { kind: FabricStorageServeUnit, path: deployment_fabric_storage_unit_path(names: names) },
-      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint()) },
+      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
-  } else {
-    []
+    HoldsNoRoleSingleton => []
   }
 }
 
@@ -1206,11 +1231,12 @@ fn deployment_steps_apply_order(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
+  holding: RoleSingletonHolding,
 ) -> List<DeploymentStep> {
   concat(
     map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
     map(
-      deployment_owned_steps(instance: instance, names: names),
+      deployment_owned_steps(instance: instance, names: names, holding: holding),
       s => ArtifactStep { step: s },
     )
   )
@@ -1316,14 +1342,21 @@ fn deployment_service_config(
 // two machines shares instance and identity and differs in target. Neither case needs a new
 // function, which is the property that was missing.
 
+
+// THE REALIZATION IS SUPPLIED, never resolved here: the spec cannot see the desired roster that decides
+// whether the holder is actuatable, so gunbc.live_deploy.desired resolves it
+// (prod_role_actuated_realization) and every caller passes it in. A witness passes a moved one.
 fn deployment_spec_for(
+  realization: ProdRoleRealization,
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
 ) -> DeploymentSpec {
+  let holding = role_singleton_holding_under(realization: realization, instance: instance)
   DeploymentSpec {
     target: target,
-    steps: deployment_steps_apply_order(instance: instance, target: target, names: names),
+    steps: deployment_steps_apply_order(instance: instance, target: target, names: names, holding: holding),
+    role_singletons: holding,
     service: deployment_service_config(
       instance: instance,
       names: names,
@@ -1334,7 +1367,7 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
-    directories: dashboard_instance_directory_demands(instance: instance),
+    directories: dashboard_instance_directory_demands(realization: realization, instance: instance),
   }
 }
 

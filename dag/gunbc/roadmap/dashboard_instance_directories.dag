@@ -1,7 +1,7 @@
 module gunbc.roadmap.dashboard_instance_directories
 
 import std.types { List }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands, ProdRoleRealization }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.auth.session_store { session_store_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_directory }
@@ -28,7 +28,7 @@ import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
 //
 // It lives above the consumers rather than in gunbc.roadmap_dashboard_instance because every consumer
 // imports the instance type from there; composing them there would close a cycle.
-fn dashboard_instance_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   concat(dashboard_instance_own_directory_demands(instance: instance), concat([
     session_store_directory(instance: instance),
     login_transaction_store_directory(instance: instance),
@@ -37,5 +37,5 @@ fn dashboard_instance_directory_demands(instance: HostDashboardInstance) -> List
     issue_view_store_directory(instance: instance),
     roadmap_event_carrier_directory(instance: instance),
     compute_root_directory(instance: instance),
-  ], fabric_storage_directory_demands(instance: instance)))
+  ], fabric_storage_directory_demands(realization: realization, instance: instance)))
 }

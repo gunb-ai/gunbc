@@ -2,7 +2,6 @@ module gunbc.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_absolute_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
-import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity, srv1_dashboard_listen_host }
 import std.measure { ByteSize }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
@@ -13,6 +12,9 @@ import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, own
 import gunbc.deployment_risk {
   DeploymentId,
   DeploymentRiskClass,
+  ProdRoleSelection,
+  NoProdRole,
+  ProdRoleHeldBy,
   deployment_risk_class,
   prod_role_selection,
   srv1_daily_workspace_deployment,
@@ -382,9 +384,17 @@ fn dashboard_instance_dispatch_platform_executables(
 }
 
 fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_ownership_marker_in(root: instance.instance_root, instance_id: instance.instance_id)
+}
+
+// THE OWNERSHIP MARKER'S ONE NAMING RULE: an empty file under a root, named for the instance that
+// owns the root. The instance root carries it (above), and so does the prod-role holder's fabric
+// store control directory (gunbc.fabric_storage_placement fabric_storage_ownership_marker_path), so an
+// old store with no unit is still observably someone's state rather than reading as nothing.
+fn dashboard_ownership_marker_in(root: FilePath, instance_id: NonEmptyStr) -> FilePath {
   dashboard_instance_child(
-    root: instance.instance_root,
-    child: join([".gunbc-dashboard-instance-", instance.instance_id as String], ""),
+    root: root,
+    child: join([".gunbc-dashboard-instance-", instance_id as String], ""),
   )
 }
 
@@ -777,6 +787,68 @@ fn dashboard_instance_for_id(instance_id: String) -> DashboardInstanceById {
   }
 }
 
+// THE PROD-ROLE HOLDER'S REALIZATION -- the ONE lookup from the role's DeploymentId to the
+// HostDashboardInstance that realizes it (gunbc.deployment_risk). It is the instance roster
+// filtered by its own deployment field, so there is no second id-to-instance table to drift.
+// Every role-following singleton (approval broker owner, fabric storage placement) asks THIS, never
+// srv1 by name. Under NoProdRole it REFUSES with a typed cause; there is no arm that falls back to
+// srv1, and a holder with zero or several realizations is its own refusal rather than "the first".
+// History: gunbc#13217 (closed, branch session/sharp-heron-165) first drew this resolver.
+type ProdRoleRealizationRefusal
+  = ProdRoleUnheld
+  | ProdRoleHolderUnrealized { deployment: DeploymentId }
+  | ProdRoleHolderAmbiguous { deployment: DeploymentId, count: Int }
+  | ProdRoleHolderUnactuatable { deployment: DeploymentId }
+
+// THE HOLDER TOKEN. sole_constructor, so only this module -- and in it only prod_role_realization_in
+// -- can mint one: a role-following singleton is built FROM a holder, and no caller can claim
+// ownership by spelling an instance_id or by constructing a holder for an instance of its choosing.
+type ProdRoleHolder sole_constructor {
+  instance: HostDashboardInstance
+}
+
+type ProdRoleRealization
+  = ProdRoleRealizedBy { holder: ProdRoleHolder }
+  | ProdRoleRealizationRefused { cause: ProdRoleRealizationRefusal }
+
+fn prod_role_realization_in(
+  selection: ProdRoleSelection,
+  instances: List<HostDashboardInstance>,
+) -> ProdRoleRealization {
+  match selection {
+    NoProdRole => ProdRoleRealizationRefused { cause: ProdRoleUnheld }
+    ProdRoleHeldBy { deployment: holder } => {
+      let realizing = instances |> filter(i => i.deployment == holder)
+      match realizing |> first {
+        Absent => ProdRoleRealizationRefused { cause: ProdRoleHolderUnrealized { deployment: holder } }
+        Present { value: only } =>
+          if count(realizing) == 1 {
+            ProdRoleRealizedBy { holder: ProdRoleHolder { instance: only } }
+          } else {
+            ProdRoleRealizationRefused { cause: ProdRoleHolderAmbiguous { deployment: holder, count: count(realizing) } }
+          }
+      }
+    }
+  }
+}
+
+// The production question: the real switch over the real roster.
+fn prod_role_realization() -> ProdRoleRealization {
+  prod_role_realization_in(selection: prod_role_selection, instances: public_builtin_dashboard_instances())
+}
+
+fn prod_role_realization_refusal_detail(cause: ProdRoleRealizationRefusal) -> String {
+  match cause {
+    ProdRoleUnheld => "prod role refused: prod_role_selection is NoProdRole; no deployment holds it"
+    ProdRoleHolderUnrealized { deployment } =>
+      join(["prod role refused: holder ", deployment.name as String, " has no HostDashboardInstance"], "")
+    ProdRoleHolderAmbiguous { deployment, count: n } =>
+      join(["prod role refused: holder ", deployment.name as String, " has ", to_string(n), " instances"], "")
+    ProdRoleHolderUnactuatable { deployment } =>
+      join(["prod role refused: holder ", deployment.name as String, " has no desired deployment row (gunbc.live_deploy.desired desired_deployment_roster), so nothing can actuate it"], "")
+  }
+}
+
 data macbook_local_dashboard_id: NonEmptyStr = "macbook-local" as NonEmptyStr
 
 data macbook_operator_home_root: FilePath = "/Users/briansrls" as FilePath
@@ -938,7 +1010,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: srv1_daily_workspace_deployment,
     instance_id: srv1_dashboard_live_id,
-    host_identity: srv1_dashboard_host_identity,
+    host_identity: "srv1" as NonEmptyStr,
     provision_parent_root: "/opt/gunbc" as FilePath,
     instance_root: "/opt/gunbc" as FilePath,
     local_origin_root: srv1_gunbc_repo_root,
@@ -962,7 +1034,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     },
     serve_binary: srv1_gunbc_serve_binary,
     serve_function: "roadmap_serve_handle" as NonEmptyStr,
-    listen_host: srv1_dashboard_listen_host,
+    listen_host: "127.0.0.1" as NonEmptyStr,
     listen_port: 8080,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
