@@ -17,6 +17,7 @@ import gunbc.fleet_intent {
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
@@ -126,10 +127,11 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // gunbc.machine_intake_mtcollins1_socket1_investigation_observation read sockets 1, cpus 80,
 // numa_nodes 1, and the witness checks this offer's thread count against those readings.
 //
-// THE PART IS A BET, TYPED AS ONE IN THIS NOTE. The operator reports an Ampere Altra engineering
-// sample in socket 0 (mtcollins1_socket_cpus), and no model number has been read off it. Q80-30 is
-// the corpus's only 80-core Altra row, chosen because its thread count equals the measured 80. What
-// the width depends on is that count, and the count is measured; the model number is not.
+// THE PART IDENTITY IS A BET, TYPED ON mtcollins1_socket0_cpu_part_standing (DESIGN §4d), not only
+// in this comment. The operator reports an Ampere Altra engineering sample in socket 0
+// (mtcollins1_socket_cpus); no model number has been read off it. Q80-30 is the corpus's only
+// 80-core Altra row, chosen because its thread count equals the measured 80. Width reads that
+// count; catalog model number and Hertz are TranscribedUncited until the census reads them.
 //
 // NO MEMORY DEVICES ARE LISTED. Nominal DIMM capacity is not what placement charges. Usable RAM
 // arrives as HostUsableRamMeasured, read by gunbc.host_memory_observation host_usable_ram_from_capture
@@ -141,6 +143,18 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // from that same reader). Until then gunbc_ci_host_usable_ram_for answers HostUsableRamUnmeasured
 // and placement refuses UsableRamUnavailable. The offer is still a consumer of the CPU axis:
 // compute_host_cpu_admitted_width reads its processors.
+data mtcollins1_socket0_cpu_part_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the Ampere model number and advertised per-thread frequency off socket 0 on a one-socket census boot (lscpu Model name / dmidecode type 4); until that read, binding altra_q8030_catalog (and its Hertz) is a bet matching the measured 80 threads, not a deduced part identity",
+}
+
+fn mtcollins1_socket0_cpu_part_is_established() -> Bool {
+  match mtcollins1_socket0_cpu_part_standing {
+    CitedToAuthority { authority: _ } => true
+    ObservedByReceipt { observed: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+  }
+}
+
 data mtcollins1_socket0_cpu: CpuFacts = CpuFacts {
   catalog: altra_q8030_catalog,
   deployment: CpuDeploymentFacts { sustained_per_thread_hz: altra_q8030_catalog.nominal_sustained_per_thread_hz },

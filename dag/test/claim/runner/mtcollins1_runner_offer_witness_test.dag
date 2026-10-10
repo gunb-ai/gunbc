@@ -4,7 +4,11 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size, byte_size_count }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import product.host_identity { HostIdentity }
-import gunbc.ci_fleet { mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu }
+import gunbc.ci_fleet {
+  mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu,
+  mtcollins1_socket0_cpu_part_standing, mtcollins1_socket0_cpu_part_is_established,
+}
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import gunbc.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_host_capture_envelope { BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId }
@@ -111,6 +115,17 @@ fn one_socket_boot_reads_width(b: MtCollins1Socket1InvestigationBoot, width: Int
     Absent => true
     Present { value: h } => h.sockets == 1 && (h.cpus as Int) == width
   }
+}
+
+test fn mtcollins1_socket0_cpu_part_is_a_typed_bet_not_a_deduced_catalog_row() -> Bool {
+  !mtcollins1_socket0_cpu_part_is_established()
+    && match mtcollins1_socket0_cpu_part_standing {
+      TranscribedUncited { read_obligation: o } =>
+        string_contains(s: o as String, pattern: "census")
+          && string_contains(s: o as String, pattern: "model number")
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
 }
 
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
