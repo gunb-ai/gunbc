@@ -74,11 +74,12 @@ test fn the_holder_realization_follows_the_selection_to_another_host() -> Bool {
 }
 
 // The actuated join refuses a holder that has a dashboard instance but no desired deployment row:
-// srv2_deploy is a dashboard instance and a real holder candidate, so the join (not the roster
-// lookup) is what decides whether anything can install the role.
+// macbook_local is a built-in dashboard instance (so the plain resolver realizes it) that is on no
+// desired roster, so the join -- not the instance lookup -- is what decides nothing can install the
+// role. The arm is pinned: any other refusal (e.g. ProdRoleHolderUnrealized) turns this red.
 test fn the_actuated_join_refuses_a_holder_nothing_can_install() -> Bool {
   match prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: macbook_local_deployment }) {
-    ProdRoleRealizationRefused { cause: _ } => true
+    ProdRoleRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: d } } => d == macbook_local_deployment
     _ => false
   }
 }
