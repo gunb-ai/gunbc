@@ -1,5 +1,6 @@
 module gunbc.roadmap_serve
-import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+
+import gunbc.roadmap_runtime_plan { roadmap_plan_projection }import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
 import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
 import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
 import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
@@ -128,7 +129,7 @@ import gunbc.roadmap_page { issue_detail_not_found_page,
   issue_detail_page_for, issue_detail_node_exists,
 }
 import gunbc.roadmap_authority {
-  roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_component {
@@ -550,7 +551,7 @@ fn serve_dispatch_handler_response_for_instance(
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_plan_projection(),
     params: params,
     executor_word: "",
   )
@@ -1076,7 +1077,7 @@ fn serve_issue_comment_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
   else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
     action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
@@ -1310,7 +1311,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -1499,7 +1500,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -1703,7 +1704,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -1812,7 +1813,7 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1846,7 +1847,7 @@ fn roadmap_serve_handle_door(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1868,7 +1869,7 @@ fn roadmap_serve_handle_macbook_local(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1890,7 +1891,7 @@ fn roadmap_serve_handle_srv1_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1912,7 +1913,7 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1937,7 +1938,7 @@ fn roadmap_serve_handle_srv2_deploy(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1959,7 +1960,7 @@ fn roadmap_serve_handle_srv2_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,

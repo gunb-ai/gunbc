@@ -5042,7 +5042,18 @@ fn active_section_for_acceptance(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> RoadmapSection {
-  let nodes = projected_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+  active_section_for_acceptance_with(accepted: accepted, withheld: withheld, runtime: [])
+}
+
+// THE PLAN UNION. Runtime task records (gunbc.roadmap_task_store) are RoadmapNode VALUES supplied by
+// the caller and appended to the declared active nodes and the closing-contract pairs: one plan,
+// one document. They carry no prerequisite edges and are never in the acceptance sets.
+fn active_section_for_acceptance_with(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  runtime: List<RoadmapNode>,
+) -> RoadmapSection {
+  let nodes = concat(projected_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld), runtime)
   let edges = projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
   RoadmapSection {
     title: "Active deliverables — dependency order",
@@ -5062,6 +5073,24 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
 
 
 fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(history: history, runtime: [])
+}
+
+// A runtime task whose node id is a declared node's id refuses the whole projection: two nodes
+// answering one id is the fork the plan never carries. (Two runtime tasks cannot share an id: the
+// task store's fold refuses a second creation of one identity.)
+fn runtime_node_ids_collide(runtime: List<RoadmapNode>) -> Bool {
+  let declared = roadmap_node_id_set(ids: declared_roadmap_nodes() |> map(n => n.node))
+  any(runtime, n => set_contains(declared, n.node))
+}
+
+fn roadmap_authority_projection_with(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  runtime: List<RoadmapNode>,
+) -> RoadmapAuthorityProjection {
+  if runtime_node_ids_collide(runtime: runtime) {
+    RoadmapAuthorityProjectionRefused { detail: "a runtime task id collides with a declared or another runtime node id" }
+  } else {
   match frontier_sets_projection(history: history) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
@@ -5070,14 +5099,16 @@ fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> R
         doc: RoadmapDocument {
           preamble: preamble(),
           lead_lanes: [],
-          sections: [active_section_for_acceptance(
+          sections: [active_section_for_acceptance_with(
             accepted: accepted,
             withheld: withheld,
+            runtime: runtime,
           )],
         },
         accepted: accepted,
         withheld: withheld,
       }
+  }
   }
 }
 
