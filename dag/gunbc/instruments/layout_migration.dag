@@ -1,0 +1,600 @@
+module gunbc.instruments.layout_migration
+
+import std.types { FilePath, Int, List, String }
+import std.optional { Absent, Optional, Present, optional_present }
+import extdeps.git
+import extdeps.shell
+import v2.std.algebra { skip }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized
+}
+import gunbc.source_root_read {
+  source_root_walk,
+  source_root_read_file,
+  SourceRootWalkTask,
+  SourceRootPathsRead,
+  SourceRootPathsRefused
+}
+import gunbc.source_layout { layout_governed_roots }
+import gunbc.instruments.layout_migration_rewrite {
+  DispositionLeave,
+  DispositionTo,
+  ModulePair,
+  PathPair,
+  RewriteTables,
+  RunDisposition,
+  TextRewritten,
+  TextRewriteRefused,
+  disposition_note,
+  rewrite_tables,
+  rewrite_text
+}
+import v2.cli.repository_layout { repository_storage_layout }
+import gunbc.instruments.layout_migration_map {
+  MigrationPlanned,
+  MigrationPlanRefused,
+  MigrationSite,
+  ModuleMove,
+  directory_of,
+  plan_category_count,
+  plan_digest_line,
+  plan_file_moves,
+  plan_migration,
+  plan_module_renames,
+  migration_refusal_line
+}
+
+// THE LAYOUT MIGRATION GENERATOR (docs/plans/source-layout-authority.md, C0/C1). It is a .dag
+// instrument, not a throwaway script: the sweep is a construction input derived from the tree it
+// runs on, so it is re-runnable on whatever base the branch is merged onto and idempotent once the
+// tree is at the rule's positions (a placed tree plans no change).
+//
+// This module owns the effects (walk, read, write); the placement and the collision refusals are
+// layout_migration_map, which is pure.
+
+// Decisions for the references the tables cannot decide, one row per distinct reference, each with
+// its reason (see RunDisposition). The census reports a reference with no row as undecided and a row
+// no reference uses as unused; the sweep refuses to run on either.
+//
+// v2.test.long: the namespace vanishes because its 66 modules are placed by path and land under three
+// parents (v2.test.claim.long, v2.test.claim.execution.long, v2.test.manual.long), so no single
+// successor exists. The references that remain are the roster of long-home prefixes (required_floor
+// long_home_prefixes and the seed mirror of it) and synthetic probe module names in witnesses and seed
+// fixtures. The largest parent is the successor that keeps the probes and fixtures valid; the roster
+// entries it makes redundant, and the two prefixes the roster lacks, are the one hand edit that follows
+// the sweep (a roster is a set of prefixes, which no single replacement text can express).
+//
+// extdeps.fixture: its two modules (plant fixtures for the external-authority lens) are placed under
+// one directory, so the prefix has exactly one successor and the exemption keeps the same two modules.
+data layout_dispositions: List<RunDisposition> = [
+  RunDisposition {
+    kind: "namespace-vanished-unmapped",
+    subject: "v2.test.long",
+    outcome: DispositionTo { to: "v2.test.claim.long" },
+    reason: "66 modules land under three parents; 57 under v2.test.claim.long, which keeps probe and fixture module names valid; the long-home roster is corrected by hand after the sweep"
+  },
+  RunDisposition {
+    kind: "namespace-vanished-unmapped",
+    subject: "extdeps.fixture",
+    outcome: DispositionTo { to: "v2.test.fixture.extdeps_external_authority" },
+    reason: "both extdeps.fixture modules are placed under v2.test.fixture.extdeps_external_authority and nothing else lives there, so the exempt prefix keeps its exact population"
+  }
+]
+
+// The namespaces the operator ruled name-wins: a module there keeps its name and its file moves to
+// the name's path, where everywhere else the path's name wins.
+data name_wins_namespaces: List<String> = ["product"]
+
+// The instrument namespace and the folder R10 places every member of it in.
+data instrument_namespace: String = "tools"
+data instrument_folder: String = "dag/gunbc/instruments"
+
+// ---- reading the inventory -----------------------------------------------------------------------
+type TextRead
+  = TextObserved { text: String }
+  | TextUnread { cause: String }
+
+fn read_text(path: String) -> TextRead {
+  match source_root_read_file(path: path) {
+    FilesystemExactPathRead { path: _, content: content } => TextObserved { text: content }
+    FilesystemExactPathAbsent { path: missing } => TextUnread { cause: concat("cannot read ", missing, " (absent)") }
+    FilesystemExactPathUnreadable { path: unreadable, kind: _, error: error } => TextUnread { cause: concat("cannot read ", unreadable, ": ", error) }
+    FilesystemExactPathKindUnrecognized { path: unrecognized, observed: observed, error: error } =>
+      TextUnread { cause: concat("cannot read ", unrecognized, " (", observed, "): ", error) }
+  }
+}
+
+// The name a `module` line declares: the first line that is neither blank nor an annotation line.
+// Anything else first is a file with no module line, which is reported rather than skipped.
+fn declared_module_name(text: String) -> Optional<String> {
+  let lines = split(s: text, delimiter: "\n") |> map(line => line.trim()) |> filter(line => string_length(s: line) > 0 && !line.starts_with(prefix: "//"))
+  match lines |> first {
+    Present { value: line } => declared_name_of_line(line: line)
+    Absent => Absent
+  }
+}
+
+fn declared_name_of_line(line: String) -> Optional<String> {
+  if line.starts_with(prefix: "module ") {
+    optional_present(value: substring(s: line, start: 7, end: string_length(s: line)).trim())
+  } else { Absent }
+}
+
+type SiteScan
+  = SiteScanned { site: MigrationSite }
+  | SiteScanRefused { path: String, cause: String }
+
+fn scan_site(path: String) -> SiteScan {
+  match read_text(path: path) {
+    TextUnread { cause: cause } => SiteScanRefused { path: path, cause: cause }
+    TextObserved { text: text } => match declared_module_name(text: text) {
+      Present { value: name } => SiteScanned { site: MigrationSite { path: path, module: name } }
+      Absent => SiteScanRefused { path: path, cause: "no module line" }
+    }
+  }
+}
+
+fn scan_refusal(scan: SiteScan) -> String {
+  match scan {
+    SiteScanned { site: _ } => ""
+    SiteScanRefused { path: path, cause: cause } => concat(path, ": ", cause)
+  }
+}
+
+fn scan_site_of(scan: SiteScan) -> MigrationSite {
+  match scan {
+    SiteScanned { site: site } => site
+    SiteScanRefused { path: path, cause: _ } => MigrationSite { path: path, module: "" }
+  }
+}
+
+type Inventory
+  = InventoryRead { files: List<String>, sites: List<MigrationSite> }
+  | InventoryRefused { reasons: List<String> }
+
+fn governed_root_tasks() -> List<SourceRootWalkTask> {
+  layout_governed_roots() |> map(path => SourceRootWalkTask { path: path, root: true, origin: path })
+}
+
+fn collect_inventory() -> Inventory {
+  match source_root_walk(pending: governed_root_tasks(), paths: [], suffix: "") {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
+      InventoryRefused { reasons: [concat("cannot walk ", path, " (", kind, "): ", cause)] }
+    SourceRootPathsRead { paths: walked } => {
+      let files = walked |> map(w => w.path)
+      let scans = files |> filter(p => p.ends_with(suffix: ".dag")) |> map(p => scan_site(path: p))
+      let refused = scans |> map(scan_refusal) |> filter(reason => string_length(s: reason) > 0)
+      if count(refused) > 0 {
+        InventoryRefused { reasons: refused }
+      } else {
+        InventoryRead { files: files, sites: scans |> map(scan_site_of) }
+      }
+    }
+  }
+}
+
+// ---- writing reports -----------------------------------------------------------------------------
+fn write_report(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success { ExitSuccess }
+  else { exit_failure(reason: concat("layout migration: write failed for ", path, ": ", w.error)) }
+}
+
+fn plan_summary_lines(changes: List<ModuleMove>) -> List<String> {
+  [
+    concat("modules changed: ", plan_count_text(n: count(changes))),
+    concat("files moved: ", plan_count_text(n: count(plan_file_moves(changes: changes)))),
+    concat("modules renamed: ", plan_count_text(n: count(plan_module_renames(changes: changes)))),
+    concat("A: ", plan_count_text(n: plan_category_count(changes: changes, label: "A"))),
+    concat("B: ", plan_count_text(n: plan_category_count(changes: changes, label: "B"))),
+    concat("C: ", plan_count_text(n: plan_category_count(changes: changes, label: "C"))),
+    concat("C-up: ", plan_count_text(n: plan_category_count(changes: changes, label: "C-up"))),
+    concat("D-path: ", plan_count_text(n: plan_category_count(changes: changes, label: "D-path"))),
+    concat("D-name: ", plan_count_text(n: plan_category_count(changes: changes, label: "D-name")))
+  ]
+}
+
+fn plan_count_text(n: Int) -> String {
+  n as String
+}
+
+// THE PLAN REPORT. Writes the summary and one digest line per change to `report`, or the refusals
+// that withhold the plan; a refused plan is a failed run, never a report of a partial one.
+fn layout_plan_report(report: String) -> ProcessExit {
+  match collect_inventory() {
+    InventoryRefused { reasons: reasons } =>
+      exit_failure(reason: concat("layout migration: the inventory is not readable: ", join(reasons, "; ")))
+    InventoryRead { files: files, sites: sites } =>
+      match plan_migration(
+        layout: repository_storage_layout(),
+        name_wins_namespaces: name_wins_namespaces,
+        instrument_namespace: instrument_namespace,
+        instrument_folder: instrument_folder,
+        sites: sites,
+        occupied: files
+      ) {
+        MigrationPlanRefused { refusals: refusals } =>
+          exit_failure(reason: concat("layout migration: the plan is refused: ", join(refusals |> map(r => migration_refusal_line(refusal: r)), " | ")))
+        MigrationPlanned { changes: changes } =>
+          write_report(path: report, content: join(concat(plan_summary_lines(changes: changes), changes |> map(c => plan_digest_line(change: c))), "\n"))
+      }
+  }
+}
+
+// ---- the files a reference can live in ------------------------------------------------------------
+// Every regular tracked file is a place a reference can live, and the sweep rewrites all of them
+// except three declared classes. A recording of something that happened is evidence of that time and
+// keeps the names it recorded; a binary has no text to rewrite; a symlink or submodule is not a file
+// of its own. The classes are rows, not a silent skip: the census counts each one.
+data evidence_prefixes: List<String> = ["artifacts/", "docs/recovered/"]
+data evidence_suffixes: List<String> = [".diff", ".patch", ".recovered", ".poisoned", ".log"]
+data binary_suffixes: List<String> = [".png", ".jpg"]
+
+type TrackedRead
+  = TrackedRegular { files: List<String>, links: Int }
+  | TrackedRefused { cause: String }
+
+fn nul() -> String {
+  from_code_point(0)
+}
+
+// One `git ls-files -z --stage` record: `<mode> <object> <stage>\t<path>`.
+type TrackedRecord
+  = RecordRegular { path: String }
+  | RecordLink
+  | RecordUnknown { record: String }
+
+fn tracked_record_of(record: String) -> TrackedRecord {
+  let halves = split(s: record, delimiter: "\t")
+  let mode = substring(s: record, start: 0, end: 6)
+  if count(halves) < 2 {
+    RecordUnknown { record: record }
+  } else if mode == "100644" || mode == "100755" {
+    RecordRegular { path: join(skip(xs: halves, n: 1), "\t") }
+  } else if mode == "120000" || mode == "160000" {
+    RecordLink {}
+  } else {
+    RecordUnknown { record: record }
+  }
+}
+
+fn tracked_regular_files() -> TrackedRead {
+  let listing = git.Core.LsFilesStageZInRepo(repo: "." as FilePath)
+  if !listing.success {
+    TrackedRefused { cause: "git ls-files -z --stage failed" }
+  } else {
+    let records = split(s: listing.raw, delimiter: nul()) |> filter(r => string_length(s: r) > 0) |> map(r => tracked_record_of(record: r))
+    let unknown = records |> filter(r => is_unknown_record(record: r))
+    if count(unknown) > 0 {
+      TrackedRefused { cause: concat("unrecognized index records: ", plan_count_text(n: count(unknown))) }
+    } else {
+      TrackedRegular {
+        files: records |> map(r => record_path(record: r)) |> filter(p => string_length(s: p) > 0),
+        links: count(records |> filter(r => is_link_record(record: r)))
+      }
+    }
+  }
+}
+
+fn is_unknown_record(record: TrackedRecord) -> Bool {
+  match record {
+    RecordUnknown { record: _ } => true
+    RecordRegular { path: _ } => false
+    RecordLink => false
+  }
+}
+
+fn is_link_record(record: TrackedRecord) -> Bool {
+  match record {
+    RecordLink => true
+    RecordRegular { path: _ } => false
+    RecordUnknown { record: _ } => false
+  }
+}
+
+fn record_path(record: TrackedRecord) -> String {
+  match record {
+    RecordRegular { path: path } => path
+    RecordLink => ""
+    RecordUnknown { record: _ } => ""
+  }
+}
+
+fn path_has_prefix_in(path: String, prefixes: List<String>) -> Bool {
+  count(prefixes |> filter(prefix => path.starts_with(prefix: prefix))) > 0
+}
+
+fn path_has_suffix_in(path: String, suffixes: List<String>) -> Bool {
+  count(suffixes |> filter(suffix => path.ends_with(suffix: suffix))) > 0
+}
+
+fn is_evidence_path(path: String) -> Bool {
+  path_has_prefix_in(path: path, prefixes: evidence_prefixes) || path_has_suffix_in(path: path, suffixes: evidence_suffixes)
+}
+
+fn is_binary_path(path: String) -> Bool {
+  path_has_suffix_in(path: path, suffixes: binary_suffixes)
+}
+
+fn is_rewrite_path(path: String) -> Bool {
+  !is_evidence_path(path: path) && !is_binary_path(path: path)
+}
+
+// ---- the plan, as the tables the rewrite engine reads -----------------------------------------------
+fn new_module_index(changes: List<ModuleMove>) -> Map<String, String> {
+  fold(changes, init: empty_map(), f: (index, change) => map_insert(m: index, key: change.old_module, value: change.new_module))
+}
+
+fn new_path_index(moved: List<ModuleMove>) -> Map<String, String> {
+  fold(moved, init: empty_map(), f: (index, change) => map_insert(m: index, key: change.old_path, value: change.new_path))
+}
+
+fn module_pair_of(index: Map<String, String>, site: MigrationSite) -> ModulePair {
+  match map_lookup(m: index, key: site.module) {
+    Present { value: new_name } => ModulePair { old_name: site.module, new_name: new_name }
+    Absent => ModulePair { old_name: site.module, new_name: site.module }
+  }
+}
+
+fn path_pair_of(index: Map<String, String>, path: String) -> PathPair {
+  match map_lookup(m: index, key: path) {
+    Present { value: new_path } => PathPair { old_path: path, new_path: new_path }
+    Absent => PathPair { old_path: path, new_path: path }
+  }
+}
+
+fn plan_tables(changes: List<ModuleMove>, sites: List<MigrationSite>, files: List<String>) -> RewriteTables {
+  let modules_index = new_module_index(changes: changes)
+  let paths_index = new_path_index(moved: plan_file_moves(changes: changes))
+  rewrite_tables(
+    modules: sites |> map(site => module_pair_of(index: modules_index, site: site)),
+    files: files |> map(path => path_pair_of(index: paths_index, path: path)),
+    dispositions: layout_dispositions
+  )
+}
+
+type PlanRead
+  = PlanReady { changes: List<ModuleMove>, files: List<String>, links: Int, tables: RewriteTables }
+  | PlanUnavailable { reason: String }
+
+fn read_plan() -> PlanRead {
+  match collect_inventory() {
+    InventoryRefused { reasons: reasons } =>
+      PlanUnavailable { reason: concat("the inventory is not readable: ", join(reasons, "; ")) }
+    InventoryRead { files: governed, sites: sites } =>
+      match plan_migration(
+        layout: repository_storage_layout(),
+        name_wins_namespaces: name_wins_namespaces,
+        instrument_namespace: instrument_namespace,
+        instrument_folder: instrument_folder,
+        sites: sites,
+        occupied: governed
+      ) {
+        MigrationPlanRefused { refusals: refusals } =>
+          PlanUnavailable { reason: concat("the plan is refused: ", join(refusals |> map(r => migration_refusal_line(refusal: r)), " | ")) }
+        MigrationPlanned { changes: changes } =>
+          match tracked_regular_files() {
+            TrackedRefused { cause: cause } => PlanUnavailable { reason: cause }
+            TrackedRegular { files: tracked, links: links } =>
+              PlanReady { changes: changes, files: tracked, links: links, tables: plan_tables(changes: changes, sites: sites, files: tracked) }
+          }
+      }
+  }
+}
+
+// ---- the census of references ---------------------------------------------------------------------
+// What the rewrite would do to one file, without doing it: how many references it would change and
+// every occurrence it cannot decide. A file it cannot read is a refusal, never a skip.
+type FileCensus {
+  path: String
+  edits: Int
+  notes: List<String>
+  refusal: String
+}
+
+fn census_file(tables: RewriteTables, path: String) -> FileCensus {
+  match read_text(path: path) {
+    TextUnread { cause: cause } => FileCensus { path: path, edits: 0, notes: [], refusal: cause }
+    TextObserved { text: text } =>
+      match rewrite_text(tables: tables, text: text) {
+        TextRewritten { rewritten: rewritten } =>
+          FileCensus { path: path, edits: rewritten.edits, notes: rewritten.notes, refusal: "" }
+        TextRewriteRefused { cause: cause } => FileCensus { path: path, edits: 0, notes: [], refusal: concat(path, ": ", cause) }
+      }
+  }
+}
+
+fn is_disposed(tables: RewriteTables, note: String) -> Bool {
+  match map_lookup(m: tables.dispositions, key: note) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn undecided_notes(tables: RewriteTables, census: FileCensus) -> List<String> {
+  census.notes |> filter(note => !is_disposed(tables: tables, note: note))
+}
+
+fn note_lines(tables: RewriteTables, census: FileCensus) -> List<String> {
+  undecided_notes(tables: tables, census: census) |> map(note => concat("note\t", census.path, "\t", note))
+}
+
+fn noted_index(censuses: List<FileCensus>) -> Map<String, Bool> {
+  fold(censuses, init: empty_map(), f: fn(index, census) {
+    fold(census.notes, init: index, f: (inner, note) => map_insert(m: inner, key: note, value: true))
+  })
+}
+
+// The dispositions no reference of the population uses: stale rows, which the sweep refuses.
+fn unused_dispositions(censuses: List<FileCensus>) -> List<RunDisposition> {
+  let noted = noted_index(censuses: censuses)
+  layout_dispositions |> filter(d => disposition_unnoted(noted: noted, disposition: d))
+}
+
+fn disposition_unnoted(noted: Map<String, Bool>, disposition: RunDisposition) -> Bool {
+  match map_lookup(m: noted, key: disposition_note(disposition: disposition)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn census_clean(tables: RewriteTables, censuses: List<FileCensus>) -> Bool {
+  let blocked = censuses |> filter(c => string_length(s: c.refusal) > 0 || count(undecided_notes(tables: tables, census: c)) > 0)
+  count(blocked) == 0 && count(unused_dispositions(censuses: censuses)) == 0
+}
+
+fn census_summary_lines(tables: RewriteTables, files: List<String>, links: Int, censuses: List<FileCensus>) -> List<String> {
+  [
+    concat("regular tracked files: ", plan_count_text(n: count(files))),
+    concat("links and submodules (not files of their own): ", plan_count_text(n: links)),
+    concat("evidence, kept as recorded: ", plan_count_text(n: count(files |> filter(p => is_evidence_path(path: p))))),
+    concat("binary, no text: ", plan_count_text(n: count(files |> filter(p => is_binary_path(path: p))))),
+    concat("rewrite population: ", plan_count_text(n: count(censuses))),
+    concat("files that change: ", plan_count_text(n: count(censuses |> filter(c => c.edits > 0)))),
+    concat("references rewritten: ", plan_count_text(n: fold(censuses, init: 0, f: (acc, c) => acc + c.edits))),
+    concat("references undecided: ", plan_count_text(n: fold(censuses, init: 0, f: (acc, c) => acc + count(undecided_notes(tables: tables, census: c))))),
+    concat("references disposed: ", plan_count_text(n: fold(censuses, init: 0, f: (acc, c) => acc + count(c.notes) - count(undecided_notes(tables: tables, census: c))))),
+    concat("dispositions unused: ", plan_count_text(n: count(unused_dispositions(censuses: censuses)))),
+    concat("files refused: ", plan_count_text(n: count(censuses |> filter(c => string_length(s: c.refusal) > 0))))
+  ]
+}
+
+fn population_census(tables: RewriteTables, files: List<String>) -> List<FileCensus> {
+  files |> filter(p => is_rewrite_path(path: p)) |> map(p => census_file(tables: tables, path: p))
+}
+
+fn census_report_lines(tables: RewriteTables, files: List<String>, links: Int, censuses: List<FileCensus>) -> List<String> {
+  concat(
+    census_summary_lines(tables: tables, files: files, links: links, censuses: censuses),
+    concat(
+      censuses |> filter(c => string_length(s: c.refusal) > 0) |> map(c => concat("refused\t", c.refusal)),
+      concat(
+        unused_dispositions(censuses: censuses) |> map(d => concat("unused\t", disposition_note(disposition: d))),
+        fold(censuses, init: [], f: (acc, c) => concat(acc, note_lines(tables: tables, census: c)))
+      )
+    )
+  )
+}
+
+// THE REFERENCE CENSUS. Reads every file of the rewrite population against the tables of the plan
+// and writes what the sweep would do and what it cannot decide. It changes nothing.
+fn layout_census(report: String) -> ProcessExit {
+  match read_plan() {
+    PlanUnavailable { reason: reason } => exit_failure(reason: concat("layout migration: ", reason))
+    PlanReady { changes: _, files: files, links: links, tables: tables } =>
+      write_report(path: report, content: join(census_report_lines(tables: tables, files: files, links: links, censuses: population_census(tables: tables, files: files)), "\n"))
+  }
+}
+
+// ---- applying the sweep --------------------------------------------------------------------------
+// The sweep is two motions in a fixed order: the files move to the positions the rule gives them,
+// then every file of the rewrite population is read at its new path and rewritten. A step that
+// fails stops the run with the cause; the tree is then partly swept and `git checkout` restores it,
+// since nothing is committed by the instrument itself.
+type StepFold {
+  done: Int
+  failure: String
+}
+
+fn step_failed(acc: StepFold) -> Bool {
+  string_length(s: acc.failure) > 0
+}
+
+fn step_failure(acc: StepFold, cause: String) -> StepFold {
+  StepFold { done: acc.done, failure: cause }
+}
+
+fn apply_move(acc: StepFold, change: ModuleMove) -> StepFold {
+  if step_failed(acc: acc) {
+    acc
+  } else if !shell.Mkdir.Parents(path: directory_of(path: change.new_path) as FilePath).success {
+    step_failure(acc: acc, cause: concat("cannot create the directory of ", change.new_path))
+  } else if !shell.Move.File(source: change.old_path as FilePath, destination: change.new_path as FilePath).success {
+    step_failure(acc: acc, cause: concat("cannot move ", change.old_path, " to ", change.new_path))
+  } else {
+    StepFold { done: acc.done + 1, failure: "" }
+  }
+}
+
+fn apply_rewrite(tables: RewriteTables, acc: StepFold, path: String) -> StepFold {
+  if step_failed(acc: acc) {
+    acc
+  } else {
+    match read_text(path: path) {
+      TextUnread { cause: cause } => step_failure(acc: acc, cause: cause)
+      TextObserved { text: text } =>
+        match rewrite_text(tables: tables, text: text) {
+          TextRewriteRefused { cause: cause } => step_failure(acc: acc, cause: concat(path, ": ", cause))
+          TextRewritten { rewritten: rewritten } =>
+            if rewritten.text == text {
+              acc
+            } else {
+              let w = Filesystem.Write(path: path, content: rewritten.text)
+              if w.success { StepFold { done: acc.done + 1, failure: "" } } else { step_failure(acc: acc, cause: concat("cannot write ", path, ": ", w.error)) }
+            }
+        }
+    }
+  }
+}
+
+fn population_paths_after(changes: List<ModuleMove>, files: List<String>) -> List<String> {
+  let paths_index = new_path_index(moved: plan_file_moves(changes: changes))
+  files |> filter(p => is_rewrite_path(path: p)) |> map(p => path_pair_of(index: paths_index, path: p).new_path)
+}
+
+fn apply_summary_lines(moved: StepFold, rewritten: StepFold) -> List<String> {
+  [
+    concat("files moved: ", plan_count_text(n: moved.done)),
+    concat("files rewritten: ", plan_count_text(n: rewritten.done))
+  ]
+}
+
+// THE SWEEP. Refuses unless the census is clean: an unreadable file or an undecided reference
+// stops the line before anything moves. A tree already at the rule's positions plans no change, so
+// a second run reports nothing to do.
+fn layout_apply(report: String) -> ProcessExit {
+  match read_plan() {
+    PlanUnavailable { reason: reason } => exit_failure(reason: concat("layout migration: ", reason))
+    PlanReady { changes: changes, files: files, links: _, tables: tables } =>
+      if count(changes) == 0 {
+        write_report(path: report, content: "nothing to do: every module is at the position the rule gives it")
+      } else {
+        let censuses = population_census(tables: tables, files: files)
+        if !census_clean(tables: tables, censuses: censuses) {
+          exit_failure(reason: "layout migration: the census is not clean; run layout_census, dispose of every undecided reference and delete every unused disposition")
+        } else {
+          let moved = fold(plan_file_moves(changes: changes), init: StepFold { done: 0, failure: "" }, f: (acc, change) => apply_move(acc: acc, change: change))
+          if step_failed(acc: moved) {
+            exit_failure(reason: concat("layout migration: the move stopped: ", moved.failure))
+          } else {
+            let rewritten = fold(population_paths_after(changes: changes, files: files), init: StepFold { done: 0, failure: "" }, f: (acc, path) => apply_rewrite(tables: tables, acc: acc, path: path))
+            if step_failed(acc: rewritten) {
+              exit_failure(reason: concat("layout migration: the rewrite stopped: ", rewritten.failure))
+            } else {
+              write_report(path: report, content: join(apply_summary_lines(moved: moved, rewritten: rewritten), "\n"))
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE FIXED-POINT CHECK. Exits success exactly when the plan is empty: every module is at the
+// position and under the name the rule gives it.
+fn layout_verify(report: String) -> ProcessExit {
+  match read_plan() {
+    PlanUnavailable { reason: reason } => exit_failure(reason: concat("layout migration: ", reason))
+    PlanReady { changes: changes, files: _, links: _, tables: _ } =>
+      if count(changes) == 0 {
+        write_report(path: report, content: "fixed point: the plan is empty")
+      } else {
+        exit_failure(reason: concat("layout migration: ", plan_count_text(n: count(changes)), " modules are not at the position the rule gives them"))
+      }
+  }
+}

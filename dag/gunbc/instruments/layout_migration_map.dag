@@ -1,0 +1,375 @@
+module gunbc.instruments.layout_migration_map
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.compiler.source_authority {
+  ascii_case_fold,
+  ModuleFileDerived,
+  ModuleFileNotNamed,
+  ModuleNameDerived,
+  ModuleNameUnderivable,
+  SourceStorageLayout,
+  module_file,
+  module_name_for_file
+}
+import v2.cli.repository_layout {
+  repository_module_file_of_path,
+  repository_path_of_module_file
+}
+
+// THE MOVE-AND-RENAME MAP (docs/plans/source-layout-authority.md, Appendix B), COMPUTED. Given each
+// governed module's file and the `module` line it carries, derive where the storage rule puts it
+// and what to do about every file that is elsewhere. The rule itself is source_authority
+// module_file and the path-to-name inverse is module_name_for_file; this module owns only the
+// DISPOSITION of a misplaced file, which is the plan's ruling, not the rule.
+//
+// The map is a construction input. It is derived from the tree it runs on and never committed, so
+// "re-runnable" means regenerated on whatever base the branch is merged onto. Nothing here names a
+// real module: the namespaces the operator ruled name-wins are a data argument, so the generator's
+// own source is untouched by the sweep it performs.
+type MigrationSite {
+  path: String
+  module: String
+}
+
+// Which of the plan's procedures placed a file. AlreadyPlaced is a file the rule already puts where
+// it is. SameFolderRename (A) renames the file to the rule's name in its own folder. MoveDown (B)
+// moves a file into a folder below its own. FolderEntersName (C) keeps the file and renames the
+// module, because the folder carries structure the name lacks (R6). MoveUp (C-up) is the x/x.dag
+// case where the folder only repeats the module's own name. PathWins and NameWins are the two
+// outcomes for a file on a different branch altogether: the module takes the path's name, or the
+// file moves to the name's path (the namespaces the operator ruled name-wins).
+type MoveCategory
+  = AlreadyPlaced
+  | SameFolderRename
+  | MoveDown
+  | FolderEntersName
+  | MoveUp
+  | PathWins
+  | NameWins
+
+fn move_category_label(category: MoveCategory) -> String {
+  match category {
+    AlreadyPlaced => "placed"
+    SameFolderRename => "A"
+    MoveDown => "B"
+    FolderEntersName => "C"
+    MoveUp => "C-up"
+    PathWins => "D-path"
+    NameWins => "D-name"
+  }
+}
+
+type ModuleMove {
+  old_path: String
+  new_path: String
+  old_module: String
+  new_module: String
+  category: MoveCategory
+}
+
+type SitePlacement
+  = SitePlaced { change: ModuleMove }
+  | SiteUnplaceable { site: MigrationSite, cause: String }
+
+fn last_of(items: List<String>) -> String {
+  match items |> skip(count(items) - 1) |> first {
+    Present { value: item } => item
+    Absent => ""
+  }
+}
+
+fn directory_of(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  join(segments.take(n: count(segments) - 1), "/")
+}
+
+fn last_segment(path: String) -> String {
+  last_of(items: split(s: path, delimiter: "/"))
+}
+
+fn file_stem(path: String) -> String {
+  let name = last_segment(path: path)
+  if name.ends_with(suffix: ".dag") { substring(s: name, start: 0, end: string_length(s: name) - 4) } else { name }
+}
+
+fn module_last_segment(module: String) -> String {
+  last_of(items: split(s: module, delimiter: "."))
+}
+
+fn is_below(deeper: String, shallower: String) -> Bool {
+  deeper.starts_with(prefix: concat(shallower, "/"))
+}
+
+// The repository path the rule gives a module, or the cause it has none.
+type RulePath
+  = RulePathDerived { path: String }
+  | RulePathUnderivable { cause: String }
+
+fn rule_path_of(layout: SourceStorageLayout, module: String) -> RulePath {
+  match module_file(layout: layout, name: module) {
+    ModuleFileDerived { file: file } => RulePathDerived { path: repository_path_of_module_file(file: file) }
+    ModuleNameUnderivable { name: _, cause: cause } => RulePathUnderivable { cause: cause }
+  }
+}
+
+// The module name a repository path implies, accepted only when the rule maps that name back to
+// the same path. A path the rule cannot reach (a stem with a dot, a path under no governed tree)
+// has no name; it is refused rather than normalised.
+type PathName
+  = PathNamed { module: String }
+  | PathUnnamed { cause: String }
+
+fn path_name_of(layout: SourceStorageLayout, path: String) -> PathName {
+  match repository_module_file_of_path(path: path) {
+    Absent => PathUnnamed { cause: "the path lies under no governed tree" }
+    Present { value: file } => match module_name_for_file(layout: layout, file: file) {
+      ModuleFileNotNamed { file: _, cause: cause } => PathUnnamed { cause: cause }
+      ModuleNameDerived { name: name } => match rule_path_of(layout: layout, module: name) {
+        RulePathUnderivable { cause: cause } => PathUnnamed { cause: cause }
+        RulePathDerived { path: back } => {
+          if back == path { PathNamed { module: name } }
+          else { PathUnnamed { cause: concat("the rule maps the implied name ", name, " to ", back, ", not to this path") } }
+        }
+      }
+    }
+  }
+}
+
+fn namespace_contains(namespace: String, module: String) -> Bool {
+  module == namespace || module.starts_with(prefix: concat(namespace, "."))
+}
+
+fn name_wins_for(name_wins_namespaces: List<String>, module: String) -> Bool {
+  count(name_wins_namespaces |> filter(ns => namespace_contains(namespace: ns, module: module))) > 0
+}
+
+fn placed(site: MigrationSite, new_path: String, new_module: String, category: MoveCategory) -> SitePlacement {
+  SitePlaced { change: ModuleMove { old_path: site.path, new_path: new_path, old_module: site.module, new_module: new_module, category: category } }
+}
+
+fn renamed_by_path(layout: SourceStorageLayout, site: MigrationSite, category: MoveCategory) -> SitePlacement {
+  match path_name_of(layout: layout, path: site.path) {
+    PathNamed { module: name } => placed(site: site, new_path: site.path, new_module: name, category: category)
+    PathUnnamed { cause: cause } => SiteUnplaceable { site: site, cause: cause }
+  }
+}
+
+// ONE SITE, PLACED. The cases are the plan's procedure in order: already at the rule's position;
+// same folder (A); the rule's folder below the file's (B); the file's folder below the rule's (C,
+// or C-up when the folder only repeats the module's name); otherwise a different branch, decided
+// by namespace.
+fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
+  match rule_path_of(layout: layout, module: site.module) {
+    RulePathUnderivable { cause: cause } => SiteUnplaceable { site: site, cause: cause }
+    RulePathDerived { path: target } => {
+      if target == site.path {
+        placed(site: site, new_path: site.path, new_module: site.module, category: AlreadyPlaced {})
+      } else {
+        let here = directory_of(path: site.path)
+        let there = directory_of(path: target)
+        if here == there {
+          placed(site: site, new_path: target, new_module: site.module, category: SameFolderRename {})
+        } else if is_below(deeper: there, shallower: here) {
+          placed(site: site, new_path: target, new_module: site.module, category: MoveDown {})
+        } else if is_below(deeper: here, shallower: there) {
+          if directory_of(path: here) == there && last_segment(path: here) == file_stem(path: site.path) && module_last_segment(module: site.module) == file_stem(path: site.path) {
+            placed(site: site, new_path: target, new_module: site.module, category: MoveUp {})
+          } else {
+            renamed_by_path(layout: layout, site: site, category: FolderEntersName {})
+          }
+        } else if name_wins_for(name_wins_namespaces: name_wins_namespaces, module: site.module) {
+          placed(site: site, new_path: target, new_module: site.module, category: NameWins {})
+        } else {
+          renamed_by_path(layout: layout, site: site, category: PathWins {})
+        }
+      }
+    }
+  }
+}
+
+// ---- refusals that need the whole population ----------------------------------------------------
+type MigrationRefusal
+  = SiteRefused { path: String, module: String, cause: String }
+  | TargetCollision { new_path: String, sources: List<String> }
+  | ModuleCollision { new_module: String, sources: List<String> }
+  | TargetOccupied { new_path: String, source: String }
+  | CaseFoldCollision { kind: String, names: List<String> }
+  | InstrumentNotInFolder { module: String, path: String }
+
+fn migration_refusal_line(refusal: MigrationRefusal) -> String {
+  match refusal {
+    SiteRefused { path: path, module: module, cause: cause } =>
+      concat("unplaceable: ", path, " (module ", module, "): ", cause)
+    TargetCollision { new_path: path, sources: sources } =>
+      concat("two sources to one target ", path, ": ", join(sources, ", "))
+    ModuleCollision { new_module: renamed, sources: sources } =>
+      concat("new module name ", renamed, " is declared by more than one file: ", join(sources, ", "))
+    TargetOccupied { new_path: path, source: source } =>
+      concat(source, " would move onto ", path, ", which exists and is not moving away")
+    CaseFoldCollision { kind: kind, names: names } =>
+      concat("case-fold equal ", kind, "s: ", join(names, ", "))
+    InstrumentNotInFolder { module: module, path: path } =>
+      concat("instrument-namespace member ", module, " is not in the instruments folder (", path, "): not an instrument, stop for a decision")
+  }
+}
+
+type MigrationPlan
+  = MigrationPlanned { changes: List<ModuleMove> }
+  | MigrationPlanRefused { refusals: List<MigrationRefusal> }
+
+type Keyed {
+  key: String
+  member: String
+}
+
+type Collision {
+  key: String
+  members: List<String>
+}
+
+fn members_of(index: Map<String, List<String>>, key: String) -> List<String> {
+  match map_lookup(m: index, key: key) {
+    Present { value: members } => members
+    Absent => []
+  }
+}
+
+fn index_by_key(rows: List<Keyed>) -> Map<String, List<String>> {
+  fold(rows, init: empty_map(), f: (index, row) => map_insert(m: index, key: row.key, value: list_push(members_of(index: index, key: row.key), row.member)))
+}
+
+fn sorted_distinct(values: List<String>) -> List<String> {
+  values |> sort_by(v => v) |> fold(init: [], f: fn(acc, v) {
+    if count(acc) > 0 && last_of(items: acc) == v { acc } else { list_push(acc, v) }
+  })
+}
+
+// Every key two or more members share, in key order, with its members in member order.
+fn collisions_by_key(rows: List<Keyed>) -> List<Collision> {
+  let index = index_by_key(rows: rows)
+  sorted_distinct(values: rows |> map(r => r.key))
+    |> filter(key => count(members_of(index: index, key: key)) > 1)
+    |> map(key => Collision { key: key, members: members_of(index: index, key: key) |> sort_by(m => m) })
+}
+
+// Groups of distinct names that are equal once folded: what a case-insensitive filesystem would
+// turn into silent overwriting.
+fn case_fold_groups(names: List<String>) -> List<List<String>> {
+  collisions_by_key(rows: sorted_distinct(values: names) |> map(n => Keyed { key: ascii_case_fold(s: n), member: n }))
+    |> map(c => c.members)
+}
+
+fn placed_changes(placements: List<SitePlacement>) -> List<ModuleMove> {
+  fold(placements, init: [], f: fn(acc, p) {
+    match p {
+      SitePlaced { change: change } => list_push(acc, change)
+      SiteUnplaceable { site: _, cause: _ } => acc
+    }
+  })
+}
+
+fn unplaceable_refusals(placements: List<SitePlacement>) -> List<MigrationRefusal> {
+  fold(placements, init: [], f: fn(acc, p) {
+    match p {
+      SitePlaced { change: _ } => acc
+      SiteUnplaceable { site: site, cause: cause } => list_push(acc, SiteRefused { path: site.path, module: site.module, cause: cause })
+    }
+  })
+}
+
+fn instrument_violations(instrument_namespace: String, instrument_folder: String, sites: List<MigrationSite>) -> List<MigrationRefusal> {
+  sites
+    |> filter(s => namespace_contains(namespace: instrument_namespace, module: s.module) && !s.path.starts_with(prefix: concat(instrument_folder, "/")))
+    |> map(s => InstrumentNotInFolder { module: s.module, path: s.path })
+}
+
+fn occupied_target_refusals(changes: List<ModuleMove>, occupied: List<String>) -> List<MigrationRefusal> {
+  let occupied_index = fold(occupied, init: empty_map(), f: (index, path) => map_insert(m: index, key: path, value: true))
+  let leaving = fold(changes, init: empty_map(), f: (index, change) => map_insert(m: index, key: change.old_path, value: true))
+  changes
+    |> filter(c => c.new_path != c.old_path)
+    |> filter(fn(c) {
+      match map_lookup(m: occupied_index, key: c.new_path) {
+        Present { value: _ } => match map_lookup(m: leaving, key: c.new_path) {
+          Present { value: _ } => false
+          Absent => true
+        }
+        Absent => false
+      }
+    })
+    |> map(c => TargetOccupied { new_path: c.new_path, source: c.old_path })
+}
+
+fn plan_refusals(
+  placements: List<SitePlacement>,
+  sites: List<MigrationSite>,
+  occupied: List<String>,
+  instrument_namespace: String,
+  instrument_folder: String
+) -> List<MigrationRefusal> {
+  let all_changes = placed_changes(placements: placements)
+  let by_target = collisions_by_key(rows: all_changes |> map(c => Keyed { key: c.new_path, member: c.old_path }))
+    |> map(c => TargetCollision { new_path: c.key, sources: c.members })
+  let by_module = collisions_by_key(rows: all_changes |> map(c => Keyed { key: c.new_module, member: c.old_path }))
+    |> map(c => ModuleCollision { new_module: c.key, sources: c.members })
+  let folded_paths = case_fold_groups(names: all_changes |> map(c => c.new_path))
+    |> map(names => CaseFoldCollision { kind: "path", names: names })
+  let folded_modules = case_fold_groups(names: all_changes |> map(c => c.new_module))
+    |> map(names => CaseFoldCollision { kind: "module", names: names })
+  concat(
+    concat(unplaceable_refusals(placements: placements), by_target),
+    concat(
+      concat(by_module, occupied_target_refusals(changes: all_changes, occupied: occupied)),
+      concat(
+        concat(folded_paths, folded_modules),
+        instrument_violations(instrument_namespace: instrument_namespace, instrument_folder: instrument_folder, sites: sites)
+      )
+    )
+  )
+}
+
+// THE PLAN. `occupied` is every file path in the inventory (modules and not), so a target that
+// exists but is no module is refused, and a target that is another module's old path is allowed
+// only because that module is moving away. Placement is all-or-nothing: any refusal withholds the
+// whole plan, and the changes are returned in old-path order.
+fn plan_migration(
+  layout: SourceStorageLayout,
+  name_wins_namespaces: List<String>,
+  instrument_namespace: String,
+  instrument_folder: String,
+  sites: List<MigrationSite>,
+  occupied: List<String>
+) -> MigrationPlan {
+  let placements = sites |> map(site => place_site(layout: layout, name_wins_namespaces: name_wins_namespaces, site: site))
+  let refusals = plan_refusals(placements: placements, sites: sites, occupied: occupied, instrument_namespace: instrument_namespace, instrument_folder: instrument_folder)
+  if count(refusals) == 0 {
+    MigrationPlanned {
+      changes: placed_changes(placements: placements)
+        |> filter(c => c.new_path != c.old_path || c.new_module != c.old_module)
+        |> sort_by(c => c.old_path)
+    }
+  } else {
+    MigrationPlanRefused { refusals: refusals }
+  }
+}
+
+// ---- derived views of a plan ---------------------------------------------------------------------
+fn plan_module_renames(changes: List<ModuleMove>) -> List<ModuleMove> {
+  changes |> filter(c => c.old_module != c.new_module)
+}
+
+fn plan_file_moves(changes: List<ModuleMove>) -> List<ModuleMove> {
+  changes |> filter(c => c.old_path != c.new_path)
+}
+
+fn plan_category_count(changes: List<ModuleMove>, label: String) -> Int {
+  count(changes |> filter(c => move_category_label(category: c.category) == label))
+}
+
+// One line per change, in old-path order: the form the plan is diffed in against any independent
+// derivation.
+fn plan_digest_line(change: ModuleMove) -> String {
+  join([change.old_path, change.new_path, change.new_module, move_category_label(category: change.category)], "\t")
+}

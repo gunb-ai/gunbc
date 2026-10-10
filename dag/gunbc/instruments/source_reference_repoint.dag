@@ -353,7 +353,7 @@ fn repoint_root_tasks() -> List<SourceRootWalkTask> {
 
 // The wet entry: rewrite every file under the roots that still references a moved module.
 fn repoint() -> ProcessExit {
-  match source_root_walk(pending: repoint_root_tasks(), paths: []) {
+  match source_root_walk(pending: repoint_root_tasks(), paths: [], suffix: ".dag") {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
     SourceRootPathsRead { paths: paths } =>
@@ -368,7 +368,7 @@ fn repoint() -> ProcessExit {
 
 // The read-only entry: fails, naming the files, while any reference to a moved module remains.
 fn repoint_pending() -> ProcessExit {
-  match source_root_walk(pending: repoint_root_tasks(), paths: []) {
+  match source_root_walk(pending: repoint_root_tasks(), paths: [], suffix: ".dag") {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
     SourceRootPathsRead { paths: paths } =>

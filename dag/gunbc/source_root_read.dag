@@ -40,7 +40,7 @@ fn source_root_candidate_is_file(root: Bool, error_kind: String) -> Bool {
   }
 }
 
-fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWalkedPath>) -> SourceRootPaths {
+fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWalkedPath>, suffix: String) -> SourceRootPaths {
   match pending |> first {
     Absent => SourceRootPathsRead { paths: paths |> sort_by(walked => walked.path) }
     Present { value: task } => {
@@ -54,14 +54,14 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
             root: false,
             origin: task.origin
           })
-          source_root_walk(pending: concat(children, rest), paths: paths)
+          source_root_walk(pending: concat(children, rest), paths: paths, suffix: suffix)
         }
         FilesystemDirectoryListingRefused { directory: _, error: cause } =>
           if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
-            let next = if task.path.ends_with(suffix: ".dag") {
+            let next = if task.path.ends_with(suffix: suffix) {
               concat(paths, [SourceRootWalkedPath { path: task.path, origin: task.origin }])
             } else { paths }
-            source_root_walk(pending: rest, paths: next)
+            source_root_walk(pending: rest, paths: next, suffix: suffix)
           } else {
             SourceRootPathsRefused { path: task.path, kind: listed.error_kind, cause: cause }
           }
@@ -98,7 +98,8 @@ fn source_root_read_paths(pending: List<SourceRootWalkedPath>, files: List<Sourc
 fn source_root_read(roots: List<String>) -> SourceRootFiles {
   match source_root_walk(
     pending: roots |> map(path => SourceRootWalkTask { path: path, root: true, origin: path }),
-    paths: []
+    paths: [],
+    suffix: ".dag"
   ) {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       SourceRootFilesRefused { path: path, kind: kind, cause: cause }

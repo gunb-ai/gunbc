@@ -1,6 +1,6 @@
 module v2.compiler.source_authority
 
-import std.types { List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import gunbc.source_root_read { SourceRootFile }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -24,8 +24,21 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
-import std.algebra { Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list, list_head, skip }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, trim }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  filter,
+  fold_list,
+  is_empty,
+  length,
+  list_find_first,
+  list_head,
+  list_map,
+  list_reverse,
+  skip
+}
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -54,8 +67,19 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet, DagTree, V2Tree }
-import v2.std.cross_tree.resolution { source_root_set_insert }
+import v2.std.cross_tree.import_model {
+  CrossTreeAdmissionVerdict,
+  CrossTreeAdmitted,
+  CrossTreeDenialReason,
+  CrossTreeDenied,
+  CrossTreeImport,
+  DagTree,
+  SourceRootRef,
+  SourceRootSet,
+  V2Tree,
+  cross_tree_import_admitted
+}
+import v2.std.cross_tree.resolution { source_root_set_insert, tree_fundamentality_order }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.fidelity_carriers { medium_section_equal }
@@ -1597,4 +1621,599 @@ fn source_root_ingest_from_files_go(
 
 fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngestFromFiles {
   source_root_ingest_from_files_go(pending: files, acc: Empty)
+}
+
+// ---- the storage rule (docs/plans/source-layout-authority.md, R5) --------------------------------
+//
+// THE ONE FACT THAT MAPS A MODULE NAME TO ITS FILE. Module `a.b.c` lives at `<root(a)>/b/c.dag`:
+// the namespace root decides which tree holds it and whether the top segment is part of the
+// relative path (the v2 tree elides `v2`, every other tree keeps its namespace as the first
+// directory). Paths follow names, never the reverse. The rule is expressed over a LOGICAL tree
+// (SourceRootRef) and a relative path and never over a host path, so a storage binding supplies the
+// host directory and nothing here knows it. The repository's own roots are POLICY and arrive as a
+// SourceStorageLayout value at the entry boundary; this module imports no repository fact.
+type StorageNamespaceRoot {
+  namespace: String
+  tree: SourceRootRef
+  elides_namespace: Bool
+}
+
+type SourceStorageLayout {
+  namespace_roots: List<StorageNamespaceRoot>
+  default_tree: SourceRootRef
+}
+
+type ModuleFileRef {
+  tree: SourceRootRef
+  relative_path: String
+}
+
+type ModuleFileDerivation
+  = ModuleFileDerived { file: ModuleFileRef }
+  | ModuleNameUnderivable { name: String, cause: String }
+
+fn storage_namespace_root_for(layout: SourceStorageLayout, namespace: String) -> Optional<StorageNamespaceRoot> {
+  match list_head(xs: filter(xs: layout.namespace_roots, predicate: fn(r) { r.namespace == namespace })) {
+    HeadFound { value: root } => optional_present(value: root)
+    HeadAbsent => optional_absent()
+  }
+}
+
+fn module_file_relative_path(segments: List<String>) -> String {
+  concat(join(segments, "/"), ".dag")
+}
+
+fn module_name_has_empty_segment(segments: List<String>) -> Bool {
+  fold_list(xs: segments, empty: false, cons: fn(found, segment) { found || segment == "" })
+}
+
+fn segment_or_empty(segments: List<String>, at: Int) -> String {
+  match list_head(xs: skip(xs: segments, n: at)) {
+    HeadFound { value: segment } => segment
+    HeadAbsent => ""
+  }
+}
+
+fn segment_count(segments: List<String>) -> Int {
+  fold_list(xs: segments, empty: 0, cons: fn(n, segment) { n + 1 })
+}
+
+// The file a module name is stored at. A name is a nonempty dotted sequence of nonempty segments;
+// anything else is refused with its cause. The namespace a layout elides is a directory that does
+// not exist, so a name made of only that namespace has no file.
+fn module_file(layout: SourceStorageLayout, name: String) -> ModuleFileDerivation {
+  let segments = split(s: name, delimiter: ".")
+  if name == "" || module_name_has_empty_segment(segments: segments) {
+    ModuleNameUnderivable { name: name, cause: "a module name is a nonempty dotted sequence of nonempty segments" }
+  } else {
+    match storage_namespace_root_for(layout: layout, namespace: segment_or_empty(segments: segments, at: 0)) {
+      Present { value: root } =>
+        if root.elides_namespace {
+          if segment_count(segments: segments) == 1 {
+            ModuleNameUnderivable { name: name, cause: concat("the namespace ", concat(root.namespace, " is a directory of its tree and has no file of its own")) }
+          } else {
+            ModuleFileDerived { file: ModuleFileRef { tree: root.tree, relative_path: module_file_relative_path(segments: skip(xs: segments, n: 1)) } }
+          }
+        } else {
+          ModuleFileDerived { file: ModuleFileRef { tree: root.tree, relative_path: module_file_relative_path(segments: segments) } }
+        }
+      Absent =>
+        ModuleFileDerived { file: ModuleFileRef { tree: layout.default_tree, relative_path: module_file_relative_path(segments: segments) } }
+    }
+  }
+}
+
+fn source_root_ref_label(tree: SourceRootRef) -> String {
+  match tree {
+    V2Tree => "v2"
+    DagTree => "dag"
+  }
+}
+
+// The module name a file's position implies: the inverse of module_file, derived from the same
+// rows. A path that is not a `.dag` file has no name. The caller compares module_file of the
+// derived name with the file to decide whether the file is at its rule position; a position the
+// rule cannot reach (a case-folded segment, a stem with a dot) therefore compares unequal rather
+// than being silently normalised.
+type ModuleNameForFile
+  = ModuleNameDerived { name: String }
+  | ModuleFileNotNamed { file: ModuleFileRef, cause: String }
+
+fn module_name_for_file(layout: SourceStorageLayout, file: ModuleFileRef) -> ModuleNameForFile {
+  if !file.relative_path.ends_with(suffix: ".dag") {
+    ModuleFileNotNamed { file: file, cause: "a module file ends in .dag" }
+  } else {
+    let stem = substring(s: file.relative_path, start: 0, end: string_length(s: file.relative_path) - 4)
+    let dotted = replace(s: stem, from: "/", to: ".")
+    let elided = filter(xs: layout.namespace_roots, predicate: fn(r) {
+      r.elides_namespace && source_root_ref_label(tree: r.tree) == source_root_ref_label(tree: file.tree)
+    })
+    match list_head(xs: elided) {
+      HeadFound { value: root } => ModuleNameDerived { name: concat(root.namespace, concat(".", dotted)) }
+      HeadAbsent => ModuleNameDerived { name: dotted }
+    }
+  }
+}
+
+// The ASCII case fold of a name or path, the key two names collide under on a case-insensitive
+// filesystem. Only ASCII letters fold: a non-ASCII byte string compares as itself, so two names
+// that differ only in a non-ASCII case are not claimed to collide.
+fn ascii_case_fold_from(s: String, at: Int, acc: List<String>) -> List<String> {
+  if at >= string_length(s: s) {
+    acc
+  } else {
+    let ch = substring(s: s, start: at, end: at + 1)
+    let cp = code_point(ch)
+    ascii_case_fold_from(
+      s: s,
+      at: at + 1,
+      acc: list_snoc_item(xs: acc, item: if cp >= 65 && cp <= 90 { from_code_point(cp + 32) } else { ch })
+    )
+  }
+}
+
+fn ascii_case_fold(s: String) -> String {
+  join(ascii_case_fold_from(s: s, at: 0, acc: []), "")
+}
+
+// ---- lookup by name (plan 4.3) -------------------------------------------------------------------
+//
+// A QUALIFIED REFERENCE IS SPLIT INTO MODULE AND MEMBER BY PROBING PREFIXES, LONGEST FIRST, and each
+// probe is one exact read whose answer is tri-state: the file is present, the file is absent, or
+// the read was refused (unreadable, the wrong kind, a transport failure). Only absence falls back to
+// a shorter prefix. A refusal is NOT absence: treating an unreadable file as absent would let the
+// shorter prefix answer for a module that exists, which is the silent widening DESIGN section 5
+// forbids. No candidate present is an unknown module, never a guess.
+//
+// The lookup is two steps a driver alternates, so the READ SET is exactly the probes it asked for:
+// reference_next_read names the next file to read, reference_after_probe consumes the answer. The
+// driver that reads through a bound filesystem handler is effectful; resolve_reference_over runs the
+// same two steps over a supplied observation and is the control for the decision itself.
+//
+// The cross-tree direction (v2.std.cross_tree: v2 may import dag, dag may not import v2) is decided
+// HERE, before the read, because a candidate's tree is known from its name alone. A less fundamental
+// tree is refused without being read, so loading by name cannot lose the direction that whole-tree
+// ingest used to enforce.
+type ModuleFileProbe
+  = ModuleFilePresent { file: ModuleFileRef, content: String }
+  | ModuleFileAbsent { file: ModuleFileRef }
+  | ModuleFileRefused { file: ModuleFileRef, cause: String }
+
+type PrefixAccumulator {
+  names: List<String>
+  current: String
+}
+
+fn prefix_accumulate(acc: PrefixAccumulator, segment: String) -> PrefixAccumulator {
+  let next = if acc.current == "" { segment } else { concat(acc.current, ".", segment) }
+  PrefixAccumulator { names: list_snoc_item(xs: acc.names, item: next), current: next }
+}
+
+// The dotted prefixes of a reference, longest first: `a.b.c` -> a.b.c, a.b, a.
+fn reference_prefixes(reference: String) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: split(s: reference, delimiter: "."),
+    empty: PrefixAccumulator { names: [], current: "" },
+    cons: fn(acc, segment) { prefix_accumulate(acc: acc, segment: segment) }
+  ).names)
+}
+
+type ReferenceNextRead
+  = ReferenceNextReadFile { module: String, file: ModuleFileRef, rest: List<String> }
+  | ReferenceNextReadDenied { module: String, file: ModuleFileRef, reason: CrossTreeDenialReason }
+  | ReferenceNextReadNone { reference: String }
+
+fn storage_active_trees() -> SourceRootSet {
+  [V2Tree, DagTree]
+}
+
+fn storage_cross_tree_verdict(from_tree: SourceRootRef, from_module: String, module: String, file: ModuleFileRef) -> CrossTreeAdmissionVerdict {
+  cross_tree_import_admitted(
+    edge: CrossTreeImport { from_tree: from_tree, from_module: from_module, to_tree: file.tree, to_module: module },
+    roots: storage_active_trees(),
+    order: tree_fundamentality_order(from_tree: from_tree, to_tree: file.tree)
+  )
+}
+
+fn reference_next_read_derived(
+  from_tree: SourceRootRef,
+  from_module: String,
+  module: String,
+  file: ModuleFileRef,
+  rest: List<String>
+) -> ReferenceNextRead {
+  match storage_cross_tree_verdict(from_tree: from_tree, from_module: from_module, module: module, file: file) {
+    CrossTreeAdmitted => ReferenceNextReadFile { module: module, file: file, rest: rest }
+    CrossTreeDenied { reason: reason } => ReferenceNextReadDenied { module: module, file: file, reason: reason }
+  }
+}
+
+// The next file to read: the first remaining candidate that has a file at all. A candidate with no
+// file (a namespace the layout elides, such as `v2` alone) is skipped, because it names a directory.
+fn reference_next_read(
+  layout: SourceStorageLayout,
+  from_tree: SourceRootRef,
+  from_module: String,
+  reference: String,
+  candidates: List<String>
+) -> ReferenceNextRead {
+  match list_head(xs: candidates) {
+    HeadAbsent => ReferenceNextReadNone { reference: reference }
+    HeadFound { value: candidate } =>
+      match module_file(layout: layout, name: candidate) {
+        ModuleFileDerived { file: file } =>
+          reference_next_read_derived(from_tree: from_tree, from_module: from_module, module: candidate, file: file, rest: skip(xs: candidates, n: 1))
+        ModuleNameUnderivable { name: _, cause: _ } =>
+          reference_next_read(layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: skip(xs: candidates, n: 1))
+      }
+  }
+}
+
+// The module a source file declares: the first line that begins `module `. Read off the header
+// text rather than the parse, so a file whose front end refuses still has a declared name to
+// compare with the request.
+fn module_header_declared_name(content: String) -> Optional<String> {
+  match list_find_first(
+    xs: split(s: content, delimiter: "\n"),
+    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
+  ) {
+    Absent => optional_absent()
+    Present { value: line } =>
+      optional_present(value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line)))))
+  }
+}
+
+type ReferenceLookup
+  = ReferenceResolved { module: String, member: String, file: ModuleFileRef, content: String }
+  | ReferenceUnknownModule { reference: String }
+  | ReferenceRefused { module: String, file: ModuleFileRef, cause: String }
+  | ReferenceModuleLineMissing { module: String, file: ModuleFileRef }
+  | ReferenceModuleLineDisagrees { module: String, declared: String, file: ModuleFileRef }
+  | ReferenceCrossTreeDenied { module: String, file: ModuleFileRef, reason: CrossTreeDenialReason }
+
+type ReferenceAdvance
+  = ReferenceDecided { lookup: ReferenceLookup }
+  | ReferenceContinue { rest: List<String> }
+
+// The member of a reference once its module is known: the segments after the module's own.
+fn reference_member(reference: String, module: String) -> String {
+  let consumed = segment_count(segments: split(s: module, delimiter: "."))
+  join(skip(xs: split(s: reference, delimiter: "."), n: consumed), ".")
+}
+
+fn reference_present(reference: String, module: String, file: ModuleFileRef, content: String) -> ReferenceLookup {
+  match module_header_declared_name(content: content) {
+    Absent => ReferenceModuleLineMissing { module: module, file: file }
+    Present { value: declared } =>
+      if declared == module {
+        ReferenceResolved { module: module, member: reference_member(reference: reference, module: module), file: file, content: content }
+      } else {
+        ReferenceModuleLineDisagrees { module: module, declared: declared, file: file }
+      }
+  }
+}
+
+fn reference_after_probe(
+  reference: String,
+  module: String,
+  rest: List<String>,
+  probe: ModuleFileProbe
+) -> ReferenceAdvance {
+  match probe {
+    ModuleFilePresent { file: file, content: content } =>
+      ReferenceDecided { lookup: reference_present(reference: reference, module: module, file: file, content: content) }
+    ModuleFileAbsent { file: _ } => ReferenceContinue { rest: rest }
+    ModuleFileRefused { file: file, cause: cause } =>
+      ReferenceDecided { lookup: ReferenceRefused { module: module, file: file, cause: cause } }
+  }
+}
+
+fn module_file_ref_eq(a: ModuleFileRef, b: ModuleFileRef) -> Bool {
+  source_root_ref_label(tree: a.tree) == source_root_ref_label(tree: b.tree) && a.relative_path == b.relative_path
+}
+
+fn module_file_probe_file(probe: ModuleFileProbe) -> ModuleFileRef {
+  match probe {
+    ModuleFilePresent { file: file, content: _ } => file
+    ModuleFileAbsent { file: file } => file
+    ModuleFileRefused { file: file, cause: _ } => file
+  }
+}
+
+// What a supplied observation says about one file. A file the observation does not mention is
+// absent, which is what a storage binding answers for a path that is not there.
+fn observed_probe_of(observed: List<ModuleFileProbe>, file: ModuleFileRef) -> ModuleFileProbe {
+  match list_find_first(xs: observed, predicate: fn(probe) { module_file_ref_eq(a: module_file_probe_file(probe: probe), b: file) }) {
+    Present { value: probe } => probe
+    Absent => ModuleFileAbsent { file: file }
+  }
+}
+
+fn resolve_reference_from(
+  layout: SourceStorageLayout,
+  from_tree: SourceRootRef,
+  from_module: String,
+  reference: String,
+  candidates: List<String>,
+  observed: List<ModuleFileProbe>
+) -> ReferenceLookup {
+  match reference_next_read(layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: candidates) {
+    ReferenceNextReadNone { reference: unknown } => ReferenceUnknownModule { reference: unknown }
+    ReferenceNextReadDenied { module: module, file: file, reason: reason } =>
+      ReferenceCrossTreeDenied { module: module, file: file, reason: reason }
+    ReferenceNextReadFile { module: module, file: file, rest: rest } =>
+      match reference_after_probe(reference: reference, module: module, rest: rest, probe: observed_probe_of(observed: observed, file: file)) {
+        ReferenceDecided { lookup: lookup } => lookup
+        ReferenceContinue { rest: remaining } =>
+          resolve_reference_from(layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: remaining, observed: observed)
+      }
+  }
+}
+
+// The lookup run over a supplied observation: the decision procedure, without the reads.
+fn resolve_reference_over(
+  layout: SourceStorageLayout,
+  from_tree: SourceRootRef,
+  from_module: String,
+  reference: String,
+  observed: List<ModuleFileProbe>
+) -> ReferenceLookup {
+  resolve_reference_from(
+    layout: layout,
+    from_tree: from_tree,
+    from_module: from_module,
+    reference: reference,
+    candidates: reference_prefixes(reference: reference),
+    observed: observed
+  )
+}
+
+// ---- the layout check (plan 4.4) -----------------------------------------------------------------
+//
+// ONE MODE: HOLD OR REFUSE. The check is a pure fold over four supplied values -- the storage
+// layout, the namespace rows the repository declares, the generated `.dag` artifacts its registry
+// names, and the header (location and `module` line) of every governed `.dag` file. The population
+// is enumerated by the native CLI through the bound filesystem handler; nothing here reads, and the
+// check reads headers, never bodies. Every refusal is typed and located, and the verdict carries all
+// of them: a line stopped is analyzed whole.
+//
+// A namespace row is a namespace that DIRECTLY contains modules; its ancestors are derived and carry
+// no row. The rows are checked as an identity join in both directions -- a file in a namespace with
+// no row is UndeclaredNamespace, a row whose namespace holds no module is NamespaceRowWithoutModules
+// -- never a count, so a swap of one namespace for another cannot pass.
+//
+// Whether a file is generated is NOT a fact of the layout: the registry is that fact's single
+// authority, and the check joins it at file level. A registered artifact must exist at its rule
+// position; the layout adds nothing about it beyond that.
+type LayoutFileHeader {
+  file: ModuleFileRef
+  declared_module: Optional<String>
+}
+
+type LayoutRefusal
+  = UndeclaredNamespace { file: ModuleFileRef, namespace: String }
+  | NamespaceRowWithoutModules { namespace: String }
+  | NotAtRulePosition { file: ModuleFileRef, declared: String, expected: ModuleFileRef }
+  | DeclaredModuleUnderivable { file: ModuleFileRef, declared: String, cause: String }
+  | FileNotNamed { file: ModuleFileRef, cause: String }
+  | ModuleLineMissing { file: ModuleFileRef }
+  | DuplicateModule { module: String, files: List<ModuleFileRef> }
+  | RegistryArtifactMissing { artifact: ModuleFileRef }
+
+type LayoutVerdict
+  = LayoutHolds
+  | LayoutRefused { refusals: List<LayoutRefusal> }
+
+// The namespace a module name lives in: the name without its last segment.
+fn module_namespace(name: String) -> String {
+  let segments = split(s: name, delimiter: ".")
+  join(take_segments(segments: segments, n: segment_count(segments: segments) - 1), ".")
+}
+
+fn take_segments_from(segments: List<String>, n: Int, acc: List<String>) -> List<String> {
+  if n <= 0 {
+    acc
+  } else {
+    match list_head(xs: segments) {
+      HeadAbsent => acc
+      HeadFound { value: segment } =>
+        take_segments_from(segments: skip(xs: segments, n: 1), n: n - 1, acc: list_snoc_item(xs: acc, item: segment))
+    }
+  }
+}
+
+fn take_segments(segments: List<String>, n: Int) -> List<String> {
+  take_segments_from(segments: segments, n: n, acc: [])
+}
+
+fn module_file_key(file: ModuleFileRef) -> String {
+  concat(source_root_ref_label(tree: file.tree), ":", file.relative_path)
+}
+
+fn text_set_of(names: List<String>) -> Map<String, Bool> {
+  fold_list(xs: names, empty: empty_map(), cons: fn(index, name) { map_insert(m: index, key: name, value: true) })
+}
+
+fn text_set_has(set: Map<String, Bool>, name: String) -> Bool {
+  match map_lookup(m: set, key: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A header's refusals other than the duplicate and registry joins, which look across headers.
+fn header_position_refusals(layout: SourceStorageLayout, namespaces: Map<String, Bool>, header: LayoutFileHeader) -> List<LayoutRefusal> {
+  match module_name_for_file(layout: layout, file: header.file) {
+    ModuleFileNotNamed { file: file, cause: cause } => [FileNotNamed { file: file, cause: cause }]
+    ModuleNameDerived { name: positional } =>
+      concat(
+        header_namespace_refusals(namespaces: namespaces, header: header, positional: positional),
+        header_declaration_refusals(layout: layout, header: header, positional: positional)
+      )
+  }
+}
+
+fn header_namespace_refusals(namespaces: Map<String, Bool>, header: LayoutFileHeader, positional: String) -> List<LayoutRefusal> {
+  let namespace = module_namespace(name: positional)
+  if text_set_has(set: namespaces, name: namespace) {
+    []
+  } else {
+    [UndeclaredNamespace { file: header.file, namespace: namespace }]
+  }
+}
+
+fn header_declaration_refusals(layout: SourceStorageLayout, header: LayoutFileHeader, positional: String) -> List<LayoutRefusal> {
+  match header.declared_module {
+    Absent => [ModuleLineMissing { file: header.file }]
+    Present { value: declared } =>
+      match module_file(layout: layout, name: declared) {
+        ModuleNameUnderivable { name: _, cause: cause } =>
+          [DeclaredModuleUnderivable { file: header.file, declared: declared, cause: cause }]
+        ModuleFileDerived { file: expected } =>
+          if module_file_ref_eq(a: expected, b: header.file) {
+            []
+          } else {
+            [NotAtRulePosition { file: header.file, declared: declared, expected: expected }]
+          }
+      }
+  }
+}
+
+fn headers_position_refusals(layout: SourceStorageLayout, namespaces: Map<String, Bool>, headers: List<LayoutFileHeader>) -> List<LayoutRefusal> {
+  fold_list(
+    xs: headers,
+    empty: [],
+    cons: fn(refusals, header) { concat(refusals, header_position_refusals(layout: layout, namespaces: namespaces, header: header)) }
+  )
+}
+
+// The headers grouped by the ASCII case fold of the module they declare: two files declaring one
+// module, or modules differing only by case (which collide on a case-insensitive filesystem), land
+// in one group.
+type DeclaredGroups {
+  order: List<String>
+  members: Map<String, List<LayoutFileHeader>>
+}
+
+fn declared_group_add(groups: DeclaredGroups, header: LayoutFileHeader) -> DeclaredGroups {
+  match header.declared_module {
+    Absent => groups
+    Present { value: declared } => declared_group_insert(groups: groups, key: ascii_case_fold(s: declared), header: header)
+  }
+}
+
+fn declared_group_insert(groups: DeclaredGroups, key: String, header: LayoutFileHeader) -> DeclaredGroups {
+  match map_lookup(m: groups.members, key: key) {
+    Absent =>
+      DeclaredGroups {
+        order: list_snoc_item(xs: groups.order, item: key),
+        members: map_insert(m: groups.members, key: key, value: [header])
+      }
+    Present { value: seen } =>
+      DeclaredGroups {
+        order: groups.order,
+        members: map_insert(m: groups.members, key: key, value: list_snoc_item(xs: seen, item: header))
+      }
+  }
+}
+
+fn duplicate_refusal_of(groups: DeclaredGroups, key: String) -> List<LayoutRefusal> {
+  match map_lookup(m: groups.members, key: key) {
+    Absent => []
+    Present { value: members } =>
+      if length(xs: members) < 2 {
+        []
+      } else {
+        [DuplicateModule { module: key, files: list_map(xs: members, f: fn(header) { header.file }) }]
+      }
+  }
+}
+
+fn headers_duplicate_refusals(headers: List<LayoutFileHeader>) -> List<LayoutRefusal> {
+  let groups = fold_list(
+    xs: headers,
+    empty: DeclaredGroups { order: [], members: empty_map() },
+    cons: fn(acc, header) { declared_group_add(groups: acc, header: header) }
+  )
+  fold_list(
+    xs: groups.order,
+    empty: [],
+    cons: fn(refusals, key) { concat(refusals, duplicate_refusal_of(groups: groups, key: key)) }
+  )
+}
+
+fn registry_refusals(present: Map<String, Bool>, registered: List<ModuleFileRef>) -> List<LayoutRefusal> {
+  fold_list(
+    xs: registered,
+    empty: [],
+    cons: fn(refusals, artifact) {
+      if text_set_has(set: present, name: module_file_key(file: artifact)) {
+        refusals
+      } else {
+        list_snoc_item(xs: refusals, item: RegistryArtifactMissing { artifact: artifact })
+      }
+    }
+  )
+}
+
+// The namespaces the observed files actually occupy, by position.
+fn occupied_namespaces(layout: SourceStorageLayout, headers: List<LayoutFileHeader>) -> Map<String, Bool> {
+  text_set_of(names: fold_list(
+    xs: headers,
+    empty: [],
+    cons: fn(names, header) {
+      match module_name_for_file(layout: layout, file: header.file) {
+        ModuleNameDerived { name: positional } => list_snoc_item(xs: names, item: module_namespace(name: positional))
+        ModuleFileNotNamed { file: _, cause: _ } => names
+      }
+    }
+  ))
+}
+
+fn namespace_row_refusals(occupied: Map<String, Bool>, namespaces: List<String>) -> List<LayoutRefusal> {
+  fold_list(
+    xs: namespaces,
+    empty: [],
+    cons: fn(refusals, namespace) {
+      if text_set_has(set: occupied, name: namespace) {
+        refusals
+      } else {
+        list_snoc_item(xs: refusals, item: NamespaceRowWithoutModules { namespace: namespace })
+      }
+    }
+  )
+}
+
+fn layout_refusals(
+  layout: SourceStorageLayout,
+  namespaces: List<String>,
+  registered: List<ModuleFileRef>,
+  headers: List<LayoutFileHeader>
+) -> List<LayoutRefusal> {
+  let declared = text_set_of(names: namespaces)
+  let present = text_set_of(names: list_map(xs: headers, f: fn(header) { module_file_key(file: header.file) }))
+  concat(
+    concat(
+      headers_position_refusals(layout: layout, namespaces: declared, headers: headers),
+      headers_duplicate_refusals(headers: headers)
+    ),
+    concat(
+      namespace_row_refusals(occupied: occupied_namespaces(layout: layout, headers: headers), namespaces: namespaces),
+      registry_refusals(present: present, registered: registered)
+    )
+  )
+}
+
+fn layout_check(
+  layout: SourceStorageLayout,
+  namespaces: List<String>,
+  registered: List<ModuleFileRef>,
+  headers: List<LayoutFileHeader>
+) -> LayoutVerdict {
+  let refusals = layout_refusals(layout: layout, namespaces: namespaces, registered: registered, headers: headers)
+  if is_empty(xs: refusals) {
+    LayoutHolds {}
+  } else {
+    LayoutRefused { refusals: refusals }
+  }
 }

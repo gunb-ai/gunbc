@@ -1,0 +1,181 @@
+module test.claim.layout_migration_rewrite_witness
+
+import std.types { Bool, List, String }
+import gunbc.instruments.layout_migration_rewrite {
+  DispositionLeave,
+  DispositionTo,
+  ModulePair,
+  PathPair,
+  RunDisposition,
+  TextRewriteRefused,
+  TextRewritten,
+  note_directory_apart,
+  note_namespace_unmapped,
+  rewrite_tables,
+  rewrite_text,
+  sentinel
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// WITNESSES FOR THE REFERENCE-REWRITE ENGINE OF THE SOURCE-LAYOUT CUTOVER
+// (gunbc.instruments.layout_migration_rewrite). The engine is the sweep's whole risk: for every
+// dotted run, path and label in thousands of files it decides whether the text is a reference to a
+// moved module and what it becomes. Each control isolates ONE rule over a small invented module
+// table, so a red names the rule that broke. The table is synthetic on purpose: nothing here names
+// a real module, so the sweep cannot rename its own oracle.
+//
+// The pairing obligation (DESIGN 3) is carried by gunbc.instruments.layout_migration: its census
+// runs this engine over the real population and refuses on any undecided note, so deleting that
+// integration fails the census, not this file.
+
+fn pair_modules() -> List<ModulePair> {
+  [
+    ModulePair { old_name: "a.b.c", new_name: "x.y.c" },
+    ModulePair { old_name: "a.b.d", new_name: "a.b.d" },
+    ModulePair { old_name: "q.r.s", new_name: "z.s" },
+    ModulePair { old_name: "q.r.t", new_name: "z.t" },
+    ModulePair { old_name: "m.n.p", new_name: "k.p" },
+    ModulePair { old_name: "m.n.o", new_name: "j.o" },
+    ModulePair { old_name: "w.x.p", new_name: "k2.p" },
+    ModulePair { old_name: "w.x.o", new_name: "j2.o" },
+    ModulePair { old_name: "l.k.a", new_name: "l2.k.a_test" },
+    ModulePair { old_name: "l.k.b", new_name: "l2.k.b" },
+    ModulePair { old_name: "tools.docs_gate", new_name: "gunbc.instruments.docs_gate" },
+    ModulePair { old_name: "tools.other", new_name: "gunbc.instruments.other" }
+  ]
+}
+
+fn pair_files() -> List<PathPair> {
+  [
+    PathPair { old_path: "dag/a/b/c.dag", new_path: "dag/x/y/c.dag" },
+    PathPair { old_path: "dag/a/b/d.dag", new_path: "dag/a/b/d.dag" },
+    PathPair { old_path: "dag/q/r/s.dag", new_path: "dag/z/s.dag" },
+    PathPair { old_path: "dag/q/r/t.dag", new_path: "dag/z/t.dag" },
+    PathPair { old_path: "dag/m/n/p.dag", new_path: "src/v2/k/p.dag" },
+    PathPair { old_path: "dag/m/n/o.dag", new_path: "dag/j/o.dag" },
+    PathPair { old_path: "dag/tools/docs_gate.dag", new_path: "dag/gunbc/instruments/docs_gate.dag" },
+    PathPair { old_path: "dag/tools/other.dag", new_path: "dag/gunbc/instruments/other.dag" }
+  ]
+}
+
+fn standard_dispositions() -> List<RunDisposition> {
+  [
+    RunDisposition { kind: "namespace-vanished-unmapped", subject: "w.x", outcome: DispositionLeave {}, reason: "witness" },
+    RunDisposition { kind: "directory-moved-apart", subject: "dag/m/n", outcome: DispositionTo { to: "dag/mm" }, reason: "witness" }
+  ]
+}
+
+// The rewritten text under the given dispositions, or the refusal's cause marked so a refused
+// control can never equal an expected text.
+fn text_with(dispositions: List<RunDisposition>, text: String) -> String {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions), text: text) {
+    TextRewritten { rewritten: done } => done.text
+    TextRewriteRefused { cause: cause } => concat("REFUSED: ", cause)
+  }
+}
+
+fn notes_with(dispositions: List<RunDisposition>, text: String) -> List<String> {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions), text: text) {
+    TextRewritten { rewritten: done } => done.notes
+    TextRewriteRefused { cause: cause } => [concat("REFUSED: ", cause)]
+  }
+}
+
+fn text_of(text: String) -> String {
+  text_with(dispositions: standard_dispositions(), text: text)
+}
+
+test fn rewrite_renames_a_module_reference_and_keeps_its_member() -> Bool {
+  text_of(text: "import a.b.c { f } x a.b.c.f, a.b.c. end a.b.c") == "import x.y.c { f } x x.y.c.f, x.y.c. end x.y.c"
+}
+
+// A module that keeps its name is left byte for byte, with its member.
+test fn rewrite_leaves_a_module_that_keeps_its_name() -> Bool {
+  text_of(text: "use a.b.d.g and a.b.d") == "use a.b.d.g and a.b.d"
+}
+
+// A name embedded in a longer identifier or dotted run is not a reference: the run must start at a
+// boundary and end where the name ends, or `a.b.cc` would be corrupted into `x.y.cc`.
+test fn rewrite_respects_name_boundaries() -> Bool {
+  let embedded = "xa.b.c a.b.cc foo.a.b.c a.b.c_x"
+  text_of(text: embedded) == embedded
+}
+
+// The longest module prefix of a run decides: `tools.docs_gate.run` renames the module and keeps
+// `run`; `tools.nothing` names no module and is left, because the sweep does not repair a reference
+// that was already dangling.
+test fn rewrite_takes_the_longest_module_prefix_of_a_run() -> Bool {
+  text_of(text: "tools.docs_gate.run tools.other.f tools.nothing") == "gunbc.instruments.docs_gate.run gunbc.instruments.other.f tools.nothing"
+}
+
+// A namespace whose every module has one successor maps to it, so a bare namespace reference
+// follows its modules; a run below the namespace that is no module (q.r.u.v) is left alone.
+test fn rewrite_maps_a_wholly_moved_namespace_to_its_successor() -> Bool {
+  text_of(text: "q.r.s.f q.r.t and q.r and q.r.u.v and q.r.") == "z.s.f z.t and z and q.r.u.v and z."
+}
+
+// A namespace whose modules scatter has no successor. The run is left as written and one typed
+// note is emitted for the namespace reference, never a guess; the longer run beside it is no
+// namespace and emits nothing. The census stops on an undecided note.
+test fn rewrite_notes_a_namespace_whose_modules_scatter() -> Bool {
+  let unsettled = []
+  text_with(dispositions: unsettled, text: "m.n and m.n.zzz") == "m.n and m.n.zzz" && notes_with(dispositions: unsettled, text: "m.n and m.n.zzz") == [note_namespace_unmapped(subject: "m.n")]
+}
+
+// A scattered namespace's MODULES still rename: only the namespace-level reference is undecided.
+test fn rewrite_renames_the_modules_of_a_scattered_namespace() -> Bool {
+  text_of(text: "m.n.p.f m.n.o.g") == "k.p.f j.o.g"
+}
+
+// A disposition settles a note for every occurrence: Leave keeps the run. The note is still
+// reported, which is how a disposition no occurrence uses is found stale.
+test fn rewrite_applies_a_leave_disposition_and_still_reports_the_note() -> Bool {
+  text_of(text: "disposed w.x end") == "disposed w.x end" && notes_with(dispositions: standard_dispositions(), text: "disposed w.x end") == [note_namespace_unmapped(subject: "w.x")]
+}
+
+test fn rewrite_applies_a_to_disposition_to_a_scattered_directory() -> Bool {
+  text_of(text: "dir dag/m/n/ end") == "dir dag/mm/ end" && notes_with(dispositions: standard_dispositions(), text: "dir dag/m/n/ end") == [note_directory_apart(subject: "dag/m/n")]
+}
+
+// The same directory with no disposition is left as written and blocks: a disposition is the only
+// thing that turns the note into a decision.
+test fn rewrite_leaves_an_undisposed_scattered_directory_and_blocks() -> Bool {
+  let unsettled = []
+  text_with(dispositions: unsettled, text: "dir dag/m/n/ end") == "dir dag/m/n/ end" && notes_with(dispositions: unsettled, text: "dir dag/m/n/ end") == [note_directory_apart(subject: "dag/m/n")]
+}
+
+// A path run follows the file pairs exactly; a wholly moved directory follows its files.
+test fn rewrite_renames_file_paths_and_wholly_moved_directories() -> Bool {
+  text_of(text: "paths dag/a/b/c.dag, dag/q/r/s.dag. dag/a/b/d.dag. dag/q/r/ src/v2/x") == "paths dag/x/y/c.dag, dag/z/s.dag. dag/a/b/d.dag. dag/z/ src/v2/x"
+}
+
+// A directory only partly moved (a/b keeps d while c leaves) has no successor: the directory path is
+// left as written, because rewriting it would redirect the files that stayed.
+test fn rewrite_leaves_a_directory_that_is_only_partly_moved() -> Bool {
+  text_of(text: "dir dag/a/b/ and file dag/a/b/c.dag") == "dir dag/a/b/ and file dag/x/y/c.dag"
+}
+
+// Labels follow the same successors. A `//` that follows ':' is the scheme separator of a URL, not
+// a label, so `http://q/r/s:c` is left although `//q/r/s:go` is rewritten; a label whose package is
+// no moved module or directory is untouched.
+test fn rewrite_follows_labels_but_not_urls_or_unrelated_packages() -> Bool {
+  text_of(text: "label //q/r/s:go http://q/r/s:c //pkg:name //dag/a/b:all //l/k:all") == "label //z/s:go http://q/r/s:c //pkg:name //dag/a/b:all //l2/k:all"
+}
+
+// A second pass over its own output changes nothing: the sentinel stops a rewritten name being
+// matched again within a pass, and no new name is an old name in the table.
+test fn rewrite_is_idempotent_over_its_own_output() -> Bool {
+  let original = "import a.b.c { f } q.r.s.f dag/a/b/c.dag //q/r/s:go tools.docs_gate l.k.a"
+  let once = text_of(text: original)
+  once != original && text_of(text: once) == once
+}
+
+// The sentinel is reserved: a text that already contains it cannot be rewritten unambiguously and
+// is refused rather than passed through.
+test fn rewrite_refuses_a_text_containing_the_sentinel() -> Bool {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions()), text: concat("a.b.c ", sentinel())) {
+    TextRewriteRefused { cause: _ } => true
+    TextRewritten { rewritten: _ } => false
+  }
+}

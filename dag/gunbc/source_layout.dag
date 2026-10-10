@@ -1,0 +1,53 @@
+module gunbc.source_layout
+
+import std.types { Bool, List, String }
+
+// THE REPOSITORY'S STORAGE POLICY (docs/plans/source-layout-authority.md, R5). Module `a.b.c` lives
+// at `<root(a)>/b/c.dag`: the namespace root decides which tree holds a module and whether the
+// namespace is itself a directory of that tree. The generic rule, the lookup and the check are
+// v2.compiler.source_authority; this module is the POLICY they are handed at the entry boundary
+// (v2.cli.repository_layout turns it into their types). It imports nothing but std.types, so a
+// v2-compiled entry can import it without crossing the tree direction the storage lookup refuses.
+//
+// The namespace rows themselves are gunbc.source_layout_namespaces: one row per namespace that
+// directly contains modules, parents derived, no per-module rows. Whether a file is generated is
+// NOT recorded here -- gunbc.generated_artifact_registry is that fact's single authority, and the
+// layout check joins it at file level.
+type LayoutTree
+  = LayoutTreeV2
+  | LayoutTreeDag
+
+// A namespace whose modules live in a tree other than the default, and whether the namespace is
+// elided from the relative path (the v2 tree is src/v2, not src/v2/v2).
+type LayoutNamespaceRoot {
+  namespace: String
+  tree: LayoutTree
+  elides_namespace: Bool
+}
+
+// The directory, relative to the repository root, a tree is bound to.
+fn layout_tree_directory(tree: LayoutTree) -> String {
+  match tree {
+    LayoutTreeV2 => "src/v2"
+    LayoutTreeDag => "dag"
+  }
+}
+
+fn layout_default_tree() -> LayoutTree {
+  LayoutTreeDag {}
+}
+
+fn layout_namespace_roots() -> List<LayoutNamespaceRoot> {
+  [
+    LayoutNamespaceRoot { namespace: "v2", tree: LayoutTreeV2 {}, elides_namespace: true }
+  ]
+}
+
+// THE GOVERNED ROOTS, written down: the layout check enumerates exactly these two tree
+// directories. src/v1 (the seed's own Rust crate and its mirrors), fixtures/ and test/ are outside
+// by design -- they hold no module the storage rule names, and a malformed non-module byte string
+// belongs there rather than in a governed tree. Leaving them out is therefore a fact of this
+// policy, not something the check merely fails to look at.
+fn layout_governed_roots() -> List<String> {
+  [layout_tree_directory(tree: LayoutTreeV2 {}), layout_tree_directory(tree: LayoutTreeDag {})]
+}

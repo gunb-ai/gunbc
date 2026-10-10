@@ -1,0 +1,78 @@
+module v2.cli.repository_layout
+
+import std.types { Bool, List }
+import std.optional { Optional, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, list_head }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.compiler.source_authority { ModuleFileRef, SourceStorageLayout, StorageNamespaceRoot }
+import gunbc.source_layout {
+  LayoutNamespaceRoot,
+  LayoutTree,
+  LayoutTreeDag,
+  LayoutTreeV2,
+  layout_default_tree,
+  layout_namespace_roots,
+  layout_tree_directory
+}
+
+// THE ADAPTER FROM THE REPOSITORY'S STORAGE POLICY (gunbc.source_layout, a dag-tree module with no
+// imports) TO THE GENERIC STORAGE TYPES (v2.compiler.source_authority). The policy cannot name
+// SourceRootRef: it is imported by v2-compiled entries, and a dag module importing v2 is the
+// direction the storage lookup refuses. So the two vocabularies meet here, in the v2 tree where
+// both are importable, and nowhere else. The rule itself is source_authority module_file; this
+// module only binds it to the repository's tree directories.
+fn source_root_ref_of_layout_tree(tree: LayoutTree) -> SourceRootRef {
+  match tree {
+    LayoutTreeV2 => V2Tree
+    LayoutTreeDag => DagTree
+  }
+}
+
+fn layout_tree_of_source_root_ref(tree: SourceRootRef) -> LayoutTree {
+  match tree {
+    V2Tree => LayoutTreeV2 {}
+    DagTree => LayoutTreeDag {}
+  }
+}
+
+fn storage_namespace_root_of_layout(root: LayoutNamespaceRoot) -> StorageNamespaceRoot {
+  StorageNamespaceRoot {
+    namespace: root.namespace,
+    tree: source_root_ref_of_layout_tree(tree: root.tree),
+    elides_namespace: root.elides_namespace
+  }
+}
+
+fn repository_storage_layout() -> SourceStorageLayout {
+  SourceStorageLayout {
+    namespace_roots: layout_namespace_roots() |> map(root => storage_namespace_root_of_layout(root: root)),
+    default_tree: source_root_ref_of_layout_tree(tree: layout_default_tree())
+  }
+}
+
+// The directory, relative to the repository root, a logical tree is bound to.
+fn repository_tree_directory(tree: SourceRootRef) -> String {
+  layout_tree_directory(tree: layout_tree_of_source_root_ref(tree: tree))
+}
+
+// A module file as a repository-relative path.
+fn repository_path_of_module_file(file: ModuleFileRef) -> String {
+  concat(repository_tree_directory(tree: file.tree), "/", file.relative_path)
+}
+
+fn repository_tree_owns_path(tree: SourceRootRef, path: String) -> Bool {
+  path.starts_with(prefix: concat(repository_tree_directory(tree: tree), "/"))
+}
+
+// The logical file a repository-relative path denotes, or Absent when the path lies under no
+// governed tree. The trees are disjoint directories, so at most one owns a path.
+fn repository_module_file_of_path(path: String) -> Optional<ModuleFileRef> {
+  match list_head(xs: filter(xs: [V2Tree, DagTree], predicate: fn(tree) { repository_tree_owns_path(tree: tree, path: path) })) {
+    HeadFound { value: tree } => {
+      let directory_length = string_length(s: repository_tree_directory(tree: tree)) + 1
+      optional_present(value: ModuleFileRef { tree: tree, relative_path: substring(s: path, start: directory_length, end: string_length(s: path)) })
+    }
+    HeadAbsent => optional_absent()
+  }
+}

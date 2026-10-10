@@ -1,0 +1,722 @@
+module gunbc.instruments.layout_migration_rewrite
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present, optional_present }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.algebra { skip }
+
+// THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (docs/plans/source-layout-authority.md, C1).
+// Given the old and new name of every module and the old and new path of every file, it rewrites
+// the three forms a reference takes -- a dotted module name, a `//package:target` label, a
+// repository path -- and reports, instead of guessing, every occurrence it cannot decide. It is
+// pure: no read, no write, no module identity of the repository. The caller (layout_migration)
+// supplies the pairs from the plan and applies the text.
+//
+// WHAT IT REFUSES TO GUESS, AND WHY IT IS COUNTED. A dangling reference -- a dotted run that names
+// no module and no namespace -- is left exactly as it was: the sweep does not repair what was
+// already broken, and rewriting it would invent a referent. A namespace that disappears in the
+// sweep and has no single successor is an occurrence the plan's rulings do not decide: it is
+// reported as a note and the caller refuses the sweep until a disposition names it. Nothing widens.
+//
+// ONE PASS PER FIRST SEGMENT, AND WHY A SENTINEL. A run is found by splitting the text on
+// `<first segment>.`, which is native and linear. The passes run one after another, so a run
+// rewritten by one pass must not be found again by a later one (a rename chain would be applied
+// twice): the rewritten run carries a private-use character after its first segment, which no
+// later anchor `<segment>.` can match, and the caller strips it when every pass is done. Text that
+// already contains the character is refused before anything is rewritten.
+
+// ---- the inputs ------------------------------------------------------------------------------------
+type ModulePair {
+  old_name: String
+  new_name: String
+}
+
+type PathPair {
+  old_path: String
+  new_path: String
+}
+
+// What became of a namespace that has no module after the sweep. A namespace that keeps a module
+// is not recorded: a reference to it is still valid and stays as it is.
+type NamespaceFate
+  = NamespaceVanishedTo { to: String }
+  | NamespaceVanishedUnmapped
+
+// What became of a directory with a moved file under it. A directory that keeps a file stays, so a
+// reference to it as a whole is still valid.
+type DirectoryFate
+  = DirectoryMovedTo { to: String }
+  | DirectoryMovedApart
+  | DirectoryPartlyMoved
+
+// A reference the tables cannot decide is reported as a note, `<kind>\t<subject>`. A DISPOSITION is a
+// reasoned decision for one such note, recorded as data beside the sweep: the run is left as written
+// or replaced by a named text. Every disposition applies to every occurrence of its note, a
+// disposition no note matches is stale, and a note without one blocks the sweep.
+type DispositionOutcome
+  = DispositionLeave
+  | DispositionTo { to: String }
+
+type RunDisposition {
+  kind: String
+  subject: String
+  outcome: DispositionOutcome
+  reason: String
+}
+
+type RewriteTables {
+  renames: Map<String, String>
+  modules: Map<String, Bool>
+  namespaces: Map<String, NamespaceFate>
+  tops: List<String>
+  moves: Map<String, String>
+  directories: Map<String, DirectoryFate>
+  dispositions: Map<String, DispositionOutcome>
+}
+
+fn note_line(kind: String, subject: String) -> String {
+  concat(kind, "\t", subject)
+}
+
+fn note_namespace_unmapped(subject: String) -> String {
+  note_line(kind: "namespace-vanished-unmapped", subject: subject)
+}
+
+fn note_directory_apart(subject: String) -> String {
+  note_line(kind: "directory-moved-apart", subject: subject)
+}
+
+fn note_run_exceeds_window(subject: String) -> String {
+  note_line(kind: "run-exceeds-window", subject: subject)
+}
+
+fn disposition_note(disposition: RunDisposition) -> String {
+  note_line(kind: disposition.kind, subject: disposition.subject)
+}
+
+// ---- the tables ----------------------------------------------------------------------------------
+fn text_end() -> Int {
+  2000000000
+}
+
+// The most characters of a run the scanner reads. A run that reaches it is reported, never cut.
+fn run_window() -> Int {
+  256
+}
+
+fn sentinel() -> String {
+  from_code_point(57344)
+}
+
+fn bool_map_of(names: List<String>) -> Map<String, Bool> {
+  fold(names, init: empty_map(), f: (index, name) => map_insert(m: index, key: name, value: true))
+}
+
+fn segments_of(name: String) -> List<String> {
+  split(s: name, delimiter: ".")
+}
+
+// Every proper dotted prefix of a name, shortest first: the namespaces a module lives under.
+fn proper_prefixes(name: String, delimiter: String) -> List<String> {
+  let segments = split(s: name, delimiter: delimiter)
+  let last = count(segments)
+  proper_prefixes_from(segments: segments, delimiter: delimiter, k: 1, last: last, acc: [])
+}
+
+fn proper_prefixes_from(segments: List<String>, delimiter: String, k: Int, last: Int, acc: List<String>) -> List<String> {
+  if k >= last {
+    acc
+  } else {
+    proper_prefixes_from(
+      segments: segments,
+      delimiter: delimiter,
+      k: k + 1,
+      last: last,
+      acc: list_push(acc, join(segments.take(n: k), delimiter))
+    )
+  }
+}
+
+// The successor of a vanishing namespace is uniform when every renamed module under it keeps the
+// segments that follow it and only the namespace part changes. Mixed means two modules went to
+// different successors, so the namespace has none.
+type NamespaceCandidate
+  = CandidateTo { to: String }
+  | CandidateMixed
+
+fn candidate_after(old: Optional<NamespaceCandidate>, to: String) -> NamespaceCandidate {
+  match old {
+    Present { value: CandidateTo { to: earlier } } =>
+      if earlier == to { CandidateTo { to: earlier } } else { CandidateMixed {} }
+    Present { value: CandidateMixed } => CandidateMixed {}
+    Absent => CandidateTo { to: to }
+  }
+}
+
+// The namespace a renamed module's new name puts the old namespace's content under, or "" when the
+// new name does not end with the segments that stood between the old namespace and the module's own
+// name. The module's own last segment may differ: a group of modules that moved together and was
+// renamed leaf by leaf still moved to one place, and every reference to a module is decided by the
+// module tables, not by this one.
+fn successor_of(old_name: String, new_name: String, namespace: String) -> String {
+  let rest = substring(s: old_name, start: string_length(s: namespace) + 1, end: text_end())
+  let between = segments_of(name: rest).take(n: count(segments_of(name: rest)) - 1)
+  let new_segments = segments_of(name: new_name)
+  if count(new_segments) < 2 {
+    ""
+  } else {
+    let new_parent = join(new_segments.take(n: count(new_segments) - 1), ".")
+    if count(between) == 0 {
+      new_parent
+    } else {
+      let tail = concat(".", join(between, "."))
+      if new_parent.ends_with(suffix: tail) {
+        substring(s: new_parent, start: 0, end: string_length(s: new_parent) - string_length(s: tail))
+      } else {
+        ""
+      }
+    }
+  }
+}
+
+fn namespace_candidates(renamed: List<ModulePair>, surviving: Map<String, Bool>) -> Map<String, NamespaceCandidate> {
+  fold(renamed, init: empty_map(), f: fn(index, pair) {
+    fold(proper_prefixes(name: pair.old_name, delimiter: "."), init: index, f: fn(inner, namespace) {
+      match map_lookup(m: surviving, key: namespace) {
+        Present { value: _ } => inner
+        Absent => map_insert(
+          m: inner,
+          key: namespace,
+          value: candidate_after(
+            old: map_lookup(m: inner, key: namespace),
+            to: successor_of(old_name: pair.old_name, new_name: pair.new_name, namespace: namespace)
+          )
+        )
+      }
+    })
+  })
+}
+
+fn namespace_fate_of(candidate: NamespaceCandidate) -> NamespaceFate {
+  match candidate {
+    CandidateTo { to: to } => if to == "" { NamespaceVanishedUnmapped {} } else { NamespaceVanishedTo { to: to } }
+    CandidateMixed => NamespaceVanishedUnmapped {}
+  }
+}
+
+fn namespace_fates(renamed: List<ModulePair>, surviving: Map<String, Bool>) -> Map<String, NamespaceFate> {
+  let candidates = namespace_candidates(renamed: renamed, surviving: surviving)
+  fold(renamed, init: empty_map(), f: fn(index, pair) {
+    fold(proper_prefixes(name: pair.old_name, delimiter: "."), init: index, f: fn(inner, namespace) {
+      match map_lookup(m: candidates, key: namespace) {
+        Present { value: candidate } => map_insert(m: inner, key: namespace, value: namespace_fate_of(candidate: candidate))
+        Absent => inner
+      }
+    })
+  })
+}
+
+fn first_segment(name: String) -> String {
+  match segments_of(name: name) |> first {
+    Present { value: segment } => segment
+    Absent => ""
+  }
+}
+
+fn sorted_distinct_names(values: List<String>) -> List<String> {
+  values |> sort_by(v => v) |> fold(init: [], f: fn(acc, v) {
+    if count(acc) > 0 && last_name(items: acc) == v { acc } else { list_push(acc, v) }
+  })
+}
+
+fn last_name(items: List<String>) -> String {
+  match items |> last {
+    Present { value: item } => item
+    Absent => ""
+  }
+}
+
+// ---- directories -----------------------------------------------------------------------------------
+type DirectoryCandidate
+  = DirectoryNone
+  | DirectoryOne { to: String }
+  | DirectoryMixed
+
+type DirectoryTally {
+  total: Int
+  moved: Int
+  candidate: DirectoryCandidate
+}
+
+fn directory_candidate_after(old: DirectoryCandidate, to: String) -> DirectoryCandidate {
+  match old {
+    DirectoryNone => if to == "" { DirectoryMixed {} } else { DirectoryOne { to: to } }
+    DirectoryOne { to: earlier } => if earlier == to { DirectoryOne { to: earlier } } else { DirectoryMixed {} }
+    DirectoryMixed => DirectoryMixed {}
+  }
+}
+
+// The directory a moved file's new path puts the old directory's content under, or "" when the new
+// path does not end with the part that followed the old directory.
+fn directory_successor(old_path: String, new_path: String, directory: String) -> String {
+  let rest = substring(s: old_path, start: string_length(s: directory) + 1, end: text_end())
+  let tail = concat("/", rest)
+  if new_path.ends_with(suffix: tail) {
+    substring(s: new_path, start: 0, end: string_length(s: new_path) - string_length(s: tail))
+  } else {
+    ""
+  }
+}
+
+fn tally_before(index: Map<String, DirectoryTally>, directory: String) -> DirectoryTally {
+  match map_lookup(m: index, key: directory) {
+    Present { value: tally } => tally
+    Absent => DirectoryTally { total: 0, moved: 0, candidate: DirectoryNone {} }
+  }
+}
+
+fn directory_tallies(files: List<String>, moves: Map<String, String>) -> Map<String, DirectoryTally> {
+  fold(files, init: empty_map(), f: fn(index, path) {
+    let moved_to = map_lookup(m: moves, key: path)
+    fold(proper_prefixes(name: path, delimiter: "/"), init: index, f: fn(inner, directory) {
+      let before = tally_before(index: inner, directory: directory)
+      match moved_to {
+        Present { value: new_path } => map_insert(
+          m: inner,
+          key: directory,
+          value: DirectoryTally {
+            total: before.total + 1,
+            moved: before.moved + 1,
+            candidate: directory_candidate_after(
+              old: before.candidate,
+              to: directory_successor(old_path: path, new_path: new_path, directory: directory)
+            )
+          }
+        )
+        Absent => map_insert(
+          m: inner,
+          key: directory,
+          value: DirectoryTally { total: before.total + 1, moved: before.moved, candidate: before.candidate }
+        )
+      }
+    })
+  })
+}
+
+fn moved_directory_fate(tally: DirectoryTally) -> DirectoryFate {
+  if tally.moved < tally.total {
+    DirectoryPartlyMoved {}
+  } else {
+    match tally.candidate {
+      DirectoryOne { to: to } => DirectoryMovedTo { to: to }
+      DirectoryNone => DirectoryMovedApart {}
+      DirectoryMixed => DirectoryMovedApart {}
+    }
+  }
+}
+
+fn directory_fate_of(tally: DirectoryTally) -> Optional<DirectoryFate> {
+  if tally.moved == 0 {
+    Absent
+  } else {
+    optional_present(value: moved_directory_fate(tally: tally))
+  }
+}
+
+fn directory_fates(files: List<String>, moves: Map<String, String>) -> Map<String, DirectoryFate> {
+  let tallies = directory_tallies(files: files, moves: moves)
+  fold(files, init: empty_map(), f: fn(index, path) {
+    fold(proper_prefixes(name: path, delimiter: "/"), init: index, f: fn(inner, directory) {
+      match map_lookup(m: tallies, key: directory) {
+        Present { value: tally } => match directory_fate_of(tally: tally) {
+          Present { value: fate } => map_insert(m: inner, key: directory, value: fate)
+          Absent => inner
+        }
+        Absent => inner
+      }
+    })
+  })
+}
+
+// THE TABLES OF A MIGRATION. `modules` is every module before the sweep, `files` every path of the
+// inventory before the sweep.
+fn rewrite_tables(modules: List<ModulePair>, files: List<PathPair>, dispositions: List<RunDisposition>) -> RewriteTables {
+  let renamed = modules |> filter(pair => pair.old_name != pair.new_name)
+  let surviving = bool_map_of(names: modules |> map(pair => pair.new_name) |> fold(init: [], f: fn(acc, name) {
+    fold(proper_prefixes(name: name, delimiter: "."), init: acc, f: (inner, namespace) => list_push(inner, namespace))
+  }))
+  let moved = files |> filter(pair => pair.old_path != pair.new_path)
+  let moves = fold(moved, init: empty_map(), f: (index, pair) => map_insert(m: index, key: pair.old_path, value: pair.new_path))
+  RewriteTables {
+    renames: fold(renamed, init: empty_map(), f: (index, pair) => map_insert(m: index, key: pair.old_name, value: pair.new_name)),
+    modules: bool_map_of(names: modules |> map(pair => pair.old_name)),
+    namespaces: namespace_fates(renamed: renamed, surviving: surviving),
+    tops: sorted_distinct_names(values: renamed |> map(pair => first_segment(name: pair.old_name))),
+    moves: moves,
+    directories: directory_fates(files: files |> map(pair => pair.old_path), moves: moves),
+    dispositions: fold(dispositions, init: empty_map(), f: (index, d) => map_insert(m: index, key: disposition_note(disposition: d), value: d.outcome))
+  }
+}
+
+// ---- characters ----------------------------------------------------------------------------------
+// The character at a position, or "" past the end: char_at yields Null there, which no comparison
+// below may be handed.
+fn char_or_empty(w: String, at: Int) -> String {
+  if at >= 0 && at < string_length(s: w) { char_at(s: w, pos: at) } else { "" }
+}
+
+fn name_char(c: String) -> Bool {
+  (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c == "_"
+}
+
+// A character a repository path is made of.
+fn path_char(c: String) -> Bool {
+  name_char(c: c) || c == "." || c == "/" || c == "-"
+}
+
+fn name_end(w: String, at: Int) -> Int {
+  if name_char(c: char_or_empty(w: w, at: at)) { name_end(w: w, at: at + 1) } else { at }
+}
+
+// The end of the run whose first identifier ends at `at`: a separator followed by an identifier
+// continues it, a separator followed by anything else does not.
+fn run_end(w: String, at: Int, separator: String) -> Int {
+  if char_or_empty(w: w, at: at) == separator && name_char(c: char_or_empty(w: w, at: at + 1)) {
+    run_end(w: w, at: name_end(w: w, at: at + 1), separator: separator)
+  } else {
+    at
+  }
+}
+
+fn path_run_end(w: String, at: Int) -> Int {
+  if path_char(c: char_or_empty(w: w, at: at)) { path_run_end(w: w, at: at + 1) } else { at }
+}
+
+// ---- deciding a dotted run -----------------------------------------------------------------------
+type PrefixHit
+  = PrefixRenamed { length: Int, new_name: String }
+  | PrefixKept
+  | PrefixNone
+
+fn longest_module_prefix(tables: RewriteTables, segments: List<String>, k: Int) -> PrefixHit {
+  if k < 1 {
+    PrefixNone {}
+  } else {
+    let name = join(segments.take(n: k), ".")
+    match map_lookup(m: tables.renames, key: name) {
+      Present { value: new_name } => PrefixRenamed { length: k, new_name: new_name }
+      Absent => match map_lookup(m: tables.modules, key: name) {
+        Present { value: _ } => PrefixKept {}
+        Absent => longest_module_prefix(tables: tables, segments: segments, k: k - 1)
+      }
+    }
+  }
+}
+
+// A name with the sentinel placed after its first segment, so no later pass finds it again.
+fn marked(name: String, separator: String) -> String {
+  let segments = split(s: name, delimiter: separator)
+  match segments |> first {
+    Present { value: head } => concat(head, sentinel(), if count(segments) > 1 { concat(separator, join(skip(xs: segments, n: 1), separator)) } else { "" })
+    Absent => name
+  }
+}
+
+type RunDecision
+  = RunKept
+  | RunNoted { note: String }
+  | RunDisposed { note: String, text: String }
+  | RunRewritten { text: String }
+
+// The decision for a dotted run the tables cannot decide: its disposition when one is recorded (the
+// note is still reported, so a disposition no occurrence uses is found), a blocking note when none is.
+fn decide_noted_dotted(tables: RewriteTables, note: String, whole: String) -> RunDecision {
+  match map_lookup(m: tables.dispositions, key: note) {
+    Present { value: DispositionLeave } => RunDisposed { note: note, text: marked(name: whole, separator: ".") }
+    Present { value: DispositionTo { to: to } } => RunDisposed { note: note, text: marked(name: to, separator: ".") }
+    Absent => RunNoted { note: note }
+  }
+}
+
+fn decide_noted_directory(tables: RewriteTables, note: String, directory: String, slashes: String, tail: String) -> RunDecision {
+  match map_lookup(m: tables.dispositions, key: note) {
+    Present { value: DispositionLeave } => RunDisposed { note: note, text: concat(marked(name: directory, separator: "/"), slashes, tail) }
+    Present { value: DispositionTo { to: to } } => RunDisposed { note: note, text: concat(marked(name: to, separator: "/"), slashes, tail) }
+    Absent => RunNoted { note: note }
+  }
+}
+
+fn decide_run(tables: RewriteTables, segments: List<String>) -> RunDecision {
+  let n = count(segments)
+  match longest_module_prefix(tables: tables, segments: segments, k: n) {
+    PrefixRenamed { length: k, new_name: new_name } =>
+      RunRewritten {
+        text: concat(marked(name: new_name, separator: "."), if k < n { concat(".", join(skip(xs: segments, n: k), ".")) } else { "" })
+      }
+    PrefixKept => RunKept {}
+    PrefixNone => {
+      let whole = join(segments, ".")
+      match map_lookup(m: tables.namespaces, key: whole) {
+        Present { value: NamespaceVanishedTo { to: to } } => RunRewritten { text: marked(name: to, separator: ".") }
+        Present { value: NamespaceVanishedUnmapped } =>
+          decide_noted_dotted(tables: tables, note: note_namespace_unmapped(subject: whole), whole: whole)
+        Absent => RunKept {}
+      }
+    }
+  }
+}
+
+// ---- deciding a path run -------------------------------------------------------------------------
+// A repository path: a `.dag` file is looked up exactly in the move table; anything else is read as
+// a directory and looked up in the directory fates. A directory that kept any file still exists, so
+// a reference to it stands; one whose files all went to one place follows them; one whose files
+// went apart has no single successor and is reported.
+fn strip_trailing(s: String, tail: String) -> String {
+  if string_length(s: s) > 0 && s.ends_with(suffix: tail) {
+    strip_trailing(s: substring(s: s, start: 0, end: string_length(s: s) - string_length(s: tail)), tail: tail)
+  } else {
+    s
+  }
+}
+
+fn decide_path(tables: RewriteTables, run: String) -> RunDecision {
+  let bare = strip_trailing(s: run, tail: ".")
+  let tail = substring(s: run, start: string_length(s: bare), end: text_end())
+  if bare.ends_with(suffix: ".dag") {
+    match map_lookup(m: tables.moves, key: bare) {
+      Present { value: moved } => RunRewritten { text: concat(marked(name: moved, separator: "/"), tail) }
+      Absent => RunKept {}
+    }
+  } else {
+    let directory = strip_trailing(s: bare, tail: "/")
+    let slashes = substring(s: bare, start: string_length(s: directory), end: text_end())
+    match map_lookup(m: tables.directories, key: directory) {
+      Present { value: DirectoryMovedTo { to: to } } => RunRewritten { text: concat(marked(name: to, separator: "/"), slashes, tail) }
+      Present { value: DirectoryMovedApart } =>
+        decide_noted_directory(tables: tables, note: note_directory_apart(subject: directory), directory: directory, slashes: slashes, tail: tail)
+      Present { value: DirectoryPartlyMoved } => RunKept {}
+      Absent => RunKept {}
+    }
+  }
+}
+
+// ---- the passes ----------------------------------------------------------------------------------
+// What an anchor starts: a dotted module run, a repository path, or a `//package:target` label.
+type RunKind
+  = RunKindDotted
+  | RunKindPath
+  | RunKindLabel
+
+type Anchored {
+  text: String
+  note: Optional<String>
+  edited: Bool
+}
+
+fn anchored_unchanged(anchor: String, piece: String, note: Optional<String>) -> Anchored {
+  Anchored { text: concat(anchor, piece), note: note, edited: false }
+}
+
+fn optional_note(note: String) -> Optional<String> {
+  Present { value: note }
+}
+
+// The end of the run a piece starts with, or -1 when the piece starts no run of this kind.
+fn run_extent(kind: RunKind, head: String) -> Int {
+  match kind {
+    RunKindDotted =>
+      if name_char(c: char_or_empty(w: head, at: 0)) { run_end(w: head, at: name_end(w: head, at: 0), separator: ".") } else { 0 - 1 }
+    RunKindPath =>
+      if path_char(c: char_or_empty(w: head, at: 0)) { path_run_end(w: head, at: 0) } else { 0 - 1 }
+    RunKindLabel => label_extent(head: head)
+  }
+}
+
+// A label is `//` followed by a package of identifiers and slashes and then `:`. The extent is the
+// end of the package, and -1 when the characters do not form one.
+fn label_extent(head: String) -> Int {
+  let end = label_package_end(w: head, at: 0)
+  if end > 0 && char_or_empty(w: head, at: end) == ":" { end } else { 0 - 1 }
+}
+
+fn label_package_end(w: String, at: Int) -> Int {
+  let c = char_or_empty(w: w, at: at)
+  if name_char(c: c) || c == "/" { label_package_end(w: w, at: at + 1) } else { at }
+}
+
+fn decide_label_package(tables: RewriteTables, package: String) -> RunDecision {
+  if package.starts_with(prefix: "dag/") || package.starts_with(prefix: "src/v2/") {
+    decide_path(tables: tables, run: package)
+  } else {
+    let segments = split(s: package, delimiter: "/")
+    if count(segments) < 2 {
+      RunKept {}
+    } else {
+      match decide_run(tables: tables, segments: segments) {
+        RunRewritten { text: text } => RunRewritten { text: replace(s: text, from: ".", to: "/") }
+        RunKept => RunKept {}
+        RunNoted { note: note } => RunNoted { note: note }
+        RunDisposed { note: note, text: text } => RunDisposed { note: note, text: replace(s: text, from: ".", to: "/") }
+      }
+    }
+  }
+}
+
+fn decide_for(kind: RunKind, tables: RewriteTables, anchor: String, run: String) -> RunDecision {
+  let full = concat(anchor, run)
+  match kind {
+    RunKindDotted => decide_run(tables: tables, segments: segments_of(name: full))
+    RunKindPath => decide_path(tables: tables, run: full)
+    RunKindLabel => decide_label_package(tables: tables, package: run)
+  }
+}
+
+// The text that stands for `<anchor><piece>` once the run that starts at the piece is decided.
+fn anchored_piece(tables: RewriteTables, kind: RunKind, anchor: String, piece: String) -> Anchored {
+  let head = substring(s: piece, start: 0, end: run_window())
+  let extent = run_extent(kind: kind, head: head)
+  if extent < 0 {
+    anchored_unchanged(anchor: anchor, piece: piece, note: Absent)
+  } else if extent >= run_window() {
+    anchored_unchanged(anchor: anchor, piece: piece, note: optional_note(note: note_run_exceeds_window(subject: anchor)))
+  } else {
+    match decide_for(kind: kind, tables: tables, anchor: anchor, run: substring(s: head, start: 0, end: extent)) {
+      RunKept => anchored_unchanged(anchor: anchor, piece: piece, note: Absent)
+      RunNoted { note: note } => anchored_unchanged(anchor: anchor, piece: piece, note: optional_note(note: note))
+      RunDisposed { note: note, text: text } => {
+        let run = substring(s: head, start: 0, end: extent)
+        Anchored {
+          text: concat(label_prefix(kind: kind), text, substring(s: piece, start: extent, end: text_end())),
+          note: optional_note(note: note),
+          edited: join(split(s: text, delimiter: sentinel()), "") != original_of(kind: kind, anchor: anchor, run: run)
+        }
+      }
+      RunRewritten { text: text } =>
+        Anchored { text: concat(label_prefix(kind: kind), text, substring(s: piece, start: extent, end: text_end())), note: Absent, edited: true }
+    }
+  }
+}
+
+// The run as written, in the spelling a decision's text replaces it with: a dotted or path run
+// carries its anchor, a label package does not (its `//` is the label prefix).
+fn original_of(kind: RunKind, anchor: String, run: String) -> String {
+  match kind {
+    RunKindLabel => run
+    RunKindDotted => concat(anchor, run)
+    RunKindPath => concat(anchor, run)
+  }
+}
+
+// A rewritten label keeps its `//`; the other kinds carry their anchor inside the rewritten run.
+fn label_prefix(kind: RunKind) -> String {
+  match kind {
+    RunKindLabel => "//"
+    RunKindDotted => ""
+    RunKindPath => ""
+  }
+}
+
+type Rewritten {
+  text: String
+  notes: List<String>
+  edits: Int
+}
+
+type PieceFold {
+  out: List<String>
+  notes: List<String>
+  edits: Int
+  prev_last: String
+  index: Int
+}
+
+fn last_char_of(piece: String) -> String {
+  char_or_empty(w: piece, at: string_length(s: piece) - 1)
+}
+
+// An empty piece is two anchors with nothing between them: the second follows the first's last
+// character, which for every anchor is a separator.
+fn next_prev_last(piece: String) -> String {
+  let last = last_char_of(piece: piece)
+  if last == "" { "." } else { last }
+}
+
+fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: String) -> Rewritten {
+  let pieces = split(s: text, delimiter: anchor)
+  if count(pieces) < 2 {
+    Rewritten { text: text, notes: [], edits: 0 }
+  } else {
+    let folded = fold(pieces, init: PieceFold { out: [], notes: [], edits: 0, prev_last: "", index: 0 }, f: fn(acc, piece) {
+      if acc.index == 0 {
+        PieceFold { out: [piece], notes: [], edits: 0, prev_last: last_char_of(piece: piece), index: 1 }
+      } else if !reference_boundary(kind: kind, prev: acc.prev_last) {
+        PieceFold {
+          out: list_push(acc.out, concat(anchor, piece)),
+          notes: acc.notes,
+          edits: acc.edits,
+          prev_last: next_prev_last(piece: piece),
+          index: acc.index + 1
+        }
+      } else {
+        let anchored = anchored_piece(tables: tables, kind: kind, anchor: anchor, piece: piece)
+        PieceFold {
+          out: list_push(acc.out, anchored.text),
+          notes: match anchored.note {
+            Present { value: note } => list_push(acc.notes, note)
+            Absent => acc.notes
+          },
+          edits: if anchored.edited { acc.edits + 1 } else { acc.edits },
+          prev_last: next_prev_last(piece: piece),
+          index: acc.index + 1
+        }
+      }
+    })
+    Rewritten { text: join(folded.out, ""), notes: folded.notes, edits: folded.edits }
+  }
+}
+
+// Whether the character before an anchor makes it the start of a reference. A reference does not
+// continue an identifier, a dotted run, a path or a hyphenated word; "" is the start of the text. A
+// label additionally does not follow ':' (the `//` of a URL).
+fn reference_boundary(kind: RunKind, prev: String) -> Bool {
+  match kind {
+    RunKindLabel => !path_char(c: prev) && prev != ":"
+    RunKindDotted => !path_char(c: prev)
+    RunKindPath => !path_char(c: prev)
+  }
+}
+
+// ---- the whole text ------------------------------------------------------------------------------
+fn path_anchors() -> List<String> {
+  ["dag/", "src/v2/"]
+}
+
+type TextRewrite
+  = TextRewritten { rewritten: Rewritten }
+  | TextRewriteRefused { cause: String }
+
+fn merge_rewritten(left: Rewritten, right: Rewritten) -> Rewritten {
+  Rewritten { text: right.text, notes: concat_lists(left.notes, right.notes), edits: left.edits + right.edits }
+}
+
+fn concat_lists(left: List<String>, right: List<String>) -> List<String> {
+  fold(right, init: left, f: (acc, item) => list_push(acc, item))
+}
+
+fn apply_pass(tables: RewriteTables, kind: RunKind, anchor: String, so_far: Rewritten) -> Rewritten {
+  merge_rewritten(left: so_far, right: rewrite_anchored(tables: tables, kind: kind, anchor: anchor, text: so_far.text))
+}
+
+// THE REWRITE OF ONE TEXT: labels first (their packages are paths or dotted runs written with
+// slashes, which the path anchors would otherwise skip), then repository paths, then dotted module
+// runs, then the sentinels are dropped. A text that already contains the sentinel is refused.
+fn rewrite_text(tables: RewriteTables, text: String) -> TextRewrite {
+  if text.contains(sentinel()) {
+    TextRewriteRefused { cause: "the text already contains the rewrite sentinel U+E000" }
+  } else {
+    let labeled = apply_pass(tables: tables, kind: RunKindLabel {}, anchor: "//", so_far: Rewritten { text: text, notes: [], edits: 0 })
+    let pathed = fold(path_anchors(), init: labeled, f: (acc, anchor) => apply_pass(tables: tables, kind: RunKindPath {}, anchor: anchor, so_far: acc))
+    let dotted = fold(tables.tops, init: pathed, f: (acc, top) => apply_pass(tables: tables, kind: RunKindDotted {}, anchor: concat(top, "."), so_far: acc))
+    TextRewritten { rewritten: Rewritten { text: join(split(s: dotted.text, delimiter: sentinel()), ""), notes: dotted.notes, edits: dotted.edits } }
+  }
+}

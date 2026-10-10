@@ -1,0 +1,157 @@
+module test.claim.layout_migration_map_witness
+
+import std.types { Bool, List, String }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.compiler.source_authority { SourceStorageLayout, StorageNamespaceRoot }
+import gunbc.instruments.layout_migration_map {
+  CaseFoldCollision,
+  InstrumentNotInFolder,
+  MigrationPlan,
+  MigrationPlanRefused,
+  MigrationPlanned,
+  MigrationRefusal,
+  MigrationSite,
+  ModuleCollision,
+  SiteRefused,
+  TargetCollision,
+  TargetOccupied,
+  move_category_label,
+  plan_migration
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// WITNESSES FOR THE MOVE-AND-RENAME PLANNER OF THE SOURCE-LAYOUT CUTOVER
+// (gunbc.instruments.layout_migration_map). The planner decides, for every governed file, which of
+// the plan's procedures applies (already placed, A, B, C, C-up, D-path, D-name) and refuses the
+// WHOLE sweep on any collision. Each control isolates one category or one refusal over invented
+// sites, so a red names the rule that broke. As with the rewrite engine, the pairing obligation is
+// carried by the census over the real population (layout_census), not by this file.
+
+fn layout() -> SourceStorageLayout {
+  SourceStorageLayout {
+    namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
+    default_tree: DagTree {}
+  }
+}
+
+fn site(path: String, module: String) -> MigrationSite {
+  MigrationSite { path: path, module: module }
+}
+
+fn refusal_kind(refusal: MigrationRefusal) -> String {
+  match refusal {
+    SiteRefused { path: _, module: _, cause: _ } => "site-refused"
+    TargetCollision { new_path: _, sources: _ } => "target-collision"
+    ModuleCollision { new_module: _, sources: _ } => "module-collision"
+    TargetOccupied { new_path: _, source: _ } => "target-occupied"
+    CaseFoldCollision { kind: kind, names: _ } => concat("case-fold-", kind)
+    InstrumentNotInFolder { module: _, path: _ } => "instrument-not-in-folder"
+  }
+}
+
+// The plan as one comparable string: each change as category|old path|new path|new module, or the
+// refusal kinds. A refused plan can never equal a planned one.
+fn plan_summary(plan: MigrationPlan) -> String {
+  match plan {
+    MigrationPlanned { changes: changes } =>
+      join(changes |> map(c => join([move_category_label(category: c.category), c.old_path, c.new_path, c.new_module], "|")), ";")
+    MigrationPlanRefused { refusals: refusals } => concat("refused:", join(refusals |> map(r => refusal_kind(refusal: r)), ","))
+  }
+}
+
+fn planned(sites: List<MigrationSite>, occupied: List<String>, name_wins: List<String>) -> String {
+  plan_summary(plan: plan_migration(
+    layout: layout(),
+    name_wins_namespaces: name_wins,
+    instrument_namespace: "tools",
+    instrument_folder: "dag/gunbc/instruments",
+    sites: sites,
+    occupied: occupied
+  ))
+}
+
+test fn planner_leaves_a_file_the_rule_already_places() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c.dag", module: "a.b.c"), site(path: "src/v2/std/text.dag", module: "v2.std.text")], occupied: [], name_wins: []) == ""
+}
+
+test fn planner_renames_the_file_in_its_own_folder_for_category_a() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c.dag", module: "a.b.d")], occupied: ["dag/a/b/c.dag"], name_wins: []) == "A|dag/a/b/c.dag|dag/a/b/d.dag|a.b.d"
+}
+
+test fn planner_moves_a_file_down_into_the_rules_folder_for_category_b() -> Bool {
+  planned(sites: [site(path: "dag/a/b.dag", module: "a.b.c")], occupied: ["dag/a/b.dag"], name_wins: []) == "B|dag/a/b.dag|dag/a/b/c.dag|a.b.c"
+}
+
+// Category C keeps the file and renames the module: the folder carries structure the name lacks.
+test fn planner_renames_the_module_when_the_folder_carries_structure_for_category_c() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c/d.dag", module: "a.b.d")], occupied: ["dag/a/b/c/d.dag"], name_wins: []) == "C|dag/a/b/c/d.dag|dag/a/b/c/d.dag|a.b.c.d"
+}
+
+// C-up is the x/x.dag case, where the folder only repeats the module's own name: the file moves up
+// and the name is kept. It differs from C exactly by the folder repeating the stem.
+test fn planner_moves_a_file_up_when_its_folder_only_repeats_its_name() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c/c.dag", module: "a.b.c")], occupied: ["dag/a/b/c/c.dag"], name_wins: []) == "C-up|dag/a/b/c/c.dag|dag/a/b/c.dag|a.b.c"
+}
+
+// A file on a different branch: path wins by default (the module takes the path's name), name wins
+// only for a namespace the operator ruled it for, in which case the file moves to the name's path.
+test fn planner_renames_a_module_to_its_path_by_default_for_category_d() -> Bool {
+  planned(sites: [site(path: "dag/x/y/e.dag", module: "a.b.e")], occupied: ["dag/x/y/e.dag"], name_wins: []) == "D-path|dag/x/y/e.dag|dag/x/y/e.dag|x.y.e"
+}
+
+test fn planner_moves_a_file_to_its_name_for_a_name_wins_namespace() -> Bool {
+  planned(sites: [site(path: "dag/x/y/e.dag", module: "a.b.e")], occupied: ["dag/x/y/e.dag"], name_wins: ["a"]) == "D-name|dag/x/y/e.dag|dag/a/b/e.dag|a.b.e"
+}
+
+test fn planner_refuses_two_sources_to_one_target() -> Bool {
+  planned(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.d"), site(path: "dag/a/b/e.dag", module: "a.b.d")],
+    occupied: ["dag/a/b/c.dag", "dag/a/b/e.dag"],
+    name_wins: []
+  ) == "refused:target-collision,module-collision"
+}
+
+// A target that exists and is not a module moving away is refused; a target that is another
+// module's own old path is not (that module is leaving), which the first control below pairs.
+test fn planner_refuses_a_target_that_exists_and_is_not_moving_away() -> Bool {
+  planned(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.d")],
+    occupied: ["dag/a/b/c.dag", "dag/a/b/d.dag"],
+    name_wins: []
+  ) == "refused:target-occupied"
+}
+
+test fn planner_allows_a_target_that_is_another_modules_old_path_moving_away() -> Bool {
+  planned(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.d"), site(path: "dag/a/b/d.dag", module: "a.b.f")],
+    occupied: ["dag/a/b/c.dag", "dag/a/b/d.dag"],
+    name_wins: []
+  ) == "A|dag/a/b/c.dag|dag/a/b/d.dag|a.b.d;A|dag/a/b/d.dag|dag/a/b/f.dag|a.b.f"
+}
+
+test fn planner_refuses_targets_that_collide_under_case_folding() -> Bool {
+  planned(
+    sites: [site(path: "dag/a/b/p.dag", module: "a.b.x"), site(path: "dag/a/b/q.dag", module: "a.b.X")],
+    occupied: ["dag/a/b/p.dag", "dag/a/b/q.dag"],
+    name_wins: []
+  ) == "refused:case-fold-path,case-fold-module"
+}
+
+// A path the rule cannot reach (a stem with a dot) has no implied name, so a path-wins file there
+// is refused instead of being given a name the rule would map elsewhere.
+test fn planner_refuses_a_file_it_cannot_place() -> Bool {
+  planned(sites: [site(path: "dag/x/y/e.v1.dag", module: "a.b.e")], occupied: ["dag/x/y/e.v1.dag"], name_wins: []) == "refused:site-refused"
+}
+
+// R10: a member of the instrument namespace outside the instruments folder is not an instrument and
+// stops the sweep for a decision rather than being moved into the folder.
+test fn planner_refuses_an_instrument_namespace_member_outside_the_instruments_folder() -> Bool {
+  planned(sites: [site(path: "dag/tools/z.dag", module: "tools.z")], occupied: ["dag/tools/z.dag"], name_wins: []) == "refused:instrument-not-in-folder"
+}
+
+// R10 positive control: an instrument is named by its folder, so a `tools.*` module already in the
+// instruments folder is renamed to `gunbc.instruments.*` by its path and is not refused.
+test fn planner_names_an_instrument_by_its_folder() -> Bool {
+  planned(sites: [site(path: "dag/gunbc/instruments/g.dag", module: "tools.g")], occupied: ["dag/gunbc/instruments/g.dag"], name_wins: []) == "D-path|dag/gunbc/instruments/g.dag|dag/gunbc/instruments/g.dag|gunbc.instruments.g"
+}
