@@ -1,12 +1,12 @@
 # Self-host step memory audit (2026-10-10)
 
 Subject: the 17.2 GB slot peak of `gunbc test //gunbc/instruments:self-host` (run 38016653087).
-Model row (the authority; every number below is a row there, not a transcription):
+Model row (figures TRANSCRIBED from recorded srv1 runs, each row naming the instrument that re-derives it; the readout's green is a consistency check of those receipts, not evidence about the live seed):
 `gunbc.floor.self_host_step_memory_demand`. Re-derive the readout:
 
     gunbc run --source-root dag --source-root src/v2 \
       --entry dag/gunbc/floor/self_host_step_memory_demand.dag \
-      --function self_host_step_memory_demand_readout     # rc 0 green, run under a cgroup budget
+      --function self_host_step_memory_demand_readout     # consistency of the recorded receipts; has no consumer yet -- see below
 
 ## Instruments (measured)
 - Phase attribution: a 22G/swap0 `systemd-run --user --scope` on srv1, cgroup memory.current/peak plus process-tree RSS sampled at a fixed beat; seams from the step's stderr log lines.
@@ -34,3 +34,6 @@ No. Tree-scale buckets grow with the module count and the closure bucket with `v
 - `gunbc.compiler_gate_workflow` / `gunbc.emitted_subject_build_gate` are untouched here.
 
 Measured vs inferred: findings 1, 2, 4 and bucket sizes in 3 first four are measured; the 5.4/1.9 GB split and the growth rate are inferred.
+
+## Consumption (DESIGN 3c)
+The model has no call site in the closure today. Declared frontier: bold-crane-635's `gunbc.cutover_receipt` cold-run row (not on main yet) is the named consumer; trigger is that module landing and importing `self_host_step_phase_readings_for_step`. The seed hooks in `memory_composition.rs` are env-gated measurement and are consumed by running the instrument.

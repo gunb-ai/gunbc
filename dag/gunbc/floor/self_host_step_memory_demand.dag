@@ -326,17 +326,19 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
   },
 ]
 
-// WHAT A CUTOVER RECEIPT READS FROM HERE. gunbc.cutover_receipt's readings (the witnesses cold-run
-// row) take the per-phase table above as its per-step memory carrier rather than minting a second
-// one; this is the projection it joins on.
+// DECLARED FRONTIER (DESIGN 3c): the consumer is bold-crane-635's cold-run receipt row
+// (gunbc.cutover_receipt, not on main at this writing), which is to take the per-phase table above
+// as its per-step memory carrier. Trigger: that module landing and importing this projection; until
+// then this function and the readout have no call site in the closure.
 fn self_host_step_phase_readings_for_step(step: NonEmptyStr) -> List<StepPhaseReading> {
   self_host_step_phase_readings |> filter(r => r.step == step)
 }
 
-// THE BUCKET ROWS AND THE PHASE ROWS ARE TWO SEPARATE MEASUREMENTS OF ONE RUN (staged release versus
-// sampler beat), so the sum of the buckets live at a moment must land within a stated tolerance of
-// the phase reading at that moment. A bucket set that drifts from the sampler's reading -- a structure
-// missing, a figure re-measured on a different tree -- fails here rather than reading green.
+// WHAT THIS CHECK IS AND IS NOT. Bucket rows and phase rows are both TRANSCRIBED from one recorded
+// run (staged release versus sampler beat were different instruments, but their figures are copied
+// here by hand), so this is a consistency check on the recorded receipts, not an oracle: editing
+// either table moves the result, and a green readout is not evidence about the live seed. The
+// evidence is the instruments named on each row, re-run.
 fn step_within_percent(sum: Int, reading: Int, percent: Int) -> Bool {
   let slack = reading * percent / 100
   sum <= reading + slack && sum + slack >= reading

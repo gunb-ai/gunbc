@@ -14,8 +14,9 @@
 //! stage's figure includes anything an earlier one only released a reference to.
 //!
 //! Instrument: `GUNBC_MEMORY_COMPOSITION=1 gunbc test //gunbc/instruments:self-host`; the rows
-//! are the `[memory-composition]` lines on stderr (parsed by `gunbc.floor_demand`'s sibling
-//! `gunbc.self_host_step_memory_demand`).
+//! are the `[memory-composition]` lines on stderr. Nothing parses them: the figures in
+//! `gunbc.floor.self_host_step_memory_demand` are transcribed from one recorded run, and a
+//! reader of that module re-derives them by running this instrument, not by reading the row.
 
 use std::mem::take;
 
