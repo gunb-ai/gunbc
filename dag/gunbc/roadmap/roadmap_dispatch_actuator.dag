@@ -4306,8 +4306,8 @@ type AttemptUnitStartStanding
 // A SIGNALED WORKER IS READ AS systemd's ExecMainStatus READ IT: the signal number. That is the
 // reading every consumer of WorkerProcessExited saw before this change, preserved exactly so no
 // consumer's decision moves; the record keeps the distinction (AttemptProcessSignaled) and a
-// signaled arm on WorkerProcessEvidence is the named follow-up (docs/plans/belt-event-driven-obligations.md,
-// Follow-ups; trigger: the next change to a WorkerProcessExited consumer's decision).
+// signaled arm on WorkerProcessEvidence is the named follow-up
+// (trigger: the next change to a WorkerProcessExited consumer's decision).
 fn attempt_unit_from_exit_record(unit: NonEmptyStr, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
   match record {
     AttemptExitRecordUnreadable { reason } =>

@@ -18,7 +18,7 @@ fn parent_node() -> RoadmapNode {
     identity: "rnfx_5E27VQFME81E3RP60RE6" as RoadmapNodeIdentity,
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
-    carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
+    carriers: [Pointer { label: "plan", path: "docs/plans/replacement-migration-doctrine.md" }],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
@@ -78,7 +78,7 @@ test fn witness_heading() -> Bool {
 test fn witness_parent_authored_box_and_link() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "- [ ] **invert hand-maintained**")
-    && string_contains(s: out, pattern: "[plan](docs/plans/invert-hand-maintained.md)")
+    && string_contains(s: out, pattern: "[plan](docs/plans/replacement-migration-doctrine.md)")
 }
 
 test fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {

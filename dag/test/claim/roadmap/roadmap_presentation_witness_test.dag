@@ -105,7 +105,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live
 // count or row is a moving target that turns a semantic claim into a snapshot transcription (the A1
 // lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's
-// falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with
+// falsifier row: seven obligations with
 // Environment/Workspace/Agent complete, four pending, worker process exited, session container
 // present.
 
