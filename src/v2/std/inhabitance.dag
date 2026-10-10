@@ -36,6 +36,16 @@ import v2.std.node {
 import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+import v2.std.optional_layers {
+  CardinalityWrapperMalformed,
+  TypeNodeCardinality,
+  type_node_cardinality_read
+}
+import std.optional_layers {
+  CardOptional,
+  Required,
+  exact_optional_layers
+}
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
 // callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
@@ -334,6 +344,29 @@ fn inhabitance_optional_at_required_reason() -> Symbol {
   ^inhabitance_optional_produced_at_required_declared
 }
 
+fn inhabitance_optional_layer_depth_mismatch_reason() -> Symbol {
+  ^inhabitance_optional_layer_depth_mismatch
+}
+
+fn inhabitance_optional_layer_depth_mismatch(declared: Node, produced: Node) -> Bool {
+  match type_node_cardinality_read(n: declared) {
+    CardinalityWrapperMalformed { wrapper: _ } => false
+    TypeNodeCardinality { card: dc, base: _ } =>
+      match type_node_cardinality_read(n: produced) {
+        CardinalityWrapperMalformed { wrapper: _ } => false
+        TypeNodeCardinality { card: pc, base: _ } =>
+          match dc {
+            CardOptional { layers: _ } =>
+              match pc {
+                CardOptional { layers: _ } => !exact_optional_layers(a: dc, b: pc)
+                Required => false
+              }
+            Required => false
+          }
+      }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   if inhabitance_optional_produced_at_required_declared(
     declared: obligation.declared,
@@ -341,6 +374,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
     type_variables: obligation.type_variables
   ) {
     InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
+  } else if inhabitance_optional_layer_depth_mismatch(declared: obligation.declared, produced: obligation.produced) {
+    InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
   } else {
     declared_type_inhabitance_structural(obligation: obligation)
   }

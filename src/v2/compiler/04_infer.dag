@@ -62,7 +62,13 @@ import v2.extdeps.languages.typescript {
   ts_declared_inhabitants_subject_field
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.optional_layers { type_node_cardinality_child }
+import v2.std.optional_layers {
+  CardinalityWrapperMalformed,
+  TypeNodeCardinality,
+  type_node_cardinality_read,
+  wrap_type_node_cardinality
+}
+import std.optional_layers { peel_optional_layer }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
   Map,
@@ -3880,13 +3886,27 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
             ComputationNode { behavior: _ } => InferFormalShapeMismatch
           }
         TypeNode { connective: Cardinality } =>
-          match type_node_cardinality_child(n: formal) {
-            Absent => InferFormalShapeMismatch
-            Present { value: finner } =>
-              match type_node_cardinality_child(n: produced) {
+          match type_node_cardinality_read(n: formal) {
+            CardinalityWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
+            TypeNodeCardinality { card: fcard, base: fbase } =>
+              match peel_optional_layer(card: fcard) {
                 Absent => InferFormalShapeMismatch
-                Present { value: pinner } =>
-                  infer_match_generic_formal(formal: finner, produced: pinner, type_params: type_params, instances: instances, declarations: declarations)
+                Present { value: frest } =>
+                  match type_node_cardinality_read(n: produced) {
+                    CardinalityWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
+                    TypeNodeCardinality { card: pcard, base: pbase } =>
+                      match peel_optional_layer(card: pcard) {
+                        Absent => InferFormalShapeMismatch
+                        Present { value: prest } =>
+                          infer_match_generic_formal(
+                            formal: wrap_type_node_cardinality(base: fbase, card: frest),
+                            produced: wrap_type_node_cardinality(base: pbase, card: prest),
+                            type_params: type_params,
+                            instances: instances,
+                            declarations: declarations
+                          )
+                      }
+                  }
               }
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }

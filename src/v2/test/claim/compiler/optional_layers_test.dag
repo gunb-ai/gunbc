@@ -197,7 +197,7 @@ test fn two_optional_layers_are_not_one_at_inhabitance() -> Bool {
   match inhabitance_pair_undecidable_reason(declared: one, produced: two, type_variables: []) {
     Absent =>
       match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: two)) {
-        InhabitanceRefused { find_witness_reason: _ } => true
+        InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_layer_depth_mismatch
         Inhabits { homomorphism: _ } => false
         InhabitanceUndecidable { reason: _ } => false
       }

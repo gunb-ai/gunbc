@@ -8,12 +8,13 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 // cannot carry zero: OptionalLayers has no zero arm (DESIGN §4b; gunbc#13488 review: a Nat or Int
 // layer count made zero and negatives representable).
 //
-// CONSUMERS (DESIGN §3c): v2.std.optional_layers type_node_cardinality / wrap_type_node_cardinality
-// (the Node reading of v2.std.node TypeNode { connective: Cardinality } wrappers); v2.compiler.infer
-// infer_match_generic_formal (composition on substitution, peel when matching wrappers);
-// v2.std.inhabitance inhabitance_pair_undecidable_reason (exact depth: two Cardinality trees are
-// decided by structure, not collapsed to one Optional). Claims: test.claim.optional_layers_witness_test
-// and v2.test.claim.compiler.optional_layers_test.
+// CONSUMERS (DESIGN §3c): v2.std.optional_layers type_node_cardinality_read and
+// wrap_type_node_cardinality (the Node reading of v2.std.node TypeNode { connective: Cardinality }
+// wrappers). Production: v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer
+// over that reading and rematerializes the rest with wrap_type_node_cardinality;
+// v2.std.inhabitance declared_type_inhabitance refuses two CardOptional towers that
+// exact_optional_layers denies (inhabitance_optional_layer_depth_mismatch). Claims:
+// test.claim.optional_layers_witness_test and v2.test.claim.compiler.optional_layers_test.
 //
 // Named operations, not one max-join (gunbc#13488): composition is addition; peel is one eliminator;
 // exact is conformance; competing observations agree or name an authority (not modeled here).
